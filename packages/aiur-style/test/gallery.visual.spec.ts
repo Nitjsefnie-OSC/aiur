@@ -75,3 +75,86 @@ test.describe('Gallery Visual Tests', () => {
     expect(theme).toBe('dark');
   });
 });
+
+test('offline type specimens load every bundled weight', async ({ page }) => {
+  const fonts: string[] = [];
+  page.on('response', response => {
+    if (response.url().endsWith('.woff2') && response.status() === 200) fonts.push(response.url());
+  });
+  await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:3000/')
+    ? route.continue() : route.abort());
+  await page.route('**/dist/aiur-style.css', route => route.fulfill({ body: '', contentType: 'text/css' }));
+  await page.goto('http://127.0.0.1:3000/gallery/?specimens');
+  await page.addStyleTag({ url: 'http://127.0.0.1:3000/dist/fonts.css' });
+  const loaded = await page.evaluate(async () => {
+    const results: boolean[] = [];
+    for (const [family, weights] of [
+      ['Bungee', [400]], ['Space Grotesk', [300, 400, 500, 600, 700]],
+      ['JetBrains Mono', [100, 200, 300, 400, 500, 600, 700, 800]],
+    ] as [string, number[]][]) {
+      for (const weight of weights) {
+        const faces = await document.fonts.load(`${weight} 16px "${family}"`);
+        results.push(faces.length === 1 && faces[0].status === 'loaded'
+          && document.fonts.check(`${weight} 16px "${family}"`));
+      }
+    }
+    await document.fonts.ready;
+    return results;
+  });
+  expect(loaded).toEqual(Array(14).fill(true));
+  expect(new Set(fonts).size).toBe(3);
+  await expect(page.locator('#type-specimens')).toHaveScreenshot('type-specimens.png');
+});
+
+test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails', async ({ page }) => {
+  await page.goto('./');
+  const errors = await page.evaluate(async () => {
+    const load = async (name: string) => {
+      const image = new Image();
+      image.src = `../dist/assets/${name}`;
+      await image.decode();
+      return image;
+    };
+    const original = await load('aiur-logo.png');
+    const png = await load('aiur-logo-512.png');
+    const webp = await load('aiur-logo-512.webp');
+    const canvas = document.createElement('canvas');
+    canvas.width = png.width; canvas.height = png.height;
+    const context = canvas.getContext('2d')!;
+    context.imageSmoothingEnabled = false;
+    context.drawImage(original, 0, 0, canvas.width, canvas.height);
+    const bad = new Image(); bad.src = canvas.toDataURL(); await bad.decode();
+    const lab = (r: number, g: number, b: number) => {
+      const linear = (v: number) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      [r, g, b] = [r, g, b].map(v => linear(v / 255));
+      const f = (v: number) => v > 216 / 24389 ? Math.cbrt(v) : (24389 / 27 * v + 16) / 116;
+      const x = f((r * .4124564 + g * .3575761 + b * .1804375) / .95047);
+      const y = f(r * .2126729 + g * .7151522 + b * .072175);
+      const z = f((r * .0193339 + g * .119192 + b * .9503041) / 1.08883);
+      return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+    };
+    const render = (image: HTMLImageElement, height: number) => {
+      const c = document.createElement('canvas');
+      c.height = height; c.width = Math.round(original.width / original.height * height);
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(image, 0, 0, c.width, c.height);
+      return ctx.getImageData(0, 0, c.width, c.height).data;
+    };
+    const compare = (image: HTMLImageElement, height: number) => {
+      const a = render(original, height), b = render(image, height);
+      let max = 0;
+      for (let i = 0; i < a.length; i += 4) {
+        const x = lab(a[i], a[i + 1], a[i + 2]), y = lab(b[i], b[i + 1], b[i + 2]);
+        max = Math.max(max, Math.hypot(...x.map((v, j) => v - y[j])));
+      }
+      return max;
+    };
+    return { png: [compare(png, 224), compare(png, 28)],
+      webp: [compare(webp, 224), compare(webp, 28)], bad: compare(bad, 224) };
+  });
+  console.log('Logo maximum ΔE76:', errors);
+  for (const error of [...errors.png, ...errors.webp]) expect(error).toBeLessThan(2);
+  expect(errors.bad).toBeGreaterThanOrEqual(2);
+});
