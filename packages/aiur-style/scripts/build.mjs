@@ -1,72 +1,33 @@
 #!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
-import fs from 'fs';
-import path from 'path';
-import { execSync } from 'child_process';
-import { fileURLToPath } from 'url';
+const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const packageRoot = path.resolve(__dirname, '..');
-const distDir = path.join(packageRoot, 'dist');
-const srcCssDir = path.join(packageRoot, 'src', 'css');
-const distCssDir = path.join(distDir, 'css');
-
-// Ensure dist directory exists
-if (!fs.existsSync(distDir)) {
-  fs.mkdirSync(distDir, { recursive: true });
-}
-
-if (!fs.existsSync(distCssDir)) {
-  fs.mkdirSync(distCssDir, { recursive: true });
-}
-
-// Run TypeScript compiler
-console.log('Building TypeScript...');
-try {
-  execSync(`tsc --project ${path.join(packageRoot, 'tsconfig.json')}`, {
-    cwd: packageRoot,
-    stdio: 'inherit'
+export function build(outputDir = path.join(packageRoot, 'dist')) {
+  fs.rmSync(outputDir, { recursive: true, force: true });
+  fs.mkdirSync(path.join(outputDir, 'css'), { recursive: true });
+  execFileSync(path.join(packageRoot, 'node_modules/.bin/tsc'),
+    ['--project', path.join(packageRoot, 'tsconfig.json'), '--outDir', path.join(outputDir, 'js')],
+    { cwd: packageRoot, stdio: 'inherit' });
+  const cssDir = path.join(packageRoot, 'src/css');
+  const cssFiles = fs.readdirSync(cssDir).filter(file => file.endsWith('.css')).sort();
+  const contents = cssFiles.map(file => {
+    const css = fs.readFileSync(path.join(cssDir, file), 'utf8').replace(/\r\n/g, '\n');
+    // Individual CSS lives one directory deeper than the consolidated stylesheet.
+    fs.writeFileSync(path.join(outputDir, 'css', file), css.replaceAll("'./fonts/", "'../fonts/"));
+    return css;
   });
-  console.log('✓ TypeScript compiled');
-} catch (error) {
-  console.error('✗ TypeScript compilation failed');
-  process.exit(1);
-}
-
-// Concatenate CSS files in sorted order
-console.log('Building CSS...');
-try {
-  const cssFiles = fs.readdirSync(srcCssDir)
-    .filter(f => f.endsWith('.css'))
-    .sort();
-
-  if (cssFiles.length === 0) {
-    console.warn('⚠ No CSS files found in src/css/');
+  fs.writeFileSync(path.join(outputDir, 'aiur-style.css'), contents.join('\n'));
+  fs.copyFileSync(path.join(cssDir, 'fonts.css'), path.join(outputDir, 'fonts.css'));
+  for (const directory of ['fonts', 'assets']) {
+    fs.cpSync(path.join(packageRoot, directory), path.join(outputDir, directory), { recursive: true });
   }
-
-  // Concatenate all CSS into main file with LF line endings
-  const cssContent = cssFiles
-    .map(file => {
-      const content = fs.readFileSync(path.join(srcCssDir, file), 'utf8');
-      return content.replace(/\r\n/g, '\n');
-    })
-    .join('\n');
-
-  const mainCssPath = path.join(distDir, 'aiur-style.css');
-  fs.writeFileSync(mainCssPath, cssContent, { encoding: 'utf8' });
-  console.log(`✓ CSS concatenated to dist/aiur-style.css (${cssFiles.length} files)`);
-
-  // Copy individual CSS files to dist/css/
-  cssFiles.forEach(file => {
-    const srcPath = path.join(srcCssDir, file);
-    const destPath = path.join(distCssDir, file);
-    const content = fs.readFileSync(srcPath, 'utf8').replace(/\r\n/g, '\n');
-    fs.writeFileSync(destPath, content, { encoding: 'utf8' });
-  });
-  console.log(`✓ CSS files copied to dist/css/`);
-} catch (error) {
-  console.error('✗ CSS build failed:', error.message);
-  process.exit(1);
 }
 
-console.log('✓ Build complete');
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  build();
+  console.log('✓ Build complete');
+}
