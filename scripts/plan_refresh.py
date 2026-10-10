@@ -6,6 +6,10 @@ python3 -I scripts/plan_refresh.py --repo . --from OLD --to NEW \
   --u8-ledger docs/research/refactor-2026-09-26/synthesis/u8-release-007/assignments.csv \
   --out report.md
 Omit --pack-ref to read a local pack directory. Ledger is a local CSV path.
+
+Cohesion: one single-purpose report pipeline (git reads -> path map ->
+citation scan -> size owners -> Markdown); splitting it would only scatter
+a linear flow across files.
 """
 import argparse
 import csv
