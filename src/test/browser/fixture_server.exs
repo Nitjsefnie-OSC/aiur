@@ -1445,13 +1445,13 @@ defmodule Aiur.BrowserHarness.VoiceSTT do
 
   @impl true
   def handle_cast({:push, _pcm}, channel) do
-    send(channel, {:elevenlabs_transcript, :partial, "hello"})
+    send(channel, {:voice_transcript, :partial, "hello"})
     {:noreply, channel}
   end
 
   def handle_cast(:commit, channel) do
-    send(channel, {:elevenlabs_transcript, :final, "hello browser"})
-    send(channel, {:elevenlabs_closed})
+    send(channel, {:voice_transcript, :final, "hello browser"})
+    send(channel, {:voice_closed})
     {:noreply, channel}
   end
 
@@ -2464,10 +2464,10 @@ defmodule Aiur.BrowserHarness.FixtureServer do
           {:ok, pid} =
             Task.start(fn ->
               if text == "Voice reply from the agent." do
-                send(socket.channel_pid, {:elevenlabs_audio, :chunk, <<0, 0, 255, 127, 0, 0, 1, 128>>})
-                send(socket.channel_pid, {:elevenlabs_audio, :done})
+                send(socket.channel_pid, {:voice_audio, :chunk, <<0, 0, 255, 127, 0, 0, 1, 128>>})
+                send(socket.channel_pid, {:voice_audio, :done})
               else
-                send(socket.channel_pid, {:elevenlabs_audio, :error, "fixture received an incomplete reply"})
+                send(socket.channel_pid, {:voice_audio, :error, "fixture received an incomplete reply"})
               end
             end)
 
