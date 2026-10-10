@@ -36,6 +36,7 @@ defmodule Aiur.Orchestrator.AutoResumeTest do
 
     on_exit(fn ->
       if previous_workflow, do: Workflow.set_workflow_file_path(previous_workflow), else: Workflow.clear_workflow_file_path()
+
       if previous_store,
         do: Application.put_env(:aiur, :dispatch_budget_store_path, previous_store),
         else: Application.delete_env(:aiur, :dispatch_budget_store_path)
@@ -46,11 +47,9 @@ defmodule Aiur.Orchestrator.AutoResumeTest do
         Application.put_env(:aiur, :decision_state_dir, previous_state_dir)
       end
 
-      if is_nil(previous_log_file) do
-        Application.delete_env(:aiur, :log_file)
-      else
-        Application.put_env(:aiur, :log_file, previous_log_file)
-      end
+      if previous_log_file,
+        do: Application.put_env(:aiur, :log_file, previous_log_file),
+        else: Application.delete_env(:aiur, :log_file)
 
       Aiur.TestCleanup.rm_rf!(dir)
     end)

@@ -33,8 +33,8 @@ defmodule Aiur.BuildQueue.UnauthorizedTest do
     root = Aiur.TestSupport.tmp_root!("queue-unauthorized")
 
     on_exit(fn ->
-      refute File.exists?(root)
       Aiur.TestCleanup.rm_rf!(root)
+      refute File.exists?(root)
     end)
 
     boundary = start_supervised!({Agent, fn -> %{claims: %{"1" => {:declined, :unauthorized}}, batches: [], path: Path.join([root, "build-queue", "queue.json"])} end})
