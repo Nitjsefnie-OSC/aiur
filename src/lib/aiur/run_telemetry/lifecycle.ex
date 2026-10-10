@@ -11,6 +11,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
   alias Aiur.Orchestrator.CommentWake
   alias Aiur.Protocol.MapAccess
   alias Aiur.RunTelemetry
+  alias Aiur.RunTelemetry.DaemonEvents
 
   @events ~w(
     dispatch prewarm workspace_setup workspace_ownership agent_spinup implement build_test
@@ -46,7 +47,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
                      :complexity,
                      # Headroom dispatch summary (#3960): the chosen backend/account and every alternative's score.
                      :dispatch_selection
-                   ] ++ Aiur.RunTelemetry.DaemonEvents.metadata_fields()
+                   ] ++ DaemonEvents.metadata_fields()
 
   @doc "Creates an opaque identity for one dispatched worker attempt."
   @spec new_attempt_id(String.t()) :: String.t()
@@ -164,11 +165,11 @@ defmodule Aiur.RunTelemetry.Lifecycle do
     source = value(event, :source)
 
     with true <- source in [:github, "github", :github_reconciliation, "github_reconciliation"],
-         {:ok, ticket, kind} <- Aiur.RunTelemetry.DaemonEvents.topic(topic),
+         {:ok, ticket, kind} <- DaemonEvents.topic(topic),
          true <- eligible_external_event?(kind, event) do
       timestamp = external_timestamp(kind, event)
       metadata = external_metadata(kind, event, timestamp)
-      {:ok, attributes(ticket, nil, Aiur.RunTelemetry.DaemonEvents.event(kind), "point", metadata), timestamp}
+      {:ok, attributes(ticket, nil, DaemonEvents.event(kind), "point", metadata), timestamp}
     else
       _other -> :skip
     end
@@ -494,7 +495,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
       review_thread_id: review_thread_id,
       author_trusted: value(event, :author_trusted?) == true
     }
-    |> Map.merge(Aiur.RunTelemetry.DaemonEvents.ci_metadata(kind, event))
+    |> Map.merge(DaemonEvents.ci_metadata(kind, event))
   end
 
   defp external_actor(event, pr, comment) do

@@ -23,4 +23,3 @@ RESOURCE_EVIDENCE = (
     "build_gate_status",
     "build_gate_observed_at_ms",
 )
-

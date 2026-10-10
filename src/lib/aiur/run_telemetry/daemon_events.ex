@@ -1,6 +1,7 @@
 defmodule Aiur.RunTelemetry.DaemonEvents do
   @moduledoc "Sanitized daemon metric event routing and capacity binding."
 
+  alias Aiur.Orchestrator.CapacityBinding
   alias Aiur.Protocol.MapAccess
 
   @spec metadata_fields() :: [atom()]
@@ -44,7 +45,7 @@ defmodule Aiur.RunTelemetry.DaemonEvents do
 
   @spec binding_kind(map(), map()) :: String.t()
   def binding_kind(capacity, polling) do
-    {kind, _detail} = Aiur.Orchestrator.CapacityBinding.binding(capacity, polling)
+    {kind, _detail} = CapacityBinding.binding(capacity, polling)
     Atom.to_string(kind)
   end
 
