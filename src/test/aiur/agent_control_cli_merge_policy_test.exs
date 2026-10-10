@@ -6,7 +6,7 @@ defmodule Aiur.AgentControlCLIMergePolicyTest do
     assert status_output() =~ "MERGE POLICY ci=wait local_tests=partial main_watch=off\n"
   end
 
-  test "status renders the configured pending CI policy and main watcher mode" do
+  test "status renders the configured CI policy and main watcher mode" do
     path = Aiur.Workflow.workflow_file_path()
 
     write_workflow_file_atomic!(
@@ -15,7 +15,7 @@ defmodule Aiur.AgentControlCLIMergePolicyTest do
         """
 
         merge_policy:
-          ci: pending_ok
+          ci: wait
           local_tests: partial
           main_watch:
             enabled: true
@@ -24,7 +24,7 @@ defmodule Aiur.AgentControlCLIMergePolicyTest do
     )
 
     :ok = Aiur.WorkflowStore.force_reload()
-    assert status_output() =~ "MERGE POLICY ci=pending_ok local_tests=partial full_ci=[main-fix] main_watch=on(dispatch_fixer)\n"
+    assert status_output() =~ "MERGE POLICY ci=wait local_tests=partial main_watch=on(dispatch_fixer)\n"
   end
 
   defp status_output do

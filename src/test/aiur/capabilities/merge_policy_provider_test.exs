@@ -23,7 +23,7 @@ defmodule Aiur.Capabilities.MergePolicyProviderTest do
         """
 
         merge_policy:
-          ci: pending_ok
+          ci: wait
           main_watch:
             enabled: true
         """
@@ -31,7 +31,7 @@ defmodule Aiur.Capabilities.MergePolicyProviderTest do
 
     :ok = Aiur.WorkflowStore.force_reload()
     assert MergePolicyProvider.capability_ids() == ["merge_policy"]
-    assert MergePolicyProvider.capabilities(%{}) == %{"merge_policy" => %{state: :available, mode: "ci=pending_ok local_tests=partial"}}
+    assert MergePolicyProvider.capabilities(%{}) == %{"merge_policy" => %{state: :available, mode: "ci=wait local_tests=partial"}}
   end
 
   test "merge policy remains a known capability when no provider is installed" do

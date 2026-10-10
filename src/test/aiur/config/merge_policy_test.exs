@@ -22,7 +22,7 @@ defmodule Aiur.Config.MergePolicyTest do
 
   test "parses a complete early merge policy and nested watcher overrides" do
     policy = %{
-      ci: "pending_ok",
+      ci: "wait",
       local_tests: "all",
       full_ci_labels: ["HOTFIX"],
       full_ci_paths: [".github/workflows/**"],
@@ -50,16 +50,8 @@ defmodule Aiur.Config.MergePolicyTest do
     assert nested.merge_policy.main_watch.red_fallback_minutes == 0
   end
 
-  test "pending CI requires the main watcher, including when omitted" do
-    for watch <- [%{}, %{main_watch: %{enabled: false}}] do
-      message = error(Map.put(watch, :ci, "pending_ok"))
-      assert message =~ "merge_policy.ci pending_ok requires merge_policy.main_watch.enabled to be true"
-    end
-  end
-
-  test "pending CI cannot disable local tests" do
-    message = error(%{ci: "pending_ok", local_tests: "none", main_watch: %{enabled: true}})
-    assert message =~ "merge_policy.local_tests must be all or partial when merge_policy.ci is pending_ok"
+  test "pending_ok is rejected because wait is the only CI mode" do
+    assert error(%{ci: "pending_ok"}) =~ "merge_policy.ci must be one of: wait"
   end
 
   test "dispatching a fixer requires its label in full CI labels" do
@@ -75,7 +67,7 @@ defmodule Aiur.Config.MergePolicyTest do
   end
 
   test "invalid enums report dotted paths and allowed values" do
-    assert error(%{ci: "maybe"}) =~ "merge_policy.ci must be one of: wait, pending_ok"
+    assert error(%{ci: "maybe"}) =~ "merge_policy.ci must be one of: wait"
     assert error(%{local_tests: "some"}) =~ "merge_policy.local_tests must be one of: all, partial, none"
     assert error(%{main_watch: %{on_red: "ignore"}}) =~ "merge_policy.main_watch.on_red must be one of: alert, dispatch_fixer"
   end

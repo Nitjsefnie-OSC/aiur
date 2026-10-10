@@ -58,13 +58,12 @@ defmodule Aiur.Config.Schema.MergePolicy do
   def changeset(schema, attrs) do
     schema
     |> cast(attrs, [:ci, :local_tests, :full_ci_labels, :full_ci_paths, :premerge_checks, :attribution_scan], empty_values: [])
-    |> validate_inclusion(:ci, ["wait", "pending_ok"], message: "must be one of: wait, pending_ok")
+    |> validate_inclusion(:ci, ["wait"], message: "must be one of: wait")
     |> validate_inclusion(:local_tests, ["all", "partial", "none"], message: "must be one of: all, partial, none")
     |> validate_change(:full_ci_labels, &validate_string_list/2)
     |> validate_change(:full_ci_paths, &validate_string_list/2)
     |> validate_change(:premerge_checks, &validate_string_list/2)
     |> cast_embed(:main_watch, with: &MainWatch.changeset/2)
-    |> validate_pending_ci()
     |> validate_fixer_label()
   end
 
@@ -74,28 +73,6 @@ defmodule Aiur.Config.Schema.MergePolicy do
     if Enum.all?(values, &(is_binary(&1) and String.trim(&1) != "")),
       do: [],
       else: [{field, "must contain non-empty strings"}]
-  end
-
-  defp validate_pending_ci(changeset) do
-    if get_field(changeset, :ci) == "pending_ok" do
-      changeset
-      |> require_main_watch()
-      |> reject_no_local_tests()
-    else
-      changeset
-    end
-  end
-
-  defp require_main_watch(changeset) do
-    if get_field(changeset, :main_watch).enabled,
-      do: changeset,
-      else: add_error(changeset, :ci, "pending_ok requires merge_policy.main_watch.enabled to be true")
-  end
-
-  defp reject_no_local_tests(changeset) do
-    if get_field(changeset, :local_tests) == "none",
-      do: add_error(changeset, :local_tests, "must be all or partial when merge_policy.ci is pending_ok"),
-      else: changeset
   end
 
   defp validate_fixer_label(changeset) do

@@ -29,7 +29,7 @@ tracker:
     planning_page_budget: 4
     planning_call_budget: 4
 merge_policy:
-  ci: pending_ok
+  ci: wait
   local_tests: partial
   full_ci_labels: [main-fix]
   full_ci_paths: [".github/workflows/**", "src/mix.exs", "src/mix.lock"]
