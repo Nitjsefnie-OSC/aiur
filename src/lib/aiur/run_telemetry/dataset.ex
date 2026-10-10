@@ -9,7 +9,7 @@ defmodule Aiur.RunTelemetry.Dataset do
   """
 
   alias Aiur.RunTelemetry
-  alias Aiur.RunTelemetry.Lifecycle
+  alias Aiur.RunTelemetry.{EventFields, Lifecycle}
 
   @telemetry_filename "telemetry.ndjson"
   @supported_kinds ~w(restart lifecycle resource warning)
@@ -23,7 +23,7 @@ defmodule Aiur.RunTelemetry.Dataset do
   )
   @resource_evidence ~w(
     fleet_capacity_status fleet_capacity_age_ms fleet_capacity_observed_at_ms
-    fleet_admission_signal
+    fleet_admission_signal fleet_binding_kind
     build_gate_enabled build_gate_status build_gate_observed_at_ms
   )a
   @default_sample_interval_ms 5_000
@@ -895,29 +895,32 @@ defmodule Aiur.RunTelemetry.Dataset do
          event when is_binary(event) and event != "" <- Map.get(attributes, "event"),
          boundary when boundary in ["start", "end", "point"] <- Map.get(attributes, "boundary") do
       [
-        %{
-          ticket: ticket,
-          event: event,
-          boundary: boundary,
-          attempt_id: Map.get(attributes, "attempt_id"),
-          operation_id: Map.get(attributes, "operation_id"),
-          outcome: Map.get(attributes, "outcome"),
-          command_class: Map.get(attributes, "command_class"),
-          cause: Map.get(attributes, "cause"),
-          complexity: normalize_complexity(Map.get(attributes, "complexity")),
-          source: Map.get(attributes, "source"),
-          source_id: Map.get(attributes, "source_id"),
-          segment_continuation: Map.get(attributes, "segment_continuation"),
-          timestamp: record.timestamp_iso,
-          timestamp_dt: record.timestamp,
-          timestamp_ms: record.timestamp_ms,
-          recorded_at_ms: recorded_at_ms(record),
-          boot_id: record.boot_id,
-          sequence: record.sequence,
-          record_id: record.record_id,
-          source_path: record.source_path,
-          source_line: record.source_line
-        }
+        Map.merge(
+          %{
+            ticket: ticket,
+            event: event,
+            boundary: boundary,
+            attempt_id: Map.get(attributes, "attempt_id"),
+            operation_id: Map.get(attributes, "operation_id"),
+            outcome: Map.get(attributes, "outcome"),
+            command_class: Map.get(attributes, "command_class"),
+            cause: Map.get(attributes, "cause"),
+            complexity: normalize_complexity(Map.get(attributes, "complexity")),
+            source: Map.get(attributes, "source"),
+            source_id: Map.get(attributes, "source_id"),
+            segment_continuation: Map.get(attributes, "segment_continuation"),
+            timestamp: record.timestamp_iso,
+            timestamp_dt: record.timestamp,
+            timestamp_ms: record.timestamp_ms,
+            recorded_at_ms: recorded_at_ms(record),
+            boot_id: record.boot_id,
+            sequence: record.sequence,
+            record_id: record.record_id,
+            source_path: record.source_path,
+            source_line: record.source_line
+          },
+          EventFields.take(attributes)
+        )
       ]
     else
       _other -> []

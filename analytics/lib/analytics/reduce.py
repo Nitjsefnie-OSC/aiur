@@ -57,9 +57,25 @@ RESOURCE_EVIDENCE = (
     "fleet_capacity_age_ms",
     "fleet_capacity_observed_at_ms",
     "fleet_admission_signal",
+    "fleet_binding_kind",
     "build_gate_enabled",
     "build_gate_status",
     "build_gate_observed_at_ms",
+)
+
+# Metadata the daemon-side metric events carry; mirrors Aiur.RunTelemetry.EventFields.
+EVENT_FIELDS = (
+    "from_state",
+    "to_state",
+    "blocker",
+    "head_sha",
+    "pr_number",
+    "input_tokens",
+    "output_tokens",
+    "cached_tokens",
+    "cost_amount",
+    "cost_currency",
+    "coverage",
 )
 
 DEFAULT_SAMPLE_INTERVAL_MS = 5_000
@@ -593,6 +609,7 @@ def _lifecycle_event(record: dict) -> dict | None:
     if not (isinstance(ticket, str) and ticket and isinstance(event, str) and event and boundary in BOUNDARIES):
         return None
     return {
+        **{field: attributes.get(field) for field in EVENT_FIELDS},
         "ticket": ticket,
         "event": event,
         "boundary": boundary,

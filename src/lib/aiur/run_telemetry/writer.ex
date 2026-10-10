@@ -32,6 +32,9 @@ defmodule Aiur.RunTelemetry.Writer do
   @external_event_patterns [
     "ticket.*.pr.opened",
     "ticket.*.pr.merged",
+    "ticket.*.pr.ready_for_review",
+    "ticket.*.ci.passed",
+    "ticket.*.ci.failed",
     "ticket.*.issue.commented",
     "ticket.*.pr.review_comment"
   ]
@@ -40,7 +43,7 @@ defmodule Aiur.RunTelemetry.Writer do
   # analytics. A segment roll prunes every earlier segment of the live boot, so
   # these are re-emitted after each boundary (marked `segment_continuation:
   # "carried"`) or the boot would forget a merge it already observed (#2603).
-  @carried_point_events ~w(dispatch pr_opened pr_merged)
+  @carried_point_events ~w(dispatch pr_opened pr_merged pr_ready)
 
   @max_pending_casts 256
   @admission_key {__MODULE__, :pending_casts}

@@ -11,6 +11,7 @@ defmodule Aiur.RunTelemetry.Sampler do
 
   alias Aiur.BuildGate
   alias Aiur.Orchestrator
+  alias Aiur.Orchestrator.CapacityBinding
   alias Aiur.RunTelemetry
   alias Aiur.RunTelemetry.Procfs
   alias Aiur.SystemFileDescriptors
@@ -20,7 +21,7 @@ defmodule Aiur.RunTelemetry.Sampler do
   @default_build_probe_cadence 5
   @metric_fields [:rss_bytes, :fd_count, :read_bytes, :write_bytes]
   @fleet_fields [:fleet_agents_occupied, :fleet_agents_configured, :fleet_agents_max, :fleet_agents_effective]
-  @fleet_admission_fields [:fleet_admission_signal, :fleet_load, :fleet_load_threshold, :fleet_schedulers]
+  @fleet_admission_fields [:fleet_binding_kind, :fleet_admission_signal, :fleet_load, :fleet_load_threshold, :fleet_schedulers]
   @build_fields [
     :build_gate_enabled,
     :build_gate_capacity,
@@ -310,7 +311,7 @@ defmodule Aiur.RunTelemetry.Sampler do
   defp bounded_pressure_probes(sources, _timeout_ms),
     do: {Map.new(sources, fn {source, _fun, fallback} -> {source, fallback} end), []}
 
-  defp fleet_observation({:current, %{capacity: capacity}, freshness})
+  defp fleet_observation({:current, %{capacity: capacity} = snapshot, freshness})
        when is_map(capacity) and is_map(freshness) do
     fields = %{
       fleet_agents_occupied: integer_value(capacity, :occupied),
@@ -320,7 +321,7 @@ defmodule Aiur.RunTelemetry.Sampler do
     }
 
     if Enum.all?(@fleet_fields, &is_integer(Map.get(fields, &1))) do
-      admission = fleet_admission(capacity)
+      admission = fleet_admission(capacity, Map.get(snapshot, :polling, %{}))
 
       Map.merge(fields, admission.fields)
       |> Map.merge(%{
@@ -347,11 +348,12 @@ defmodule Aiur.RunTelemetry.Sampler do
   # it. Sampling them lets an operator tell a build-gate-saturated fleet (queue
   # growing, load far below threshold) from a host-saturated one (load gate
   # holding dispatch) — the distinction a queue depth alone cannot make.
-  defp fleet_admission(capacity) do
+  defp fleet_admission(capacity, polling) do
     hold = Map.get(capacity, :capacity_hold, Map.get(capacity, "capacity_hold"))
     signal = admission_signal(hold)
 
     fields = %{
+      fleet_binding_kind: binding_kind(capacity, polling),
       fleet_admission_signal: signal,
       fleet_load: number_value(capacity, :load),
       fleet_load_threshold: number_value(capacity, :load_threshold),
@@ -366,6 +368,11 @@ defmodule Aiur.RunTelemetry.Sampler do
     %{fields: fields, partial_fields: partial_fields}
   end
 
+  defp binding_kind(capacity, polling) do
+    {kind, _detail} = CapacityBinding.binding(capacity, polling)
+    Atom.to_string(kind)
+  end
+
   defp admission_signal(%{signal: signal}) when is_atom(signal), do: Atom.to_string(signal)
   defp admission_signal(_hold), do: nil
 
@@ -378,6 +385,7 @@ defmodule Aiur.RunTelemetry.Sampler do
       fleet_agents_configured: nil,
       fleet_agents_max: nil,
       fleet_agents_effective: nil,
+      fleet_binding_kind: nil,
       fleet_admission_signal: nil,
       fleet_load: nil,
       fleet_load_threshold: nil,

@@ -15,7 +15,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
   @events ~w(
     dispatch prewarm workspace_setup workspace_ownership agent_spinup implement build_test
     pr_opened pr_merged review_pause comment_received rework_start
-    agent_pause agent_resume
+    agent_pause agent_resume state_change ci_result pr_ready dependency_cleared ticket_usage
   )
   @boundaries ~w(start end point)
   @metadata_fields [
@@ -45,7 +45,17 @@ defmodule Aiur.RunTelemetry.Lifecycle do
     :workspace_phase,
     :complexity,
     # Headroom dispatch summary (#3960): the chosen backend/account and every alternative's score.
-    :dispatch_selection
+    :dispatch_selection,
+    :from_state,
+    :to_state,
+    :blocker,
+    :head_sha,
+    :input_tokens,
+    :output_tokens,
+    :cached_tokens,
+    :cost_amount,
+    :cost_currency,
+    :coverage
   ]
 
   @doc "Creates an opaque identity for one dispatched worker attempt."
@@ -463,7 +473,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
 
   defp external_topic(topic) when is_binary(topic) do
     case Regex.run(
-           ~r/^ticket\.([^.]+)\.(pr\.opened|pr\.merged|issue\.commented|pr\.review_comment)$/,
+           ~r/^ticket\.([^.]+)\.(pr\.opened|pr\.merged|pr\.ready_for_review|ci\.passed|ci\.failed|issue\.commented|pr\.review_comment)$/,
            topic
          ) do
       [_all, ticket, kind] -> {:ok, ticket, kind}
@@ -483,6 +493,8 @@ defmodule Aiur.RunTelemetry.Lifecycle do
 
   defp external_event("pr.opened"), do: "pr_opened"
   defp external_event("pr.merged"), do: "pr_merged"
+  defp external_event("pr.ready_for_review"), do: "pr_ready"
+  defp external_event("ci." <> _outcome), do: "ci_result"
   defp external_event(_comment), do: "comment_received"
 
   defp external_metadata(kind, event, timestamp) do
@@ -510,7 +522,18 @@ defmodule Aiur.RunTelemetry.Lifecycle do
       review_thread_id: review_thread_id,
       author_trusted: value(event, :author_trusted?) == true
     }
+    |> Map.merge(ci_metadata(kind, event))
   end
+
+  # CI results publish their PR number and head SHA at the top level of the event.
+  defp ci_metadata("ci." <> outcome, event) do
+    %{outcome: outcome, head_sha: short_sha(value(event, :head_sha)), pr_number: value(event, :pr_number)}
+  end
+
+  defp ci_metadata(_kind, _event), do: %{}
+
+  defp short_sha(sha) when is_binary(sha), do: String.slice(sha, 0, 12)
+  defp short_sha(_sha), do: nil
 
   defp external_actor(event, pr, comment) do
     comment_actor = comment |> value(:user) |> value(:login)

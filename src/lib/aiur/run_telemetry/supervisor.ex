@@ -3,7 +3,7 @@ defmodule Aiur.RunTelemetry.Supervisor do
 
   use Supervisor
 
-  alias Aiur.RunTelemetry.Sampler
+  alias Aiur.RunTelemetry.{Sampler, UsageCapture}
   alias Aiur.RunTelemetry.Writer
 
   @spec start_link(keyword()) :: Supervisor.on_start()
@@ -15,6 +15,20 @@ defmodule Aiur.RunTelemetry.Supervisor do
   def init(opts) do
     writer_opts = Keyword.get(opts, :writer_opts, [])
     sampler_opts = Keyword.get(opts, :sampler_opts, [])
-    Supervisor.init([{Writer, writer_opts}, {Sampler, sampler_opts}], strategy: :one_for_one)
+    name = Keyword.get(opts, :name, __MODULE__)
+
+    children = [
+      {Writer, writer_opts},
+      {Sampler, sampler_opts},
+      {UsageCapture, name: child_name(name, UsageCapture)},
+      {Task.Supervisor, name: child_name(name, :UsageTasks)}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
   end
+
+  # The app's supervisor owns the module-named defaults; any other instance (tests) gets its own.
+  defp child_name(__MODULE__, UsageCapture), do: UsageCapture
+  defp child_name(__MODULE__, :UsageTasks), do: Aiur.RunTelemetry.UsageTasks
+  defp child_name(name, child), do: Module.concat(name, child)
 end

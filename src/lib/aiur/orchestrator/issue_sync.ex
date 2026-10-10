@@ -6,13 +6,25 @@ defmodule Aiur.Orchestrator.IssueSync do
 
   require Logger
 
-  alias Aiur.{AgentQueue, AgentQueueStore, AlertFeed, Alerts, CodingAgent, Config, CurrentRunMembership, DispatchBudgetStore, Issue, Tracker, TrackerIdentity}
+  alias Aiur.{AgentQueue, AgentQueueStore, AlertFeed, Alerts, CodingAgent, Config, CurrentRunMembership, DispatchBudgetStore, Issue, PollCadence, Tracker, TrackerIdentity}
   alias Aiur.GitHub.ResourceStore
   alias Aiur.GitHub.StatePolicy
-  alias Aiur.{Orchestrator, Orchestrator.TicketTransition}
-  alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, Lifecycle, MembershipLifecycle, OperatorMessages, PressureAdmission, PushRouting, Reconciler, Slots, State, TrackerTasks}
-  alias Aiur.Orchestrator.StatusObservation
-  alias Aiur.PollCadence
+  alias Aiur.{Orchestrator, Orchestrator.TicketTransition, RunTelemetry.ObservedTransitions}
+
+  alias Aiur.Orchestrator.{
+    AutoSubscriptions,
+    DispatchPolicy,
+    Lifecycle,
+    MembershipLifecycle,
+    OperatorMessages,
+    PressureAdmission,
+    PushRouting,
+    Reconciler,
+    Slots,
+    State,
+    StatusObservation,
+    TrackerTasks
+  }
 
   @idle_terminal_verification_batch_size 25
   @capacity_starvation_alert_after_ms 60_000
@@ -855,6 +867,7 @@ defmodule Aiur.Orchestrator.IssueSync do
         |> emit_task_state_transition_alert(previous_issue, issue)
         |> emit_tracker_pause_transition_alert(previous_issue, issue)
         |> emit_dependency_transition_events(previous_issue, issue)
+        |> ObservedTransitions.observe(previous_issue, issue)
       end)
 
     state = PushRouting.recheck_cleared_dependency_pauses(state, fetch_issue_states_fun, issues)
