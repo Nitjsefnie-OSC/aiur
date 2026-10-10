@@ -42,10 +42,15 @@ defmodule Aiur.TestCleanupTest do
   end
 
   test "raises when the directory never becomes removable", %{root: root} do
+    File.write!(Path.join(root, "held.log"), "")
     File.chmod!(root, 0o500)
     on_exit(fn -> File.chmod(root, 0o700) end)
 
-    assert_raise RuntimeError, ~r/a writer is still active/, fn -> TestCleanup.rm_rf!(root) end
+    # Names what is still there, so the failure points at the live writer.
+    assert_raise RuntimeError, ~r/a writer is still active, files that kept appearing: \[".*held\.log"\]/, fn ->
+      TestCleanup.rm_rf!(root)
+    end
+
     assert File.dir?(root)
   end
 end

@@ -640,7 +640,7 @@ defmodule Aiur.Events.GithubWebhook.DepositTest do
       number = ticket_number()
       fixture_value0 = "aiur/#{ticket}-a-ticket"
       path = Aiur.TestSupport.tmp_root!("aiur-resource-store") <> ".json"
-      on_exit(fn -> File.rm_rf!(path) end)
+      on_exit(fn -> File.rm_rf(path) end)
 
       # Run against a real checkpoint file before depositing: an in-memory store
       # would let the restart pass without ever writing the round trip.

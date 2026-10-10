@@ -7,7 +7,7 @@ defmodule Aiur.RunTelemetryTest do
 
   setup do
     root = Aiur.TestSupport.tmp_root!("aiur-run-telemetry")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     %{root: root}
   end

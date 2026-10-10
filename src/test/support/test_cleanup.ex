@@ -37,7 +37,11 @@ defmodule Aiur.TestCleanup do
         :ok
 
       {:error, reason, file} when retries == 0 ->
-        raise "cannot remove #{path}: #{inspect(reason)} at #{file} after #{@retries} attempts; a writer is still active"
+        # What is left after the last attempt is what the writer keeps putting back.
+        left = path |> Path.join("**") |> Path.wildcard(match_dot: true) |> Enum.reject(&File.dir?/1)
+
+        raise "cannot remove #{path}: #{inspect(reason)} at #{file} after #{@retries} attempts; " <>
+                "a writer is still active, files that kept appearing: #{inspect(left)}"
 
       {:error, _reason, _file} ->
         Process.sleep(@retry_ms)

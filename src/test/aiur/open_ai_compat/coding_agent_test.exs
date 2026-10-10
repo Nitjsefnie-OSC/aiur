@@ -17,7 +17,7 @@ defmodule Aiur.OpenAICompat.CodingAgentTest do
 
     File.mkdir_p!(workspace)
     File.write!(Path.join(workspace, "sample.txt"), "workspace evidence\n")
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
     %{workspace: workspace}
   end
 
@@ -31,7 +31,7 @@ defmodule Aiur.OpenAICompat.CodingAgentTest do
 
     on_exit(fn ->
       if previous, do: System.put_env("HOME", previous), else: System.delete_env("HOME")
-      File.rm_rf!(home)
+      Aiur.TestCleanup.rm_rf!(home)
     end)
 
     config = %{
@@ -64,7 +64,7 @@ defmodule Aiur.OpenAICompat.CodingAgentTest do
 
     on_exit(fn ->
       if previous, do: System.put_env("HOME", previous), else: System.delete_env("HOME")
-      File.rm_rf!(home)
+      Aiur.TestCleanup.rm_rf!(home)
     end)
 
     parent = self()
@@ -834,8 +834,8 @@ defmodule Aiur.OpenAICompat.CodingAgentTest do
     File.mkdir_p!(root)
     File.mkdir_p!(outside)
     File.ln_s!(outside, Path.join(root, "escaped"))
-    on_exit(fn -> File.rm_rf!(root) end)
-    on_exit(fn -> File.rm_rf!(outside) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(outside) end)
 
     opts = [
       backend: "kimi",

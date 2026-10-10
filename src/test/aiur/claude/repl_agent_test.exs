@@ -764,8 +764,8 @@ defmodule Aiur.Claude.ReplAgentTest do
     projects_dir = Aiur.TestSupport.tmp_root!("repl-proj")
     slug_dir = Path.join(projects_dir, RemoteControl.workspace_slug(ws))
     File.mkdir_p!(slug_dir)
-    on_exit(fn -> File.rm_rf!(ws) end)
-    on_exit(fn -> File.rm_rf!(projects_dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(ws) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(projects_dir) end)
 
     session =
       turn_session(tmux, nil)

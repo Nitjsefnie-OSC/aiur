@@ -35,8 +35,8 @@ defmodule Aiur.BuildGateTest do
 
     on_exit(fn ->
       File.chmod(lock_dir, 0o755)
-      File.rm_rf!(gate_dir)
-      File.rm_rf!(lock_dir)
+      Aiur.TestCleanup.rm_rf!(gate_dir)
+      Aiur.TestCleanup.rm_rf!(lock_dir)
     end)
 
     %{

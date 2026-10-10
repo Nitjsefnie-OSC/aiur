@@ -169,7 +169,7 @@ defmodule Aiur.Opencode.ServerTest do
       release_bin = Path.join(release_root, "bin")
       File.mkdir_p!(release_erts_bin)
       File.mkdir_p!(release_bin)
-      on_exit(fn -> File.rm_rf!(release_root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(release_root) end)
 
       command = Server.serve_command("127.0.0.1")
 

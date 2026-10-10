@@ -37,7 +37,7 @@ defmodule AiurEngineTest do
     # keyed by the project root — two instances for the same user can't collide (#431).
     home = Aiur.TestSupport.tmp_root!("aiur-identity-home")
     File.mkdir_p!(home)
-    on_exit(fn -> File.rm_rf!(home) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(home) end)
     id = identity([{"HOME", home}, {"XDG_CONFIG_HOME", nil}])
 
     assert id["AIUR_SESSION_PREFIX"] == "aiur"
@@ -242,7 +242,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
   # so dispatch/boot-shape can be asserted without a real BEAM.
   defp fake_release do
     dir = Aiur.TestSupport.tmp_root!("aiur-engine-rel")
-    on_exit(fn -> File.rm_rf!(dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
     vsn = Path.join([dir, "releases", "0.1.1"])
     File.mkdir_p!(vsn)
     File.mkdir_p!(Path.join(dir, "bin"))
@@ -280,7 +280,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.mkdir_p!(home)
     File.mkdir_p!(repo)
     File.write!(Path.join(repo, ".aiurconfig"), "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       System.cmd(@engine, [],
@@ -307,7 +307,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     repo = Path.join(home, "repo")
     File.mkdir_p!(repo)
     File.write!(Path.join(home, ".aiurconfig"), "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     env = [
       {"HOME", home},
@@ -335,7 +335,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.mkdir_p!(home)
     File.mkdir_p!(repo)
     File.write!(legacy, "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       System.cmd(@engine, [legacy],
@@ -362,7 +362,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.mkdir_p!(home)
     File.mkdir_p!(Path.join(repo, ".aiur"))
     File.write!(Path.join([repo, ".aiur", "config"]), "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       System.cmd(@engine, ["--bg", "--logs-root", Path.join(root, "archive.aiurconfig")],
@@ -389,7 +389,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.mkdir_p!(home)
     File.mkdir_p!(repo)
     File.write!(Path.join(home, ".aiurconfig"), "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       System.cmd(@engine, [],
@@ -418,7 +418,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.mkdir_p!(repo)
     File.write!(Path.join(repo, ".aiurconfig"), "tracker:\n  kind: memory\n")
     File.write!(canonical, "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       System.cmd(@engine, [canonical],
@@ -446,7 +446,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.write!(Path.join(repo, ".aiurconfig"), "tracker:\n  kind: memory\n")
     File.write!(Path.join(repo, "--portable.yaml"), "tracker:\n  kind: memory\n")
     File.write!(Path.join(repo, "--portable.aiurconfig"), "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     env = [
       {"HOME", home},
@@ -595,7 +595,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     tailscale = Path.join(bin, "tailscale")
     File.write!(tailscale, "#!/bin/sh\nprintf '100.64.0.42\\n'\n")
     File.chmod!(tailscale, 0o755)
-    on_exit(fn -> File.rm_rf!(bin) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(bin) end)
 
     {host, 0} =
       run_sourced_engine("default_dashboard_host", [
@@ -908,7 +908,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     dir = Aiur.TestSupport.tmp_root!("aiur-env")
     File.mkdir_p!(dir)
     File.write!(Path.join(dir, ".env"), "# token\nGITHUB_TOKEN=fromfile\nFOO=\"bar baz\"\n")
-    on_exit(fn -> File.rm_rf!(dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
 
     src = "cd #{dir}; source #{@engine}; load_dotenv; echo \"TOK=$GITHUB_TOKEN|FOO=$FOO\""
 
@@ -936,7 +936,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
       repo = Path.join(root, "repo")
       File.mkdir_p!(Path.join(home, ".aiur"))
       File.mkdir_p!(repo)
-      on_exit(fn -> File.rm_rf!(root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
       File.write!(
         Path.join(home, ".aiur/.env"),
@@ -1015,7 +1015,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     dir = Aiur.TestSupport.tmp_root!("aiur-readiness-env")
     File.mkdir_p!(dir)
     File.write!(Path.join(dir, ".env"), "AIUR_CI_READINESS_TOKEN=operator-only\n")
-    on_exit(fn -> File.rm_rf!(dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
 
     src =
       "cd #{dir}; source #{@engine}; load_dotenv; " <>
@@ -1043,8 +1043,8 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.write!(elixir, "#!/usr/bin/env bash\nprintf 'CI_TOKEN=%s\\n' \"${AIUR_CI_READINESS_TOKEN-unset}\"\n")
 
     on_exit(fn ->
-      File.rm_rf!(rel)
-      File.rm_rf!(state)
+      Aiur.TestCleanup.rm_rf!(state)
+      Aiur.TestCleanup.rm_rf!(rel)
     end)
 
     {out, 0} =
@@ -1076,7 +1076,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
     File.write!(Path.join(root, "installed/package.json"), "{\n  \"version\": \"1.2.3\"\n}\n")
     File.write!(Path.join(checkout_package, "package.json"), "{\n  \"version\": \"1.3.0\"\n}\n")
     File.write!(Path.join(release, "AIUR_BUILD_STAMP"), "repo_root=#{Path.join(root, "checkout")}\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       run_sourced_engine(
@@ -1107,7 +1107,7 @@ printf 'INNER_KEY=%s\n' "${AIUR_INSTANCE_KEY:-missing}"
 
     File.write!(Path.join(checkout_package, "package.json"), "{\n  \"version\": \"1.2.3\"\n}\n")
     File.write!(Path.join(release, "AIUR_BUILD_STAMP"), "repo_root=#{Path.join(root, "checkout")}\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       run_sourced_engine(
@@ -2525,7 +2525,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     File.mkdir_p!(root)
     File.write!(dump, "=erl_crash_dump:0.5\nSlogan: #{slogan}\n=end\n")
     File.write!(ledger_path_file, ledger)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     assert {_out, 0} =
              run_sourced_engine(
@@ -2566,7 +2566,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     File.mkdir_p!(root)
     File.write!(dump, "=erl_crash_dump:0.5\nSlogan: still being written\n")
     File.write!(ledger_path_file, ledger)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     assert {_out, 0} =
              run_sourced_engine(
@@ -2587,7 +2587,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     ledger_path_file = Path.join(root, "alert-ledger-path")
     File.mkdir_p!(root)
     File.write!(ledger_path_file, ledger)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     assert {_out, 0} =
              run_sourced_engine(
@@ -2611,7 +2611,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     File.mkdir_p!(root)
     File.write!(dump, "=erl_crash_dump:0.5\nSlogan: stale evidence\n=end\n")
     File.write!(ledger_path_file, ledger)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     assert {_out, 0} =
              run_sourced_engine(
@@ -2637,7 +2637,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     File.write!(events, "")
     File.write!(dump, "=erl_crash_dump:0.5\nSlogan: write failure\n=end\n")
     File.write!(ledger_path_file, root)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     script = """
     reap_aiur_agents() { echo "REAP:$*" >> "$EVENTS"; }
@@ -2676,7 +2676,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     File.write!(events, "")
     File.write!(dump, "=erl_crash_dump:0.5\nSlogan: recurring crash\n=end\n")
     File.write!(ledger_path_file, ledger)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     script = """
     reap_aiur_agents() { echo "REAP:$*" >> "$EVENTS"; }
@@ -3793,7 +3793,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     root = Aiur.TestSupport.tmp_root!("aiur-restart-legacy-config")
     File.mkdir_p!(root)
     File.write!(Path.join(root, ".aiurconfig"), "tracker:\n  kind: memory\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     {out, code} =
       run_restart("",
@@ -4171,7 +4171,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     )
 
     File.chmod!(npm, 0o755)
-    on_exit(fn -> File.rm_rf!(bin) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(bin) end)
     bin
   end
 
@@ -4385,7 +4385,7 @@ aiur_engine_main executor-fast-forward 2832 --as agent-a|,
     down = Path.join(npm_bin, "npm")
     File.write!(down, "#!/usr/bin/env bash\nif [ \"${1:-}\" = \"view\" ]; then exit 1; fi\n# no install handler\n")
     File.chmod!(down, 0o755)
-    on_exit(fn -> File.rm_rf!(npm_bin) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(npm_bin) end)
 
     script = """
     resolve_release() { :; }

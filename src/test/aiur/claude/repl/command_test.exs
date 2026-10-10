@@ -43,7 +43,7 @@ defmodule Aiur.Claude.Repl.CommandTest do
       )
 
       File.chmod!(claude, 0o755)
-      on_exit(fn -> File.rm_rf!(root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
       command = Command.build_command(missing_workspace, nil, nil, false, "rc-name", nil, nil)
 

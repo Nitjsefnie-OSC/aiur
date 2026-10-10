@@ -363,7 +363,7 @@ defmodule Aiur.RunTelemetry.SamplerTest do
   test "PIDs that exit mid-scan cost one warning record, not one per PID" do
     root = Aiur.TestSupport.tmp_root!("aiur-sampler-procfs")
     File.mkdir_p!(root)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     File.mkdir_p!(Path.join(root, "1"))
     File.write!(Path.join([root, "1", "stat"]), "1 (beam.smp) S 0 0 0 0 0 0 0 0 0 0 5 6 0 0 0 0 1 0 10\n")

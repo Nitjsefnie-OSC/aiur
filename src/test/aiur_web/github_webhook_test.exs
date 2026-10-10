@@ -368,7 +368,7 @@ defmodule AiurWeb.GithubWebhookTest do
           Application.put_env(:aiur, :webhook_delivery_log, original)
         end
 
-        File.rm_rf!(dir)
+        Aiur.TestCleanup.rm_rf!(dir)
       end)
 
       %{log: log}
