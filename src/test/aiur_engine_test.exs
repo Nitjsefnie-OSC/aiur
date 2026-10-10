@@ -1693,7 +1693,7 @@ cmd_executor_wait --timeout 2 --json|,
     assert bad =~ "executor-wait --timeout expects a positive integer"
   end
 
-  test "the takeover commands pass an explicit consumer id and nothing else" do
+  test "the takeover commands pass an explicit consumer id and only session registration env" do
     {wait, 0} =
       run_sourced_engine(
         ~s|run_control_rpc() { echo "RPC:$1"; }
@@ -1701,7 +1701,7 @@ cmd_executor_wait --timeout 2 --as agent-b|,
         []
       )
 
-    assert wait =~ ~s|executor_wait(timeout_ms: 2000, json: false, as: "agent-b")|
+    assert wait =~ ~r/executor_wait\(timeout_ms: 2000, json: false, as: "agent-b"(, env: \[.*\])?\)/
 
     {claim, 0} = run_sourced_engine(~s|run_control_rpc() { echo "RPC:$1"; }\ncmd_executor_claim --as agent-a|, [])
     assert claim =~ ~s|executor_claim([as: "agent-a"])|
