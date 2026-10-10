@@ -1,10 +1,10 @@
 defmodule AiurEngineTest do
   use ExUnit.Case, async: true
-
+  alias Aiur.TestSupport.ExecutorSessionRPCAssertions
+  Code.require_file("support/executor_session_rpc_assertions.ex", __DIR__)
   @engine Path.expand("../../packaging/npm/aiur-cli/libexec/aiur-engine.sh", __DIR__)
   @cli_package Path.expand("../../packaging/npm/aiur-cli/package.json", __DIR__)
   @pgrep_skip_reason Aiur.TestSupport.pgrep_skip_reason()
-
   # Run the engine's `__identity` probe with a clean AIUR_* env plus the given
   # overrides, returning the resolved KEY=VALUE map.
   defp identity(overrides) do
@@ -1683,11 +1683,11 @@ aiur_engine_main listen --ticket 3028|,
       run_sourced_engine(
         ~s|run_control_rpc() { echo "TIMEOUT:$AIUR_CONTROL_RPC_TIMEOUT_SECONDS"; echo "RPC:$1"; }
 cmd_executor_wait --timeout 2 --json|,
-        []
+        ExecutorSessionRPCAssertions.env()
       )
 
     assert out =~ "TIMEOUT:12"
-    assert out =~ "Aiur.AgentControlCLI.executor_wait(timeout_ms: 2000, json: true)"
+    ExecutorSessionRPCAssertions.assert_rpc(out, "timeout_ms: 2000, json: true")
 
     {bad, 64} = run_sourced_engine("cmd_executor_wait --timeout nope", [])
     assert bad =~ "executor-wait --timeout expects a positive integer"
@@ -1698,10 +1698,10 @@ cmd_executor_wait --timeout 2 --json|,
       run_sourced_engine(
         ~s|run_control_rpc() { echo "RPC:$1"; }
 cmd_executor_wait --timeout 2 --as agent-b|,
-        []
+        ExecutorSessionRPCAssertions.env()
       )
 
-    assert wait =~ ~r/executor_wait\(timeout_ms: 2000, json: false, as: "agent-b"(, env: \[.*\])?\)/
+    ExecutorSessionRPCAssertions.assert_rpc(wait, ~s|timeout_ms: 2000, json: false, as: "agent-b"|)
 
     {claim, 0} = run_sourced_engine(~s|run_control_rpc() { echo "RPC:$1"; }\ncmd_executor_claim --as agent-a|, [])
     assert claim =~ ~s|executor_claim([as: "agent-a"])|
