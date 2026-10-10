@@ -640,10 +640,10 @@ defmodule Aiur.Events.GithubWebhook.DepositTest do
       number = ticket_number()
       fixture_value0 = "aiur/#{ticket}-a-ticket"
       path = Aiur.TestSupport.tmp_root!("aiur-resource-store") <> ".json"
-      on_exit(fn -> File.rm_rf(path) end)
-
-      # Run against a real checkpoint file before depositing: an in-memory store
-      # would let the restart pass without ever writing the round trip.
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(path, unset: [:github_resource_store_path]) end)
+      # Registered last so it runs first: stop the checkpoint writer before its file is removed (the setup's on_exit restarts it).
+      on_exit(fn -> Supervisor.terminate_child(Aiur.Supervisor, ResourceStore) end)
+      # Run against a real checkpoint file before depositing: an in-memory store would let the restart pass without ever writing the round trip.
       :ok = restart_store!(path)
 
       assert :ok =

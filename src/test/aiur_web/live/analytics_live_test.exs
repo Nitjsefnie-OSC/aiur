@@ -147,7 +147,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
       restore_env("AIUR_DASHBOARD_PASSWORD", previous_password)
       Application.delete_env(:aiur, :analytics_usage_aggregate_source)
       Application.delete_env(:aiur, :analytics_usage_aggregate_source_snapshot)
-      File.rm_rf(root)
+      Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file])
     end)
 
     conn =
@@ -200,7 +200,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     on_exit(fn ->
       Aiur.TestSupport.restore_app_env(previous_app_env)
       restore_run_id(previous_run_id)
-      File.rm_rf(root)
+      Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file])
     end)
 
     {:ok, _view, html} = live(build_conn(), "/analytics")
@@ -232,7 +232,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
 
     on_exit(fn ->
       Aiur.TestSupport.restore_app_env(previous_app_env)
-      File.rm_rf(root)
+      Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file])
     end)
 
     {:ok, _view, html} = live(build_conn(), "/analytics?build_order=77")
@@ -627,7 +627,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -648,7 +648,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -715,7 +715,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -757,7 +757,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -921,7 +921,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
