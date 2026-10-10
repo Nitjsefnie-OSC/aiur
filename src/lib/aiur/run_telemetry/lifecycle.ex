@@ -19,44 +19,34 @@ defmodule Aiur.RunTelemetry.Lifecycle do
   )
   @boundaries ~w(start end point)
   @metadata_fields [
-    :outcome,
-    :cause,
-    :operation_id,
-    :command_class,
-    :duration_status,
-    :source,
-    :source_id,
-    :actor,
-    :pr_number,
-    :comment_id,
-    :review_thread_id,
-    :author_trusted,
-    :source_timestamp,
-    :worker_host,
-    :backend,
-    :prewarm_outcome,
-    :reason_class,
-    :exit_status,
-    :turn_number,
-    :remote,
-    :retry_attempt,
-    :workspace_owner,
-    :workspace_generation,
-    :workspace_phase,
-    :complexity,
-    # Headroom dispatch summary (#3960): the chosen backend/account and every alternative's score.
-    :dispatch_selection,
-    :from_state,
-    :to_state,
-    :blocker,
-    :head_sha,
-    :input_tokens,
-    :output_tokens,
-    :cached_tokens,
-    :cost_amount,
-    :cost_currency,
-    :coverage
-  ]
+                     :outcome,
+                     :cause,
+                     :operation_id,
+                     :command_class,
+                     :duration_status,
+                     :source,
+                     :source_id,
+                     :actor,
+                     :pr_number,
+                     :comment_id,
+                     :review_thread_id,
+                     :author_trusted,
+                     :source_timestamp,
+                     :worker_host,
+                     :backend,
+                     :prewarm_outcome,
+                     :reason_class,
+                     :exit_status,
+                     :turn_number,
+                     :remote,
+                     :retry_attempt,
+                     :workspace_owner,
+                     :workspace_generation,
+                     :workspace_phase,
+                     :complexity,
+                     # Headroom dispatch summary (#3960): the chosen backend/account and every alternative's score.
+                     :dispatch_selection
+                   ] ++ Aiur.RunTelemetry.DaemonEvents.metadata_fields()
 
   @doc "Creates an opaque identity for one dispatched worker attempt."
   @spec new_attempt_id(String.t()) :: String.t()
@@ -174,11 +164,11 @@ defmodule Aiur.RunTelemetry.Lifecycle do
     source = value(event, :source)
 
     with true <- source in [:github, "github", :github_reconciliation, "github_reconciliation"],
-         {:ok, ticket, kind} <- external_topic(topic),
+         {:ok, ticket, kind} <- Aiur.RunTelemetry.DaemonEvents.topic(topic),
          true <- eligible_external_event?(kind, event) do
       timestamp = external_timestamp(kind, event)
       metadata = external_metadata(kind, event, timestamp)
-      {:ok, attributes(ticket, nil, external_event(kind), "point", metadata), timestamp}
+      {:ok, attributes(ticket, nil, Aiur.RunTelemetry.DaemonEvents.event(kind), "point", metadata), timestamp}
     else
       _other -> :skip
     end
@@ -471,18 +461,6 @@ defmodule Aiur.RunTelemetry.Lifecycle do
   defp command_class(_command), do: nil
   defp contains_any?(text, needles), do: Enum.any?(needles, &String.contains?(text, &1))
 
-  defp external_topic(topic) when is_binary(topic) do
-    case Regex.run(
-           ~r/^ticket\.([^.]+)\.(pr\.opened|pr\.merged|pr\.ready_for_review|ci\.passed|ci\.failed|issue\.commented|pr\.review_comment)$/,
-           topic
-         ) do
-      [_all, ticket, kind] -> {:ok, ticket, kind}
-      _other -> :error
-    end
-  end
-
-  defp external_topic(_topic), do: :error
-
   defp eligible_external_event?(kind, event)
        when kind in ["issue.commented", "pr.review_comment"] do
     CommentWake.trusted_comment_event?(event) and
@@ -490,12 +468,6 @@ defmodule Aiur.RunTelemetry.Lifecycle do
   end
 
   defp eligible_external_event?(_kind, _event), do: true
-
-  defp external_event("pr.opened"), do: "pr_opened"
-  defp external_event("pr.merged"), do: "pr_merged"
-  defp external_event("pr.ready_for_review"), do: "pr_ready"
-  defp external_event("ci." <> _outcome), do: "ci_result"
-  defp external_event(_comment), do: "comment_received"
 
   defp external_metadata(kind, event, timestamp) do
     pr = value(event, :pr) || %{}
@@ -522,18 +494,8 @@ defmodule Aiur.RunTelemetry.Lifecycle do
       review_thread_id: review_thread_id,
       author_trusted: value(event, :author_trusted?) == true
     }
-    |> Map.merge(ci_metadata(kind, event))
+    |> Map.merge(Aiur.RunTelemetry.DaemonEvents.ci_metadata(kind, event))
   end
-
-  # CI results publish their PR number and head SHA at the top level of the event.
-  defp ci_metadata("ci." <> outcome, event) do
-    %{outcome: outcome, head_sha: short_sha(value(event, :head_sha)), pr_number: value(event, :pr_number)}
-  end
-
-  defp ci_metadata(_kind, _event), do: %{}
-
-  defp short_sha(sha) when is_binary(sha), do: String.slice(sha, 0, 12)
-  defp short_sha(_sha), do: nil
 
   defp external_actor(event, pr, comment) do
     comment_actor = comment |> value(:user) |> value(:login)

@@ -11,7 +11,6 @@ defmodule Aiur.RunTelemetry.Sampler do
 
   alias Aiur.BuildGate
   alias Aiur.Orchestrator
-  alias Aiur.Orchestrator.CapacityBinding
   alias Aiur.RunTelemetry
   alias Aiur.RunTelemetry.Procfs
   alias Aiur.SystemFileDescriptors
@@ -350,10 +349,10 @@ defmodule Aiur.RunTelemetry.Sampler do
   # holding dispatch) — the distinction a queue depth alone cannot make.
   defp fleet_admission(capacity, polling) do
     hold = Map.get(capacity, :capacity_hold, Map.get(capacity, "capacity_hold"))
-    signal = admission_signal(hold)
+    signal = Aiur.RunTelemetry.DaemonEvents.admission_signal(hold)
 
     fields = %{
-      fleet_binding_kind: binding_kind(capacity, polling),
+      fleet_binding_kind: Aiur.RunTelemetry.DaemonEvents.binding_kind(capacity, polling),
       fleet_admission_signal: signal,
       fleet_load: number_value(capacity, :load),
       fleet_load_threshold: number_value(capacity, :load_threshold),
@@ -367,14 +366,6 @@ defmodule Aiur.RunTelemetry.Sampler do
 
     %{fields: fields, partial_fields: partial_fields}
   end
-
-  defp binding_kind(capacity, polling) do
-    {kind, _detail} = CapacityBinding.binding(capacity, polling)
-    Atom.to_string(kind)
-  end
-
-  defp admission_signal(%{signal: signal}) when is_atom(signal), do: Atom.to_string(signal)
-  defp admission_signal(_hold), do: nil
 
   defp unavailable_fleet(status, age_ms, observed_at_ms \\ nil) do
     %{

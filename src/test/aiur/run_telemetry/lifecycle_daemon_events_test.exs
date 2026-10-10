@@ -33,6 +33,7 @@ defmodule Aiur.RunTelemetry.LifecycleDaemonEventsTest do
     assert %{event: "pr_ready", ticket: "42", pr_number: 77} = attributes
   end
 
+  # Future-regression guard: unknown topics were already rejected before daemon metrics.
   test "an unknown topic is still skipped" do
     assert :skip = Lifecycle.external_anchor(%{id: 8, topic: "ticket.42.ci.pending", source: :github})
   end

@@ -29,15 +29,7 @@ defmodule Aiur.RunTelemetry.Writer do
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.RunTelemetry.{Retention, Summaries}
 
-  @external_event_patterns [
-    "ticket.*.pr.opened",
-    "ticket.*.pr.merged",
-    "ticket.*.pr.ready_for_review",
-    "ticket.*.ci.passed",
-    "ticket.*.ci.failed",
-    "ticket.*.issue.commented",
-    "ticket.*.pr.review_comment"
-  ]
+  @external_event_patterns Aiur.RunTelemetry.DaemonEvents.patterns()
 
   # Point events that define a ticket's completion for the run-scoped
   # analytics. A segment roll prunes every earlier segment of the live boot, so
