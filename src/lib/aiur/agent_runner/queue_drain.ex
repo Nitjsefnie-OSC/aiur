@@ -685,7 +685,8 @@ defmodule Aiur.AgentRunner.QueueDrain do
             workspace,
             worker_host,
             app_session,
-            attempt_id: Keyword.get(opts, :telemetry_attempt_id)
+            attempt_id: Keyword.get(opts, :telemetry_attempt_id),
+            rework_head_sha: Keyword.get(opts, :rework_head_sha)
           )
       )
 

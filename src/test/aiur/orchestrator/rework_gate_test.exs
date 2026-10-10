@@ -233,7 +233,10 @@ defmodule Aiur.Orchestrator.ReworkGateTest do
             superseded_review_handoff?: true,
             open_pr_fetcher: fn _ -> {:ok, @pr} end,
             reviews_fetcher: fn 42 -> {:ok, reviews} end,
-            commit_ci_status_fetcher: fn "head" -> {:ok, %{check_runs: [], commit_status: %{"state" => "failure"}}} end
+            required_checks_fetcher: fn _ -> {:ok, [%{name: "lint", app_id: nil}]} end,
+            commit_ci_status_fetcher: fn "head" ->
+              {:ok, %{check_runs: [%{"id" => 1, "name" => "lint", "status" => "completed", "conclusion" => "failure"}], commit_status: %{}}}
+            end
           ],
           extra
         )
@@ -259,13 +262,8 @@ defmodule Aiur.Orchestrator.ReworkGateTest do
     test "refuses same-head hand-back when required checks fail" do
       test_pid = self()
 
-      failed_ci = fn "head" ->
-        {:ok, %{check_runs: [%{"name" => "lint", "conclusion" => "failure"}], commit_status: %{"state" => "success"}}}
-      end
-
       assert handoff(
                [],
-               commit_ci_status_fetcher: failed_ci,
                emit_alert_fun: fn topic, opts -> send(test_pid, {:alert, topic, opts}) end
              ) == :none
 
