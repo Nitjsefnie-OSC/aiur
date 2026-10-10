@@ -199,12 +199,13 @@ test('odd edges are registered with independent history expectations', () => {
   assert.ok(JSON.parse(files['manifest.json']).datasets.includes('odd-edges'));
   const history = fixture('odd-edges-history');
   const odd = fixture('odd-edges');
-  assert.equal(history.rows.length, 10);
+  assert.equal(history.rows.length, 12);
   for (const row of Object.values(odd.sections).flat()) {
     assert.deepEqual({ deps: row.deps, children: row.children, dep_states: row.dep_states, deps_missing: row.deps_missing }, history.expected[row.id]);
   }
   assert.equal(history.expected['12'].dep_states['10'], 'terminal_unsatisfied');
   assert.equal(history.expected['16'].dep_states['10'], 'cleared');
   assert.equal(history.expected['14'].deps_missing, 1);
+  assert.equal(history.expected['19'].dep_states['18'], 'unknown');
   assert.deepEqual(history.expected['7'].deps, []);
 });
