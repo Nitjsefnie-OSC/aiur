@@ -330,8 +330,8 @@
 
 /* C:1187 */ .bd-now, html[data-palette="gruvbox"] .bd-now {
   background: color-mix(in srgb, color-mix(in srgb, #000 12%, var(--board-bg)) 82%, transparent) !important;
-  -webkit-backdrop-filter: blur(5px);
   backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
 /* C:1188 */ html[data-theme="light"] .bd-now, html[data-palette="gruvbox"][data-theme="light"] .bd-now {

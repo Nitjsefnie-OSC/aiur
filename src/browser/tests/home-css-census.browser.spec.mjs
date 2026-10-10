@@ -52,7 +52,7 @@ test('ordered stylesheet imports preserve source order and Safari blur fallbacks
     .filter(([, , body]) => body.includes('-webkit-backdrop-filter:'))
     .map(([, selector, body]) => ({ selector: selector.trim(), declarations: body.match(/(?:-webkit-)?backdrop-filter:[^;]+;/g) }))
   expect(blurRules).toEqual([
-    { selector: '.bd-tree', declarations: ['-webkit-backdrop-filter: blur(10px) saturate(.7);', 'backdrop-filter: blur(10px) saturate(.7);'] },
-    { selector: '.bd-now, html[data-palette="gruvbox"] .bd-now', declarations: ['-webkit-backdrop-filter: blur(5px);', 'backdrop-filter: blur(5px);'] },
+    { selector: '.bd-tree', declarations: ['backdrop-filter: blur(10px) saturate(.7);', '-webkit-backdrop-filter: blur(10px) saturate(.7);'] },
+    { selector: '.bd-now, html[data-palette="gruvbox"] .bd-now', declarations: ['backdrop-filter: blur(5px);', '-webkit-backdrop-filter: blur(5px);'] },
   ])
 })

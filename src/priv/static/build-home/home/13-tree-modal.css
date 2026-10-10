@@ -282,8 +282,8 @@
   flex-direction: column;
   overflow: hidden;
   background: color-mix(in srgb, var(--bg-2) 45%, transparent);
-  -webkit-backdrop-filter: blur(10px) saturate(.7);
   backdrop-filter: blur(10px) saturate(.7);
+  -webkit-backdrop-filter: blur(10px) saturate(.7);
   animation: bdTreeIn .22s ease-out;
 }
 
