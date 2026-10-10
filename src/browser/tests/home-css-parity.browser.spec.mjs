@@ -19,6 +19,7 @@ test('keyframes and @property match', async ({ browser }) => {
     const result = []
     const walk = rules => [...rules].forEach(r => {
       if (r.type === CSSRule.KEYFRAMES_RULE || r.constructor.name === 'CSSPropertyRule') result.push(r.cssText)
+      else if (r.styleSheet) walk(r.styleSheet.cssRules)
       else if (r.cssRules) walk(r.cssRules)
     })
     for (const sheet of [...document.styleSheets].filter(s => !s.href || new URL(s.href).origin === location.origin)) walk(sheet.cssRules)
@@ -32,7 +33,7 @@ test('dead classes are absent', async ({ browser }) => {
   try {
     const selectors = await pair.product.evaluate(() => {
       const result = []
-      const walk = rules => [...rules].forEach(r => { if (r.selectorText) result.push(r.selectorText); else if (r.cssRules && r.type !== CSSRule.KEYFRAMES_RULE) walk(r.cssRules) })
+      const walk = rules => [...rules].forEach(r => { if (r.selectorText) result.push(r.selectorText); else if (r.styleSheet) walk(r.styleSheet.cssRules); else if (r.cssRules && r.type !== CSSRule.KEYFRAMES_RULE) walk(r.cssRules) })
       walk([...document.styleSheets].find(s => s.href?.endsWith('/build-home/home.css')).cssRules)
       return result
     })
@@ -41,7 +42,9 @@ test('dead classes are absent', async ({ browser }) => {
 })
 
 test('design fallbacks are kept', async () => {
-  const css = await readFile(new URL('../../priv/static/build-home/home.css', import.meta.url), 'utf8')
+  const entry = new URL('../../priv/static/build-home/home.css', import.meta.url)
+  const imports = [...(await readFile(entry, 'utf8')).matchAll(/@import url\("([^"]+)"\);/g)]
+  const css = (await Promise.all(imports.map(([, path]) => readFile(new URL(path, entry), 'utf8')))).join('\n')
   for (const [pattern, count] of [[/var\(--ph, 60\)/g, 12], [/var\(--ph, 90\)/g, 1], [/var\(--pct, 0%\)/g, 24]]) expect([...css.matchAll(pattern)]).toHaveLength(count)
 })
 

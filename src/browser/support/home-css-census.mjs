@@ -32,7 +32,8 @@ export function censusRules({ buildSource, inlineSource, inlineLine, roots }) {
       const raw = piece.slice(colon + 1).trim()
       const priority = /!important\s*$/.test(raw) ? 'important' : ''
       const value = raw.replace(/\s*!important\s*$/, '')
-      return CSS.supports(property, value) ? [{ property, value, priority }] : []
+      // Preserve the source's Safari blur fallback even when Chromium drops the prefix.
+      return property === '-webkit-backdrop-filter' || CSS.supports(property, value) ? [{ property, value, priority }] : []
     })
   }
   for (const [source, text, offset] of [['H', inlineSource, inlineLine], ['C', buildSource, 0]]) {
@@ -121,14 +122,53 @@ export function renderHomeCss(records) {
       return !late || /var\(--(?:ph|pct),/.test(d.value)
     })
   }
+  const blocks = []
+  const format = (text, depth = 0) => {
+    const lines = []
+    let token = '', quote = '', parens = 0
+    const flush = () => { if (token.trim()) lines.push('  '.repeat(depth) + token.trim()); token = '' }
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i]
+      if (quote) { token += c; if (c === '\\') token += text[++i]; else if (c === quote) quote = ''; continue }
+      if (c === '"' || c === "'") quote = c
+      if (c === '(') parens++
+      if (c === ')') parens--
+      if (!parens && c === '{') { token = token.trimEnd() + ' {'; flush(); depth++ }
+      else if (!parens && c === '}') { flush(); depth--; token = '}'; flush() }
+      else if (!parens && c === ';') { token += c; flush() }
+      else token += c
+    }
+    flush()
+    return lines.join('\n') + '\n'
+  }
   const render = rules => rules.flatMap(r => {
     if (r.children) return [`${r.group} { ${render(r.children).join(' ')} }`]
-    if (r.at) return [r.at.replace(/\n/g, ' ')]
+    if (r.at) return [r.at]
     if (!r.declarations.length) return []
     return [`/* ${r.source}:${r.line} */ ${r.selector} { ${r.declarations.map(d => `${d.property}: ${d.property === 'color' && d.value === 'rgb(255, 255, 255)' ? '#fff' : d.value}${d.priority ? ' !' + d.priority : ''};`).join(' ')} }`]
   })
-  const lines = render(tree)
-  // Two ordered rules per line keep the stylesheet within the repository file-size gate.
-  const css = '/* Design etag 1791431544512943. Do not restyle; regenerate parity on every change. */\n' + `${scope} textarea { font: revert; } /* Product font reset measured by parity. */\n` + lines.reduce((out, line, i) => out + line + (i % 2 ? '\n' : ' '), '') + '\n'
-  return { css: css.trimEnd() + '\n', shadowed }
+  const collect = (rules, contexts = []) => rules.forEach(r => {
+    const text = [...contexts.map(c => `${c} {`), ...render([r]), ...contexts.map(() => '}')].join(' ')
+    if (r.children && format(text).split('\n').length > 450) collect(r.children, [...contexts, r.group])
+    else if (render([r]).length) blocks.push({ source: r.source, line: r.line ?? r.children?.find(child => child.line)?.line ?? 0, text: format(text) })
+  })
+  blocks.push({ source: 'H', line: 0, text: format(`${scope} textarea { font: revert; }`) })
+  collect(tree)
+  const section = r => r.source === 'H' ? r.line < 200 ? 'base' : r.line < 1500 ? 'buttons' : 'ticket-modal' :
+    r.line < 303 ? 'build-cards' : r.line < 450 ? 'build-states' : r.line < 611 ? 'conversation' :
+      r.line < 730 ? 'tree-modal' : r.line < 899 ? 'list-models' : r.line < 1027 ? 'responsive-light' : 'palette-fixes'
+  const parts = {}
+  let previous = '', count = 0, name = '', lines = 0
+  for (const block of blocks) {
+    const label = block.line ? section(block) : previous || 'base'
+    const length = block.text.trimEnd().split('\n').length + 1
+    if (label !== previous || lines + length > 450) {
+      previous = label; count++; name = `${String(count).padStart(2, '0')}-${label}.css`; lines = 0
+      parts[name] = ''
+    }
+    parts[name] += block.text + '\n'; lines += length
+  }
+  const css = '/* Design etag 1791431544512943. Do not restyle; regenerate parity on every change. */\n' +
+    Object.keys(parts).map(name => `@import url("home/${name}");`).join('\n') + '\n'
+  return { css, parts, shadowed }
 }
