@@ -29,6 +29,8 @@ defmodule Aiur.Orchestrator.ReworkGate do
   alias Aiur.GitHub.ReviewThreads
   alias Aiur.Orchestrator.{ReviewFindings, State}
 
+  @failed_check_conclusions ~w(action_required failure startup_failure timed_out)
+
   @doc """
   Returns the open pull request for the rework target.
 
@@ -266,11 +268,21 @@ defmodule Aiur.Orchestrator.ReworkGate do
       {:ok, pr} ->
         current_head = head_sha(pr)
 
-        if is_binary(current_head) and current_head != "" and
-             (not is_binary(original_head) or original_head == "" or current_head != original_head) do
-          {:handoff, ci_handoff_state(current_head, opts)}
-        else
-          superseded_review_handoff(pr, current_head, opts)
+        cond do
+          is_binary(current_head) and current_head != "" and
+              (not is_binary(original_head) or original_head == "" or current_head != original_head) ->
+            {:handoff, ci_handoff_state(current_head, opts)}
+
+          true ->
+            handoff = superseded_review_handoff(pr, current_head, opts)
+
+            if handoff == :none and is_binary(original_head) and current_head == original_head and
+                 failed_required_checks?(current_head, opts) do
+              no_op_rework_attention(issue_key, current_head, opts)
+              :none
+            else
+              handoff
+            end
         end
 
       {:error, _reason} ->
@@ -279,6 +291,34 @@ defmodule Aiur.Orchestrator.ReworkGate do
       {:skip, :no_open_pr} ->
         :none
     end
+  end
+
+  defp failed_required_checks?(head_sha, opts) do
+    fetcher = Keyword.get(opts, :commit_ci_status_fetcher, &GitHubClient.fetch_commit_ci_status/1)
+
+    case fetcher.(head_sha) do
+      {:ok, %{check_runs: runs, commit_status: status}} ->
+        Enum.any?(runs, &(Map.get(&1, "conclusion") in @failed_check_conclusions)) or
+          get_in(status, ["state"]) == "failure"
+
+      _unavailable ->
+        false
+    end
+  end
+
+  defp no_op_rework_attention(issue_key, head_sha, opts) do
+    emit_alert_fun = Keyword.get(opts, :emit_alert_fun, &Alerts.emit_system/2)
+
+    emit_alert_fun.(
+      "ticket.#{issue_key}.agent.attention.no_op_rework",
+      issue: issue_key,
+      message: "Rework for ticket #{issue_key} ended without a new PR head while required checks are failing on #{String.slice(head_sha, 0, 7)}.",
+      reason:
+        "The rework hand-back was refused because the PR head is unchanged and required CI checks are failing. Inspect the latest Executor rework comment and failing checks, then make the requested fix or explain why it cannot be made.",
+      needs_attention: true,
+      severity: "warning",
+      central: true
+    )
   end
 
   # #3971: the head can equal the dispatch head and still carry the fixes — they

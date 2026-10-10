@@ -256,6 +256,25 @@ defmodule Aiur.Orchestrator.ReworkGateTest do
       assert ReworkGate.stopped_agent_handoff("3971", "head", open_pr_fetcher: fn _ -> {:ok, @pr} end, superseded_review_handoff?: true, reviews_fetcher: fn _ -> {:error, :timeout} end) == :none
     end
 
+    test "refuses same-head hand-back when required checks fail" do
+      test_pid = self()
+
+      failed_ci = fn "head" ->
+        {:ok, %{check_runs: [%{"name" => "lint", "conclusion" => "failure"}], commit_status: %{"state" => "success"}}}
+      end
+
+      assert handoff(
+               [],
+               commit_ci_status_fetcher: failed_ci,
+               emit_alert_fun: fn topic, opts -> send(test_pid, {:alert, topic, opts}) end
+             ) == :none
+
+      assert_receive {:alert, "ticket.3971.agent.attention.no_op_rework", alert_opts}, 100
+      assert Keyword.fetch!(alert_opts, :needs_attention)
+      reason = Keyword.fetch!(alert_opts, :reason)
+      assert reason =~ "head is unchanged"
+    end
+
     test "is opt-in so retry exhaustion and the turn limit keep their behaviour" do
       assert handoff([review("older")], superseded_review_handoff?: false) == :none
     end
