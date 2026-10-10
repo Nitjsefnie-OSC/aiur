@@ -43,7 +43,7 @@ defmodule Aiur.WorkflowStore.Reload do
     end
   end
 
-  @spec reload_state(%State{}) :: {:ok, %State{}} | {:error, term(), %State{}}
+  @spec reload_state(State.t()) :: {:ok, State.t()} | {:error, term(), State.t()}
   def reload_state(%State{} = state) do
     path = Workflow.workflow_file_path()
 
@@ -113,7 +113,7 @@ defmodule Aiur.WorkflowStore.Reload do
   # `Config.settings!/0`.
   #
   # One read, then parse and stamp that value.
-  @spec load_state(Path.t(), pos_integer()) :: {:ok, %State{}} | {:error, term()}
+  @spec load_state(Path.t(), pos_integer()) :: {:ok, State.t()} | {:error, term()}
   def load_state(path, attempts \\ @reload_attempts) do
     with {:ok, content} <- read_config(path),
          {:ok, workflow} <- Workflow.parse_config(content, path),
@@ -229,10 +229,10 @@ defmodule Aiur.WorkflowStore.Reload do
   # Publish before announcing. A subscriber woken by the broadcast reads through
   # `Cache`, so the new value has to be visible there first or the listener
   # would race back to the value it was told had changed.
-  @spec commit(%State{}) :: :ok
+  @spec commit(State.t()) :: :ok
   def commit(%State{} = state), do: commit(nil, state)
 
-  @spec commit(%State{} | nil, %State{}) :: :ok
+  @spec commit(State.t() | nil, State.t()) :: :ok
   def commit(previous, %State{path: path} = state) do
     Cache.put(state.workflow, state.generation, path)
     broadcast_configuration(state)

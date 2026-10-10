@@ -45,6 +45,8 @@ defmodule Aiur.WorkflowStore do
       :base_branch,
       generation: 1
     ]
+
+    @type t :: %__MODULE__{}
   end
 
   @spec start_link(keyword()) :: GenServer.on_start()
