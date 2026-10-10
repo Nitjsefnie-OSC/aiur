@@ -95,6 +95,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripTest do
     refute html =~ "Attributed"
   end
 
+  # The attribution/coverage context is removed: no ticket identity or
+  # attributed-spend lines leak through the card, regardless of window data.
   test "omits attribution and coverage context when only a GraphQL window is observed" do
     github_quota = %{
       state: :observed,
@@ -126,6 +128,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripTest do
     refute html =~ "Attributed"
   end
 
+  # The attribution/coverage context is removed even when nothing can be
+  # attributed to a ticket; the card simply omits it rather than falling silent
+  # about a context that no longer exists.
   test "omits attribution and coverage context when nothing can be attributed to a ticket" do
     github_quota = %{
       state: :observed,
@@ -204,6 +209,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripTest do
     refute html =~ "rs-spend"
   end
 
+  # The compact run summary is hidden whenever the remaining ticket count is
+  # zero or not yet known: there is nothing real for it to say.
   test "an empty run hides the compact summary entirely" do
     html =
       render_component(&RunSummaryStrip.run_summary_compact/1, %{

@@ -27,6 +27,10 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenterFreshnessTest do
     assert [%{identity: ^alpha}] = catalog.snapshot.rows
   end
 
+  # The Stream Deck projects a retained `:stale` snapshot unchanged, so the
+  # Units catalog has to admit the same agents from the same snapshot. Before
+  # this, any staleness dropped every status-sourced row and an operator with no
+  # durable membership saw an empty Units page beside a full Stream Deck.
   test "a briefly stale fleet snapshot shows the same units the Stream Deck projects" do
     alpha = identity("NODE-parity-alpha", "41")
     beta = identity("NODE-parity-beta", "42")
@@ -73,6 +77,9 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenterFreshnessTest do
     assert catalog.message =~ "Fleet updates are pending"
   end
 
+  # The window is exclusive at its boundary, and both surfaces agree there: the
+  # rows stop being a floor at exactly the age the catalog starts calling itself
+  # stale, so neither can be right while the other is wrong.
   test "the shared staleness window closes at the same age for rows and for catalog status" do
     alpha = identity("NODE-boundary", "41")
 
@@ -96,6 +103,8 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenterFreshnessTest do
     assert catalog.(300).status == :stale
   end
 
+  # An age-less `:stale` freshness cannot be judged against the window, so it
+  # must not be admitted as a floor and must not read as a healthy catalog.
   test "a stale fleet view with no age is neither a row floor nor a ready catalog" do
     alpha = identity("NODE-ageless", "41")
 

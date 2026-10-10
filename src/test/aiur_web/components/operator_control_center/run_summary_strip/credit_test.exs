@@ -24,6 +24,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
   # cards, so they set the env in-process and restore it afterwards.
   import AiurWeb.OperatorControlCenter.RunSummaryStripFixtures
 
+  # A prepaid balance with a durable baseline renders a real spend percentage
+  # alongside the dollar amount: a real bar plus a "Y% used" meta.
   test "a credit window with a baseline renders the spend percentage and the dollar amount" do
     with_deepseek_key(fn ->
       meters = %{
@@ -65,6 +67,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
     end)
   end
 
+  # Rule 9: an exhausted prepaid balance bar (100% used) renders red.
   test "an exhausted prepaid balance bar renders red" do
     with_deepseek_key(fn ->
       meters = %{
@@ -103,6 +106,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
     end)
   end
 
+  # A credit window whose freshness horizon has passed is no longer a current
+  # reading (issue #1550); the dashboard no longer labels it, so the meta just
+  # keeps the balance.
   test "a credit window past its freshness horizon keeps its balance without a stale label" do
     with_deepseek_key(fn ->
       meters = %{
@@ -141,6 +147,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
     end)
   end
 
+  # A balance observed more than four minutes ago (within the final minute of
+  # its 300s freshness horizon, or past it) still shows its measured spend; the
+  # staleness qualifier was removed (operator directive).
   test "a credit balance observed more than four minutes ago keeps its measured spend" do
     with_deepseek_key(fn ->
       meters = %{
@@ -180,6 +189,10 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
     end)
   end
 
+  # A provider that has never been observed this boot reads :unknown — a bare
+  # N/A — even when the durable dispatch-limits ledger holds its last standing.
+  # The strip must degrade to that durable record instead of rendering an empty
+  # card. A fully-consumed durable record also turns the bar red.
   test "renders the durable last-known standing with a red-at-100 bar" do
     observed_at = ~U[2026-08-02 08:53:00Z]
     dir = Aiur.TestSupport.tmp_root!("aiur-strip-durable")
@@ -282,6 +295,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
     refute html =~ "rs-spend"
   end
 
+  # The provider logo leads the row on the far left and is the row's only mark;
+  # the spend figure and token glyphs were removed (operator directive).
   test "the provider logo leads the model row, with no spend or token glyph" do
     with_deepseek_key(fn ->
       meters = %{
@@ -315,6 +330,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripCreditTest do
     end)
   end
 
+  # Rule 2: a provider card is omitted unless that provider is keyed. App-server
+  # providers (codex, claude) always render; OpenAI-compatible providers render
+  # only when their credential env is set.
   test "omits OpenAI-compatible cards without a configured API key" do
     meters = %{
       state: :authorized,

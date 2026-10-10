@@ -24,6 +24,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripProviderUsageTest do
   # cards, so they set the env in-process and restore it afterwards.
   import AiurWeb.OperatorControlCenter.RunSummaryStripFixtures
 
+  # Codex reports an account-wide limit alongside per-model ones. Only the
+  # account-wide bucket governs whether work can proceed, and a row per model
+  # turns a glanceable card into a table.
   test "only the account-wide rate limit is shown, not per-model ones" do
     meters = %{
       state: :authorized,
@@ -76,6 +79,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripProviderUsageTest do
     assert html =~ "88%"
   end
 
+  # Codex reports `hasCredits`/`unlimited`/`rateLimitResetCredits` facts, not a
+  # prepaid dollar balance. They must not render as a "Credits … balance" row
+  # with a meter, which would imply a spendable balance that does not exist.
   test "codex drops its credit windows instead of rendering a balance" do
     meters = %{
       state: :authorized,
@@ -107,6 +113,10 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripProviderUsageTest do
     refute html =~ "Exhausted"
   end
 
+  # A prepaid balance is a :credit window with no percentage. It must render as
+  # a dollar amount, never as a fabricated "0% consumed" bar. Local concurrency
+  # is an instantaneous process-local reading, so retaining it on a provider
+  # card would turn it into a permanently stale pseudo-limit.
   test "renders a credit balance and omits local concurrency from provider cards" do
     with_deepseek_key(fn ->
       credit = %{

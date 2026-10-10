@@ -149,6 +149,7 @@ defmodule AiurWeb.OperatorControlCenterComponentsFixtures do
     })
   end
 
+  # --- Build Order grid fixtures ---------------------------------------------
   def sample_view_model do
     nodes = [
       node(:bo010, "BO-010", "plan-graph", 3,

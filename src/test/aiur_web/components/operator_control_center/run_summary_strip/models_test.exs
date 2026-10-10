@@ -74,6 +74,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     end)
   end
 
+  # Rule 3: DeepSeek leads the strip — it sorts ahead of the registry card
+  # order (codex, claude, kimi, openrouter).
   test "DeepSeek is the first provider card" do
     with_deepseek_key(fn ->
       with_kimi_key(fn ->
@@ -93,6 +95,11 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     end)
   end
 
+  # Rule 4: each card renders its own registry logo. The ticket's "swap the
+  # Codex and Claude logos" premise was verified false on review — the asset
+  # files (`codex-color.svg` is the Codex mark, `claude-symbol.svg` is
+  # Anthropic's) and every other surface already pair codex→codex-color and
+  # claude→claude-symbol, so the strip keeps the truthful pairing.
   test "renders each model's own registry logo" do
     html =
       render_component(&RunSummaryStrip.run_summary_strip/1, %{
@@ -111,6 +118,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     refute claude_row =~ "/provider-assets/codex-color.svg"
   end
 
+  # Rule 6: an unknown token count hides the label and the "N/A", leaving the
+  # token glyph alone at logo size in the row's fixed token column.
   test "token glyphs are removed from the model rows" do
     usage = %{state: :ready, providers: %{codex: %{}, claude: %{}}}
 
@@ -128,6 +137,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     refute html =~ "rs-token-ic"
   end
 
+  # Rule 9: any meter at exactly 100% used renders red, including rate-limit
+  # windows and the run progress bar.
   test "a rate-limit bar at 100% used renders red" do
     meters = %{
       state: :authorized,
@@ -231,6 +242,11 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     assert html =~ ~s(class="is-critical" style="width:100%")
   end
 
+  # ---- models pane ----
+  #
+  # The GitHub card keeps its own pane, and every model provider's progress
+  # bars sit together in one 2/3-width pane. The model count does not change
+  # the pane count, so there is no overflow to collapse.
   test "GitHub keeps its own pane beside a single models pane" do
     with_deepseek_key(fn ->
       html =
@@ -302,6 +318,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     end)
   end
 
+  # GitHub attribution/coverage context is removed in the full card; no ticket
+  # is named a consumer and no attributed-spend line renders.
   test "GitHub card omits attribution and coverage context" do
     with_deepseek_key(fn ->
       with_kimi_key(fn ->
@@ -334,6 +352,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     end)
   end
 
+  # The models pane shows every provider's reading as a plain percentage; the
+  # staleness qualifier was removed (operator directive), so a stale or
+  # unavailable reading renders like any other rather than carrying a label.
   test "the models pane renders stale and unavailable readings without labels" do
     with_deepseek_key(fn ->
       with_kimi_key(fn ->
@@ -367,6 +388,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     end)
   end
 
+  # An adapter failure (or repeated probe failures over retained values) leaves
+  # the card standing at :stale/:partial while the windows it kept are still
+  # stamped fresh. The reading renders as a plain percentage either way.
   test "a card standing stale or partial renders windows without qualifiers" do
     for state <- [:stale, :partial] do
       html =

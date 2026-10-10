@@ -47,6 +47,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripFixtures do
 
   def restore_env(key, value), do: System.put_env(key, value)
 
+  # Everything after the ElevenLabs row's marker class and before the next pane.
   def elevenlabs_row(html) do
     [_before, rest] = String.split(html, "rs-elevenlabs", parts: 2)
     rest |> String.split("rs-block", parts: 2) |> List.first()
@@ -89,6 +90,8 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripFixtures do
     |> Float.round(1)
   end
 
+  # Every pane in the strip is an `.rs-block`: the GitHub card and the models
+  # pane.
   def pane_count(html), do: length(String.split(html, "rs-block")) - 1
 
   def model_cards do
@@ -205,6 +208,9 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripFixtures do
     }
   end
 
+  # Mirrors the shape ProviderMetersPresenter emits: the rendered percentage
+  # comes from `meter.now`, and `coverage_label` is required by the meta
+  # renderer.
   def scoped_window(limit_id, percent) do
     %{
       limit_id: limit_id,

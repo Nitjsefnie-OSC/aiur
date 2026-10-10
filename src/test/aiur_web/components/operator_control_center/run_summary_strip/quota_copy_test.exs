@@ -41,6 +41,11 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripQuotaCopyTest do
     end)
   end
 
+  # ---- ElevenLabs credit quota ----
+  #
+  # ElevenLabs publishes a character/credit quota plus the amount due on the
+  # next invoice. The latter is owed money, never a spendable balance. Like the
+  # other meters on this strip, the credit bar fills as usage is consumed.
   test "an unconfigured ElevenLabs account leaves no trace on the strip" do
     html = strip(elevenlabs_quota: %{state: :unconfigured, window: nil, failure: nil, observed_at: nil})
 
