@@ -7,8 +7,7 @@ defmodule Aiur.AgentRunner.ToolExecutor do
 
   require Logger
 
-  alias Aiur.AgentRunner.EpicSetter
-  alias Aiur.AgentRunner.SessionLifecycle
+  alias Aiur.AgentRunner.{EpicSetter, ReworkHandoffGuard, SessionLifecycle}
 
   alias Aiur.{Alerts, Boot, CodingAgent, Commands, CoordinationTasks, EventPublicationLog, Issue}
 
@@ -16,7 +15,6 @@ defmodule Aiur.AgentRunner.ToolExecutor do
   alias Aiur.Events.{Publisher, SubscriptionStore}
   alias Aiur.GitHub.IssueDependencies
   alias Aiur.{Orchestrator, Orchestrator.TicketTransition}
-  alias Aiur.Orchestrator.ReworkGate
   alias Aiur.Protocol.MapAccess
   alias Aiur.SecretRedactor
 
@@ -185,48 +183,8 @@ defmodule Aiur.AgentRunner.ToolExecutor do
     end
   end
 
-  defp write_ticket_state(issue, coordination, issue_id, state_name, workspace, worker_host, opts) do
-    case no_op_rework_blockers(issue, state_name, opts) do
-      {:blocked, checks} ->
-        message =
-          "Cannot hand ticket #{issue_identifier(issue)} back to human review: PR head is unchanged and required checks are failing: #{Enum.join(checks, ", ")}. Address the Executor's latest rework comment or explain why it cannot be addressed."
-
-        emit_no_op_rework_alert(issue, checks, message, workspace, worker_host, opts)
-
-        {:error, {:no_op_rework, message}}
-
-      :allow ->
-        case coordination.set_ticket_state.(issue_id, state_name) do
-          :ok -> {:ok, %{state: state_name, issue: issue_id}}
-          {:error, reason} -> {:error, reason}
-          other -> {:error, other}
-        end
-    end
-  end
-
-  defp no_op_rework_blockers(%Issue{state: state} = issue, "human-review", opts)
-       when state in ["rework", "agent:rework"] do
-    ReworkGate.agent_handoff_blockers(issue_identifier(issue), Keyword.get(opts, :rework_head_sha), opts)
-  end
-
-  defp no_op_rework_blockers(_issue, _state, _opts), do: :allow
-
-  defp emit_no_op_rework_alert(issue, checks, message, workspace, worker_host, opts) do
-    case Keyword.get(opts, :no_op_rework_alert) do
-      emit when is_function(emit, 3) ->
-        emit.(issue, checks, message)
-
-      _default ->
-        Alerts.emit_custom("ticket.#{issue_identifier(issue)}.agent.attention.no_op_rework", message,
-          issue: issue,
-          workspace: workspace,
-          worker_host: worker_host,
-          reason: message,
-          needs_attention: true,
-          severity: "warning"
-        )
-    end
-  end
+  defp write_ticket_state(issue, coordination, issue_id, state_name, workspace, worker_host, opts),
+    do: ReworkHandoffGuard.write(issue, issue_id, state_name, workspace, worker_host, opts, coordination.set_ticket_state)
 
   defp tracker_issue_id(issue) do
     case Map.get(issue, :id) || Map.get(issue, :identifier) do

@@ -85,27 +85,6 @@ defmodule Aiur.Events.GithubCIPoller do
     evaluate(check_runs, commit_status)
   end
 
-  @doc false
-  @spec failed_required_checks([map()], map(), [map()]) :: [String.t()]
-  def failed_required_checks(check_runs, commit_status, required_checks) do
-    runs = check_runs |> blocking_check_runs() |> latest_check_runs_per_workflow_and_name()
-    statuses = Map.get(commit_status, "statuses", [])
-
-    required_checks
-    |> Enum.flat_map(fn %{name: name, app_id: app_id} ->
-      failed_run? =
-        Enum.any?(runs, fn run ->
-          Map.get(run, "name") == name and Map.get(run, "status") == "completed" and
-            Map.get(run, "conclusion") in @failed_conclusions and
-            (app_id in [nil, -1] or get_in(run, ["app", "id"]) == app_id)
-        end)
-
-      failed_status? = app_id in [nil, -1] and Enum.any?(statuses, &(Map.get(&1, "context") == name and Map.get(&1, "state") in @failed_statuses))
-      if failed_run? or failed_status?, do: [name], else: []
-    end)
-    |> Enum.uniq()
-  end
-
   defp poll_target(target, opts) do
     case ci_batch_value(opts, target) do
       {:ok, batch} -> poll_batched_target(target, batch, opts)
