@@ -63,6 +63,18 @@ defmodule Aiur.TestCleanupTest do
     assert error.message =~ "or they cannot be deleted): [#{inspect(file)}]"
   end
 
+  test "checks the first successful removal for a directory that comes back", %{root: root} do
+    file = Path.join(root, "state/live.log")
+
+    error =
+      assert_raise RuntimeError, fn ->
+        TestCleanup.rm_rf!(root, rm: racing_rm(file, 0, true))
+      end
+
+    assert error.message =~ "it reappeared after removal after 40 attempts"
+    assert error.message =~ "or they cannot be deleted): [#{inspect(file)}]"
+  end
+
   test "unset deletes the named env keys before the guard", %{root: root} do
     Application.put_env(:aiur, :test_cleanup_probe_dir, root)
     on_exit(fn -> Application.delete_env(:aiur, :test_cleanup_probe_dir) end)

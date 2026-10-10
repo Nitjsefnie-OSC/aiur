@@ -3,6 +3,7 @@ defmodule Aiur.TestCleanup do
 
   @retries 40
   @retry_ms 50
+  @settle_checks 3
 
   @doc """
   Removes a per-test directory that an app-level writer was pointed at.
@@ -39,13 +40,8 @@ defmodule Aiur.TestCleanup do
 
   defp remove!(path, rm, retries, raced?) do
     case rm.(path) do
-      {:ok, _removed} when not raced? ->
-        :ok
-
       {:ok, _removed} ->
-        # Winning one attempt against a writer proves nothing: it puts the directory straight back.
-        Process.sleep(@retry_ms)
-        if File.exists?(path), do: retry!(path, rm, retries, "it reappeared after removal"), else: :ok
+        settle!(path, rm, retries, raced?, @settle_checks)
 
       # ENOTEMPTY (rendered :eexist) is the only failure a write in flight causes.
       {:error, reason, file} when reason in [:eexist, :enotempty] ->
@@ -66,4 +62,16 @@ defmodule Aiur.TestCleanup do
   end
 
   defp retry!(path, rm, retries, _why), do: remove!(path, rm, retries - 1, true)
+
+  defp settle!(_path, _rm, _retries, _raced?, 0), do: :ok
+
+  defp settle!(path, rm, retries, raced?, checks) do
+    Process.sleep(@retry_ms)
+
+    if File.exists?(path) do
+      retry!(path, rm, retries, "it reappeared after removal")
+    else
+      settle!(path, rm, retries, raced?, checks - 1)
+    end
+  end
 end
