@@ -124,7 +124,7 @@
     },
     {
       "id": "workspace", "name": "Workspace and repo base", "layer": 2, "kind": "required",
-      "paths": ["src/lib/aiur/agent_scratch.ex", "src/lib/aiur/prewarm/**", "src/lib/aiur/repo_base.ex", "src/lib/aiur/workspace.ex", "src/lib/aiur/workspace/**"],
+      "paths": ["src/lib/aiur/agent_scratch.ex", "src/lib/aiur/prewarm/**", "src/lib/aiur/repo_base.ex", "src/lib/aiur/repo_base/**", "src/lib/aiur/workspace.ex", "src/lib/aiur/workspace/**"],
       "facades": ["*"], "facade_pending": "MP-R1-C1-T02",
       "requires": ["kernel", "config", "agent-sandbox", "tracker"], "optional": [],
       "owns": {"config": ["hooks", "prewarm", "workspace"], "env": ["AIUR_REAL_GIT", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_NAME", "TEMP", "TMP", "TMPDIR"], "state": [], "capabilities": []},
