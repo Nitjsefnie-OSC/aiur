@@ -11,6 +11,7 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
   use Aiur.TestSupport
 
   alias Aiur.AgentRunner.TurnLoop
+  alias Aiur.Memory.Tracker
   alias Aiur.Orchestrator.{RetryEngine, State}
   alias Aiur.Workspace.Provisioner
 
@@ -81,7 +82,10 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
 
       assert {:completed, %{state: state}} =
                run_loop(ctx,
-                 run_turn: fn _s, _p, _i, _o -> {:ok, %{session_id: "noop-existing-pr"}} end,
+                 run_turn: fn _s, _p, _i, _o ->
+                   :ok = Tracker.update_issue_state("614309", "rework")
+                   {:ok, %{session_id: "noop-existing-pr"}}
+                 end,
                  max_turns: nil,
                  workspace_probe: unchanging_probe(),
                  max_consecutive_noop_turns: 3,
@@ -91,7 +95,10 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
                )
 
       assert state == ctx.issue.state
-      refute_receive {:memory_tracker_state_update, _, _}, 100
+      assert_received {:memory_tracker_state_update, "614309", "rework"}
+      identifier = ctx.issue.identifier
+      # Tracker writes finish inside run_loop; the global recipient also gets unrelated tickets.
+      refute_received {:memory_tracker_state_update, ^identifier, _}
     end
 
     test "recognizes waiting, requested, and pending check runs", ctx do
@@ -130,7 +137,8 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
                )
 
       assert state == issue.state
-      refute_receive {:memory_tracker_state_update, _, _}, 100
+      identifier = ctx.issue.identifier
+      refute_received {:memory_tracker_state_update, ^identifier, _}
     end
 
     test "hands off a pushed rework PR after three no-op turns", ctx do
@@ -309,6 +317,32 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
 
       assert_receive {:memory_tracker_state_update, identifier, "error"}, 1000
       assert identifier == issue.identifier
+    end
+
+    # #3971: the fixes were pushed by an earlier run, so the head never moves in this one.
+    test "hands a rework whose head is newer than its blocking review to review despite red CI", ctx do
+      use_memory_tracker!(self())
+      issue = %{ctx.issue | state: "rework", labels: ["agent:rework"]}
+      review = %{"state" => "CHANGES_REQUESTED", "commit_id" => "reviewed-head", "user" => %{"login" => "r"}, authoritative: true}
+
+      run = fn head ->
+        run_loop(%{ctx | issue: issue},
+          run_turn: fn _s, _p, _i, _o -> {:ok, %{session_id: "noop-rework-fixes-pushed"}} end,
+          max_turns: nil,
+          workspace_probe: unchanging_probe(),
+          max_consecutive_noop_turns: 3,
+          noop_backoff_ms: 0,
+          rework_head_sha: head,
+          open_pr_fetcher: fn _ -> {:ok, %{"number" => 42, "head" => %{"sha" => head}}} end,
+          reviews_fetcher: fn 42 -> {:ok, [review]} end,
+          commit_ci_status_fetcher: fn _ -> {:ok, %{check_runs: [%{"status" => "completed", "conclusion" => "failure"}], commit_status: %{"state" => "failure"}}} end
+        )
+      end
+
+      assert {:completed, %{state: "human-review"}} = run.("fixed-head")
+      assert_receive {:memory_tracker_state_update, _identifier, "human-review"}, 1000
+      # The review names this very head: nothing was pushed for it, so the run still fails.
+      assert {:completed, %{state: "error"}} = run.("reviewed-head")
     end
 
     test "hands off a pushed rework PR when the normal turn limit stops the run", ctx do

@@ -2,7 +2,6 @@ defmodule Aiur.AgentRunner.TurnLoop do
   @moduledoc false
 
   require Logger
-
   alias Aiur.AgentRunner.{MessageHandler, QueueDrain, SessionLifecycle, TurnCallbacks}
   alias Aiur.AgentRunner.{SessionResume, ToolExecutor, TurnAlerts, TurnProgress, TurnPrompt, TurnStreams}
   alias Aiur.Codex.DynamicTool
@@ -10,9 +9,8 @@ defmodule Aiur.AgentRunner.TurnLoop do
   alias Aiur.Config
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.Issue
-  alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate}
+  alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
   alias Aiur.RunTelemetry.Lifecycle
-  alias Aiur.Tracker
   alias Aiur.Workspace
   alias Aiur.Workspace.WipPreservation
 
@@ -414,12 +412,10 @@ defmodule Aiur.AgentRunner.TurnLoop do
     end
   end
 
-  # The bound must leave a durable record, not a bare `Logger.info` (#2797):
-  # the ticket-scoped needs-attention alert lands in the alert ledger and the
-  # central `alerts.ndjson`, naming the ticket, the count, and the state label
-  # that kept the loop alive. The loop then takes the SAME exit as
-  # `agent.max_turns` — control returns to the orchestrator. A rework run that
-  # pushed gets a review handoff; a run that did not push is a real failure.
+  # The bound must leave a durable record, not a bare `Logger.info` (#2797): a
+  # ticket-scoped needs-attention alert naming the ticket, the count, and the
+  # state label that kept the loop alive. A rework run whose head is newer than
+  # its blocking review gets a review handoff (#3971); one with no push fails.
   defp stop_on_noop_bound(turn_context, refreshed_issue, progress, witness, cap) do
     %{turn_number: turn_number, max_turns: max_turns} = turn_context
 
@@ -427,7 +423,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
       "aiur_autonomous_loop phase=noop_bound_reached elapsed_ms=#{Aiur.Boot.elapsed_ms()} identifier=#{refreshed_issue.identifier} turn=#{turn_number}/#{max_turns_display(max_turns)} noop_turns=#{progress.consecutive_noops} cap=#{cap}"
     )
 
-    case transition_agent_handoff(turn_context, refreshed_issue) do
+    case transition_agent_handoff(update_in(turn_context.opts, &Keyword.put(&1, :superseded_review_handoff?, noop_failure_state(refreshed_issue) == "error")), refreshed_issue) do
       {:handoff, result} ->
         result
 
@@ -445,7 +441,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
         return_completed(turn_context, issue)
 
       state_name ->
-        case Tracker.update_issue_state(issue.identifier, state_name) do
+        case TicketTransition.write_state(issue.identifier, state_name, writer: :turn_loop) do
           :ok ->
             failed_issue = %{issue | state: state_name}
             emit_noop_bound_alert(failed_issue, workspace, worker_host, progress, witness, cap, turn_number)
@@ -478,7 +474,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
 
     case stopped_agent_handoff(refreshed_issue, workspace, worker_host, opts) do
       {:handoff, state} ->
-        case Tracker.update_issue_state(refreshed_issue.identifier, state) do
+        case TicketTransition.write_state(refreshed_issue.identifier, state, writer: :turn_loop) do
           :ok ->
             TurnAlerts.emit_rework_handoff_alert(refreshed_issue, workspace, worker_host, state)
             {:handoff, return_completed(turn_context, %{refreshed_issue | state: state})}
@@ -494,8 +490,10 @@ defmodule Aiur.AgentRunner.TurnLoop do
 
   defp stopped_agent_handoff(issue, workspace, worker_host, opts) do
     ReworkGate.stopped_agent_handoff(issue.identifier, Keyword.get(opts, :rework_head_sha),
-      open_pr_fetcher: Keyword.get(opts, :open_pr_fetcher, &Tracker.fetch_open_pull_request_for_branch/1),
+      open_pr_fetcher: Keyword.get(opts, :open_pr_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1),
       commit_ci_status_fetcher: Keyword.get(opts, :commit_ci_status_fetcher, &GitHubClient.fetch_commit_ci_status/1),
+      superseded_review_handoff?: Keyword.get(opts, :superseded_review_handoff?, false),
+      reviews_fetcher: Keyword.get(opts, :reviews_fetcher),
       workspace: workspace,
       worker_host: worker_host
     )

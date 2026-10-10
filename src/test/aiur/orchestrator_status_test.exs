@@ -611,9 +611,9 @@ defmodule Aiur.OrchestratorStatusTest do
       queue_store: queue_store
     }
 
-    snapshot_input = StatusReport.snapshot_input(state)
+    assert %{status_observed_at: %DateTime{}} = snapshot_input = StatusReport.snapshot_input(state)
 
-    assert snapshot_input == %State{}
+    assert %{snapshot_input | status_observed_at: nil} == %State{}
   end
 
   test "dashboard projection retains queue facts for rendered issues" do
@@ -4351,20 +4351,15 @@ defmodule Aiur.OrchestratorStatusTest do
         {issue_id, item_id}
       end
 
+    # Revalidation runs in an async tracker task (#3998): the replaced worker's
+    # exit is the rearm, and it precedes the state the orchestrator then commits.
+    receive_barrier({:DOWN, rearmed_ref, :process, _worker, _reason})
+    assert rearmed_ref in Enum.map(completed, fn {_issue_id, {_identifier, _worker, ref, _entry}} -> ref end)
+
     state = :sys.get_state(pid)
+    statuses = Enum.frequencies_by(state.running, fn {_issue_id, entry} -> entry.control.status end)
 
-    working_entries =
-      Enum.filter(state.running, fn {_issue_id, entry} ->
-        get_in(entry, [:control, :status]) == :working
-      end)
-
-    completed_entries =
-      Enum.filter(state.running, fn {_issue_id, entry} ->
-        get_in(entry, [:control, :status]) == :completed
-      end)
-
-    assert length(working_entries) == 1
-    assert length(completed_entries) == 2
+    assert statuses == %{working: 1, completed: 2}
     refute Map.keys(state.retry_attempts) |> Enum.any?(&Map.has_key?(completed, &1))
 
     Enum.each(completed, fn {issue_id, {_identifier, worker, old_ref, old_entry}} ->
