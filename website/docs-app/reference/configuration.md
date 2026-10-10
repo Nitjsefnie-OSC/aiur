@@ -32,9 +32,7 @@ The generated `.env.example` groups variables under `## Required`, `## Optional 
 
 ## executor takeover alerts
 
-Aiur watches nonterminal tickets in the run scope and, once a ticket's
-**convergence age** crosses a configurable threshold, raises an advisory
-`needs_attention` alert visible in `aiurdev alerts --needs-attention` and the
+Aiur watches nonterminal tickets in the run scope and, once a ticket's **convergence age** crosses a configurable threshold, raises an advisory `needs_attention` alert visible in `aiurdev alerts --needs-attention` and the
 watch actionable section. The alerts are advisory takeover prompts — they never
 perform a takeover automatically.
 
