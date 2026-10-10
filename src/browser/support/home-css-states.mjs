@@ -2,10 +2,10 @@ import { expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { FIXTURE_META, openDesign } from './design-parity.mjs'
 
-const live = JSON.parse(await readFile(new URL('../../test/fixtures/build_home/live.json', import.meta.url), 'utf8')).data
+const live = JSON.parse(await readFile(new URL('../../test/fixtures/build_home/live.json', import.meta.url), 'utf8'))
 export const BASE = { dataset: 'live', theme: 'dark', palette: 'gruvbox', viewport: { width: 1440, height: 900 } }
 const feature = Object.keys(live.features)[0]
-const epic = live.now.find(t => t.epic)?.epic
+const epic = live.sections.now.find(t => t.epic)?.epic
 export const HOME_MATRIX = FIXTURE_META.datasets.flatMap(dataset => ['graph', 'gantt', 'list'].flatMap(view => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ ...BASE, dataset, theme, palette, query: `view=${view}`, name: `${dataset}-${view}-${theme}-${palette}` })))))
 for (const width of [1440, 1024, 390]) for (const query of ['live=min', 'trees=1', 'models=2', 'models=7', 'span=1', 'span=7', 'span=30', `feature=${feature}&fmode=focus`, `feature=${feature}&fmode=compact`, `epic=${epic}`]) HOME_MATRIX.push({ ...BASE, viewport: { width, height: 900 }, query, name: `${width}-${query}` })
 for (const width of [1181, 1180, 721, 720]) for (const interaction of [undefined, 'modal']) HOME_MATRIX.push({ ...BASE, viewport: { width, height: 900 }, interaction, name: `boundary-${width}-${interaction ?? 'graph'}` })
@@ -15,7 +15,7 @@ for (const view of ['graph', 'gantt', 'list']) for (const theme of ['dark', 'lig
 
 export async function openHomeState(page, cell) {
   let query = cell.query ?? ''
-  if (cell.interaction === 'command') query += `&ticket=${live.now.find(t => t.agent?.state === 'command').id}`
+  if (cell.interaction === 'command') query += `&ticket=AIUR-${live.sections.now.find(t => t.agent?.state === 'command').num}`
   if (cell.interaction === 'nq') query += '&view=list'
   if (cell.interaction === 'lock' || cell.interaction === 'tree') query += '&trees=1'
   await openDesign(page, cell, { query, phase: cell.interaction === 'loading' ? 'loading' : query.includes('view=list') ? 'shell' : 'board' })

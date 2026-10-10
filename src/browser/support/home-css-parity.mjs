@@ -77,6 +77,8 @@ export async function transplant(browser, cell) {
       [...document.querySelectorAll(roots)].flatMap(root => [root, ...root.querySelectorAll('*')]).forEach((e, i) => { e.scrollLeft = scroll[i][0]; e.scrollTop = scroll[i][1] })
     }, { roots: ROOTS, scroll: data.scroll })
     for (const page of [pair.design, pair.product]) await page.mouse.move(0, 0)
+    // Hover is re-hit-tested on a later frame; a loaded host can sample the stale card hover.
+    for (const page of [pair.design, pair.product]) await page.waitForFunction(roots => !document.querySelector(`:is(${roots}) :hover`), ROOTS)
     for (const page of [pair.design, pair.product]) await page.evaluate(() => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = 0 }) })
     return pair
   } catch (error) { await pair.close(); throw error }
