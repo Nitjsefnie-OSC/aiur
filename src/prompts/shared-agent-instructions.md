@@ -81,6 +81,15 @@ that the only failure is the known flake, link the flake ticket and CI run,
 then hand back to the Executor without declaring a dependency or pausing
 for the flake fix. Keep the full required-check gate for human review.
 
+### Rework ends in a handoff, even on red CI
+
+When every blocking review finding is addressed and pushed, move the ticket to
+`agent:human-review` — do not stay in `agent:rework` because checks are red.
+First post one PR comment naming the head SHA, the findings addressed, and any
+failing check you believe is inherited from the base, with evidence (for
+example the same check failing on the base head). Inherited red CI is the
+reviewer's call. Fix a failure your own change caused before handing off.
+
 ### Moving the ticket's state (`aiur_set_ticket_state`)
 
 Change your ticket's `agent:*` state **only** with
@@ -117,7 +126,18 @@ work ordering, so they're worth stating up front:
   needs blocker code. The skill's `stub-then-fetch.md` has the exact provisional
   and integrated `unblocked` emit sequence — follow it rather than guessing the
   event timing from memory.
-- **Resume on explicit unblocked; inspect branch pushes.** A declared blocker's
+- **Optimistic start.** If your prompt has an Optimistic start block, every
+  blocker push is an integration signal: integrate at the next safe checkpoint
+  (WIP committed, no test run in flight). Integrate only direct blockers listed
+  in that block; never merge a grand-blocker's push or a newer integration
+  branch into your still-stacked branch. Updates cascade level by level through
+  direct blocker pushes. Rebase on rewritten history and push
+  with `--force-with-lease`. Keep the PR draft and stacked as the block directs;
+  never mark ready while any blocker PR is unmerged. Load `aiur-agent`
+  [Optimistic start](.claude/skills/aiur-agent/stub-then-fetch.md#optimistic-start-started-on-an-unmerged-blocker)
+  for the canonical loop and park/merge handling.
+- **Resume on explicit unblocked; inspect branch pushes.** For paused
+  dependents, a declared blocker's
   `ticket.N.agent.unblocked` signal, delivered at the mid-turn checkpoint, says
   the dependency is ready to consume. Then load `aiur-agent` and use the latest
   `ticket.N.branch.push` payload only to fetch the actual validated ref (never a
@@ -145,6 +165,8 @@ work ordering, so they're worth stating up front:
 The bare `progress` / `progress.checkin` emits that drive the Executor’s
 agent-list bar are a separate, Executor-facing protocol — see "Progress emits"
 and "Executor check-ins" below, not the skill.
+
+On `ticket.<B>.pr.merged`, a live dependent must follow the aiur-agent dev-loop’s “After the blocker merges: restack” recipe before integrating the base. The daemon restacks only idle dependents.
 
 ### Progress emits — 1-of-10 estimate at phase boundaries
 
@@ -296,3 +318,5 @@ blocker or use focused non-manual tests. Do not retry by copying the repo to
 `/tmp`, cloning another checkout, changing wrapper tmux names, or otherwise
 constructing an alternate harness. Executor-root manual test runs are allowed
 only outside agent turns.
+
+A resumed dependent with `refs/aiur/restack/pending/<branch>` or `refs/aiur/restack/conflict/<branch>` must inspect that receipt and follow the restack recipe before ordinary base integration. The startup hook preserves local divergence and conflict receipts for you to reconcile.

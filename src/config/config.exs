@@ -2,6 +2,16 @@ import Config
 
 config :aiur, env: config_env()
 
+config :aiur, Aiur.Events.TrustClassifier, Aiur.GitHub.EventTrust
+
+config :aiur, :signal, alert_sink: Aiur.Alerts
+
+config :aiur, :turn_sandbox_root_contributors, [
+  Aiur.AgentEnvironment.SandboxRoots,
+  Aiur.GitHub.Budget.SandboxRoots,
+  Aiur.BuildGate.SandboxRoots
+]
+
 config :aiur, :tracker_adapters, %{
   "github" => Aiur.GitHub.Tracker,
   "linear" => Aiur.Linear.Tracker,

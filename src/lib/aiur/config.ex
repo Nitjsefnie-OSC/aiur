@@ -3,13 +3,10 @@ defmodule Aiur.Config do
   Runtime configuration loaded from the aiur config file (`.aiur/config`).
   """
 
-  alias Aiur.AgentEnvironment
-  alias Aiur.BuildGate
   alias Aiur.Config.{Capture, RoutingValue, Schema, SemanticChecks}
   alias Aiur.Config.Schema.AgentValidation
   alias Aiur.Config.Schema.Codex, as: CodexSchema
   alias Aiur.Config.Schema.EnvResolver
-  alias Aiur.GitHub.Budget
   alias Aiur.Workflow
   alias Aiur.WorkflowStore.Cache, as: WorkflowStoreCache
 
@@ -871,41 +868,38 @@ defmodule Aiur.Config do
 
   def default_synthetic_load_process_cap(_schedulers), do: 1
 
-  # Per-scheduler 1-min load ceiling for dispatch admission (#465). Exceeded
-  # load is corroborated with short-window reclaimable CPU before holding. The
-  # default is 1.5; explicit YAML null disables the gate. The threshold is
-  # multiplied by System.schedulers_online/0 (BEAM online schedulers, ~= cores
-  # unless +S-limited).
-  @spec max_load_average() :: float() | nil
-  def max_load_average do
-    settings!().agent.max_load_average
-  end
+  @doc "Linux CPU PSI some avg60 ceiling, in percent; null disables it."
+  @spec max_cpu_pressure() :: float() | nil
+  def max_cpu_pressure, do: settings!().agent.max_cpu_pressure
 
-  @doc """
-  Per-scheduler 1-minute load target for adaptive dispatch capacity. Defaults
-  to 1.0; explicit YAML `null` disables the adaptive envelope while preserving
-  the independent `max_load_average` hard gate.
-  """
+  @doc "Linux CPU PSI some avg60 AIMD target, in percent; null disables it."
+  @spec target_cpu_pressure() :: float() | nil
+  def target_cpu_pressure, do: settings!().agent.target_cpu_pressure
+
+  @doc "Per-scheduler load ceiling used only when CPU PSI is unavailable."
+  @spec max_load_average() :: float() | nil
+  def max_load_average, do: settings!().agent.max_load_average
+
+  @doc "Per-scheduler AIMD load target used only when CPU PSI is unavailable."
   @spec target_load_average() :: float() | nil
   def target_load_average do
     settings!().agent.target_load_average
   end
 
   @doc """
-  Number of dispatch slots added by each below-target envelope sample.
+  Slots added below 80% of the PSI target, or at/below the load fallback target.
   """
   @spec load_ramp_step() :: pos_integer()
-  def load_ramp_step do
-    settings!().agent.load_ramp_step
-  end
+  def load_ramp_step, do: settings!().agent.load_ramp_step
+
+  @spec load_resume_max_age_seconds() :: non_neg_integer()
+  def load_resume_max_age_seconds, do: settings!().agent.load_resume_max_age_seconds
 
   @doc """
-  Minimum number of seconds between high-load envelope decreases.
+  Minimum number of seconds between above-target envelope decreases.
   """
   @spec load_cooldown_seconds() :: non_neg_integer()
-  def load_cooldown_seconds do
-    settings!().agent.load_cooldown_seconds
-  end
+  def load_cooldown_seconds, do: settings!().agent.load_cooldown_seconds
 
   @doc """
   Minimum seconds a ready-work capacity-starvation condition must persist before
@@ -1156,80 +1150,15 @@ defmodule Aiur.Config do
   end
 
   defp codex_runtime_turn_sandbox_policy(settings, workspace, opts) do
-    with {:ok, turn_sandbox_policy} <-
-           Schema.resolve_runtime_turn_sandbox_policy(settings, workspace, opts),
-         {:ok, turn_sandbox_policy} <-
-           maybe_add_package_manager_roots(turn_sandbox_policy, opts),
-         {:ok, turn_sandbox_policy} <- maybe_add_github_budget_root(turn_sandbox_policy, opts) do
-      maybe_add_build_gate_root(turn_sandbox_policy, settings, opts)
+    with {:ok, policy} <- Schema.resolve_runtime_turn_sandbox_policy(settings, workspace, opts) do
+      Enum.reduce_while(Application.get_env(:aiur, :turn_sandbox_root_contributors, []), {:ok, policy}, &contribute_sandbox_roots(&1, &2, settings, opts))
     end
   end
 
-  defp maybe_add_package_manager_roots(turn_sandbox_policy, opts) do
-    cond do
-      Keyword.get(opts, :remote, false) ->
-        {:ok, turn_sandbox_policy}
-
-      not workspace_write_policy?(turn_sandbox_policy) ->
-        {:ok, turn_sandbox_policy}
-
-      true ->
-        Schema.add_runtime_turn_sandbox_roots(turn_sandbox_policy, AgentEnvironment.package_cache_paths(opts))
-    end
-  end
-
-  defp maybe_add_github_budget_root(turn_sandbox_policy, opts) do
-    cond do
-      Keyword.get(opts, :remote, false) ->
-        {:ok, turn_sandbox_policy}
-
-      not workspace_write_policy?(turn_sandbox_policy) ->
-        {:ok, turn_sandbox_policy}
-
-      not Budget.enabled?() ->
-        {:ok, turn_sandbox_policy}
-
-      true ->
-        with :ok <- Budget.ensure_state_dir() do
-          Schema.add_runtime_turn_sandbox_roots(turn_sandbox_policy, [Budget.state_dir()])
-        end
-    end
-  end
-
-  defp maybe_add_build_gate_root(turn_sandbox_policy, settings, opts) do
-    gate_opts = [
-      slots: settings.agent.max_concurrent_builds,
-      stagger_seconds: settings.agent.build_start_stagger_seconds,
-      min_free_memory_mb: settings.agent.min_free_memory_mb
-    ]
-
-    cond do
-      Keyword.get(opts, :remote, false) ->
-        {:ok, turn_sandbox_policy}
-
-      not BuildGate.enabled?(gate_opts) ->
-        {:ok, turn_sandbox_policy}
-
-      not workspace_write_policy?(turn_sandbox_policy) ->
-        {:ok, turn_sandbox_policy}
-
-      true ->
-        with {:ok, effective_roots} <- policy_writable_roots(turn_sandbox_policy),
-             {:ok, gate_dir} <-
-               BuildGate.prepare_writable_root(Keyword.put(gate_opts, :writable_roots, effective_roots)) do
-          Schema.add_runtime_turn_sandbox_roots(turn_sandbox_policy, [gate_dir])
-        end
-    end
-  end
-
-  defp workspace_write_policy?(policy) do
-    (Map.get(policy, "type") || Map.get(policy, :type)) == "workspaceWrite"
-  end
-
-  defp policy_writable_roots(policy) do
-    case Map.get(policy, "writableRoots") || Map.get(policy, :writableRoots) || [] do
-      roots when is_list(roots) -> {:ok, roots}
-      roots -> {:error, {:unsafe_turn_sandbox_policy, {:invalid_writable_roots, roots}}}
+  defp contribute_sandbox_roots(contributor, {:ok, policy}, settings, opts) do
+    case contributor.contribute(policy, settings, opts) do
+      {:ok, policy} -> {:cont, {:ok, policy}}
+      {:error, _reason} = error -> {:halt, error}
     end
   end
 
