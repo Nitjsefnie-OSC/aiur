@@ -28,7 +28,7 @@ defmodule AiurWeb.BuildOrder.PlanningSource do
   alias Aiur.CurrentRunMembership
   alias Aiur.DisplaySanitizer
   alias Aiur.GitHub.Config
-  alias Aiur.Orchestrator.StatusReport
+  alias Aiur.Orchestrator
   alias Aiur.TrackerIdentity
   alias AiurWeb.BuildOrder.DataSource
 
@@ -524,12 +524,15 @@ defmodule AiurWeb.BuildOrder.PlanningSource do
     _kind, _reason -> %{health: :unavailable}
   end
 
-  # `StatusReport` is the in-memory result of the orchestrator's normal
+  # The fleet snapshot is the in-memory result of the orchestrator's normal
   # tracker poll. Reading it adds no GitHub traffic and lets ticket-backed
   # members show current labels while their issue remains in the run snapshot.
+  # It is read from the lock-free read model, never the Orchestrator mailbox:
+  # this runs inside the Build Order LiveView mount, and a mailbox call behind a
+  # busy dispatch loop outlasted the join window and reloaded the page (#4185).
   defp current_poll_labels do
-    case StatusReport.snapshot_api() do
-      snapshot when is_map(snapshot) ->
+    case Orchestrator.dashboard_snapshot() do
+      {status, snapshot, _freshness} when status in [:current, :stale] ->
         [:running, :retrying, :idle]
         |> Enum.flat_map(&Map.get(snapshot, &1, []))
         |> Enum.reduce(%{}, &put_live_labels/2)

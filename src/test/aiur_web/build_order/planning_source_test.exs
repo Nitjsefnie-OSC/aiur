@@ -8,6 +8,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
   alias Aiur.BuildOrder.GraphProjection.Snapshot
   alias Aiur.{BuildOrdersCLI, RepoBase, TrackerIdentity}
   alias Aiur.GitHub.Config
+  alias Aiur.Orchestrator.{SnapshotCache, SnapshotStore}
   alias AiurWeb.BuildOrder.{PlanningSource, RouteState, TicketContextAdapter, TicketContextPresenter}
   alias AiurWeb.BuildOrderPresenter
   alias AiurWeb.OperatorControlCenter.BuildOrderGridModel
@@ -737,6 +738,53 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
 
     assert created.labels == ["agent:rework"]
     assert draft.labels == ["build-lane:dashboard-ui", "phase:2", "complexity:2"]
+  end
+
+  # The catalog is read inside the Build Order LiveView's connected mount, so it
+  # must answer inside the join window whatever the Orchestrator mailbox is
+  # doing. A mailbox read here took its full 15 s timeout behind a busy dispatch
+  # loop, the join timed out, and the client reloaded the page for ever (#4185).
+  test "reads poll labels from the fleet read model while the Orchestrator mailbox is unresponsive" do
+    path = Aiur.TestSupport.tmp_root!("planning-source-busy-orchestrator") <> ".json"
+    File.write!(path, @mixed_pack)
+    Application.put_env(:aiur, :build_order_planning_pack, path)
+
+    {:ok, identity} =
+      TrackerIdentity.from_github(%{"number" => 4101, "node_id" => "I_live_4101"}, {"acme", "widgets"}, {"acme", "widgets"})
+
+    original = Process.whereis(Aiur.Orchestrator)
+    if is_pid(original), do: Process.unregister(Aiur.Orchestrator)
+    # Alive and registered, but it never answers a call: a saturated mailbox.
+    busy = spawn(fn -> Process.sleep(:infinity) end)
+    Process.register(busy, Aiur.Orchestrator)
+    retained = SnapshotCache.get(Aiur.Orchestrator)
+    :ok = SnapshotStore.publish(Aiur.Orchestrator, %{running: [%{tracker_identity: identity, labels: ["agent:rework"]}], retrying: [], idle: []})
+
+    on_exit(fn ->
+      File.rm(path)
+      Process.exit(busy, :kill)
+      if retained, do: SnapshotCache.put(Aiur.Orchestrator, retained), else: SnapshotStore.forget(Aiur.Orchestrator)
+
+      if is_pid(original) and Process.alive?(original) and is_nil(Process.whereis(Aiur.Orchestrator)),
+        do: Process.register(original, Aiur.Orchestrator)
+    end)
+
+    # No :labels_by_identity, so the source has to read the poll labels itself.
+    Application.put_env(:aiur, :build_order_planning_membership_snapshot, fn ->
+      %{generation: 9, health: :healthy, freshness: %{status: :fresh}, members: [%{identity: identity, lifecycle: :queued}]}
+    end)
+
+    read =
+      Task.async(fn ->
+        [root] = PlanningSource.catalog().data.entries
+        {:ok, snapshot} = PlanningSource.demand(root.identity)
+        Enum.map(snapshot.data.members, & &1.labels)
+      end)
+
+    # Far inside the client's join window; the mailbox path needs 15 s per read.
+    assert {:ok, [created, draft]} = Task.yield(read, 2_000) || Task.shutdown(read, :brutal_kill)
+    assert created == ["agent:rework"]
+    assert draft == ["build-lane:dashboard-ui", "phase:2", "complexity:2"]
   end
 
   test "rejects members without canonical ticket or document fields" do
