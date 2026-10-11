@@ -16,6 +16,7 @@ defmodule Aiur.Experiments.Auto.DeployLedgerTest do
     assert {:ok, second} = DeployLedger.record_boot(Keyword.put(opts, :boot_id, "second"))
     assert {:ok, ^second} = DeployLedger.record_boot(Keyword.put(opts, :boot_id, "second"))
     assert {:ok, ^first} = DeployLedger.previous(Keyword.put(opts, :boot_id, "second"))
+    assert {:ok, nil} = DeployLedger.previous(Keyword.put(opts, :boot_id, "first"))
     assert {:ok, [^first, ^second]} = DeployLedger.list({~U[2026-10-09 00:00:00Z], ~U[2026-10-11 00:00:00Z]}, opts)
     assert {:ok, []} = DeployLedger.list({~U[2026-10-10 00:00:01Z], ~U[2026-10-11 00:00:00Z]}, opts)
   end
