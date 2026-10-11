@@ -72,7 +72,9 @@ def check(name, components, files, code=0, messages=(), change=None, git=False, 
             assert message in output, f'{name}: missing {message!r}: {output}'
         if format:
             content = (root / 'components.json').read_bytes()
-            assert json.loads(content) == dict(manifest, components=sorted(components, key=lambda c: (c['layer'], c['id'])))
+            sys.path.insert(0, str(repo / 'scripts'))
+            from components.manifest import canonical
+            assert json.loads(content) == canonical(dict(manifest, components=sorted(components, key=lambda c: (c['layer'], c['id']))))
             subprocess.run(args, env=env, check=True, capture_output=True)
             assert (root / 'components.json').read_bytes() == content, f'{name}: formatting not idempotent'
         print(f'PASS: {name}')
