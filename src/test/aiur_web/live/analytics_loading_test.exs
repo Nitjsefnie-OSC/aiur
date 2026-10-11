@@ -4,12 +4,44 @@ defmodule AiurWeb.AnalyticsLoadingTest do
   import Phoenix.ConnTest, except: [build_conn: 0]
   import Phoenix.LiveViewTest
 
-  alias Aiur.RunTelemetry.RetainedCache
+  alias Aiur.RunTelemetry.Summaries
   alias Aiur.TestSupport.LiveViewAsync
   alias AiurWeb.Endpoint
 
   @endpoint Endpoint
   @summary Path.expand("../../fixtures/analytics/runs/boot-a/run-summary.json", __DIR__)
+
+  defmodule SlowAnalyticsLive do
+    use Phoenix.LiveView
+    alias AiurWeb.OperatorControlCenter.Analytics.Runtime
+
+    @impl true
+    def mount(params, session, socket) do
+      {:ok, socket} = AiurWeb.AnalyticsLive.mount(params, session, socket)
+      parent = session["parent"]
+      dataset = session["dataset"]
+
+      loader = fn ->
+        monitor = Process.monitor(parent)
+        send(parent, {:scan_started, self()})
+        receive do
+          :release -> {[dataset], false}
+          {:DOWN, ^monitor, :process, ^parent, _reason} -> exit(:test_requester_exited)
+        end
+      end
+
+      {:ok, Runtime.load(socket, [cache_identity: session["identity"], prior_loader: loader], fn -> %{state: :absent, title: "Disabled", message: "Compression is disabled."} end)}
+    end
+
+    @impl true
+    defdelegate handle_async(name, result, socket), to: AiurWeb.AnalyticsLive
+    @impl true
+    defdelegate handle_event(name, params, socket), to: AiurWeb.AnalyticsLive
+    @impl true
+    defdelegate handle_info(message, socket), to: AiurWeb.AnalyticsLive
+    @impl true
+    defdelegate render(assigns), to: AiurWeb.AnalyticsLive
+  end
 
   setup context do
     root = Aiur.TestSupport.tmp_root!("analytics-loading")
@@ -51,27 +83,16 @@ defmodule AiurWeb.AnalyticsLoadingTest do
     IO.puts("cold /analytics HTTP response: #{elapsed} ms")
   end
 
-  test "concurrent mounts stay responsive during one blocked retained scan and both receive charts", %{root: root} do
-    fifo = Path.join(root, "test/analytics/analytics/runs/prior/run-summary.json")
-    File.mkdir_p!(Path.dirname(fifo))
-    {_, 0} = System.cmd("mkfifo", [fifo])
-
-    writer =
-      Port.open({:spawn_executable, System.find_executable("python3")}, [
-        :binary,
-        :exit_status,
-        args: ["-u", "-c", "import sys\nwith open(sys.argv[1], 'wb') as fifo:\n print('scan_started', flush=True)\n sys.stdin.readline()\n fifo.write(open(sys.argv[2], 'rb').read())", fifo, @summary]
-      ])
-
-    on_exit(fn -> if Port.info(writer), do: Port.close(writer) end)
-
-    {:ok, first, html} = live(build_conn(), "/analytics")
+  test "concurrent mounts stay responsive during one blocked retained scan and both receive charts" do
+    {:ok, dataset} = @summary |> File.read!() |> Summaries.decode_summary()
+    session = %{"parent" => self(), "identity" => make_ref(), "dataset" => dataset}
+    {:ok, first, html} = live_isolated(build_conn(), SlowAnalyticsLive, session: session)
     assert html =~ "Loading run analytics"
-    receive_barrier({^writer, {:data, "scan_started\n"}})
-    {:ok, second, html} = live(build_conn(), "/analytics")
+    receive_barrier({:scan_started, worker})
+    {:ok, second, html} = live_isolated(build_conn(), SlowAnalyticsLive, session: session)
     assert html =~ "Loading run analytics"
     assert render_click(first, "toggle-nav", %{}) =~ "Loading run analytics"
-    Port.command(writer, "release\n")
+    send(worker, :release)
 
     for view <- [first, second] do
       rendered = LiveViewAsync.render_when_complete(view)
@@ -80,8 +101,7 @@ defmodule AiurWeb.AnalyticsLoadingTest do
       refute rendered =~ "Loading run analytics"
     end
 
-    # One FIFO write supplies both requests; a second scan would block forever.
-    assert [{_, {[_dataset], false}}] = :ets.lookup(AiurWeb.OperatorControlCenter.Analytics.LatestRun, {RetainedCache.identity(Aiur.RunTelemetry.boot_id()), nil})
+    refute_received {:scan_started, _worker}
   end
 
   test "async worker exits become an unavailable state" do
