@@ -24,6 +24,7 @@ defmodule AiurWeb.AnalyticsLoadingTest do
       loader = fn ->
         monitor = Process.monitor(parent)
         send(parent, {:scan_started, self()})
+
         receive do
           :release -> {[dataset], false}
           {:DOWN, ^monitor, :process, ^parent, _reason} -> exit(:test_requester_exited)
