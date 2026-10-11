@@ -4,7 +4,9 @@ defmodule Aiur.RepoBase.StateTree do
   the path safety checks every state writer and migration step relies on.
   """
 
-  @cache_sidecars [".aiur-hex", ".aiur-mix", ".aiur-npm-cache"]
+  alias Aiur.Config.Paths
+
+  @cache_sidecars Paths.repo_cache_sidecars()
 
   @doc false
   @spec cache_sidecars() :: [String.t()]
@@ -12,9 +14,7 @@ defmodule Aiur.RepoBase.StateTree do
 
   @doc false
   @spec cache_sidecar_paths(Path.t()) :: [Path.t()]
-  def cache_sidecar_paths(root) when is_binary(root) do
-    Enum.map(@cache_sidecars, &Path.join(root, &1))
-  end
+  defdelegate cache_sidecar_paths(root), to: Paths, as: :repo_cache_sidecar_paths
 
   @doc false
   @spec ensure_state_tree_at(Path.t()) :: :ok | {:error, term()}
