@@ -757,7 +757,7 @@ A label write also corrects the labels on the issue Aiur already holds, and does
 
 A write that fails records nothing.
 
-Main watch accepts base Actions checks without a PR and debounces bursts for two seconds. At the default 120-second polling cadence, an unchanged completed census costs two Core reads: `main_watch_commits` and `main_watch_runs`. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
+Main watch debounces base Actions deliveries for two seconds. At the default 120-second cadence, an unchanged completed census costs two Core reads: `main_watch_commits` and `main_watch_runs`. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
 
 A cold 20-SHA green census costs 42 reads; one changed SHA costs four; startup adds one permission probe. These are transport-test counts, not live measurements. Each reconciliation caps all transport calls at 64, including evidence, suspects and reruns; exhausted or incomplete reads retain known state and mark it unavailable.
 
