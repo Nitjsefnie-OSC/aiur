@@ -481,11 +481,12 @@ Mutations print each ticket's outcome; partial success exits 1 and names refusal
 Clear persists unmark intents before paced writes; crashes resume on restart. A budget hold reports `writes_paused`; rerun after it lifts. Wait for successful clear before downgrading; `agent:todo` remains dispatchable. The build queue uses the `agent:queued` membership marker; `aiur units --condition queued` still means tickets carrying `agent:todo`.
 
 `queue show` exit codes: 0 for `running` or `writes_paused`; 1 for `disabled`, `unsupported_tracker`, `store_unavailable`, or a refused selection; 64 for invalid launcher arguments; 124 for an RPC timeout. Refusal statuses still print their read model.
+
 ## `pr merge`
+
 `aiur pr merge <N> --reviewed-sha <full-sha>` performs a standalone squash merge using the operator's stored `gh` credential. It works with the daemon stopped. The login must be in `tracker.github.human_mergers`; agent workspaces, the agent account and App identities are refused.
 
-The command checks the reviewed head, draft state, approval or verified bypass, required CI, conflicts and configured premerge checks. Failed checks always refuse. Premerge checks run on a detached merge-result worktree, with ten minutes per command. The operator checkout and PR branch are
-untouched.
+Checks cover head, draft, approval/bypass, CI, conflicts and premerge commands on the merge result. Failed checks refuse; commands have ten minutes each. The checkout and PR branch stay unchanged.
 
 - `--dry-run`: evaluate gates without posting a review or merging.
 - `--approve-body-file <file>`: approve the reviewed head before merging.
@@ -496,5 +497,4 @@ Under `ci: wait`, every required check must pass. The `pending_ok` gate needs cu
 
 Exit codes: `0` merged or dry run; `2` policy refusal (`REFUSE` per reason); `1` tool/network error.
 
-Successful merges print the policy and pending checks, append `~/.aiur/logs/pr-merge/merges.ndjson`, and notify a running daemon with `system.pr.merged`.
-Ledger or daemon notification failures print a warning without retrying the merge. Failure logs share that directory.
+Successful merges print the policy and pending checks, append `~/.aiur/logs/pr-merge/merges.ndjson`, and notify a running daemon with `system.pr.merged`. Ledger or daemon notification failures print a warning without retrying the merge. Failure logs share that directory.

@@ -80,6 +80,7 @@ defmodule Aiur.PrMerge.MergeResultTest do
     args = Enum.flat_map(paths, &["-pa", &1])
     settings = %{workspace: %{root: Path.join(ctx.root, "agents")}, merge_policy: %{premerge_checks: ["echo owned-check; test -f file"]}}
     git = System.get_env("AIUR_REAL_GIT") || System.find_executable("git")
+
     script = """
     runner = fn repo, args, _env -> {:ok, System.cmd(#{inspect(git)}, ["-C", repo | args], stderr_to_stdout: true)} end
     result = Aiur.PrMerge.MergeResult.check(#{inspect(pr)}, #{inspect(settings)},
@@ -87,6 +88,7 @@ defmodule Aiur.PrMerge.MergeResultTest do
       log_root: #{inspect(Path.join(ctx.root, "logs"))}, run: runner)
     if result != :ok, do: raise(inspect(result))
     """
+
     tasks = for _ <- 1..2, do: Task.async(fn -> System.cmd("elixir", args ++ ["-e", script], env: [{"ERL_FLAGS", "+S 2:2"}], stderr_to_stdout: true) end)
     results = Enum.map(tasks, &Task.await(&1, 30_000))
     assert Enum.all?(results, fn {_output, status} -> status == 0 end), inspect(results)
