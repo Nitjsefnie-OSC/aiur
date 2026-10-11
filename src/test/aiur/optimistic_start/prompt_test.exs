@@ -16,8 +16,8 @@ defmodule Aiur.OptimisticStart.PromptTest do
     Workflow.set_workflow_file_path(path)
 
     on_exit(fn ->
-      File.rm_rf!(dir)
       if previous, do: Workflow.set_workflow_file_path(previous), else: Workflow.clear_workflow_file_path()
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     :ok

@@ -27,7 +27,7 @@ defmodule Aiur.OptimisticStart.CheckoutTest do
     sha = head(source)
     git!(["-C", source, "push", "--quiet", "origin", @blocker])
     git!(["clone", "--quiet", remote, base])
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     %{source: source, base: base, workspace: workspace, sha: sha, base_sha: base_sha, start_point: %{ref: "refs/heads/" <> @blocker, sha: sha}}
   end
 
