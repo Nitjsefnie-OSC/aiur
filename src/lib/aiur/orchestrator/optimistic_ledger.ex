@@ -40,7 +40,7 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
   @spec get(String.t()) :: {:ok, map() | nil} | {:error, :ledger_unavailable}
   def get(ticket) do
     with {:ok, rows} <- records() do
-      {:ok, rows |> Enum.filter(&(&1["ticket"] == ticket)) |> Enum.max_by(& &1["started_at_ms"], fn -> nil end)}
+      {:ok, rows |> Enum.filter(&(&1["ticket"] == ticket)) |> Enum.max_by(&attempt_order/1, fn -> nil end)}
     end
   end
 
@@ -100,10 +100,13 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
   def handle_call(_message, _from, %{writable?: false} = state), do: {:reply, {:error, :ledger_unavailable}, state}
 
   def handle_call({:start, ticket, attrs}, _from, state) do
+    sequences = for {_id, %{"v" => 1} = row} <- state.records, do: row["attempt_sequence"] || 0
+
     record = %{
       "v" => 1,
       "ticket" => ticket,
       "attempt_id" => attrs.attempt_id,
+      "attempt_sequence" => Enum.max(sequences, fn -> 0 end) + 1,
       "start_trigger" => to_string(attrs.start_trigger),
       "started_at_ms" => attrs.started_at_ms,
       "blockers" => attrs.blockers,
@@ -124,8 +127,10 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
     write_reply(state, rows)
   end
 
+  defp attempt_order(row), do: {row["attempt_sequence"] || 0, row["started_at_ms"], row["attempt_id"]}
+
   defp latest_id(attempts) do
-    case Enum.max_by(attempts, & &1["started_at_ms"], fn -> nil end) do
+    case Enum.max_by(attempts, &attempt_order/1, fn -> nil end) do
       nil -> nil
       row -> row["attempt_id"]
     end
@@ -219,6 +224,7 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
 
   defp valid_record?(id, %{"v" => 1} = row) do
     row["attempt_id"] == id and is_binary(row["ticket"]) and is_integer(row["started_at_ms"]) and
+      (is_nil(row["attempt_sequence"]) or (is_integer(row["attempt_sequence"]) and row["attempt_sequence"] > 0)) and
       valid_blockers?(row["blockers"]) and
       valid_counters?(row["counters"]) and
       row["status"] in ["running", "parked", "closed"] and (row["status"] != "closed" or is_integer(row["closed_at_ms"]))

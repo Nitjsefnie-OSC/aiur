@@ -70,6 +70,27 @@ defmodule Aiur.Orchestrator.OptimisticLedgerTest do
     assert hd(old["blockers"])["pr_head_ref_at_start"] == "refs/heads/aiur/12-original"
   end
 
+  test "redispatch with the same snapshot time updates the newest attempt after restart", %{path: path} do
+    start(path)
+    assert :ok = OptimisticLedger.record_start("10", attrs("z-first", 100))
+    assert :ok = OptimisticLedger.record_start("10", attrs("a-retry", 100))
+    assert :ok = OptimisticLedger.record_start("10", attrs("z-first", 100))
+    stop_supervised!(OptimisticLedger)
+    start(path)
+    assert record("10")["attempt_id"] == "a-retry"
+    assert record("10")["started_at_ms"] == 100
+    assert :ok = OptimisticLedger.bump("10", :parks, 1)
+    assert :ok = OptimisticLedger.set_status("10", :parked, 200)
+    assert :ok = OptimisticLedger.update_blocker("10", "12", %{last_head_sha: "retry-head"})
+    assert {:ok, stored} = JsonStore.read(path)
+    assert stored["records"]["z-first"]["counters"]["parks"] == 0
+    assert stored["records"]["z-first"]["status"] == "running"
+    retry = stored["records"]["a-retry"]
+    assert retry["counters"]["parks"] == 1
+    assert retry["status"] == "parked"
+    assert hd(retry["blockers"])["last_head_sha"] == "retry-head"
+  end
+
   test "close selects merged_after_redo and removes closed attempts from blocker reads", %{path: path} do
     start(path)
     OptimisticLedger.record_start("10", attrs())
