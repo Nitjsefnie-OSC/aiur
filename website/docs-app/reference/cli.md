@@ -289,7 +289,6 @@ Fleet-capacity and build-gate evidence have independent source states: stale fle
 | `aiur experiments show <id> [--json]` | Shows spec, phase, journal tail, annotations, snapshot references and read-only state. | `aiur experiments show delivery-change --json` |
 | `aiur experiments create --from <file\|-> [--draft] [--no-freeze] [--json]` | Imports a JSON spec from a caller file or stdin. Repeating a spec key returns the existing experiment. | `cat spec.json \| aiur experiments create --from -` |
 | `aiur experiments create --title <title> --line <type>:<ref>[@time] --metric <pack>/<metric>[:direction]` | Creates a before/after experiment; repeat `--metric` to add metrics. Direction defaults to decrease. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric delivery-speed/start_to_merge:decrease --draft` |
-
 | `aiur experiments create --draft` | Creates a draft rather than the default active status. | `aiur experiments create --from spec.json --draft` |
 | `aiur experiments create --no-freeze` | Suppresses the default baseline-freeze request and its unavailable warning. | `aiur experiments create --from spec.json --no-freeze` |
 | `aiur experiments create --hypothesis <text>` | Sets the quick-form hypothesis; default is empty. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric delivery-speed/start_to_merge --hypothesis faster` |
@@ -414,15 +413,11 @@ A stalled consumer still holds a claim and still renews its lease, so a presence
 
 Multiple executors are a supported configuration, so a healthy peer is listed plainly and is not a fault. An agent reports what it finds and recommends; it never revokes a live peer's claim on its own.
 
-Records — the journal, wake inbox, cursor, and subscriptions — are created automatically on first use beneath the per-repository state node (`~/.aiur/repo/<owner>/<repo>/executor`), so they survive a daemon restart and a
-successor resumes from the durable cursor.
+Records — the journal, wake inbox, cursor, and subscriptions — are created automatically on first use beneath the per-repository state node (`~/.aiur/repo/<owner>/<repo>/executor`), so they survive a daemon restart and a successor resumes from the durable cursor.
 
-Within that node, wake files are prefixed by the sanitized final segment of the tracker project identity (`Paths.repo_name/0`): `<repo>.executor.wakes.ndjson`,
-`<repo>.executor.wakes.cursor.json`, and `<repo>.executor.wakes.pending.json`.
+Within that node, wake files are prefixed by the sanitized final segment of the tracker project identity (`Paths.repo_name/0`): `<repo>.executor.wakes.ndjson`, `<repo>.executor.wakes.cursor.json`, and `<repo>.executor.wakes.pending.json`.
 
-A notification monitor must use that `<repo>` prefix (for example,
-`khala.executor.wakes.ndjson`), check that the wake file exists before declaring
-itself armed, and never substitute the `aiur` prefix in a consumer repository.
+A notification monitor must use that `<repo>` prefix (for example, `khala.executor.wakes.ndjson`), check that the wake file exists before declaring itself armed, and never substitute the `aiur` prefix in a consumer repository.
 
 A `tail -F -n0` follower is a low-latency notification aid only. It skips the existing prefix, may filter wake classes, has no consumer identity or lease, and never advances the durable cursor.
 
