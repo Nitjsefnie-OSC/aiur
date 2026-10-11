@@ -8,7 +8,7 @@ stages and their acceptance gates are delivered. No measured saving is claimed.
 
 ## Layout choice and preservation
 
-There are 49 components. Expanded monolithic JSON would occupy 2,213 lines;
+The initial snapshot had 49 components. Expanded monolithic JSON would occupy 2,213 lines;
 the largest expanded component occupies 105. `components/<id>.json` holds each
 component, indexed explicitly by `components.json`. Readers assemble the same
 manifest and validate the existing schema, ownership rules, and reference gates.
@@ -17,6 +17,11 @@ A comparison against the pre-change manifest confirmed all 49 components,
 22 seams, and 3 ports identical after normalizing unordered string sets and
 component order. Every TSV exemption and its reason survived unchanged.
 Ordered event, field, and supervisor lists retain their original sequence.
+
+After integrating main at `eac895dd87675ac89f201be2cd294884f08c4b62`, the
+assembled manifest matches all 50 components, 23 seams, and 3 ports from main.
+The new experiments component and changed control/workspace ownership survive.
+A pushed rescue ref preserves the pre-integration feature head `5bf92eb86aa6a379e78ca6e39bd9f565acd66784`.
 
 ## Open-PR population
 
