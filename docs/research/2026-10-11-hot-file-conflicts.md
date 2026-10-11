@@ -67,6 +67,37 @@ The Executor should refresh this census immediately before landing. It is an
 observation, not a stable population estimate. A PR's file list must be complete
 before counting it; the final handoff records any API pagination limitations.
 
+## Refreshed publication population
+
+Observed 2026-10-11 18:16:31 UTC: 89 open PRs, including this draft (#4295).
+The same census command was used; the only truncated file list remains #2418,
+whose complete Git comparison above has no hot-file overlap.
+
+| Hot file | Open PRs | PR numbers |
+| --- | ---: | --- |
+| `components.json` | 23 | 4295, 4283, 4279, 4250, 4247, 4233, 4230, 4215, 4195, 4173, 4165, 4154, 4060, 4039, 4038, 4023, 4021, 4000, 3989, 3930, 3916, 3855, 3557 |
+| `website/docs-app/reference/cli.md` | 10 | 4279, 4257, 4250, 4247, 4165, 4152, 4014, 3830, 3006, 2643 |
+| `website/docs-app/reference/configuration.md` | 9 | 4287, 4257, 4152, 4064, 3928, 3006, 2946, 2870, 2510 |
+| `src/lib/aiur/run_telemetry/lifecycle.ex` | 6 | 4295, 4283, 4255, 4195, 4000, 2936 |
+| `src/test/support/state_writers_allowlist.exs` | 3 | 4295, 4218, 4154 |
+| `scripts/components/allowlist/accounting.tsv` | 1 | 3989 |
+| `scripts/components/allowlist/agent-runner.tsv` | 3 | 4295, 4000, 3989 |
+| `scripts/components/allowlist/agent-sandbox.tsv` | 2 | 3989, 3855 |
+| `scripts/components/allowlist/commands.tsv` | 1 | 3989 |
+| `scripts/components/allowlist/config.tsv` | 2 | 4295, 3989 |
+| `scripts/components/allowlist/control-cli.tsv` | 2 | 4021, 4014 |
+| `scripts/components/allowlist/dashboard-ui.tsv` | 2 | 4295, 3989 |
+| `scripts/components/allowlist/event-bus.tsv` | 1 | 3989 |
+| `scripts/components/allowlist/executor-attention.tsv` | 1 | 4021 |
+| `scripts/components/allowlist/github.tsv` | 2 | 4295, 3989 |
+| `scripts/components/allowlist/harness-adapters.tsv` | 3 | 4000, 3989, 3855 |
+| `scripts/components/allowlist/identity.tsv` | 1 | 3989 |
+| `scripts/components/allowlist/orchestration.tsv` | 3 | 4195, 3993, 3855 |
+| `scripts/components/allowlist/telemetry.tsv` | 2 | 4283, 3989 |
+| `scripts/components/allowlist/tui.tsv` | 1 | 4000 |
+| `scripts/components/allowlist/web-shell.tsv` | 1 | 3989 |
+| `scripts/components/allowlist/workspace.tsv` | 3 | 4295, 4000, 3989 |
+
 ## Real GitHub branch demonstration
 
 Scratch PRs [#4289](https://github.com/aiur-team/aiur/pull/4289) and
