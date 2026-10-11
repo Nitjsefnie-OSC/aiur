@@ -157,6 +157,15 @@
       "forbid": ["Aiur.Orchestrator", "Aiur.Orchestrator.*", "Aiur.GitHub", "Aiur.GitHub.*"]
     },
     {
+      "id": "experiments-page", "name": "Experiments dashboard page", "layer": 4, "kind": "optional",
+      "paths": ["src/lib/aiur_web/live/experiments_live.ex", "src/lib/aiur_web/experiments/**", "src/lib/aiur_web/routes/experiments.ex"],
+      "facades": ["AiurWeb.Routes.Experiments"], "facade_pending": null,
+      "requires": ["web-kit", "dashboard-ui", "web-shell", "experiments"], "optional": [],
+      "owns": {"config": [], "env": [], "state": [], "capabilities": []},
+      "prior": [],
+      "forbid": ["Aiur.RunTelemetry", "Aiur.RunTelemetry.*", "Aiur.Orchestrator", "Aiur.Orchestrator.*", "Aiur.GitHub", "Aiur.GitHub.*", "AiurWeb.OperatorControlCenter.Analytics.Presenter", "AiurWeb.OperatorControlCenter.Analytics.Charts", "Aiur.Experiments.*"]
+    },
+    {
       "id": "commands", "name": "Commands (code: Decisions) and Asks", "layer": 3, "kind": "required",
       "paths": ["src/lib/aiur_web/routes/decisions.ex", "src/lib/aiur/asks.ex", "src/lib/aiur/asks_store.ex", "src/lib/aiur/decision*.ex", "src/lib/aiur/decision_api/**", "src/lib/aiur/decision_dispatch_tasks/**", "src/lib/aiur/decision_event/**", "src/lib/aiur/decision_metrics/**", "src/lib/aiur/decision_query/**", "src/lib/aiur/decision_store/**", "src/lib/aiur/supervisor_token.ex", "src/lib/aiur/supervisor_token/**", "src/lib/aiur_web/controllers/decision*.ex", "src/lib/aiur/commands.ex", "src/lib/aiur/commands/**"],
       "facades": ["Aiur.Commands", "Aiur.Commands.DeliveryTarget", "Aiur.Decision", "Aiur.DecisionAnswer", "Aiur.DecisionRevision", "Aiur.DecisionEvent", "Aiur.DecisionArtifact", "AiurWeb.DecisionApiController", "AiurWeb.Routes.Decisions"], "facade_pending": null,
@@ -299,7 +308,7 @@
       "id": "dashboard-ui", "name": "LiveView pages and Operator Control Center", "layer": 4, "kind": "optional",
       "paths": ["src/lib/aiur_web/routes/dashboard_pages.ex", "src/lib/aiur/event_humanizer.ex", "src/lib/aiur/event_humanizer_helpers.ex", "src/lib/aiur_web/**", "src/lib/aiur_web/sockets/live_view.ex"],
       "facades": ["*"], "facade_pending": "MP-R1-C1-T02",
-      "requires": ["web-kit", "web-shell", "projections", "kernel", "orchestration", "signal"], "optional": ["commands", "build-orders", "build-queue", "conversations", "voice-stt", "accounting", "streamdeck-server", "github", "ticket-context", "telemetry"],
+      "requires": ["web-kit", "web-shell", "projections", "kernel", "orchestration", "signal", "identity"], "optional": ["commands", "build-orders", "build-queue", "conversations", "voice-stt", "accounting", "streamdeck-server", "github", "ticket-context", "telemetry"],
       "owns": {"config": [], "env": [], "state": [], "capabilities": []},
       "prior": ["WEB"]
     },
@@ -331,7 +340,7 @@
       "id": "web-shell", "name": "HTTP endpoint, router, auth, sockets, JSON API", "layer": 4, "kind": "optional",
       "paths": ["src/lib/aiur_web/routes/api.ex", "src/lib/aiur/http_server.ex", "src/lib/aiur/http_server/**", "src/lib/aiur/tailscale_funnel.ex", "src/lib/aiur_web/controllers/*api*.ex", "src/lib/aiur_web/controllers/observability*.ex", "src/lib/aiur_web/endpoint.ex", "src/lib/aiur_web/financial_data_access.ex", "src/lib/aiur_web/router.ex", "src/lib/aiur_web/supervisor_auth.ex"],
       "facades": ["*"], "facade_pending": "MP-R1-C1-T02",
-      "requires": ["config", "identity", "projections", "web-kit"], "optional": ["conversations", "github-listeners", "commands", "build-orders", "voice-stt", "pairing-discovery", "streamdeck-server", "dashboard-ui"],
+      "requires": ["config", "identity", "projections", "web-kit"], "optional": ["conversations", "github-listeners", "commands", "build-orders", "voice-stt", "pairing-discovery", "streamdeck-server", "dashboard-ui", "experiments-page"],
       "owns": {"config": ["observability", "server"], "env": ["AIUR_DASHBOARD_PASSWORD", "AIUR_DASHBOARD_USERNAME"], "state": [], "capabilities": []},
       "prior": ["WEB"]
     },

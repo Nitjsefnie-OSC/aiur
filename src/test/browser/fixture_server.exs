@@ -7,7 +7,7 @@ Code.require_file("../support/browser_harness/models_panel_live.ex", __DIR__)
 
 for file <- ~w(
       route_shell_live graph_live ticket_context_live units_live_data units_live
-      support build_order_source meters_live
+      support build_order_source meters_live experiments
     ) do
   Code.require_file("fixture/#{file}.exs", __DIR__)
 end
@@ -15,7 +15,6 @@ end
 defmodule Aiur.BrowserHarness.FixtureRouter do
   use Phoenix.Router
   import Phoenix.LiveView.Router
-
   alias Aiur.BrowserHarness.FixtureAuth
 
   pipeline :browser do
@@ -56,6 +55,7 @@ defmodule Aiur.BrowserHarness.FixtureRouter do
     get("/build-control/:action", Aiur.BrowserHarness.FixtureBuildControl, :configure)
     get("/streamdeck-control/:mode", Aiur.BrowserHarness.FixtureStreamdeckControl, :configure)
     get("/build-queue-control/:state", Aiur.BrowserHarness.BuildQueueFixture, :configure)
+    get("/experiments-control/:scenario", Aiur.BrowserHarness.ExperimentsFixture, :configure)
   end
 
   scope "/" do
@@ -158,6 +158,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
     Application.put_env(:aiur, :build_data_source, Aiur.TestSupport.BuildHome.FixtureSource)
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
     configure_forwarded_dashboard()
+    Aiur.BrowserHarness.ExperimentsFixture.prepare("empty")
 
     {:ok, _} =
       Supervisor.start_link(
@@ -169,7 +170,8 @@ defmodule Aiur.BrowserHarness.FixtureServer do
           Supervisor.child_spec({Phoenix.PubSub, name: Aiur.PubSub}, id: Aiur.PubSub),
           {AiurWeb.Endpoint, []},
           AiurWeb.FinancialDataAccess.Generation,
-          AiurWeb.VoiceSessionLimiter
+          AiurWeb.VoiceSessionLimiter,
+          Aiur.Experiments.Store
         ],
         strategy: :one_for_one
       )
