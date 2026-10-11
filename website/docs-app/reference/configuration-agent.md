@@ -52,7 +52,8 @@ Sections of the [configuration reference](/reference/configuration) covering `ag
 | `agent.budget_broker_rate_window_seconds` | integer | 300 | The sliding window over which budget-broker-timeout retries are counted for the retry-rate signal. The individual retry is uninteresting; the rate is the signal. |
 | `agent.budget_broker_degraded_retry_threshold` | integer | 5 | The retry count within the window above which the budget broker counts as degraded. Set from a measured quiet-period baseline — if the normal rate is zero, almost any sustained rate is worth surfacing — and kept above an isolated timeout, which must page nobody. |
 | `agent.budget_broker_degraded_alert_after_seconds` | integer | 600 | How long the degraded budget-broker retry rate must persist before the single `system.github.budget_broker_degraded` alert raises (the dwell): a momentary blip that clears within this bound produces nothing, a sustained degradation raises exactly once. |
-| `agent.synthetic_load_process_cap` | integer or nil | nil | Caps synthetic load processes; 0 disables the guard. |
+| `agent.synthetic_load_process_cap` | integer or nil | nil | Caps synthetic CPU load generators per agent process tree; nil derives `max(1, cores / 4)` and 0 disables the guard. A generator is a known command (`yes`, `stress`, `stress-ng`) or any process seen busy-looping for 10 seconds: runnable and burning CPU with no read/write syscall, no new page fault and no voluntary context switch. Known commands above the cap are killed. A generator that outlives its agent command (its session leader has exited or init adopted it, and its working directory is under `workspace.root`) is flagged regardless of the cap; that orphan scan is skipped when `workspace.root` is the home directory or one of its ancestors. Every kill or first sighting raises a `system.agent.synthetic_load_cap` alert naming the workspace. |
+| `agent.synthetic_load_kill_detected` | boolean | false | When false, a busy loop detected by behaviour and any orphaned generator are report-only: logged with pid and command line and alerted once, but left running. Set true to kill them too (busy loops above the cap, orphans outright). |
 | `agent.backend_configs` | map | `%{}` | Provider-specific configuration, including per-backend settings and credentials for OpenAI-compatible backends. A backend listed in `agent.priority` is enabled automatically. |
 | `agent.rate_limit_primary` | string | default backend | Deprecated primary backend watched for automatic rate-limit recovery; derived from `agent.priority` when set. |
 | `agent.max_turns_by_complexity` | map | `%{}` | Per-complexity turn caps. |
@@ -71,6 +72,10 @@ Each entry is a **route**, not just a backend name. A route uses the same gramma
 - `openrouter:anthropic/claude-sonnet-5`: that model reached through OpenRouter.
 
 A colon-free entry means what it has always meant, so **existing configs need no change**.
+
+If a hot-reloaded `.aiur/config` fails validation, the daemon keeps running on the last good config. It raises a `system.config.reload_rejected` alert, and `aiur status` shows `CONFIG RELOAD REJECTED` until a corrected file loads.
+
+The effort segment must be one the backend accepts. Headless `claude` takes no effort segment, so write `claude:sonnet`. Append `+remote` to route through the Claude REPL, which accepts `low`, `medium`, `high`, `xhigh` and `max`: `claude:sonnet:medium+remote`.
 
 ```yaml
 agent:
@@ -92,8 +97,7 @@ agent:
     avoid_peak_pricing: true
 ```
 
-**A model reachable two ways may appear twice, and the order is the fallback
-order.** Duplicate *routes* are rejected; duplicate backends are not.
+**A model reachable two ways may appear twice, and the order is the fallback order.** Duplicate *routes* are rejected; duplicate backends are not.
 
 | Model name | Behavior |
 | --- | --- |
@@ -104,8 +108,7 @@ order.** Duplicate *routes* are rejected; duplicate backends are not.
 
 **OpenRouter needs an explicit model.** It fronts a catalog rather than a product, so a bare `openrouter` entry is a config error.
 
-**An untagged model never falls back to OpenRouter implicitly.** Bare `claude`
-means direct-only, always. Routing through OpenRouter is something you write.
+**An untagged model never falls back to OpenRouter implicitly.** Bare `claude` means direct-only, always. Routing through OpenRouter is something you write.
 
 #### What happens when a route fails
 
@@ -286,11 +289,9 @@ backend straight at it; it returns identifiers and display names, no pricing.
 | Cold offline start | the discovered set is empty and aiur uses exactly the curated list, i.e. it behaves as it did before discovery existed |
 | Corrupt cache | treated as absent; falls back to the curated list |
 
-Writes are atomic (temp file plus rename) and a concurrent refresh is a no-op rather
-than a duplicate request.
+Writes are atomic (temp file plus rename) and a concurrent refresh is a no-op rather than a duplicate request.
 
-**Config validation never makes a network call.** Validation reads the cache and
-nothing else. An absent or stale cache means "cannot verify", and a model aiur cannot
+**Config validation never makes a network call.** Validation reads the cache and nothing else. An absent or stale cache means "cannot verify", and a model aiur cannot
 verify is **accepted**, never rejected.
 
 ### Identifiers aiur refuses

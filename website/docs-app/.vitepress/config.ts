@@ -163,6 +163,7 @@ export default withMermaid(defineConfig({
           text: 'APIs',
           items: [
             { text: 'GitHub', link: '/apis/github' },
+            { text: 'CI failure evidence', link: '/apis/ci-failure-evidence' },
             { text: 'ElevenLabs', link: '/apis/elevenlabs' }
           ]
         },
@@ -173,6 +174,7 @@ export default withMermaid(defineConfig({
             { text: 'Configuration: agent', link: '/reference/configuration-agent' },
             { text: 'Configuration: build_order', link: '/reference/configuration-build-order' },
             { text: 'Configuration notes', link: '/reference/configuration-notes' },
+            { text: 'Merge Policy', link: '/reference/merge-policy' },
             { text: 'Optional Optimizations', link: '/reference/optional-optimizations' }
           ]
         }

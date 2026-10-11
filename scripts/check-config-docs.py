@@ -35,6 +35,7 @@ REFERENCES = [
     REFERENCE_DIR / "configuration.md",
     REFERENCE_DIR / "configuration-agent.md",
     REFERENCE_DIR / "configuration-build-order.md",
+    REFERENCE_DIR / "merge-policy.md",
 ]
 
 ROOT_MODULE = "Aiur.Config.Schema"
