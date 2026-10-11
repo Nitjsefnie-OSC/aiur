@@ -119,6 +119,7 @@ Usage: aiur [--interactive] [--no-dashboard] [--executor] [--pause] [--max-agent
        aiur pause <ids|--all> | resume <ids|--all>  per-agent pause/resume
        aiur message <id> [--message-id ID] <text>  send Executor text to a running agent
        aiur --todo <ids...> [--only]  queue tickets; optionally dequeue all other pending tickets
+       aiur pr merge <N> --reviewed-sha <sha> [--dry-run] [--approve-body-file <file>] [--inherited <check>]
        aiur findings [--unfiled] [--slugs] [--scope aiur|repo]  inspect host-local findings
        aiur findings --record <json> --repo <owner/repo>  append one validated finding
        aiur findings --digest [--scope aiur|repo]  generate the promoted Markdown digest
@@ -186,6 +187,16 @@ aiur_engine_main() {
       ;;
     logout)
       run_local_cli "$@"
+      ;;
+    pr)
+      export AIUR_PR_MERGE_ENGINE="$engine_source"
+      run_local_cli "$@"
+      ;;
+    __pr-merge-state)
+      run_control_rpc "Aiur.PrMerge.Record.print_watcher_state()"
+      ;;
+    __pr-merge-record)
+      run_control_rpc "Aiur.PrMerge.Record.publish(\"$(encode_control_value "${2:-}")\" |> Base.decode64!())"
       ;;
     findings)
       run_findings "$@"

@@ -46,14 +46,9 @@ The PR review poll keeps its own per-ticket cursor, seeded from that ticket's fi
 
 Review submissions are polled during `agent:ci-wait` as well as `agent:human-review`, so trusted `CHANGES_REQUESTED` and explicitly blocking `COMMENTED` reviews can route either state to `agent:rework` without waiting for CI to finish, including body-only reviews without inline threads.
 
-Body-only `COMMENTED` reviews need a line or heading starting with `Blocking:`,
-`Blockers:`, `Must fix:`, or `Changes required:`, or an update, rebase, merge, or
-fix requested “before merge”. Clean summaries such as “No blockers; waiting on
-CI” or “All blockers resolved” do not route to rework.
+Body-only `COMMENTED` reviews need a line or heading starting with `Blocking:`, `Blockers:`, `Must fix:`, or `Changes required:`, or an update, rebase, merge, or fix requested “before merge”. Clean summaries such as “No blockers; waiting on CI” or “All blockers resolved” do not route to rework.
 
-Failed CI in `agent:human-review` routes to rework when that head already passed
-CI or the head changed. An inherited failure on a dismissed head remains held;
-the existing test-only one-poll retry still applies.
+Failed CI in `agent:human-review` routes to rework when that head already passed CI or the head changed. An inherited failure on a dismissed head remains held; the existing test-only one-poll retry still applies.
 
 This does not recover reviews that an older daemon already skipped before this cursor existed.
 
@@ -185,14 +180,9 @@ See `docs/security/daemon-token-posture.md` in this repository for the full setu
 
 ## Poll cadence
 
-The cadence is per-state-class since #2309: each poll loop resolves its interval
-by naming the class it serves, and `polling.intervals` overrides
-`polling.interval_seconds` for one class while every unlisted class falls back
-to the scalar.
+The cadence is per-state-class since #2309: each poll loop resolves its interval by naming the class it serves, and `polling.intervals` overrides `polling.interval_seconds` for one class while every unlisted class falls back to the scalar.
 
-Poll spend still scales inversely with a class's interval, so
-`polling.interval_seconds` defaults to 120 — and the class that moves the most
-GraphQL spend is the one to widen, not the cheap tracker poll.
+Poll spend still scales inversely with a class's interval, so `polling.interval_seconds` defaults to 120 — and the class that moves the most GraphQL spend is the one to widen, not the cheap tracker poll.
 
 - **`dispatch`** — the tracker poll (open issues, `agent:*` labels). Cheap
   conditional REST (mostly free `304`s) and the dispatch trigger, so it stays at
@@ -214,20 +204,12 @@ GraphQL spend is the one to widen, not the cheap tracker poll.
 
 The GitHub auth check runs once per credential, not once per sweep. It is re-run when the token or repository changes, and when a GitHub call answers `401` with the credential it proved — so a revoked token still produces the usual auth diagnostic rather than a raw failure downstream.
 
-Comments, review submissions, and watch-target discovery are read over
-conditional REST with `If-None-Match`. An unchanged answer returns `304`, which
-does not count against GitHub's primary REST limit, so repeatedly sweeping quiet
-tickets is free rather than merely cheap. Validators are kept on disk, so a
-restart does not force a full-price re-read.
+Comments, review submissions, and watch-target discovery are read over conditional REST with `If-None-Match`. An unchanged answer returns `304`, which does not count against GitHub's primary REST limit, so repeatedly sweeping quiet tickets is free rather than merely cheap. Validators are kept on
+disk, so a restart does not force a full-price re-read.
 
-When a worker starts or restarts, its bootstrap digest also re-reads the open
-PR's formal review submissions. This strict read revalidates the held review
-list with `If-None-Match`; a missing body or changed list is fetched from GitHub.
+When a worker starts or restarts, its bootstrap digest also re-reads the open PR's formal review submissions. This strict read revalidates the held review list with `If-None-Match`; a missing body or changed list is fetched from GitHub.
 
-The digest includes body-only `CHANGES_REQUESTED` reviews and substantive
-`COMMENTED` reviews submitted after the latest Agent Workpad, subject to the
-same author trust filter as other GitHub feedback. A later approval or
-dismissal by that reviewer suppresses their earlier request.
+The digest includes body-only `CHANGES_REQUESTED` reviews and substantive `COMMENTED` reviews submitted after the latest Agent Workpad, subject to the same author trust filter as other GitHub feedback. A later approval or dismissal by that reviewer suppresses their earlier request.
 
 ### What a validator may answer
 
@@ -825,3 +807,19 @@ The path scope and webhook signature are independent locks:
 | HMAC-SHA256 signature | Requests from anyone who does not know the shared webhook secret. |
 
 Do not remove the catch-all `404`: the same origin serves the operator dashboard, and a host-wide tunnel would expose it to anyone who learned the hostname.
+
+## Operator PR merge command
+
+`aiur pr merge` uses the operator's stored `gh` credential in its standalone
+process; it never sends that credential to the daemon. Its direct GitHub reads
+are outside the agent guard ledger. No quota saving is claimed.
+
+Before and after premerge checks it reads the PR, current-head GraphQL check
+rollup (including legacy statuses), linked-ticket labels, paginated changed
+files, applied branch rules, legacy protection, ruleset bypass actors and the
+current base ref. Incomplete check collections or file lists fail closed.
+The final squash request pins the reviewed head SHA. A requested approval also
+pins that SHA. GitHub remains the final authority on bypass permissions.
+
+The command records the merge locally and sends only its outcome to the daemon.
+See [the command reference](/reference/cli#pr-merge) for flags and refusal rules.

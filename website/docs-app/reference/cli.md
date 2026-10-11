@@ -368,12 +368,9 @@ If lease renewal detects that this consumer lost ownership during a wait, the wa
 
 The `69` diagnostic reports the retry bounds actually spent, read from the live configuration: by default the claims lock is retried every 25ms for 5 seconds, and a lock older than 60 seconds is broken as stale.
 
-A batch that could not be acknowledged is still **printed** — losing a wake is a worse failure than announcing a redelivery — so an acknowledge-stage failure
-emits the wake envelope first and the `status: "error"` envelope after it.
+A batch that could not be acknowledged is still **printed** — losing a wake is a worse failure than announcing a redelivery — so an acknowledge-stage failure emits the wake envelope first and the `status: "error"` envelope after it.
 
-Read the last line for the outcome: its `unconsumed_wake_ids` name the records
-whose cursor did not advance, and they will be delivered again to whichever
-consumer holds the claim next.
+Read the last line for the outcome: its `unconsumed_wake_ids` name the records whose cursor did not advance, and they will be delivered again to whichever consumer holds the claim next.
 
 ### Wake ledger bound and lease TTL
 
@@ -385,8 +382,7 @@ A claim is a lease with a 10-minute TTL. An `--executor` run registers and renew
 
 ### Executor roster states
 
-A stalled consumer still holds a claim and still renews its lease, so a
-presence-based list reports it as fine.
+A stalled consumer still holds a claim and still renews its lease, so a presence-based list reports it as fine.
 
 `aiur executor-roster` derives state from evidence, never from presence.
 
@@ -398,31 +394,19 @@ presence-based list reports it as fine.
 | `expired` | Lease lapsed. A successor may take over with no operator action. |
 | `unknown` | The evidence needed to decide is missing. Never reported as `active`. |
 
-Multiple executors are a supported configuration, so a healthy peer is listed
-plainly and is not a fault. An agent reports what it finds and recommends; it
-never revokes a live peer's claim on its own.
+Multiple executors are a supported configuration, so a healthy peer is listed plainly and is not a fault. An agent reports what it finds and recommends; it never revokes a live peer's claim on its own.
 
-Records — the journal, wake inbox, cursor, and subscriptions — are created
-automatically on first use beneath the per-repository state node
-(`~/.aiur/repo/<owner>/<repo>/executor`), so they survive a daemon restart and a
-successor resumes from the durable cursor.
+Records — the journal, wake inbox, cursor, and subscriptions — are created automatically on first use beneath the per-repository state node (`~/.aiur/repo/<owner>/<repo>/executor`), so they survive a daemon restart and a successor resumes from the durable cursor.
 
-Within that node, wake files are prefixed by the sanitized final segment of the
-tracker project identity (`Paths.repo_name/0`): `<repo>.executor.wakes.ndjson`,
-`<repo>.executor.wakes.cursor.json`, and `<repo>.executor.wakes.pending.json`.
+Within that node, wake files are prefixed by the sanitized final segment of the tracker project identity (`Paths.repo_name/0`): `<repo>.executor.wakes.ndjson`, `<repo>.executor.wakes.cursor.json`, and `<repo>.executor.wakes.pending.json`.
 
-A notification monitor must use that `<repo>` prefix (for example,
-`khala.executor.wakes.ndjson`), check that the wake file exists before declaring
-itself armed, and never substitute the `aiur` prefix in a consumer repository.
+A notification monitor must use that `<repo>` prefix (for example, `khala.executor.wakes.ndjson`), check that the wake file exists before declaring itself armed, and never substitute the `aiur` prefix in a consumer repository.
 
-A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor.
-Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at arm time.
-The `aiur-run` monitor command does this.
+A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor. Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at
+arm time. The `aiur-run` monitor command does this.
 
-`executor-wait` is the normal discovery and consumption path. Use
-`executor-fast-forward` only after independently verifying the exact prefix
-already covered. The 10,000-record bound remains an emergency disk bound, not evidence of consumption.
-Exceeding it trims the journal to the newest 8,000 records, consumed first: one rewrite per 2,000 wakes.
+`executor-wait` is the normal discovery and consumption path. Use `executor-fast-forward` only after independently verifying the exact prefix already covered. The 10,000-record bound remains an emergency disk bound, not evidence of consumption. Exceeding it trims the journal to the newest 8,000
+records, consumed first: one rewrite per 2,000 wakes.
 
 `AIUR_EXECUTOR_ID` names this consumer when `--as` is omitted. Nothing infers consumer identity from the terminal, parent process, or any other environment signal.
 
@@ -497,3 +481,20 @@ Mutations print each ticket's outcome; partial success exits 1 and names refusal
 Clear persists unmark intents before paced writes; crashes resume on restart. A budget hold reports `writes_paused`; rerun after it lifts. Wait for successful clear before downgrading; `agent:todo` remains dispatchable. The build queue uses the `agent:queued` membership marker; `aiur units --condition queued` still means tickets carrying `agent:todo`.
 
 `queue show` exit codes: 0 for `running` or `writes_paused`; 1 for `disabled`, `unsupported_tracker`, `store_unavailable`, or a refused selection; 64 for invalid launcher arguments; 124 for an RPC timeout. Refusal statuses still print their read model.
+
+## `pr merge`
+
+`aiur pr merge <N> --reviewed-sha <full-sha>` performs a standalone squash merge using the operator's stored `gh` credential. It works with the daemon stopped. The login must be in `tracker.github.human_mergers`; agent workspaces, the agent account and App identities are refused.
+
+The command checks the reviewed head, draft state, approval or verified bypass, required CI, conflicts and configured premerge checks. Failed checks always refuse. Premerge checks run on a detached merge-result worktree, with ten minutes per command. The operator checkout and PR branch are
+untouched.
+
+- `--dry-run`: evaluate gates without posting a review or merging.
+- `--approve-body-file <file>`: approve the reviewed head before merging.
+- `--inherited <check>`: repeatable; currently refuses because verified
+  main-watch inheritance evidence is not yet connected.
+
+Under `ci: wait`, every required check must pass. The `pending_ok` gate needs current-head local-test evidence and an enabled watcher; full-CI labels on the PR or linked tickets, and full-CI paths, still force waiting. Config currently accepts only `wait`; this command does not enable early merges.
+
+Exit codes are `0` for merged or successful dry run, `2` for policy refusal (one `REFUSE` line per reason), and `1` for tool/network errors. Successful merges print the policy and pending checks, append `~/.aiur/logs/pr-merge/merges.ndjson`, and notify a running daemon with `system.pr.merged`.
+Ledger or daemon notification failures print a warning without retrying the merge. Premerge failure logs live in the same directory.

@@ -249,7 +249,7 @@ test("--version skips tmux preflight and still execs the launcher", () => {
 
 const nonLaunchCommands = [
   "__identity", "help", "-h", "-help", "--h", "--help", "--version", "--todo", "--only",
-  "init", "findings", "ask", "asks", "status", "usage", "agents", "commands", "units",
+  "init", "pr", "findings", "ask", "asks", "status", "usage", "agents", "commands", "units",
   "build-orders", "queue", "analytics", "github-cost", "github-usage", "alerts", "watch", "set",
   "upgrade", "pause", "resume", "reset-budget", "message", "cleanup-stale", "stop",
   "executor-answer", "executor-escalate", "executor-moot", "listen", "executor-listen", "executor-wait",
