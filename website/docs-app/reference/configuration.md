@@ -407,9 +407,7 @@ Build admission covers direct `mix compile`, `mix test`, `mix lint`, `mix credo`
 
 Reviewer worktrees run `<repo>/scripts/build-gate mise exec -- mix lint` from `src/`. Set the fleet's `AIUR_BUILD_GATE_DIR` and `AIUR_BUILD_GATE_SLOTS` (required) and copy its other `AIUR_BUILD_*` and `AIUR_MIN_FREE_MEMORY_MB` values. The command holds one `review` lease shown in `aiur status`, keeps its exit status, and fails closed.
 
-Malformed compounds and command strings that could hide a Mix build fail with status
-`125`. This is a cooperative PATH/shell boundary: aliases of Aiur's wrappers are
-canonicalized, but deliberately invoking a separate real executable by absolute, relative, or symlinked path bypasses the entrypoint and is not admitted.
+Malformed compounds and command strings that could hide a Mix build fail with status `125`. This is a cooperative PATH/shell boundary: aliases of Aiur's wrappers are canonicalized, but deliberately invoking a separate real executable by absolute, relative, or symlinked path bypasses the entrypoint and is not admitted.
 
 ## Host-pressure fleet admission
 Fleet admission uses CPU PSI and configured reserves. Load is the PSI-unavailable fallback; missing reserve measurements fail open.
