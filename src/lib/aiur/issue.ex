@@ -5,6 +5,8 @@ defmodule Aiur.Issue do
 
   alias Aiur.TrackerIdentity
 
+  # The normalized tracker record keeps dispatch context alongside issue facts.
+  # credo:disable-for-next-line Credo.Check.Warning.StructFieldAmount
   defstruct [
     :id,
     :identifier,

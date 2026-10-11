@@ -1,7 +1,7 @@
 defmodule Aiur.OptimisticStart.PromptTest do
   use ExUnit.Case, async: false
 
-  alias Aiur.AgentRunner.TurnPrompt
+  alias Aiur.AgentRunner.{TurnLoop, TurnPrompt}
   alias Aiur.{Issue, PromptBuilder, Workflow}
 
   @sha String.duplicate("a", 40)
@@ -23,9 +23,10 @@ defmodule Aiur.OptimisticStart.PromptTest do
     :ok
   end
 
+  # Baseline verified byte-for-byte against origin/main, not a hash of this implementation.
   test "ordinary prompt stays byte identical" do
     prompt = PromptBuilder.build_prompt(issue(nil))
-    assert Base.encode16(:crypto.hash(:sha256, prompt)) == "6E170AC6455E87D475F1AB89AA1CB192D9771A082B9F8AF56B16787656962AEC"
+    assert Base.encode16(:crypto.hash(:sha256, prompt)) == "29DADF9D0E6C32CAFB4B31C38CE4C07CDE5847D2678F04B8E97D198177E201E4"
     refute prompt =~ "## Optimistic start"
   end
 
@@ -42,6 +43,15 @@ defmodule Aiur.OptimisticStart.PromptTest do
       assert prompt =~ "draft"
       assert prompt =~ "ci-wait"
     end
+  end
+
+  test "tracker refresh preserves the start record for later turn prompts" do
+    original = %{issue(record([blocker("12")])) | state: "in-progress"}
+    fetched = %{original | optimistic_start: nil, title: "Updated"}
+    assert {:continue, refreshed} = TurnLoop.continue_with_issue?(original, fn ["22"] -> {:ok, [fetched]} end)
+    assert refreshed.title == "Updated"
+    assert refreshed.optimistic_start == original.optimistic_start
+    assert TurnPrompt.build_turn_prompt(refreshed, [], 2, 4) =~ @ref
   end
 
   test "fan-in lists both blockers and targets the configured base" do

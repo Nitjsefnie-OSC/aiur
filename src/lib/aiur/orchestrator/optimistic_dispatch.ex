@@ -6,12 +6,36 @@ defmodule Aiur.Orchestrator.OptimisticDispatch do
   alias Aiur.Events.BranchRefStore
   alias Aiur.{Issue, OptimisticStart}
   alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy}
+  alias Aiur.StartTrigger.ProgressStore
+
+  @spec prepare_for_dispatch(Issue.t(), keyword()) :: {:ok, Issue.t()} | {:error, atom()}
+  def prepare_for_dispatch(issue, opts) do
+    lookup = Keyword.get(opts, :blocker_ref_lookup, &latest_ref/1)
+
+    evidence =
+      Enum.map(DispatchPolicy.optimistic_blockers(issue), fn id ->
+        blocker = Enum.find(issue.blocked_by, &(&1.id == id))
+        identifier = Map.get(blocker, :identifier, id)
+        progress = ProgressStore.lookup(id) || %{}
+        head = lookup.(identifier) || %{}
+
+        %{
+          identifier: identifier,
+          pr_number: Map.get(progress, :pr_number),
+          head_ref: Map.get(progress, :head_ref) || Map.get(head, :ref),
+          head_sha: Map.get(progress, :head_sha) || Map.get(head, :sha)
+        }
+      end)
+
+    prepare(issue, evidence, opts)
+  end
 
   @spec prepare(Issue.t(), [map()], keyword()) :: {:ok, Issue.t()} | {:error, atom()}
   def prepare(%Issue{} = issue, optimistic_blockers, opts) do
     subscriber = Keyword.get(opts, :blocker_subscriber, &AutoSubscriptions.subscribe_for_declared_blocker/2)
     lookup = Keyword.get(opts, :blocker_ref_lookup, &latest_ref/1)
-    blockers = DispatchPolicy.non_terminal_blockers(issue, DispatchPolicy.terminal_state_set())
+    terminal = DispatchPolicy.terminal_state_set()
+    blockers = Enum.reject(issue.blocked_by, &DispatchPolicy.terminal_issue_state?(Map.get(&1, :state), terminal))
 
     with :ok <- subscribe(blockers, issue.identifier, subscriber, optimistic_blockers != []),
          {:ok, record} <- OptimisticStart.from_gate_evidence(optimistic_blockers, lookup) do
