@@ -11,7 +11,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
   alias Aiur.GitHub.{AuthPreflight, CiReadiness, CycleFetchCache, Errors, LocalHold}
   alias Aiur.GitHub.Tracker, as: GitHubTracker
   alias Aiur.{Orchestrator, Orchestrator.TicketTransition}
-  alias Aiur.Orchestrator.{PausedCandidatePoll, ReworkGate, TrackerTasks}
+  alias Aiur.Orchestrator.{OptimisticDispatch, PausedCandidatePoll, ReworkGate, TrackerTasks}
 
   alias Aiur.Orchestrator.{
     AutoResume,
@@ -1637,7 +1637,6 @@ defmodule Aiur.Orchestrator.Dispatcher do
   # spawn_issue_on_worker_host, means a tripped attempt pays no workspace
   # clone cost. The breaker resets when the window lapses, so the issue
   # gets another window on the next poll tick.
-  #
   # The window counter is the loop-frequency guard and counts every dispatch
   # attempt. The lifetime counter is the structural-stuck latch and counts
   # only dispatches that actually survived provisioning (see
@@ -2591,6 +2590,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
       })
     end
 
+    OptimisticDispatch.record(issue, lifecycle_attempt_id, optimistic_blockers)
     rework_head_sha = Keyword.get(opts, :rework_head_sha) || :pending
 
     runner_context = %{
