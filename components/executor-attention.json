@@ -11,6 +11,7 @@
     "src/lib/aiur/alerts/**",
     "src/lib/aiur/executor/**",
     "src/lib/aiur/executor_*.ex",
+    "src/lib/aiur/executor_attention/**",
     "src/lib/aiur/executor_wake_inbox/**",
     "src/lib/aiur/operator_wait_log.ex",
     "src/lib/aiur/progress_checkin/**"
