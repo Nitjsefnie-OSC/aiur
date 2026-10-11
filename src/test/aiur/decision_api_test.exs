@@ -9,6 +9,8 @@ defmodule Aiur.DecisionApiTest do
   @source %{agent_id: "agent-1", session_id: "session-1", event_id: nil}
   @policy %{allowed_kinds: ["architecture"], allow_non_reversible: false}
 
+  setup_all do: if(Process.whereis(Aiur.Events.IdGenerator), do: :ok, else: raise("Aiur.Events.IdGenerator is not running before DecisionApiTest; a preceding test stopped the application child"))
+
   defmodule RetainedOnlyStore do
     use GenServer
 
@@ -117,12 +119,7 @@ defmodule Aiur.DecisionApiTest do
     dir = Aiur.TestSupport.tmp_root!("aiur-decision-api")
     Application.put_env(:aiur, :decision_state_dir, dir)
 
-    {:ok, store} =
-      DecisionStore.start_link(
-        name: nil,
-        state_dir: dir,
-        filesystem_sync_fun: fn -> :ok end
-      )
+    {:ok, store} = DecisionStore.start_link(name: nil, state_dir: dir, filesystem_sync_fun: fn -> :ok end)
 
     on_exit(fn ->
       Aiur.TestSupport.safe_stop(store)
