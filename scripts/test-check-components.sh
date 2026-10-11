@@ -299,7 +299,9 @@ else:
 
     def use_experiments_contract(root):
         manifest = json.loads((root / 'components.json').read_text())
-        shipped = next(c for c in json.loads((repo / 'components.json').read_text())['components'] if c['id'] == 'experiments')
+        sys.path.insert(0, str(repo / 'scripts'))
+        from components.manifest import read_manifest
+        shipped = next(c for c in read_manifest(repo)['components'] if c['id'] == 'experiments')
         manifest['components'][0]['forbid'] = shipped['forbid']
         (root / 'components.json').write_text(json.dumps(manifest))
 
