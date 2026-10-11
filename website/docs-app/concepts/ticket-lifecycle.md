@@ -35,7 +35,7 @@ todo  in-progress  ci-wait  human-review  rework  merging  done  error  cancelle
 The terminal states are exactly `done | cancelled | canceled`
 (`src/lib/aiur/github/state_policy.ex:23,31`). The two `@no_agent_work_states`
 — `merging` and `ci-wait` — stay active for polling and fence purposes but are
-never dispatchable (`src/lib/aiur/orchestrator/dispatch_policy.ex:35,1001`).
+never dispatchable (`src/lib/aiur/orchestrator/dispatch_policy/issue_states.ex:27,63`).
 
 ### Markers are not states
 
