@@ -52,3 +52,12 @@ to disable the writer. The capability report exposes `experiments` and
 
 Storage failures leave the daemon running and report the experiments store as
 unavailable; writes return the storage failure while disk reads remain usable.
+
+## Automatic experiment foundation
+
+`experiments.auto` configures version, release and feature lines. The deploy
+ledger records each recording daemon boot at `experiments/deploys.ndjson` under
+the repository state node. It retains the latest 5,000 boots, including version,
+base semver, boot time and build-stamp SHA and dirty flag when available.
+Missing build evidence stays null. Deploys alone never create experiments.
+Line detection and baseline capture are delivered by the source and snapshot workers.
