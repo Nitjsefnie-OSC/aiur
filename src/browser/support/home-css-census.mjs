@@ -7,7 +7,7 @@ export const buildSource = await readFile(`${DESIGN_ROOT}/assets/build.css`, 'ut
 export const htmlSource = await readFile(`${DESIGN_ROOT}/Aiur Dashboard.html`, 'utf8')
 const inlineStart = htmlSource.indexOf('<style>') + 7
 export const inlineSource = htmlSource.slice(inlineStart, htmlSource.indexOf('</style>', inlineStart))
-export const inlineLine = htmlSource.slice(0, inlineStart).split('\n').length - 1
+const inlineLine = htmlSource.slice(0, inlineStart).split('\n').length - 1
 
 // Strip state pseudos only; structural selectors remain evidence of actual matches.
 export function censusRules({ buildSource, inlineSource, inlineLine, roots, sourceTrees }) {
@@ -28,8 +28,8 @@ export function censusRules({ buildSource, inlineSource, inlineLine, roots, sour
         results.push(rule)
       }
     })
-    for (const record of sourceTrees) { rematch(record.tree); results.push(record) }
-    return results
+    for (const record of JSON.parse(sourceTrees)) { rematch(record.tree); results.push(record) }
+    return JSON.stringify(results)
   }
   const declarations = text => {
     const pieces = []
@@ -87,16 +87,16 @@ export function censusRules({ buildSource, inlineSource, inlineLine, roots, sour
     }).filter(Boolean)
     results.push({ source, tree: walk(sheet.cssRules) })
   }
-  return results
+  return JSON.stringify(results)
 }
 
 // Immutable design syntax is parsed once per worker; DOM matches are recomputed in every state.
 let sourceTrees
 export async function census(page) {
-  const records = await page.evaluate(censusRules, sourceTrees
+  const records = JSON.parse(await page.evaluate(censusRules, sourceTrees
     ? { sourceTrees, roots: ROOTS }
-    : { buildSource, inlineSource, inlineLine, roots: ROOTS })
-  sourceTrees ??= records.filter(r => r.tree)
+    : { buildSource, inlineSource, inlineLine, roots: ROOTS }))
+  sourceTrees ??= JSON.stringify(records.filter(r => r.tree))
   return records
 }
 
