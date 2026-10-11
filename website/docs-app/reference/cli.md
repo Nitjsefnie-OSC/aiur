@@ -59,7 +59,7 @@ Background mode is the shape that matters for an agent Executor. `aiur --bg` sta
 
 Background runs persist daemon Logger messages at `<logs-root>/log/aiur.log` without `--debug`. `--debug` additionally enables debug-level messages. The default background root is `~/.aiur/logs/<launch-id>/`; `log/boot.out.log` captures release stdout and stderr.
 
-`aiur status` prints `MERGE POLICY` configuration; `aiur capabilities` reports its mode as `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)).
+`aiur status` prints `MERGE POLICY` configuration; `aiur capabilities` reports `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)). Status also lists `CI WAIT` tickets with PR, recovery state and failing checks, including tickets without workers.
 
 `aiur status` shows degraded CODEOWNERS trust with cause and age ([GitHub trust](/apis/github#who-aiur-trusts)). With ready work and free slots, it names preflight holds, stale polling, `awaiting dispatch`, or empty-cycle reasons and age. Prewarm holds keep their cause; unexplained empty cycles report `unknown`.
 
@@ -368,8 +368,7 @@ If lease renewal detects that this consumer lost ownership during a wait, the wa
 
 The `69` diagnostic reports the retry bounds actually spent, read from the live configuration: by default the claims lock is retried every 25ms for 5 seconds, and a lock older than 60 seconds is broken as stale.
 
-A batch that could not be acknowledged is still **printed** — losing a wake is a
-worse failure than announcing a redelivery — so an acknowledge-stage failure
+A batch that could not be acknowledged is still **printed** — losing a wake is a worse failure than announcing a redelivery — so an acknowledge-stage failure
 emits the wake envelope first and the `status: "error"` envelope after it.
 
 Read the last line for the outcome: its `unconsumed_wake_ids` name the records
