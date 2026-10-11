@@ -49,9 +49,7 @@ Review submissions are polled during `agent:ci-wait` as well as `agent:human-rev
 
 Body-only `COMMENTED` reviews need a line or heading starting with `Blocking:`, `Blockers:`, `Must fix:`, or `Changes required:`, or an update, rebase, merge, or fix requested “before merge”. Clean summaries such as “No blockers; waiting on CI” or “All blockers resolved” do not route to rework.
 
-Failed CI in `agent:human-review` routes to rework when that head already passed
-CI or the head changed. An inherited failure on a dismissed head remains held;
-the existing test-only one-poll retry still applies.
+Failed CI in `agent:human-review` routes to rework when that head already passed CI or the head changed. An inherited failure on a dismissed head remains held; the existing test-only one-poll retry still applies.
 
 This does not recover reviews that an older daemon already skipped before this cursor existed.
 
@@ -182,10 +180,7 @@ See `docs/security/daemon-token-posture.md` in this repository for the full setu
 
 ## Poll cadence
 
-The cadence is per-state-class since #2309: each poll loop resolves its interval
-by naming the class it serves, and `polling.intervals` overrides
-`polling.interval_seconds` for one class while every unlisted class falls back
-to the scalar.
+The cadence is per-state-class since #2309: each poll loop resolves its interval by naming the class it serves, and `polling.intervals` overrides `polling.interval_seconds` for one class while every unlisted class falls back to the scalar.
 
 Poll spend still scales inversely with a class's interval, so
 `polling.interval_seconds` defaults to 120 — and the class that moves the most
