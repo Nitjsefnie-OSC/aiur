@@ -23,7 +23,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
     outcome cause operation_id command_class duration_status source source_id actor
     pr_number comment_id review_thread_id author_trusted source_timestamp worker_host backend
     prewarm_outcome reason_class exit_status turn_number remote retry_attempt
-    workspace_owner workspace_generation workspace_phase complexity dispatch_selection
+    workspace_owner workspace_generation workspace_phase optimistic_blockers complexity dispatch_selection
     model effort feature epic tags blockers start_mode
   )a
 

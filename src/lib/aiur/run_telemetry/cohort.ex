@@ -12,6 +12,7 @@ defmodule Aiur.RunTelemetry.Cohort do
 
   @spec normalize_metadata_value(atom(), term()) :: term()
   def normalize_metadata_value(key, value) when key in [:tags, :blockers] and is_list(value), do: bounded_strings(value)
+  def normalize_metadata_value(:optimistic_blockers, value) when is_list(value), do: Enum.filter(value, &is_binary/1)
   def normalize_metadata_value(_key, nil), do: nil
   def normalize_metadata_value(_key, value), do: normalize_metadata_value(value)
 

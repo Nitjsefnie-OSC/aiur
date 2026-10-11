@@ -7,8 +7,21 @@ defmodule Aiur.RunTelemetry.CohortContextTest do
   setup do
     root = Aiur.TestSupport.tmp_root!("cohort-context")
     File.mkdir_p!(root)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     %{root: root}
+  end
+
+  test "optimistic blocker normalization coexists with bounded cohort lists" do
+    long = String.duplicate("x", 70)
+    recorder = fn :lifecycle, attrs, _opts -> send(self(), {:normalized, attrs}) end
+
+    Lifecycle.record("3794", "attempt", :workspace_setup, :start, %{optimistic_blockers: ["41", 42, long], tags: List.duplicate(long, 21), blockers: [42], cause: ["private"]}, recorder: recorder)
+
+    assert_received {:normalized, attrs}
+    assert attrs.optimistic_blockers == ["41", long]
+    assert attrs.tags == List.duplicate(String.duplicate("x", 64), 20)
+    assert attrs.blockers == ["42"]
+    assert attrs.cause == "unknown"
   end
 
   test "canonical effective hashes exclude secrets and refreshes and isolate agent changes", %{root: root} do
