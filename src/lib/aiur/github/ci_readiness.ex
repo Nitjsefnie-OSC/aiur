@@ -220,9 +220,6 @@ defmodule Aiur.GitHub.CiReadiness do
     end
   end
 
-  defp inspect_workflow_entries(_request_fun, _token, _base_url, _base_branch, _default_branch, _entries, _opts),
-    do: {:error, :invalid_workflow_entries}
-
   defp inspect_full_workflow_entries(request_fun, token, base_url, base_branch, default_branch, entries) do
     with {:ok, workflow_states} <- RepositoryReads.fetch_workflow_states(request_fun, token, base_url, entries),
          {:ok, workflows} <- RepositoryReads.fetch_workflows(request_fun, token, entries, workflow_states, base_branch),
