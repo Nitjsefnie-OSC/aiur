@@ -187,7 +187,7 @@ defmodule ScriptsAiurdevTest do
 
     seed_ready_release(root)
     File.mkdir_p!(lock)
-    on_exit(fn -> File.rm_rf(lock) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(lock) end)
 
     {out, 0} =
       run_shim(["status"], [

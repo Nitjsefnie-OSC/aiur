@@ -69,7 +69,7 @@ defmodule ScriptsAiurdevRestartTest do
     File.cp!(@script, shim)
     copy_shim_libs!(Path.dirname(shim))
     File.chmod!(shim, 0o755)
-    on_exit(fn -> File.rm_rf!(shim_dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(shim_dir) end)
 
     seed_ready_release(root)
     File.mkdir_p!(Path.join([root, "src", "lib"]))

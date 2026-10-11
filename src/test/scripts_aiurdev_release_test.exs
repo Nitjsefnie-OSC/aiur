@@ -31,7 +31,7 @@ defmodule ScriptsAiurdevReleaseTest do
       # then compare that borrowed SHA against itself on every later launch.
       outer = Aiur.TestSupport.tmp_root!("aiurdev-outer")
       File.mkdir_p!(outer)
-      on_exit(fn -> File.rm_rf!(outer) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(outer) end)
       init_git_repo(outer)
 
       root = fake_repo(Path.join(outer, "inner"))

@@ -30,6 +30,7 @@ config :aiur, :keyring_token_fun_module, Aiur.GitHub.Config
 
 config :aiur, :capability_providers, [
   Aiur.Capabilities.IdentityProvider,
+  Aiur.Capabilities.MergePolicyProvider,
   Aiur.BuildQueue.CapabilityProvider,
   Aiur.HttpServer.CapabilityProvider,
   Aiur.Orchestrator.CapabilityProvider,
@@ -74,6 +75,10 @@ config :aiur, AiurWeb.Endpoint,
   secret_key_base: String.duplicate("s", 64),
   check_origin: false,
   server: false
+
+# Composition: orchestration implements the Commands delivery port, so the
+# commands component never references orchestration itself.
+config :aiur, :commands_delivery_target, Aiur.Orchestrator.CommandDeliveryTarget
 
 # Demo / pre-ticket planning mode: render a Build Order in the spatial dashboard
 # straight from a local planning pack (no GitHub issues). Enable at build time

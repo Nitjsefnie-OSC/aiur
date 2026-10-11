@@ -395,7 +395,7 @@ defmodule ScriptsAiurdevCheckoutTest do
       File.mkdir_p!(Path.join(partial, "scripts"))
       File.write!(Path.join([partial, "scripts", "aiurdev"]), "")
       File.write!(Path.join([partial, "packaging", "npm", "aiur-cli", "libexec", "aiur-engine.sh"]), "")
-      on_exit(fn -> File.rm_rf!(partial) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(partial) end)
 
       seed_ready_release(checkout_a)
 

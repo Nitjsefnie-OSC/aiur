@@ -18,6 +18,7 @@ defmodule Aiur.BuildQueue.Server do
     ReadModel,
     Reconcile,
     Recovery,
+    Refresh,
     Settings,
     Store,
     Withdrawal,
@@ -60,6 +61,8 @@ defmodule Aiur.BuildQueue.Server do
       projections: [],
       observations: %{},
       observed_at_ms: nil,
+      refresh_not_before_ms: nil,
+      refresh_pid: nil,
       actions: [],
       holds: MapSet.new(),
       build_order_projection: Keyword.get(opts, :build_order_projection, BuildOrderSource.projection()),
@@ -171,7 +174,7 @@ defmodule Aiur.BuildQueue.Server do
     with {:ok, document} <- Bookkeeping.hold(state.document, target),
          :ok <- state.store.save(document) do
       Events.saved(state.document, document)
-      Reconcile.write_hints(state.projections, state.holds, document)
+      Reconcile.write_hints(state.projections, state.holds, document, state.settings)
       {:reply, :ok, request(%{state | document: document})}
     else
       {:error, :not_found} = error -> {:reply, error, state}
@@ -241,7 +244,7 @@ defmodule Aiur.BuildQueue.Server do
         state = %{state | document: document, status: :running, phase: :ready, freshness: :fresh, writer: Writer.new(), holds: MapSet.new(), sources: %{}, source_verdicts: %{}}
         {projections, _, _, _, _, published, _edges} = Reconcile.plan(state)
         state = %{state | published_pr_versions: published}
-        Reconcile.write_hints(projections, state.holds, document)
+        Reconcile.write_hints(projections, state.holds, document, state.settings)
         {:reply, :ok, state |> AttentionHealth.store() |> subscribe() |> request()}
 
       {:error, reason} = error when reason in [:store_present, :observation_unavailable] ->
@@ -314,7 +317,7 @@ defmodule Aiur.BuildQueue.Server do
 
   defp reconcile(state) do
     {freshness, observations, observed_at_ms} = Reconcile.observed_snapshot(state)
-    state = Recovery.resolve(%{state | freshness: freshness, observed_at_ms: observed_at_ms}, observations)
+    state = Recovery.resolve(Refresh.maybe_request(%{state | freshness: freshness, observed_at_ms: observed_at_ms}), observations)
     state = state |> sync_sources(observations) |> replay_list_markers(observations)
     plan(state, Reconcile.observations(state))
   end
@@ -367,7 +370,7 @@ defmodule Aiur.BuildQueue.Server do
     retained = for p <- projections, p.state not in [:removed, :completed, :cancelled], do: p.issue_id
     holds = MapSet.intersection(holds, MapSet.new(retained))
     ages = Withdrawal.ages(holds, state.hold_ages, state.clock.(), state.settings.build_queue.reconcile_interval_seconds)
-    Reconcile.write_hints(projections, holds, state.document)
+    Reconcile.write_hints(projections, holds, state.document, state.settings)
     Phoenix.PubSub.broadcast(Aiur.PubSub, "build_queue:changed", {:build_queue_changed, state.status})
     state = %{state | projections: projections, observations: observations, actions: state.actions, holds: holds, hold_ages: ages, reconciles: state.reconciles + 1}
     Progress.publish(state)

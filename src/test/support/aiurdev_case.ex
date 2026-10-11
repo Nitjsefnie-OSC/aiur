@@ -68,7 +68,7 @@ defmodule Aiur.TestSupport.AiurdevCase do
     )
 
     File.chmod!(engine, 0o755)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     root
   end
 
@@ -222,7 +222,7 @@ defmodule Aiur.TestSupport.AiurdevCase do
 
     on_exit(fn ->
       File.rm(path)
-      File.rm_rf(opencode_dir)
+      Aiur.TestCleanup.rm_rf!(opencode_dir)
     end)
 
     path
@@ -232,7 +232,7 @@ defmodule Aiur.TestSupport.AiurdevCase do
   def sandbox_home do
     home = Aiur.TestSupport.tmp_root!("aiurdev-home")
     File.mkdir_p!(Path.join([home, ".aiur", "logs", "old-session"]))
-    on_exit(fn -> File.rm_rf!(home) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(home) end)
     home
   end
 
@@ -279,7 +279,7 @@ defmodule Aiur.TestSupport.AiurdevCase do
 
     File.mkdir_p!(bin)
     File.ln_s!(target, link)
-    on_exit(fn -> File.rm_rf!(bin) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(bin) end)
 
     link
   end
