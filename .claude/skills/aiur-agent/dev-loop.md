@@ -164,7 +164,7 @@ focused test runner, test-tree paths and CI gate at each step.
 4. Run the scoped local pre-PR verification gate before opening or finalizing
    the PR using the target repository's commands. For Aiur's Elixir core:
    Follow the current config-driven `Local tests policy` section: `all` runs
-   the full suite, `partial` selects relevant tests (full suite if unsafe),
+   the full suite, `partial` selects affected tests only (full suite if unsafe),
    `none` runs compile and format only. Always run
    `mix compile --warnings-as-errors` and `mix format`. For `partial`, select
    changed tests, source mirrors, direct callers and deleted-name references,
