@@ -202,7 +202,9 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert %{recovery: "rerun_requested"} = recover(ctx)
     Agent.update(ctx.agent, &%{&1 | stale_evidence: true})
     assert %{decision: :pending, recovery: "rerun_pending"} = recover(ctx)
-    Agent.update(ctx.agent, &%{&1 | stale_evidence: false, passed: false})
+    Agent.update(ctx.agent, &%{&1 | stale_evidence: false, passed: true})
+    assert %{decision: :pending, recovery: "rerun_pending"} = recover(ctx)
+    Agent.update(ctx.agent, &%{&1 | passed: false, attempt: 3})
     assert %{decision: :failed} = recover(ctx)
   end
 
@@ -317,17 +319,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   defp response(%{url: url}, state, _, _) do
     cond do
       String.contains?(url, "/check-runs?") ->
-        ok(%{
-          "check_runs" => [
-            %{
-              "id" => if(state.stale_evidence, do: 1, else: state.attempt),
-              "name" => "test",
-              "status" => "completed",
-              "conclusion" => "failure",
-              "html_url" => "https://github.com/owner/repo/actions/runs/99/job/1"
-            }
-          ]
-        })
+        ok(%{"check_runs" => [check_run(state)]})
 
       String.ends_with?(url, "/status") ->
         ok(%{"statuses" => []})
@@ -347,6 +339,16 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
       String.ends_with?(url, "/actions/runs/99") ->
         ok(%{"head_sha" => "head-1", "run_attempt" => state.attempt, "status" => "completed"})
     end
+  end
+
+  defp check_run(state) do
+    %{
+      "id" => if(state.stale_evidence, do: 1, else: state.attempt),
+      "name" => "test",
+      "status" => "completed",
+      "conclusion" => if(state.passed, do: "success", else: "failure"),
+      "html_url" => "https://github.com/owner/repo/actions/runs/99/job/1"
+    }
   end
 
   defp ok(body), do: {:ok, %{status: 200, body: body, headers: []}}
