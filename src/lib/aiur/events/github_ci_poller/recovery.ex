@@ -1,7 +1,7 @@
 defmodule Aiur.Events.GithubCIPoller.Recovery do
   @moduledoc "One exact-head rerun, one base update, then bounded CI/rework escalation."
   require Logger
-  alias Aiur.{Alerts, Config}
+  alias Aiur.{AlertFeed, Alerts, Config}
   alias Aiur.CI.FailureDigest
   alias Aiur.GitHub.{CIRecovery, PullRequests}
   alias Aiur.GitHub.CIRecoveryStore, as: Store
@@ -238,7 +238,15 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   end
 
   defp emit_attention(issue, result, kind, message, emitter, opts) do
-    case emitter.("ticket.#{issue.identifier || issue.id}.pr.ci_recovery.#{kind}", issue: issue, central: true, needs_attention: true, message: message, reason: message) do
+    topic = "ticket.#{issue.identifier || issue.id}.pr.ci_recovery.#{kind}"
+
+    if kind != "journal_failed" or AlertFeed.condition_state(topic, opts) != :firing do
+      publish_attention(topic, issue, result, kind, message, emitter, opts)
+    end
+  end
+
+  defp publish_attention(topic, issue, result, kind, message, emitter, opts) do
+    case emitter.(topic, issue: issue, central: true, needs_attention: true, message: message, reason: message) do
       :ok -> update(issue, result, &Map.update(&1, "attentions", [kind], fn kinds -> Enum.uniq([kind | kinds]) end), opts)
       {:error, error} -> Logger.warning("CI recovery attention failed: #{inspect(error)}")
     end

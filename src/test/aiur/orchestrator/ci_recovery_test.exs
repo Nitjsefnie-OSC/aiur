@@ -7,7 +7,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   alias Aiur.Events.GithubCIPoller.Recovery, as: CiRecovery
   alias Aiur.GitHub.CIRecoveryStore, as: CiRecoveryStore
   alias Aiur.GitHub.ResourceStore
-  alias Aiur.{Issue, JsonStore}
+  alias Aiur.{AlertLedger, Issue, JsonStore}
   alias Aiur.Orchestrator.{CiLifecycle, StatusReport}
   alias Aiur.Orchestrator.StatusReport.SnapshotPayload
   alias Aiur.OrchestratorDeactivateSupport.CIWatcherGitHubClient
@@ -32,9 +32,10 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     opts = [
       request_fun: request,
       ci_recovery_path: path,
+      ledger_paths: [path <> ".alerts"],
       alert_emitter: fn topic, details ->
         send(self(), {:attention, topic, details})
-        :ok
+        AlertLedger.append(%{"topic" => topic, "needs_attention" => true}, ledger_path: path <> ".alerts")
       end
     ]
 
@@ -126,6 +127,9 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
       assert %{decision: :pending, recovery: "evidence_unavailable"} = recover(ctx)
       assert writes(ctx) == []
     end
+
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
+    refute_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
   end
 
   test "failed journal writes return errors and raise Executor attention", ctx do
@@ -133,7 +137,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert {:error, _} = CiRecovery.record_pass(ctx.issue, ctx.result, ctx.opts)
     assert_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
     assert {:error, _} = CiRecovery.record_failure(ctx.issue, ctx.result, ctx.opts)
-    assert_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
+    refute_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
     assert writes(ctx) == []
   end
 
