@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
 
 test.describe('Gallery Visual Tests', () => {
   test('gallery loads the committed package stylesheet', async ({ page }) => {
@@ -106,7 +107,7 @@ test('offline type specimens load every bundled weight', async ({ page }) => {
   await expect(page.locator('#type-specimens')).toHaveScreenshot('type-specimens.png');
 });
 
-test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails', async ({ page }) => {
+test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails', async ({ page }, testInfo) => {
   await page.goto('./');
   const errors = await page.evaluate(async () => {
     const load = async (name: string) => {
@@ -144,17 +145,55 @@ test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails'
     };
     const compare = (image: HTMLImageElement, height: number) => {
       const a = render(original, height), b = render(image, height);
-      let max = 0;
+      let max = 0, sum = 0, over2 = 0;
       for (let i = 0; i < a.length; i += 4) {
         const x = lab(a[i], a[i + 1], a[i + 2]), y = lab(b[i], b[i + 1], b[i + 2]);
-        max = Math.max(max, Math.hypot(...x.map((v, j) => v - y[j])));
+        const delta = Math.hypot(...x.map((v, j) => v - y[j]));
+        max = Math.max(max, delta); sum += delta; if (delta > 2) over2++;
       }
-      return max;
+      const diff = document.createElement('canvas');
+      diff.height = height; diff.width = a.length / 4 / height;
+      const ctx = diff.getContext('2d')!;
+      const pixels = ctx.createImageData(diff.width, diff.height);
+      for (let i = 0; i < a.length; i += 4) {
+        const changed = a.slice(i, i + 3).some((value, j) => value !== b[i + j]);
+        pixels.data.set(changed ? [255, 0, 128, 255] : [255, 255, 255, 255], i);
+      }
+      ctx.putImageData(pixels, 0, 0);
+      return { max, mean: sum / (a.length / 4), over2: over2 / (a.length / 4), diff: diff.toDataURL() };
+
     };
-    return { png: [compare(png, 224), compare(png, 28)],
+    const panels = [224, 28].map(height => {
+      const c = document.createElement('canvas');
+      const width = Math.round(original.width / original.height * height);
+      c.width = width * 3; c.height = height;
+      const ctx = c.getContext('2d')!;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.imageSmoothingQuality = 'high';
+      [original, png, bad].forEach((image, index) => ctx.drawImage(image, index * width, 0, width, height));
+      return c.toDataURL();
+    });
+    return { panels, png: [compare(png, 224), compare(png, 28)],
       webp: [compare(webp, 224), compare(webp, 28)], bad: compare(bad, 224) };
   });
-  console.log('Logo maximum ΔE76:', errors);
-  for (const error of [...errors.png, ...errors.webp]) expect(error).toBeLessThan(2);
-  expect(errors.bad).toBeGreaterThanOrEqual(2);
+  for (const [index, panel] of errors.panels.entries()) {
+    writeFileSync(testInfo.outputPath(`logo-review-${[224, 28][index]}.png`), Buffer.from(panel.split(',')[1], 'base64'));
+    await testInfo.attach(`logo-original-lanczos-nearest-${[224, 28][index]}.png`, {
+      body: Buffer.from(panel.split(',')[1], 'base64'), contentType: 'image/png',
+    });
+  }
+  for (const [format, comparisons] of [['png', errors.png], ['webp', errors.webp], ['nearest', [errors.bad]]] as const) {
+    for (const [index, comparison] of comparisons.entries()) {
+      writeFileSync(testInfo.outputPath(`logo-${format}-${[224, 28][index]}-diff.png`), Buffer.from(comparison.diff.split(',')[1], 'base64'));
+      await testInfo.attach(`logo-${format}-${[224, 28][index]}-diff.png`, {
+        body: Buffer.from(comparison.diff.split(',')[1], 'base64'), contentType: 'image/png',
+      });
+    }
+  }
+  const metrics = { png: errors.png.map(({ diff, ...metric }) => metric),
+    webp: errors.webp.map(({ diff, ...metric }) => metric), bad: (({ diff, ...metric }) => metric)(errors.bad) };
+  console.log('Logo ΔE76 metrics:', metrics);
+  await testInfo.attach('logo-metrics', { body: JSON.stringify(metrics, null, 2), contentType: 'application/json' });
+  for (const error of [...errors.png, ...errors.webp]) expect(error.max).toBeLessThan(2);
+  expect(errors.bad.max).toBeGreaterThanOrEqual(2);
 });
