@@ -46,6 +46,7 @@ defmodule Aiur.RunTelemetry.Lifecycle do
     :start_trigger,
     :blockers,
     :blocker_prs,
+    :optimistic_start,
     :complexity,
     # Headroom dispatch summary (#3960): the chosen backend/account and every alternative's score.
     :dispatch_selection
@@ -186,6 +187,10 @@ defmodule Aiur.RunTelemetry.Lifecycle do
   end
 
   defp normalize_metadata_field(:blocker_prs, values) when is_list(values), do: Enum.map(values, &if(is_integer(&1), do: &1, else: nil))
+  defp normalize_metadata_field(:optimistic_start, %{blockers: blockers, primary: primary, pr_base: base, started_at: started_at}) do
+    %{blockers: Enum.map(blockers, &Map.take(&1, [:identifier, :pr_number, :ref, :sha])), primary: primary, pr_base: normalize_metadata_value(base), started_at: normalize_metadata_value(started_at)}
+  end
+
   defp normalize_metadata_field(_key, value), do: normalize_metadata_value(value)
 
   defp metadata_key(key) when is_atom(key), do: key
