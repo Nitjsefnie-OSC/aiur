@@ -3,9 +3,9 @@ defmodule Aiur.Orchestrator.PauseResume do
   Owns the pause, resume, and reactivation state machine for running agents.
   All functions execute inside the orchestrator GenServer process.
   """
-  alias Aiur.{AgentPubSub, Alerts, CodingAgent, Config, DecisionStore, Issue, ModelAvailability, Tracker, TrackerIdentity}
+  alias Aiur.{AgentPubSub, Alerts, CodingAgent, Commands, Config, Issue, ModelAvailability, Tracker, TrackerIdentity}
   alias Aiur.Events.IdGenerator
-  alias Aiur.Orchestrator.AgentTeardown
+  alias Aiur.Orchestrator.{AgentTeardown, CiLifecycle}
   alias Aiur.Orchestrator.{ControlLifecycle, ControlLifecycleStore, TicketTransition}
   alias Aiur.Orchestrator.Dispatcher
   alias Aiur.Orchestrator.DispatchPolicy
@@ -1479,7 +1479,7 @@ defmodule Aiur.Orchestrator.PauseResume do
     state =
       state
       |> Map.update!(:running, &Map.put(&1, issue.id, running_entry))
-      |> Aiur.Orchestrator.cancel_ci_wait_rewake(issue.id)
+      |> CiLifecycle.cancel_ci_wait_rewake(issue.id)
 
     worker_host = Map.get(running_entry, :worker_host)
 
@@ -2369,7 +2369,7 @@ defmodule Aiur.Orchestrator.PauseResume do
     do: %{decision_ids: [], store: :unavailable}
 
   defp blocking_decision_detail(issue, _state, opts) do
-    lookup = Keyword.get(opts, :decision_lookup, &DecisionStore.open_blocking_decision_ids/1)
+    lookup = Keyword.get(opts, :decision_lookup, &Commands.open_blocking_decision_ids/1)
 
     ticket_ids =
       [Map.get(issue, :id), Map.get(issue, :identifier)]
@@ -2411,7 +2411,7 @@ defmodule Aiur.Orchestrator.PauseResume do
   end
 
   defp dependency_resumability(issue, terminal_states) do
-    if DispatchPolicy.todo_issue_blocked_by_non_terminal?(issue, terminal_states) do
+    if DispatchPolicy.todo_issue_held_by_dependency?(issue, terminal_states) do
       {:error, :waiting_for_dependencies}
     else
       :ok

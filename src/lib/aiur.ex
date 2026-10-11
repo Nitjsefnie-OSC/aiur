@@ -21,10 +21,11 @@ defmodule Aiur.Application do
   require Logger
 
   alias Aiur.{AgentGitHubGuard, GitHub.Budget}
+  alias Aiur.BuildOrder.Component, as: BuildOrders
   alias Aiur.CodingAgent.RouteCredentials
   alias Aiur.Config, as: AiurConfig
   alias Aiur.Config.RoutingValue
-  alias Aiur.GitHub.Config
+  alias Aiur.GitHub.{BlockerProgress, Config}
   alias Aiur.Identity.Machine
 
   @impl true
@@ -324,12 +325,11 @@ defmodule Aiur.Application do
       # or `handle_cast` at all — just `init/1` and a catch-all `handle_info/2`.
       Aiur.Webhooks.ModeTable,
       Aiur.Capabilities.Table,
-      # `Aiur.PubSub.Boot` is `{Phoenix.PubSub, name: Aiur.PubSub}` with one
-      # thing added: it waits for a previous incarnation's registry names to be
-      # released before starting. Without that wait a PubSub crash restarts
-      # into its own still-registered partitions, fails three times inside a
-      # millisecond, and takes this whole supervisor down with it (#2557).
+      # `Aiur.PubSub.Boot` wraps `{Phoenix.PubSub, name: Aiur.PubSub}` and waits for a previous incarnation's registry names to be released before starting.
+      # Without that wait, a PubSub crash restarts into its own still-registered partitions, fails three times inside a millisecond,
+      # and takes this whole supervisor down with it (#2557).
       {Aiur.PubSub.Boot, name: Aiur.PubSub},
+      Aiur.AgentPubSub.FleetRefresh,
       {Registry, keys: :unique, name: Aiur.IssueLog.Registry},
       {Registry, keys: :unique, name: Aiur.Opencode.PaneRegistry},
       {Registry, keys: :duplicate, name: Aiur.Opencode.SessionWriterRegistry.Registry},
@@ -384,8 +384,8 @@ defmodule Aiur.Application do
       # API key it observes nothing at all, so an unconfigured account costs a
       # boot-time config read and never a request.
       Aiur.ElevenLabs.Quota,
-      {Aiur.BuildOrder.TicketDetailCoordinator, runtime_config?: true},
-      {Aiur.BuildOrder.GraphProjection, runtime_config?: true},
+      Aiur.TicketContext.child_specs(:early, opts),
+      BuildOrders.child_specs(:early, opts),
       Aiur.Events.IdGenerator,
       {Aiur.Events.Exchange, name: Aiur.Events.Exchange},
       Aiur.Events.BranchRefStore,
@@ -424,8 +424,8 @@ defmodule Aiur.Application do
       # is broadcast before there is anything retaining it.
       Aiur.ProviderMeters.HostObservations,
       Aiur.ProviderMeterProjection,
-      # Decides when usage is observed: one baseline after boot, then only
-      # while agents are running. Starts after the projection so a baseline
+      # Decides when usage is observed: one baseline after boot, then while a
+      # surface is watched or headroom account selection is on. Starts after the projection so a baseline
       # observation always has somewhere to land.
       Aiur.ProviderMeterRefresh,
       Aiur.UsageLedger,
@@ -440,8 +440,7 @@ defmodule Aiur.Application do
       {Aiur.DecisionMetrics.Writer, path: Aiur.DecisionMetrics.metrics_file()},
       Aiur.DecisionMetrics,
       Aiur.RecentMergeStore,
-      # Webhook deduplication state must be replayed before any receiver can
-      # admit a delivery.
+      {Aiur.StartTrigger.ProgressStore, seed: &Aiur.CIApprovalStore.load/0, reader: &BlockerProgress.approval/2, identity: &BlockerProgress.identity/1, repo: &Config.repo/0},
       Aiur.Webhooks.DeliveryLog,
       Aiur.GitHub.CodeOwners,
       {Registry, keys: :unique, name: Aiur.Events.SubscriptionStoreRegistry},
@@ -449,6 +448,7 @@ defmodule Aiur.Application do
       Aiur.DecisionAttention,
       Aiur.OperatorWaitLog,
       Aiur.Orchestrator.TrackedSet,
+      Aiur.Orchestrator.SnapshotCache,
       Aiur.Orchestrator.SnapshotStore,
       Aiur.Orchestrator.SnapshotPublisher,
       Aiur.CurrentRunMembership.Store,
@@ -461,17 +461,14 @@ defmodule Aiur.Application do
       Aiur.TicketActivity,
       # Claude telemetry must be available before the Orchestrator starts owned workers.
       Aiur.Claude.Telemetry,
-      Aiur.BuildOrder.History,
-      {Aiur.BuildOrder.History.Backfill, enabled?: Application.get_env(:aiur, :build_history_backfill_enabled?, true)},
-      Aiur.BuildOrder.Features,
-      {Aiur.BuildOrder.TicketHistoryProvider, runtime_config?: true},
-      {Aiur.BuildOrder.AdHocSource, poll_on_start: Application.get_env(:aiur, :build_order_adhoc_poll?, true)},
-      {Aiur.BuildOrder.PackStatus, poll_on_start: Application.get_env(:aiur, :build_order_pack_status_poll?, true)},
+      BuildOrders.child_specs(:history, opts),
+      Aiur.TicketContext.child_specs(:late, opts),
+      BuildOrders.child_specs(:late, opts),
       {Aiur.OpenTicketSource, poll_on_start: Application.get_env(:aiur, :open_ticket_poll?, dashboard?)},
       # The single view-state cadence, now reconciling only the pack-status
       # writer (OpenTicketSource and AdHocSource are event-sourced and hold no
       # timer). Starts after its sources so its first tick never races boot fill.
-      {Aiur.GitHub.ViewStateSweep, sources: [Aiur.BuildOrder.PackStatus]},
+      BuildOrders.child_specs(:view_state_sweep, opts),
       {Aiur.Orchestrator, name: Aiur.Orchestrator, initial_poll?: Application.get_env(:aiur, :orchestrator_initial_poll?, true)},
       Aiur.BuildQueue.child(recording?),
       Aiur.DecisionExpiry,
@@ -498,7 +495,7 @@ defmodule Aiur.Application do
       executor_principal_child(recording?, executor_mode?),
       # Dashboard supervision is independent of terminal attachment/headless
       # mode. Aiur.HttpServer retains its own bind and credential guards.
-      dashboard_children(dashboard?, tailscale_funnel?),
+      dashboard_children(dashboard?, Keyword.get(opts, :dashboard_pages?, true), tailscale_funnel?),
       Aiur.Opencode.TokenRegistry,
       Aiur.Opencode.ActiveTurns,
       # Chat-pane machinery — UI-only, never read by a headless run.
@@ -509,9 +506,8 @@ defmodule Aiur.Application do
       # above; BuildProgress and its observer run with recording and are
       # last in this `:rest_for_one` list so their restarts can never cascade
       # into the dashboard, the Principal, or the opencode supervisors.
-      if(recording?, do: [Aiur.AllowedContributors, Aiur.BuildProgress, Aiur.BuildOrder.ProgressObserver]),
-      Aiur.BuildOrder.EpicOverrides,
-      {Aiur.BuildOrder.Features.RootImport, enabled?: Application.get_env(:aiur, :build_order_root_import_enabled?, true)}
+      if(recording?, do: [Aiur.AllowedContributors, BuildOrders.child_specs(:recording, opts)]),
+      BuildOrders.child_specs(:final, opts)
     ]
     |> List.flatten()
     |> Enum.reject(&is_nil/1)
@@ -543,11 +539,11 @@ defmodule Aiur.Application do
   defp executor_principal_child(true, true), do: Aiur.Executor.Principal
   defp executor_principal_child(_recording?, _executor_mode?), do: nil
 
-  defp dashboard_children(dashboard?, tailscale_funnel?) do
+  defp dashboard_children(dashboard?, dashboard_pages?, tailscale_funnel?) do
     [
       if(dashboard?, do: AiurWeb.ControlCenterCache),
       if(dashboard?, do: AiurWeb.FinancialData.Supervisor),
-      if(dashboard?, do: Aiur.HttpServer),
+      if(dashboard?, do: {Aiur.HttpServer, dashboard_pages?: dashboard_pages?}),
       if(dashboard? and tailscale_funnel?, do: Aiur.TailscaleFunnel)
     ]
   end

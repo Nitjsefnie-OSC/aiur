@@ -7,19 +7,9 @@ defmodule Aiur.AgentRunner.ToolExecutor do
 
   require Logger
 
-  alias Aiur.AgentRunner.EpicSetter
-  alias Aiur.AgentRunner.SessionLifecycle
+  alias Aiur.AgentRunner.{DecisionLifecycleFailureAlert, EpicSetter, SessionLifecycle}
 
-  alias Aiur.{
-    Alerts,
-    Boot,
-    CodingAgent,
-    CoordinationTasks,
-    DecisionAttention,
-    DecisionStore,
-    EventPublicationLog,
-    Issue
-  }
+  alias Aiur.{Alerts, Boot, CodingAgent, Commands, CoordinationTasks, EventPublicationLog, Issue}
 
   alias Aiur.Codex.DynamicTool
   alias Aiur.Events.{Publisher, SubscriptionStore}
@@ -74,11 +64,11 @@ defmodule Aiur.AgentRunner.ToolExecutor do
     }
 
     event_handlers = %{
-      decision_requester: Keyword.get(opts, :decision_requester, &DecisionStore.request/2),
-      decision_lifecycle_recorder: Keyword.get(opts, :decision_lifecycle_recorder, &DecisionStore.agent_lifecycle/3),
-      attention_enricher: Keyword.get(opts, :attention_enricher, &DecisionStore.enrich_attention/2),
-      attention_opener: Keyword.get(opts, :attention_opener, &DecisionAttention.open_with_decision/6),
-      attention_resolver: Keyword.get(opts, :attention_resolver, &DecisionAttention.resolve/2)
+      decision_requester: Keyword.get(opts, :decision_requester, &Commands.request/2),
+      decision_lifecycle_recorder: Keyword.get(opts, :decision_lifecycle_recorder, &Commands.agent_lifecycle/3),
+      attention_enricher: Keyword.get(opts, :attention_enricher, &Commands.enrich_attention/2),
+      attention_opener: Keyword.get(opts, :attention_opener, &Commands.open_attention_with_decision/6),
+      attention_resolver: Keyword.get(opts, :attention_resolver, &Commands.resolve_attention/2)
     }
 
     event_context = %{
@@ -602,7 +592,7 @@ defmodule Aiur.AgentRunner.ToolExecutor do
         request_and_format(handlers.decision_requester, payload, ticket: ticket, source: source, provenance: provenance)
 
       slug when is_binary(slug) ->
-        case DecisionAttention.correlation(issue, slug) do
+        case Commands.attention_correlation(issue, slug) do
           {:ok, correlation} ->
             payload =
               request_payload
@@ -670,7 +660,7 @@ defmodule Aiur.AgentRunner.ToolExecutor do
              |> Map.new(fn {key, value} -> {Atom.to_string(key), stringify_lifecycle_value(value)} end)}
 
           {:error, reason} ->
-            {:error, {:decision_lifecycle_rejected, reason}}
+            DecisionLifecycleFailureAlert.recording_failed(issue, payload, name, reason)
         end
     end
   end

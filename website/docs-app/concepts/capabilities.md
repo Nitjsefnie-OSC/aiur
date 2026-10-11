@@ -82,6 +82,7 @@ presence does not promise that its feature is installed or enabled.
 | `tracker.github` | GitHub tracker |
 | `tracker.linear` | Linear tracker |
 | `accounting.meters` | Provider usage meters |
+| `merge_policy` | Configured merge policy; `mode` is `ci=<mode> local_tests=<mode>` ([configuration](/reference/merge-policy)) |
 
 Per-capability `version` defaults to 1. Registered `route` attributes tell clients
 where to open a feature's dashboard page; do not hard-code those destinations.
@@ -130,3 +131,9 @@ restart. This creates a new machine identity and invalidates existing pairings.
 The public report excludes provider diagnostics, filesystem paths, ports, tokens,
 and credentials. The visible machine label is the hostname exception; repository
 and Executor display identifiers are visible to authenticated clients.
+
+## Client contracts
+
+The private [`@aiur/contracts` package](https://github.com/aiur-team/aiur/tree/main/packages/aiur-contracts) provides generated TypeScript types, known capability IDs, harness ID patterns, and reason constants.
+
+Its [v1 JSON Schema](https://github.com/aiur-team/aiur/blob/main/packages/aiur-contracts/schemas/capabilities.v1.schema.json) validates the daemon's golden report.

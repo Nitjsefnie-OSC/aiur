@@ -20,6 +20,7 @@ defmodule Aiur.Config.Schema do
     Errors,
     Events,
     Hooks,
+    MergePolicy,
     Monitoring,
     Observability,
     Opencode,
@@ -34,6 +35,10 @@ defmodule Aiur.Config.Schema do
     Worker,
     Workspace
   }
+
+  # Embedded struct defaults must rebuild when the agent schema changes.
+  require Agent
+  require Tracker
 
   @primary_key false
 
@@ -57,6 +62,7 @@ defmodule Aiur.Config.Schema do
     embeds_one(:agent, Agent, on_replace: :update, defaults_to_struct: true)
     embeds_one(:decisions, Decisions, on_replace: :update, defaults_to_struct: true)
     embeds_one(:hooks, Hooks, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:merge_policy, MergePolicy, on_replace: :update, defaults_to_struct: true)
     embeds_one(:monitoring, Monitoring, on_replace: :update, defaults_to_struct: true)
     embeds_one(:observability, Observability, on_replace: :update, defaults_to_struct: true)
     embeds_one(:server, Server, on_replace: :update, defaults_to_struct: true)
@@ -124,6 +130,21 @@ defmodule Aiur.Config.Schema do
   end
 
   @doc false
+  @spec workspace_write_policy?(map()) :: boolean()
+  def workspace_write_policy?(policy) do
+    (Map.get(policy, "type") || Map.get(policy, :type)) == "workspaceWrite"
+  end
+
+  @doc false
+  @spec policy_writable_roots(map()) :: {:ok, list()} | {:error, term()}
+  def policy_writable_roots(policy) do
+    case Map.get(policy, "writableRoots") || Map.get(policy, :writableRoots) || [] do
+      roots when is_list(roots) -> {:ok, roots}
+      roots -> {:error, {:unsafe_turn_sandbox_policy, {:invalid_writable_roots, roots}}}
+    end
+  end
+
+  @doc false
   @spec validate_turn_sandbox_policy(%__MODULE__{}) :: :ok | {:error, term()}
   def validate_turn_sandbox_policy(settings) do
     settings.agent.codex
@@ -173,6 +194,7 @@ defmodule Aiur.Config.Schema do
     |> cast_embed(:agent, with: &Agent.changeset/2)
     |> cast_embed(:decisions, with: &Decisions.changeset/2)
     |> cast_embed(:hooks, with: &Hooks.changeset/2)
+    |> cast_embed(:merge_policy, with: &MergePolicy.changeset/2)
     |> cast_embed(:monitoring, with: &Monitoring.changeset/2)
     |> cast_embed(:observability, with: &Observability.changeset/2)
     |> cast_embed(:server, with: &Server.changeset/2)
