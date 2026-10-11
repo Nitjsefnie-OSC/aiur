@@ -2,17 +2,16 @@ defmodule Aiur.Orchestrator.GlobalPause do
   @moduledoc """
   The single global pause switch: a daemon-wide halt distinct from per-agent pause.
 
-  Pausing holds every running agent that is not already individually paused and
-  stops all provisioning (`Slots.available_slots/1` returns 0 while paused, so no
-  agents spin up even with `agent:todo` tickets). Unpausing resumes only the
-  agents this switch held, never overriding an operator's per-agent pause.
+  Pausing stops provisioning (`Slots.available_slots/1` returns 0 while paused,
+  so no agents spin up even with `agent:todo` tickets) while existing agents
+  continue to be observed by the normal poll cycle.
 
   The switch also cold-starts from the `--pause` launch flag via
   `Aiur.Orchestrator.Slots.launch_globally_paused?/0`, seeded on orchestrator init.
   All state mutation runs inside the orchestrator GenServer process.
   """
 
-  alias Aiur.Orchestrator.{GlobalPauseStore, Lifecycle, PauseResume, SnapshotStore, State, StatusReport}
+  alias Aiur.Orchestrator.{GlobalPauseStore, Lifecycle, SnapshotStore, State, StatusReport}
 
   @call_timeout 15_000
 
@@ -54,8 +53,8 @@ defmodule Aiur.Orchestrator.GlobalPause do
   end
 
   @doc """
-  Flip the global pause switch. `true` pauses the daemon and holds all running
-  agents; `false` unpauses and resumes only the globally held agents. Idempotent.
+  Flip the global pause switch. `true` stops provisioning while existing agents
+  continue to run and be observed; `false` re-enables provisioning. Idempotent.
   """
   @spec set_global_pause(boolean()) :: {:ok, map()} | {:error, term()}
   def set_global_pause(on?) when is_boolean(on?),
@@ -113,7 +112,6 @@ defmodule Aiur.Orchestrator.GlobalPause do
       :ok ->
         state =
           next_state
-          |> apply_global_pause_transition(current, on?, opts)
           |> maybe_wake_after_unpause(current, on?)
 
         publish_global_pause(state)
@@ -138,14 +136,6 @@ defmodule Aiur.Orchestrator.GlobalPause do
   end
 
   defp next_global_pause_state(state, _current, _on?, _source), do: state
-
-  defp apply_global_pause_transition(state, false, true, _opts),
-    do: PauseResume.pause_running_for_global(state)
-
-  defp apply_global_pause_transition(state, true, false, opts),
-    do: PauseResume.resume_running_from_global(state, opts)
-
-  defp apply_global_pause_transition(state, _current, _on?, _opts), do: state
 
   # An idle fleet may have a substantially widened timer. Unpausing is an
   # explicit admission request, so cancel that timer and reconcile fresh state

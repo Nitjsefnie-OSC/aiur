@@ -23,14 +23,6 @@ defmodule Aiur.Orchestrator.PauseResume do
   alias Aiur.Orchestrator.TrackerTasks
   alias Aiur.RunTelemetry.Lifecycle
   require Logger
-  # Attribution marker for agents held by the global pause switch, distinct
-  # from every per-agent pause reason. Unpause resumes only these entries, so
-  # an operator's individual pause is never overridden. See `Aiur.Orchestrator.GlobalPause`.
-  @global_pause_reason :global_pause
-
-  @spec global_pause_reason() :: :global_pause
-  def global_pause_reason, do: @global_pause_reason
-
   # Pause reasons that mean the worker itself is waiting for input (#2730).
   @input_pause_reasons [:agent_pause_request, :input_required]
 
@@ -513,94 +505,6 @@ defmodule Aiur.Orchestrator.PauseResume do
       nil ->
         {:reply, {:error, :no_running_agent}, state}
     end
-  end
-
-  @doc """
-  Request a pause on every running agent that the global switch should hold.
-
-  Skips agents that are already individually paused, deactivated, completed, or
-  carry an in-flight pause request — so a per-agent pause is never overridden.
-  Held agents are tagged with `#{inspect(@global_pause_reason)}` so `resume_running_from_global/1`
-  can resume exactly this set.
-  """
-  @spec pause_running_for_global(State.t()) :: State.t()
-  def pause_running_for_global(%State{} = state) do
-    state.running
-    |> Map.values()
-    |> Enum.reduce(state, fn entry, state ->
-      if globally_pausable?(state, entry) do
-        {_reply, state} = request_pause(state, entry, Map.get(entry, :issue), @global_pause_reason)
-        state
-      else
-        state
-      end
-    end)
-  end
-
-  @doc """
-  Resume only the agents the global switch is holding.
-
-  An agent is globally held when it is paused with reason `#{inspect(@global_pause_reason)}`
-  or carries an in-flight global-pause request. Individually paused agents are
-  left untouched, preserving the operator's per-agent pause.
-  """
-  @spec resume_running_from_global(State.t()) :: State.t()
-  @spec resume_running_from_global(State.t(), keyword()) :: State.t()
-  def resume_running_from_global(%State{} = state, opts \\ []) do
-    backends = Keyword.get(opts, :backends, DispatchPolicy.read_provider_backends())
-    ModelAvailability.probe_stale_limits(backends, opts)
-
-    state.running
-    |> Enum.filter(fn {_id, entry} -> globally_held?(state, entry) end)
-    |> Enum.reduce(state, fn {_id, entry}, state ->
-      if tracker_pause_override?(entry) do
-        preserve_tracker_pause_after_global_hold(state, entry)
-      else
-        {_reply, state} =
-          resume_issue_with_opts(state, Map.get(entry, :identifier), Keyword.put(opts, :probe_provider_limits?, false))
-
-        state
-      end
-    end)
-  end
-
-  defp tracker_pause_override?(%{issue: %Issue{} = issue}), do: Issue.paused?(issue)
-  defp tracker_pause_override?(_entry), do: false
-
-  defp preserve_tracker_pause_after_global_hold(state, entry) do
-    issue_id = get_in(entry, [:issue, Access.key(:id)])
-
-    entry =
-      entry
-      |> Map.put(:paused_reason, :label_override)
-      |> update_pending_global_pause_reason()
-
-    put_running_entry(state, issue_id, entry)
-  end
-
-  defp update_pending_global_pause_reason(%{pending_pause_reason: %{reason: @global_pause_reason} = pending} = entry),
-    do: %{entry | pending_pause_reason: %{pending | reason: :label_override}}
-
-  defp update_pending_global_pause_reason(entry), do: entry
-
-  defp globally_pausable?(state, entry) do
-    not State.paused_running_entry?(entry) and
-      not State.deactivated_running_entry?(entry) and
-      not State.completed_provenance?(entry) and
-      not pending_pause_request?(state, entry)
-  end
-
-  defp globally_held?(state, entry) do
-    applied_global_hold?(entry) or pending_global_hold?(state, entry)
-  end
-
-  defp applied_global_hold?(entry) do
-    State.paused_running_entry?(entry) and Map.get(entry, :paused_reason) == @global_pause_reason
-  end
-
-  defp pending_global_hold?(state, entry) do
-    pending_pause_request?(state, entry) and
-      match?(%{reason: @global_pause_reason}, Map.get(entry, :pending_pause_reason))
   end
 
   @spec control_lifecycle_call(State.t(), String.t()) :: {:reply, {:ok, map()} | {:error, term()}, State.t()}

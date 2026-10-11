@@ -2,7 +2,7 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
   use Aiur.TestSupport
 
   alias Aiur.{Issue, TrackerIdentity}
-  alias Aiur.Orchestrator.{GlobalPause, GlobalPauseStore, PauseResume, State, TrackerHealth}
+  alias Aiur.Orchestrator.{Dispatcher, GlobalPause, GlobalPauseStore, PauseResume, Slots, State, TrackerHealth}
 
   test "set_global_pause distinguishes a timeout from an unavailable server" do
     server = spawn(fn -> Process.sleep(:infinity) end)
@@ -85,7 +85,7 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
   end
 
   describe "set_global_pause_call/2 pause" do
-    test "holds every working agent and tags them global_pause without overriding an individual pause" do
+    test "stops new admissions without pausing existing agents" do
       individual = unique_id("gp-individual")
       free = unique_id("gp-free")
 
@@ -102,69 +102,46 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
       assert state.running[individual].control.status == :paused
       assert state.running[individual].paused_reason == :operator_pause
 
-      # Global pause: the individually paused agent is skipped; the free one is held.
+      # Global pause gates admission but leaves worker execution and monitoring live.
       {:reply, {:ok, %{globally_paused: true}}, paused_state} =
         GlobalPause.set_global_pause_call(state, true)
 
       assert paused_state.globally_paused
-      # No new control request is routed to the already-paused agent.
-      refute_receive {:pause_agent, _rid, _gen, _id_extra}, 50
+      assert paused_state.running[free].control.status == :working
+      refute Map.has_key?(paused_state.running[free], :pending_pause_reason)
       assert paused_state.running[individual].paused_reason == :operator_pause
+      assert Slots.available_slots(paused_state) == 0
+      refute_receive {:pause_agent, _, _, _}, 50
 
-      # The free agent received a global-pause hold request.
-      assert %{reason: :global_pause} = paused_state.running[free].pending_pause_reason
-      assert_receive {:pause_agent, free_rid, 101}, 1000
+      parent = self()
 
-      applied_state = apply_worker_pause(paused_state, free, free_rid, :global_pause)
-      assert applied_state.running[free].control.status == :paused
-      assert applied_state.running[free].paused_reason == :global_pause
-      # Individual pause is untouched throughout.
-      assert applied_state.running[individual].paused_reason == :operator_pause
+      monitored =
+        Dispatcher.monitor_without_candidates(paused_state,
+          refresh_running_fun: fn current ->
+            send(parent, :running_refreshed)
+            current
+          end,
+          scan_commands_fun: &Function.identity/1,
+          stop_closed_pr_agents_fun: &Function.identity/1,
+          notify_dashboard_fun: fn _ -> :ok end
+        )
+
+      assert monitored.globally_paused
+      assert_received :running_refreshed
     end
   end
 
   describe "set_global_pause_call/2 unpause" do
-    test "refreshes stale provider limits when globally resuming an idle fleet" do
-      path = Aiur.TestSupport.tmp_root!("global-resume-provider-refresh") <> ".json"
-      on_exit(fn -> File.rm(path) end)
-      now = DateTime.utc_now()
-      stale_at = DateTime.add(now, -301, :second)
-      reset_at = DateTime.add(now, 3_600, :second) |> DateTime.to_iso8601()
-
-      assert :ok =
-               Aiur.ModelAvailability.observe(
-                 "codex",
-                 %{hourly: %{used: 100, limit: 100, reset_at: reset_at}},
-                 path: path,
-                 now: stale_at
-               )
-
-      state = base_state(globally_paused: true, running: %{})
-
-      assert {:reply, {:ok, %{globally_paused: false}}, resumed} =
-               GlobalPause.set_global_pause_call(state, false, "test",
-                 path: path,
-                 now: now,
-                 backends: ["codex"],
-                 probe_fun: fn backend, opts -> send(self(), {:provider_probe_scheduled, backend, opts}) end
-               )
-
-      refute resumed.globally_paused
-      assert_receive {:provider_probe_scheduled, "codex", opts}, 1_000
-      assert Keyword.fetch!(opts, :path) == path
-      assert Keyword.fetch!(opts, :now) == now
-    end
-
-    test "resumes only globally held agents and leaves individually paused agents paused" do
+    test "unpausing leaves existing worker controls unchanged" do
       individual = unique_id("gp-keep")
-      held = unique_id("gp-held")
+      working = unique_id("gp-working")
 
       state =
         base_state(
           globally_paused: true,
           running: %{
             individual => paused_entry(individual, :operator_pause),
-            held => paused_entry(held, :global_pause)
+            working => running_entry(working)
           }
         )
 
@@ -175,18 +152,11 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
       assert is_reference(resumed_state.tick_timer_ref)
       assert resumed_state.next_poll_due_at_ms <= System.monotonic_time(:millisecond)
 
-      # Only the globally held agent gets a resume request.
-      assert_receive {:resume_agent, held_rid, 101}, 1000
-      refute_receive {:resume_agent, _rid, _gen}, 50
-
-      # The individually paused agent is never touched.
+      # Global pause never changed worker controls, so unpause sends no control request.
+      refute_receive {:resume_agent, _, _}, 50
       assert resumed_state.running[individual].control.status == :paused
       assert resumed_state.running[individual].paused_reason == :operator_pause
-
-      # Applying the worker's resume evidence clears the global-pause marker.
-      applied_state = apply_worker_resume(resumed_state, held, held_rid)
-      refute Map.has_key?(applied_state.running[held], :paused_reason)
-      assert applied_state.running[individual].paused_reason == :operator_pause
+      assert resumed_state.running[working].control.status == :working
     end
 
     # Criterion 1 of #2138: lifting a global pause after a long deliberate pause
@@ -239,7 +209,7 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
                TrackerHealth.poll_schedule(polled_state, idle_widen_factor: 5.0)
     end
 
-    test "preserves a tracker pause added while an agent is globally held" do
+    test "leaves independently paused workers untouched when unpausing" do
       held = unique_id("gp-tracker-held")
 
       entry =
@@ -255,7 +225,7 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
 
       refute resumed_state.globally_paused
       assert resumed_state.running[held].control.status == :paused
-      assert resumed_state.running[held].paused_reason == :label_override
+      assert resumed_state.running[held].paused_reason == :global_pause
       assert resumed_state.running[held].issue.paused
       refute_receive {:resume_agent, _request_id, _generation}, 50
     end
@@ -424,16 +394,6 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
     {:noreply, applied} =
       Aiur.Orchestrator.handle_info(
         {:worker_control_state, issue_id, :paused, %{request_id: request_id, generation: 101, kind: kind}},
-        state
-      )
-
-    applied
-  end
-
-  defp apply_worker_resume(state, issue_id, request_id) do
-    {:noreply, applied} =
-      Aiur.Orchestrator.handle_info(
-        {:worker_control_state, issue_id, :working, %{request_id: request_id, generation: 101}},
         state
       )
 
