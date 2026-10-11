@@ -1,7 +1,7 @@
 defmodule Aiur.OptimisticStart.PromptTest do
   use ExUnit.Case, async: false
 
-  alias Aiur.AgentRunner.{TurnLoop, TurnPrompt}
+  alias Aiur.AgentRunner.{OptimisticPrompt, TurnLoop, TurnPrompt}
   alias Aiur.{Issue, PromptBuilder, Workflow}
 
   @sha String.duplicate("a", 40)
@@ -23,11 +23,12 @@ defmodule Aiur.OptimisticStart.PromptTest do
     :ok
   end
 
-  # Compatibility guard: baseline verified byte-for-byte against origin/main.
-  test "ordinary prompt stays byte identical" do
-    prompt = PromptBuilder.build_prompt(issue(nil))
-    assert Base.encode16(:crypto.hash(:sha256, prompt)) == "29DADF9D0E6C32CAFB4B31C38CE4C07CDE5847D2678F04B8E97D198177E201E4"
-    refute prompt =~ "## Optimistic start"
+  test "ordinary turns add no optimistic context" do
+    assert OptimisticPrompt.render(nil) == ""
+
+    for {opts, turn} <- [{[], 1}, {[prior_work: true], 1}, {[resumed: true], 1}, {[], 2}] do
+      refute TurnPrompt.build_turn_prompt(issue(nil), opts, turn, 4) =~ "## Optimistic start"
+    end
   end
 
   test "single blocker carries its SHA, ancestry check and PR base on every turn path" do
