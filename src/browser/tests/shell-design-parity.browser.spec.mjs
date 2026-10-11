@@ -51,6 +51,7 @@ async function finishTransitions(pair) {
   }
 }
 
+// Keep shell states together to reuse each viewport's paired pages and isolate transitions.
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) {
   const cell = { ...viewport, theme, palette, dataset: 'live' }
   const label = `${viewport.viewport.width}-${theme}-${palette}`
