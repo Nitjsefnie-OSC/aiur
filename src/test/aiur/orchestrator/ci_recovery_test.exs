@@ -23,7 +23,10 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
 
     agent =
       start_supervised!(
-        {Agent, fn -> %{attempt: 1, requests: [], behind: false, queued: false, changed: ["src/lib/other.ex"], permission: true, advance: true, extra: [], known: false, stale_evidence: false} end}
+        {Agent,
+         fn ->
+           %{attempt: 1, requests: [], behind: false, queued: false, changed: ["src/lib/other.ex"], permission: true, advance: true, extra: [], known: false, stale_evidence: false, passed: false}
+         end}
       )
 
     request = fn req ->
@@ -170,7 +173,8 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert capture_io(fn -> CiWait.print(snapshot) end) =~ "CI WAIT 3864 PR #42: rerun_requested"
     assert state.running == %{}
     assert :ok = CiRecovery.record_failure(ctx.issue, ctx.result, ctx.opts)
-    poll.(state, %{ctx.result | decision: :passed, failures: []})
+    state = poll.(state, %{ctx.result | decision: :passed, failures: []})
+    assert state |> StatusReport.snapshot_input() |> SnapshotPayload.snapshot_payload() |> Map.get(:ci_wait) == []
     assert_received {:ci_watcher_update, "3864", "in-progress"}
     assert {:ok, %{"cycles" => 0, "attentions" => []}} = CiRecoveryStore.read("3864", 42, ctx.opts)
     assert length(writes(ctx)) == 1
@@ -198,7 +202,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert %{recovery: "rerun_requested"} = recover(ctx)
     Agent.update(ctx.agent, &%{&1 | stale_evidence: true})
     assert %{decision: :pending, recovery: "rerun_pending"} = recover(ctx)
-    Agent.update(ctx.agent, &%{&1 | stale_evidence: false})
+    Agent.update(ctx.agent, &%{&1 | stale_evidence: false, passed: false})
     assert %{decision: :failed} = recover(ctx)
   end
 

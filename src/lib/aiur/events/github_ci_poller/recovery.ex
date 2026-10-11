@@ -168,11 +168,19 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   defp observe_rerun(issue, result, runs, attempt, opts) do
     observations = Enum.map(runs, &CIRecovery.read("/actions/runs/#{&1["id"]}", opts))
 
-    if check_ids(result) != attempt["checks"] and Enum.zip(runs, observations) |> Enum.all?(&rerun_completed?(&1, result.head_sha)) do
+    if fresh_failures?(result, attempt) and Enum.zip(runs, observations) |> Enum.all?(&rerun_completed?(&1, result.head_sha)) do
       result
     else
       await_attempt(issue, result, attempt, "rerun", opts)
     end
+  end
+
+  defp fresh_failures?(result, attempt) do
+    checks = result.ci_failure_digest.checks
+    names = Enum.map(checks, & &1.name)
+
+    checks != [] and Enum.all?(check_ids(result), &(&1 not in attempt["checks"])) and
+      Enum.all?(result.failures, &(&1.name in names))
   end
 
   defp check_ids(result), do: result.ci_failure_digest.checks |> Enum.map(& &1.id) |> Enum.sort()

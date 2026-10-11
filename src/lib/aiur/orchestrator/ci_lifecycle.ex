@@ -1025,7 +1025,6 @@ defmodule Aiur.Orchestrator.CiLifecycle do
     end
   end
 
-  # Persist complete draft observations beyond the pruned poll cache (#2707).
   defp publish_ready_for_review_transition(%State{} = state, %Issue{} = issue, result) do
     observation =
       ReadyForReviewTransitions.observation(
@@ -1755,6 +1754,7 @@ defmodule Aiur.Orchestrator.CiLifecycle do
         |> remember_ci_approved_head(issue, result)
         |> cancel_ci_wait_rewake(issue.id)
         |> Reconciler.refresh_running_issue_state(active_issue)
+        |> stash_last_ci_result(active_issue, result)
         |> ensure_ci_terminal_subscription(issue)
         |> publish_ci_terminal_event(issue, result, :passed)
 
@@ -1790,6 +1790,7 @@ defmodule Aiur.Orchestrator.CiLifecycle do
         |> clear_ci_approved_head(issue)
         |> cancel_ci_wait_rewake(issue.id)
         |> Reconciler.refresh_running_issue_state(rework_issue)
+        |> stash_last_ci_result(rework_issue, result)
         |> ensure_ci_terminal_subscription(issue)
         |> publish_ci_terminal_event(issue, result, :failed)
 
