@@ -49,20 +49,7 @@ if ! jq -e '
   exit 1
 fi
 
-required_checks='[
-  "browser harness",
-  "build",
-  "coverage (1/4)",
-  "coverage (2/4)",
-  "coverage (3/4)",
-  "coverage (4/4)",
-  "dialyzer",
-  "layout release smoke",
-  "lint",
-  "streamdeck",
-  "test",
-  "workflow security"
-]'
+required_checks='["ci gate"]'
 
 if ! jq -e --argjson required_checks "$required_checks" '
   [.rules[] | select(.type == "required_status_checks") | .parameters] |

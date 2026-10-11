@@ -101,13 +101,13 @@ expect_rejected \
   "ruleset rule types must match the declaration"
 
 expect_rejected \
-  "missing-workflow-security-check" \
-  '(.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks) |= map(select(.context != "workflow security"))' \
+  "missing-ci-gate" \
+  '(.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks) |= map(select(.context != "ci gate"))' \
   "ruleset must require every blocking GitHub Actions status check from the declaration"
 
 expect_rejected \
-  "missing-coverage-partition" \
-  '(.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks) |= map(select(.context != "coverage (4/4)"))' \
+  "obsolete-full-check" \
+  '(.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks) += [{"context":"coverage (4/4)","integration_id":15368}]' \
   "ruleset must require every blocking GitHub Actions status check from the declaration"
 
 expect_rejected \
