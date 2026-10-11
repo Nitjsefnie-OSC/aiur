@@ -3,6 +3,7 @@ defmodule AiurWeb.AnalyticsLoadingTest do
 
   import Phoenix.ConnTest, except: [build_conn: 0]
   import Phoenix.LiveViewTest
+  import ExUnit.CaptureLog
 
   alias Aiur.RunTelemetry.Summaries
   alias Aiur.TestSupport.LiveViewAsync
@@ -109,9 +110,12 @@ defmodule AiurWeb.AnalyticsLoadingTest do
     {:ok, view, _html} = live(build_conn(), "/analytics")
     LiveViewAsync.render_when_complete(view)
     socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, range: :run}}
-    {:noreply, failed} = AiurWeb.AnalyticsLive.handle_async(:analytics_model, {:exit, :killed}, socket)
-    assert failed.assigns.unavailable == :error
-    assert failed.assigns.model == nil
+
+    assert capture_log(fn ->
+             {:noreply, failed} = AiurWeb.AnalyticsLive.handle_async(:analytics_model, {:exit, :killed}, socket)
+             assert failed.assigns.unavailable == :error
+             assert failed.assigns.model == nil
+           end) =~ "Analytics loading failed: :killed"
   end
 
   defp build_conn do

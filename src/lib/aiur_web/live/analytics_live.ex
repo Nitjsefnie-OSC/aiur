@@ -3,12 +3,11 @@ defmodule AiurWeb.AnalyticsLive do
   Authenticated, read-only LiveView for latest-run utilization. It derives every
   chart from the durable `Aiur.RunTelemetry` stream via the analytics
   `Presenter`, and renders them as inline SVG inside the Operator Control Center
-  shell. Legend, sort, and time-range interactions are plain LiveView events —
-  no client-side charting.
+  shell. Legend, sort, and time-range interactions are plain LiveView events — no client-side charting.
   """
 
   use Phoenix.LiveView, layout: {AiurWeb.Layouts, :app}
-
+  require Logger
   alias Aiur.Usage.GroupedScopes
   alias Aiur.Usage.GroupedScopes.Scope
   alias Aiur.UsageAggregate
@@ -26,8 +25,7 @@ defmodule AiurWeb.AnalyticsLive do
   alias AiurWeb.OperatorControlCenter.Analytics.{Charts, Presenter, Runtime, ScopeResolver, Styles}
 
   @usage_summary_max_age_ms 30_000
-  # Matches the CLI's freshness threshold: telemetry observed within this
-  # window is "just now", anything older is shown with its elapsed age.
+  # Matches the CLI: telemetry within this window is "just now", older telemetry shows elapsed age.
   @source_fresh_ms 30_000
 
   @impl true
@@ -97,8 +95,10 @@ defmodule AiurWeb.AnalyticsLive do
     {:noreply, socket}
   end
 
-  def handle_async(:analytics_model, {:exit, _reason}, socket),
-    do: handle_async(:analytics_model, {:ok, {{:unavailable, :error}, %{state: :absent, title: "Compression unavailable", message: "Analytics loading failed."}}}, socket)
+  def handle_async(:analytics_model, {:exit, reason}, socket) do
+    Logger.warning("Analytics loading failed: #{inspect(reason)}")
+    handle_async(:analytics_model, {:ok, {{:unavailable, :error}, %{state: :absent, title: "Compression unavailable", message: "Analytics loading failed."}}}, socket)
+  end
 
   @impl true
   def handle_event("toggle-nav", _params, socket), do: {:noreply, NavState.toggle(socket)}
