@@ -49,7 +49,7 @@ defmodule AiurWeb.ExperimentsLive do
     <DashboardShell.dashboard_shell route={@current_route} routes={RouteRegistry.routes(@analytics)} tracker_kind={@tracker_kind} agent_kind={@agent_kind} nav_collapsed={@nav_collapsed} nav_counts={@nav_counts}>
       <:banner><Overview.decisions_banner retained_counts={@retained_counts} navigate /></:banner>
       {Phoenix.HTML.raw("<style>" <> Styles.css() <> "</style>")}
-      <section id="experiments-page" class="exp-root" data-selection={if @selected_id, do: "detail", else: "index"} aria-label="Experiments">
+      <section id="experiments-page" class="exp-root" data-selection={if @selected_id, do: "detail", else: "index"} aria-label="Experiment collection">
         <h1>Experiments</h1>
         <p :if={@status.capture == :off} class="exp-notice" id="experiments-capture-off" role="status">
           Capture is off. New samples are not being captured; existing experiments remain available.

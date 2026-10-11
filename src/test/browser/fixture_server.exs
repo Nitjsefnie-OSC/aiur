@@ -145,7 +145,7 @@ defmodule Aiur.BrowserHarness.FixtureEndpoint do
 end
 
 defmodule Aiur.BrowserHarness.FixtureServer do
-  alias Aiur.BrowserHarness.FixtureEndpoint
+  alias Aiur.BrowserHarness.{ExperimentsFixture, FixtureEndpoint}
   alias Aiur.BrowserHarness.FixtureEndpointStart
   alias Aiur.IssueLog
   alias Aiur.TestSupport.BuildHome.FixtureSource
@@ -160,7 +160,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
     Application.put_env(:aiur, :build_data_source, FixtureSource)
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
     configure_forwarded_dashboard() |> FixtureSource.configure_usage()
-    Aiur.BrowserHarness.ExperimentsFixture.prepare("empty")
+    ExperimentsFixture.prepare("empty")
 
     {:ok, _} =
       Supervisor.start_link(
@@ -170,6 +170,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
             id: Aiur.BrowserHarness.FixturePubSub
           ),
           Supervisor.child_spec({Phoenix.PubSub, name: Aiur.PubSub}, id: Aiur.PubSub),
+          {Task.Supervisor, name: Aiur.TaskSupervisor},
           {AiurWeb.Endpoint, []},
           AiurWeb.FinancialDataAccess.Generation,
           AiurWeb.VoiceSessionLimiter,
