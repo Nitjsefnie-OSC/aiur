@@ -268,8 +268,7 @@ for (const command of nonLaunchCommands) {
       writeFileSync(executable, `#!/bin/bash\necho '${tool}:$*' >>"$AIUR_TEST_OUT"\nexit 1\n`);
       chmodSync(executable, 0o755);
     }
-    const result = runShim({
-      args: [command, "--format", "records"], fakeBin,
+    const result = runShim({ args: [command, "--format", "records"], fakeBin,
       env: { PATH: `${fakeBin}:/usr/bin:/bin`, AIUR_SKIP_TMUX_INSTALL: "", AIUR_SKIP_OPENCODE_INSTALL: "" },
     });
     expect(result.status).toBe(0);
