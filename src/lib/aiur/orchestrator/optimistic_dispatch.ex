@@ -56,7 +56,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatch do
     blockers =
       Enum.map(start.blockers, fn head ->
         blocker = Enum.find(issue.blocked_by, &(Map.get(&1, :identifier, &1.id) == head.identifier))
-        facts = ProgressStore.lookup(blocker.id) || %{}
+        facts = if blocker, do: ProgressStore.lookup(blocker.id) || %{}, else: %{}
 
         %{
           "id" => head.identifier,
