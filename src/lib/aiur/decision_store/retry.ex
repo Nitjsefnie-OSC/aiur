@@ -101,6 +101,7 @@ defmodule Aiur.DecisionStore.Retry do
   def dispatch_failure_class(:max_concurrent_agents_reached), do: "target_agent_unavailable"
   def dispatch_failure_class(:task_unavailable), do: "dispatch_task_unavailable"
   def dispatch_failure_class(:dispatcher_crashed), do: "dispatcher_crashed"
+  def dispatch_failure_class(:delivery_target_unbound), do: "delivery_target_unbound"
   def dispatch_failure_class(:decision_dispatch_overloaded), do: "decision_dispatch_overloaded"
   def dispatch_failure_class(:decision_dispatch_unavailable), do: "decision_dispatch_unavailable"
   def dispatch_failure_class(:decision_dispatch_timeout), do: "decision_dispatch_timeout"
