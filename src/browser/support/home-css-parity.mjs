@@ -89,7 +89,13 @@ export function styleSnapshot({ roots, custom = [], reduced = false, index }) {
   const matches = [...document.querySelectorAll(roots)]
   const nodes = (index == null ? matches : [matches[index]]).flatMap(root => [root, ...root.querySelectorAll('*')])
   const excluded = reduced ? ['animation-duration', 'animation-iteration-count', 'transition-duration', 'scroll-behavior'] : []
-  const read = style => Object.fromEntries([...style, ...custom].filter(p => !excluded.includes(p) && (!p.startsWith('--') || custom.includes(p))).map(p => [p, style.getPropertyValue(p)]))
+  const read = style => {
+    const values = {}
+    for (const property of [...style, ...custom]) {
+      if (!excluded.includes(property) && (!property.startsWith('--') || custom.includes(property))) values[property] = style.getPropertyValue(property)
+    }
+    return values
+  }
   const snapshot = nodes.map(e => {
     const styles = { element: read(getComputedStyle(e)) }
     for (const pseudo of ['::before', '::after']) {

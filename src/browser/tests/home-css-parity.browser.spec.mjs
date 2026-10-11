@@ -201,3 +201,18 @@ test('home base utilities keep the design font stack', async ({ browser }) => {
     await compareStyles(pair, '#build-root > .mono.num')
   } finally { await pair.close() }
 })
+
+
+test('snapshot codec preserves every native computed property', async ({ browser }) => {
+  const pair = await transplant(browser, BASE)
+  try {
+    const encoded = await pair.product.evaluate(styleSnapshot, { roots: '.bd-card.now', custom: pair.custom, index: 0 })
+    expect(typeof encoded).toBe('string')
+    const actual = JSON.parse(encoded)[0].styles.element
+    const native = await pair.product.locator('.bd-card.now').first().evaluate((element, custom) => {
+      const style = getComputedStyle(element)
+      return Object.fromEntries([...style, ...custom].filter(property => !property.startsWith('--') || custom.includes(property)).map(property => [property, style.getPropertyValue(property)]))
+    }, pair.custom)
+    expect(actual).toEqual(native)
+  } finally { await pair.close() }
+})
