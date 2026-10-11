@@ -138,7 +138,6 @@ defmodule Aiur.ApplicationTest do
       AiurWeb.FinancialData.Supervisor,
       Aiur.HttpServer
     ]
-    # Agent backends kept in headless mode plus core infra both modes need.
     @always [
       Aiur.Orchestrator.TrackedSet,
       Aiur.Orchestrator,
