@@ -15,7 +15,7 @@ defmodule Aiur.Executor.HarnessSessionTest do
   setup do
     root = Aiur.TestSupport.tmp_root!("aiur-harness-session")
     File.mkdir_p!(root)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     %{opts: [path: Path.join(root, "claims.json")]}
   end
 
