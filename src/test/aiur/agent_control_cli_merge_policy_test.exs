@@ -1,6 +1,7 @@
 defmodule Aiur.AgentControlCLIMergePolicyTest do
   use Aiur.TestSupport
   import ExUnit.CaptureIO
+  alias Aiur.MainWatch.Persistence
 
   test "status renders the default merge policy" do
     assert status_output() =~ "MERGE POLICY ci=wait local_tests=partial main_watch=off watcher=not_running\n"
@@ -66,7 +67,7 @@ defmodule Aiur.AgentControlCLIMergePolicyTest do
       interval_ms: 60_000,
       subscribe: false,
       actions_write: false,
-      load_fun: fn _, _ -> Aiur.MainWatch.Persistence.empty() end,
+      load_fun: fn _, _ -> Persistence.empty() end,
       poll_fun: fn _, _, _ ->
         receive do
           :finish -> {:error, :offline}
