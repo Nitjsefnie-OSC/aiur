@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import { DESIGN_ROOT } from './design-parity.mjs'
 
 export const ROOTS = '#build-root, #tk-backdrop, body > .ax-pop'
@@ -7,13 +7,30 @@ export const buildSource = await readFile(`${DESIGN_ROOT}/assets/build.css`, 'ut
 export const htmlSource = await readFile(`${DESIGN_ROOT}/Aiur Dashboard.html`, 'utf8')
 const inlineStart = htmlSource.indexOf('<style>') + 7
 export const inlineSource = htmlSource.slice(inlineStart, htmlSource.indexOf('</style>', inlineStart))
-const inlineLine = htmlSource.slice(0, inlineStart).split('\n').length - 1
+export const inlineLine = htmlSource.slice(0, inlineStart).split('\n').length - 1
 
 // Strip state pseudos only; structural selectors remain evidence of actual matches.
-export function censusRules({ buildSource, inlineSource, inlineLine, roots }) {
+export function censusRules({ buildSource, inlineSource, inlineLine, roots, sourceTrees }) {
   const rootsNodes = [...document.querySelectorAll(roots)]
   const inside = e => rootsNodes.some(root => root === e || root.contains(e))
   const results = []
+  const matchSelectors = selectors => selectors.map(selector => {
+    const query = selector.replace(/:not\(:(?:hover|focus-visible|focus-within|focus|active|visited|disabled|checked)\)/g, '').replace(/::[\w-]+(?:\([^)]*\))?|:(?:hover|focus-visible|focus-within|focus|active|visited|disabled|checked)\b/g, '')
+    const usable = query.trim() ? query.replace(/([>+~])\s*$/, '$1 *') : '*'
+    const nodes = [...document.querySelectorAll(usable)].filter(inside)
+    return { selector, count: nodes.length, elements: [...new Set(nodes.map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.classList.length ? '.' + [...e.classList].join('.') : ''}${e.dataset.id ? '[data-id="' + e.dataset.id + '"]' : ''}`))] }
+  })
+  if (sourceTrees) {
+    const rematch = rules => rules.forEach(rule => {
+      if (rule.children) rematch(rule.children)
+      else if (rule.selector) {
+        rule.matches = matchSelectors(rule.matches.map(m => m.selector))
+        results.push(rule)
+      }
+    })
+    for (const record of sourceTrees) { rematch(record.tree); results.push(record) }
+    return results
+  }
   const declarations = text => {
     const pieces = []
     let start = 0, depth = 0, quote = ''
@@ -56,12 +73,7 @@ export function censusRules({ buildSource, inlineSource, inlineLine, roots }) {
         if (index < 0) throw Error(`source line missing: ${source} ${rule.selectorText}`)
         cursor = index + 1
         const selectors = rule.selectorText.split(/,(?![^()]*\))/).map(s => s.trim())
-        const matches = selectors.map(selector => {
-          const query = selector.replace(/:not\(:(?:hover|focus-visible|focus-within|focus|active|visited|disabled|checked)\)/g, '').replace(/::[\w-]+(?:\([^)]*\))?|:(?:hover|focus-visible|focus-within|focus|active|visited|disabled|checked)\b/g, '')
-          const usable = query.trim() ? query.replace(/([>+~])\s*$/, '$1 *') : '*'
-          const nodes = [...document.querySelectorAll(usable)].filter(inside)
-          return { selector, count: nodes.length, elements: [...new Set(nodes.map(e => `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}${e.classList.length ? '.' + [...e.classList].join('.') : ''}${e.dataset.id ? '[data-id="' + e.dataset.id + '"]' : ''}`))] }
-        })
+        const matches = matchSelectors(selectors)
         const entry = { source, line: headers[index].line, selector: rule.selectorText, context, matches,
           declarations: headers[index].declarations }
         results.push(entry)
@@ -78,8 +90,14 @@ export function censusRules({ buildSource, inlineSource, inlineLine, roots }) {
   return results
 }
 
+// Immutable design syntax is parsed once per worker; DOM matches are recomputed in every state.
+let sourceTrees
 export async function census(page) {
-  return page.evaluate(censusRules, { buildSource, inlineSource, inlineLine, roots: ROOTS })
+  const records = await page.evaluate(censusRules, sourceTrees
+    ? { sourceTrees, roots: ROOTS }
+    : { buildSource, inlineSource, inlineLine, roots: ROOTS })
+  sourceTrees ??= records.filter(r => r.tree)
+  return records
 }
 
 export function ownsBuildLine(line) {
@@ -171,4 +189,27 @@ export function renderHomeCss(records) {
   const css = '/* Design etag 1791431544512943. Do not restyle; regenerate parity on every change. */\n' +
     Object.keys(parts).map(name => `@import url("home/${name}");`).join('\n') + '\n'
   return { css, parts, shadowed }
+}
+
+export async function writeHomeCensus(states, outputPath) {
+  if (!states.length) return
+  const all = []
+  const combined = new Map()
+  const key = r => `${r.source}:${r.line}:${r.selector}:${JSON.stringify(r.context)}`
+  let trees
+  for (const { state, records } of states) {
+    all.push({ state, rules: structuredClone(records.filter(r => r.selector)) })
+    for (const rule of records.filter(r => r.selector)) {
+      if (!combined.has(key(rule))) combined.set(key(rule), structuredClone(rule))
+      else rule.matches.forEach((m, i) => { combined.get(key(rule)).matches[i].count += m.count })
+    }
+    trees ??= structuredClone(records.filter(r => r.tree))
+  }
+  const update = rules => rules.forEach(r => r.children ? update(r.children) : r.selector ? Object.assign(r, combined.get(key(r))) : null)
+  trees.forEach(r => update(r.tree))
+  const records = [...combined.values(), ...trees]
+  const { css, parts, shadowed } = renderHomeCss(records)
+  const dead = records.filter(r => r.selector).flatMap(r => r.matches.filter(m => DEAD.test(m.selector)).map(m => ({ source: r.source, line: r.line, ...m })))
+  const zeroMatches = records.filter(r => r.source === 'C' && r.selector && ownsBuildLine(r.line)).flatMap(r => r.matches.filter(m => !m.count && !DEAD.test(m.selector) && !(r.line === 983 && m.selector.includes('.ax-menu'))).map(m => ({ source: r.source, line: r.line, context: r.context, ...m })))
+  await writeFile(outputPath, JSON.stringify({ states: all, dead, zeroMatches, shadowed, css, parts, trees }, null, 2))
 }

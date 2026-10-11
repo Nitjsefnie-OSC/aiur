@@ -50,7 +50,7 @@
     "test:shell-parity": "node scripts/run-browser-tests.mjs tests/shell-design-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
     "test:build-home-motion": "node --test scripts/build-home-motion-selection.test.mjs && npm run fixture:preflight && node scripts/run-browser-tests.mjs tests/build-home-motion.browser.spec.mjs --config playwright.build-home-motion.config.mjs",
     "test:build-home-motion:full": "AIUR_PARITY_FULL=1 npm run test:build-home-motion",
-    "test:home-css": "AIUR_BROWSER_KEEP_ARTIFACTS=1 node scripts/run-browser-tests.mjs tests/home-css-census.browser.spec.mjs tests/home-css-parity.browser.spec.mjs --config playwright.design-parity.config.mjs"
+    "test:home-css": "AIUR_BROWSER_KEEP_ARTIFACTS=1 node scripts/run-browser-tests.mjs tests/home-css-census.browser.spec.mjs tests/home-css-parity.browser.spec.mjs --config playwright.design-parity.config.mjs --global-timeout 480000"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.11.3",

@@ -15,6 +15,7 @@ export async function transplant(browser, cell) {
     pair.allowlist = (await loadAllowlist()).filter(e => e.kind === 'design-style')
     await applyAllowlist(pair, cell)
     const rules = await census(pair.design)
+    pair.censusRecords = rules
     pair.custom = ['--bd-a', ...new Set(rules.filter(r => r.selector && (r.source === 'C' ? ownsBuildLine(r.line) : r.matches.some(m => m.count))).flatMap(r => r.declarations.map(d => d.property).filter(p => p.startsWith('--'))))]
     const data = await pair.design.evaluate(roots => {
       const parent = document.querySelector('#build-root').parentElement
@@ -78,7 +79,7 @@ export async function transplant(browser, cell) {
     }, { roots: ROOTS, scroll: data.scroll })
     for (const page of [pair.design, pair.product]) await page.mouse.move(0, 0)
     // Hover is re-hit-tested on a later frame; a loaded host can sample the stale card hover.
-    for (const page of [pair.design, pair.product]) await page.waitForFunction(roots => !document.querySelector(`:is(${roots}) :hover`), ROOTS)
+    for (const page of [pair.design, pair.product]) await page.waitForFunction(roots => !document.querySelector(`:is(${roots}) :hover`), ROOTS, { timeout: 10_000 })
     for (const page of [pair.design, pair.product]) await page.evaluate(() => { document.getAnimations().forEach(a => { a.pause(); a.currentTime = 0 }) })
     return pair
   } catch (error) { await pair.close(); throw error }
@@ -89,7 +90,7 @@ export function styleSnapshot({ roots, custom = [], reduced = false, index }) {
   const nodes = (index == null ? matches : [matches[index]]).flatMap(root => [root, ...root.querySelectorAll('*')])
   const excluded = reduced ? ['animation-duration', 'animation-iteration-count', 'transition-duration', 'scroll-behavior'] : []
   const read = style => Object.fromEntries([...style, ...custom].filter(p => !excluded.includes(p) && (!p.startsWith('--') || custom.includes(p))).map(p => [p, style.getPropertyValue(p)]))
-  return nodes.map(e => {
+  const snapshot = nodes.map(e => {
     const styles = { element: read(getComputedStyle(e)) }
     for (const pseudo of ['::before', '::after']) {
       const style = getComputedStyle(e, pseudo)
@@ -97,11 +98,13 @@ export function styleSnapshot({ roots, custom = [], reduced = false, index }) {
     }
     return { tag: e.tagName, path: `${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${[...e.classList].join('.')}`, styles }
   })
+  // A single string avoids Playwright recursively serializing hundreds of properties per node.
+  return JSON.stringify(snapshot)
 }
 
 export async function compareStyles(pair, selectors = ROOTS, index) {
   const options = { roots: selectors, index, custom: pair.custom, reduced: pair.cell.reducedMotion === 'reduce' }
-  const [design, product] = await Promise.all([pair.design.evaluate(styleSnapshot, options), pair.product.evaluate(styleSnapshot, options)])
+  const [design, product] = (await Promise.all([pair.design.evaluate(styleSnapshot, options), pair.product.evaluate(styleSnapshot, options)])).map(JSON.parse)
   expect(product.length, 'same cloned node count').toBe(design.length)
   const differences = []
   for (let i = 0; i < design.length; i++) {

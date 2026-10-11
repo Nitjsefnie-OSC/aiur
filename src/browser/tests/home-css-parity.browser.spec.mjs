@@ -2,15 +2,24 @@ import { test, expect } from '@playwright/test'
 import { readFile, writeFile } from 'node:fs/promises'
 import { HOME_MATRIX, BASE } from '../support/home-css-states.mjs'
 import { transplant, compareStyles, styleSnapshot } from '../support/home-css-parity.mjs'
-import { DEAD } from '../support/home-css-census.mjs'
+import { DEAD, writeHomeCensus } from '../support/home-css-census.mjs'
 import { expectDesignParity } from '../support/design-parity.mjs'
 import { openFixture } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
+const censusStates = []
+test.afterAll(() => writeHomeCensus(censusStates, test.info().outputPath('home-css-census.json')))
+
 for (const cell of HOME_MATRIX) test(`computed styles match the design: ${cell.name}`, async ({ browser }) => {
   test.setTimeout(60_000)
   const pair = await transplant(browser, cell)
-  try { await compareStyles(pair) } finally { await pair.close() }
+  try {
+    censusStates.push({ state: cell.name, records: pair.censusRecords })
+    const dead = pair.censusRecords.filter(r => r.selector).flatMap(r => r.matches.filter(m => DEAD.test(m.selector)))
+    // Future re-import guard: every matrix cell still proves deleted selectors have no matches.
+    expect(dead.filter(m => m.count > 0), 'dead selector matched').toEqual([])
+    await compareStyles(pair)
+  } finally { await pair.close() }
 })
 
 test('keyframes and @property match', async ({ browser }) => {
@@ -81,7 +90,7 @@ test('other pages are unchanged', async ({ page }) => {
       }
       await page.evaluate(() => document.fonts.ready)
       await page.evaluate(() => { document.getAnimations().forEach(a => { if (a instanceof CSSTransition) a.finish(); else { a.pause(); a.currentTime = 0 } }) })
-      snapshots.push((await page.evaluate(styleSnapshot, { roots: 'body', reduced: false })).map(({ tag, styles }) => ({ tag, styles })))
+      snapshots.push(JSON.parse(await page.evaluate(styleSnapshot, { roots: 'body', reduced: false })).map(({ tag, styles }) => ({ tag, styles })))
     }
     expect(snapshots[1], `stylesheet affected ${route}`).toEqual(snapshots[0])
     buttons += await page.locator('.btn').count()
