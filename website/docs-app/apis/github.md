@@ -760,7 +760,7 @@ A write that fails records nothing.
 
 Main watch accepts base Actions checks without a PR and debounces bursts for two seconds. At the default 120-second polling cadence, an unchanged completed census costs two Core reads: `main_watch_commits` and `main_watch_runs`. Fingerprints reuse completed checks until a run changes.
 
-A cold 20-SHA green census costs 42 reads; one changed SHA costs four. These are transport-test counts, not live measurements. Each reconciliation caps all transport calls at 64, including evidence, suspects and reruns; exhausted or incomplete reads retain known state and mark it unavailable.
+A cold 20-SHA green census costs 42 reads; one changed SHA costs four; startup adds one permission probe. These are transport-test counts, not live measurements. Each reconciliation caps all transport calls at 64, including evidence, suspects and reruns; exhausted or incomplete reads retain known state and mark it unavailable.
 
 Failure events carry tests, flake classifications and suspects. Evidence uses existing CI callers; associations use `main_watch_suspects`, permissions `main_watch_permissions`, and reruns `main_watch_canary`. Actions write is cached until daemon restart; permission changes require a restart.
 

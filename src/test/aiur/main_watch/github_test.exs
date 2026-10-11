@@ -1,6 +1,6 @@
 defmodule Aiur.MainWatch.GitHubTest do
   use Aiur.TestSupport
-  alias Aiur.MainWatch.GitHub
+  alias Aiur.MainWatch.{GitHub, State}
 
   setup do
     write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "github", tracker_repo: "owner/repo")
@@ -158,7 +158,7 @@ defmodule Aiur.MainWatch.GitHubTest do
     assert Enum.map(cold.observations, & &1.sha) == Enum.reverse(shas)
     assert length(Agent.get(calls, & &1.requests)) == 42
     Agent.update(calls, &%{&1 | requests: []})
-    history = Enum.reduce(cold.observations, Aiur.MainWatch.State.new(), fn observation, state -> Aiur.MainWatch.State.record_history(state, observation, observation.completed_at) end).history
+    history = Enum.reduce(cold.observations, State.new(), fn observation, state -> State.record_history(state, observation, observation.completed_at) end).history
     assert {:ok, warm} = GitHub.poll("main", ["ci"], Keyword.put(opts, :history, history))
     assert warm.observations == cold.observations
     assert length(Agent.get(calls, & &1.requests)) == 2

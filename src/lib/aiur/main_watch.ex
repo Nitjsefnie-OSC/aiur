@@ -5,7 +5,7 @@ defmodule Aiur.MainWatch do
   alias Aiur.Config
   alias Aiur.Events.Exchange
   alias Aiur.GitHub.Config, as: GitHubConfig
-  alias Aiur.GitHub.ResourceStore
+  alias Aiur.GitHub.{ResourceStore, Transport}
   alias Aiur.MainWatch.{Canary, GitHub, Persistence, State, Suspects}
   alias Aiur.MergePolicy
 
@@ -124,7 +124,7 @@ defmodule Aiur.MainWatch do
 
   defp bounded_requests(opts) do
     count = :atomics.new(1, [])
-    request = Keyword.get(opts, :request_fun, &Aiur.GitHub.Transport.default_request_fun/1)
+    request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
 
     Keyword.put(opts, :request_fun, fn call ->
       if :atomics.add_get(count, 1, 1) <= @request_limit, do: request.(call), else: {:error, :main_watch_request_limit}
