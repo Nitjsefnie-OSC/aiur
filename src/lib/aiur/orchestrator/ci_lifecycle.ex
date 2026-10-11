@@ -964,8 +964,7 @@ defmodule Aiur.Orchestrator.CiLifecycle do
     end
   end
 
-  # Restart dedupe: an alert that was still active before a restart is reloaded
-  # once from the durable alert ledger so the first poll after boot does not
+  # Reload active alerts from the durable ledger so the first boot poll does not
   # re-fire it for a still-parked PR. Targets that left the poll set entirely
   # are resolved by `resolve_departed_parked_ready_alerts/3` instead.
   defp seed_parked_ready_alerts(opts) do
@@ -1007,8 +1006,7 @@ defmodule Aiur.Orchestrator.CiLifecycle do
   # (no live process, e.g. after the agent's turn ends while still cycling
   # through ci-wait) keep showing the last-known CI/PR state too. Only
   # replaces the cached value when the projection actually changed, so a
-  # genuinely redundant poll for an unchanged head stays a true no-op for
-  # `state.running`/`state.claimed` and the persisted lifecycle markers.
+  # Redundant head polls preserve running/claimed state and lifecycle markers.
   defp stash_last_ci_result(%State{} = state, %Issue{} = issue, result) do
     case ci_target_for_issue(issue) do
       nil ->
@@ -1050,7 +1048,7 @@ defmodule Aiur.Orchestrator.CiLifecycle do
       head_sha: Map.get(result, :head_sha),
       draft?: projection_value(result, previous, :draft?, false) == true,
       review_decision: projection_value(result, previous, :review_decision, nil),
-      recovery: Map.get(result, :recovery),
+      recovery: if(result[:decision] == :pending and result[:head_sha] == get_in(previous, [:head_sha]), do: projection_value(result, previous, :recovery, nil), else: result[:recovery]),
       failures: Map.get(result, :failures, [])
     }
   end
@@ -1240,7 +1238,8 @@ defmodule Aiur.Orchestrator.CiLifecycle do
   defp recover_ci_poll_result(state, issue, result, opts) do
     result = Map.put(result, :ci_recovery_opts, opts)
 
-    if ci_wait_state?(effective_ci_state(issue)) and result[:decision] == :failed and
+    if ci_wait_state?(effective_ci_state(issue)) and
+         (result[:decision] == :failed or (result[:decision] == :pending and GithubCIPoller.attention_hold?(state.ci_lifecycle.poll_cache[ci_target_for_issue(issue)]))) and
          is_integer(result[:pr_number]) and not Issue.paused?(issue) and not LifecycleFence.handoff_blocked?(state, issue) do
       recovery = Keyword.get(opts, :ci_recovery, &GithubCIPoller.recover_failure/3)
 

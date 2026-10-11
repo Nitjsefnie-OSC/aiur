@@ -7,8 +7,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   alias Aiur.GitHub.CIRecoveryStore, as: Store
 
   @spec attention_hold?(map() | nil) :: boolean()
-  def attention_hold?(%{recovery: reason}),
-    do: reason in ~w(loop worker_failed rerun_failed base_update_failed evidence_unavailable observation_unavailable rerun_unavailable rerun_stuck base_update_stuck)
+  def attention_hold?(%{recovery: reason}) when is_binary(reason), do: true
 
   def attention_hold?(_), do: false
 
@@ -60,6 +59,9 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
       match?(%{"sha" => sha} when sha == result.head_sha, entry["updated"]) ->
         await_attempt(issue, result, entry["updated"], "base_update", opts)
 
+      get_in(entry, ["heads", result.head_sha]) != nil ->
+        rerun(issue, result, entry, opts)
+
       retryable?(result.ci_failure_digest, result.pr_number, opts) ->
         rerun(issue, result, entry, opts)
 
@@ -109,7 +111,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
 
   defp start_rerun(issue, result, opts) do
     with {:ok, runs} <- failing_runs(result.ci_failure_digest.checks, result.head_sha, opts),
-         {:ok, _} <- update(issue, result, &put_in(&1, ["heads", result.head_sha], %{"runs" => runs, "requested_at" => now(opts)}), opts) do
+         {:ok, _} <- update(issue, result, &put_in(&1, ["heads", result.head_sha], %{"runs" => runs, "checks" => check_ids(result), "requested_at" => now(opts)}), opts) do
       request_reruns(issue, result, runs, opts)
     else
       {:error, reason} -> attention(issue, result, "rerun_unavailable", reason, opts)
@@ -166,12 +168,14 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   defp observe_rerun(issue, result, runs, attempt, opts) do
     observations = Enum.map(runs, &CIRecovery.read("/actions/runs/#{&1["id"]}", opts))
 
-    if Enum.zip(runs, observations) |> Enum.all?(&rerun_completed?(&1, result.head_sha)) do
+    if check_ids(result) != attempt["checks"] and Enum.zip(runs, observations) |> Enum.all?(&rerun_completed?(&1, result.head_sha)) do
       result
     else
       await_attempt(issue, result, attempt, "rerun", opts)
     end
   end
+
+  defp check_ids(result), do: result.ci_failure_digest.checks |> Enum.map(& &1.id) |> Enum.sort()
 
   defp rerun_completed?({run, {:ok, %{"head_sha" => sha, "status" => "completed", "run_attempt" => attempt}}}, sha), do: attempt > run["attempt"]
   defp rerun_completed?(_, _), do: false

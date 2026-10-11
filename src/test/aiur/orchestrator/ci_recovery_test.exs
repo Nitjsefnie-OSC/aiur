@@ -2,12 +2,13 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   use Aiur.TestSupport
   import ExUnit.CaptureIO
   import Aiur.OrchestratorDeactivateSupport
+  alias Aiur.AlertLedger
   alias Aiur.CI.FailureDigest
   alias Aiur.ControlCLI.CiWait
   alias Aiur.Events.GithubCIPoller.Recovery, as: CiRecovery
   alias Aiur.GitHub.CIRecoveryStore, as: CiRecoveryStore
   alias Aiur.GitHub.ResourceStore
-  alias Aiur.{AlertLedger, Issue, JsonStore}
+  alias Aiur.{Issue, JsonStore}
   alias Aiur.Orchestrator.{CiLifecycle, StatusReport}
   alias Aiur.Orchestrator.StatusReport.SnapshotPayload
   alias Aiur.OrchestratorDeactivateSupport.CIWatcherGitHubClient
@@ -19,7 +20,11 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     root = Aiur.TestSupport.tmp_root!("ci_recovery")
     File.mkdir_p!(root)
     path = Path.join(root, "recovery.json")
-    agent = start_supervised!({Agent, fn -> %{attempt: 1, requests: [], behind: false, queued: false, changed: ["src/lib/other.ex"], permission: true, advance: true, extra: [], known: false} end})
+
+    agent =
+      start_supervised!(
+        {Agent, fn -> %{attempt: 1, requests: [], behind: false, queued: false, changed: ["src/lib/other.ex"], permission: true, advance: true, extra: [], known: false, stale_evidence: false} end}
+      )
 
     request = fn req ->
       state = Agent.get_and_update(agent, fn state -> {state, %{state | requests: state.requests ++ [req]}} end)
@@ -171,6 +176,32 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert length(writes(ctx)) == 1
   end
 
+  test "pending CI observations retain recovery and suppress fallback wakes", ctx do
+    setup_lifecycle(ctx)
+    Agent.update(ctx.agent, &%{&1 | advance: false})
+    state = lifecycle_poll(empty_orchestrator_state(), ctx, ctx.issue)
+    state = lifecycle_poll(state, %{ctx | result: %{ctx.result | decision: :pending, failures: []}}, ctx.issue)
+    assert state.ci_lifecycle.poll_cache["3864"].recovery == "rerun_pending"
+    agent = control_test_agent(self())
+    on_exit(fn -> if Process.alive?(agent), do: Process.exit(agent, :kill) end)
+    parked = human_review_running_state("3864", agent).running["3864"]
+    parked = %{parked | issue: ctx.issue, control: confirmed_control(:paused)} |> Map.put(:paused_reason, :ci_wait)
+    state = %{state | running: %{"3864" => parked}} |> CiLifecycle.arm_ci_wait_rewake(ctx.issue)
+    timer = state.ci_lifecycle.rewakes["3864"]
+    Process.cancel_timer(timer.timer_ref)
+    state = CiLifecycle.handle_ci_wait_rewake(state, "3864", timer.token, issue_fetcher: fn _ -> {:ok, [ctx.issue]} end)
+    refute_received {:ci_watcher_update, "3864", "in-progress"}
+    assert state.running["3864"].issue.state == "ci-wait"
+  end
+
+  test "a completed rerun cannot deliver the prior check-run failures", ctx do
+    assert %{recovery: "rerun_requested"} = recover(ctx)
+    Agent.update(ctx.agent, &%{&1 | stale_evidence: true})
+    assert %{decision: :pending, recovery: "rerun_pending"} = recover(ctx)
+    Agent.update(ctx.agent, &%{&1 | stale_evidence: false})
+    assert %{decision: :failed} = recover(ctx)
+  end
+
   test "lifecycle retains worker errors without crashing or handing off", ctx do
     setup_lifecycle(ctx)
     opts = Keyword.put(ctx.opts, :ci_recovery, fn _, _, _ -> {:error, :tracker_task_timeout} end)
@@ -282,7 +313,17 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   defp response(%{url: url}, state, _, _) do
     cond do
       String.contains?(url, "/check-runs?") ->
-        ok(%{"check_runs" => [%{"id" => 1, "name" => "test", "status" => "completed", "conclusion" => "failure", "html_url" => "https://github.com/owner/repo/actions/runs/99/job/1"}]})
+        ok(%{
+          "check_runs" => [
+            %{
+              "id" => if(state.stale_evidence, do: 1, else: state.attempt),
+              "name" => "test",
+              "status" => "completed",
+              "conclusion" => "failure",
+              "html_url" => "https://github.com/owner/repo/actions/runs/99/job/1"
+            }
+          ]
+        })
 
       String.ends_with?(url, "/status") ->
         ok(%{"statuses" => []})

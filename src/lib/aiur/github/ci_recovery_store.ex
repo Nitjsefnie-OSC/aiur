@@ -30,7 +30,7 @@ defmodule Aiur.GitHub.CIRecoveryStore do
   defp valid_update?(nil), do: true
   defp valid_update?(%{"sha" => sha} = attempt), do: is_binary(sha) and valid_time?(attempt)
   defp valid_update?(_), do: false
-  defp valid_attempt?(%{"runs" => [_ | _] = runs} = attempt), do: valid_time?(attempt) and Enum.all?(runs, &valid_run?/1)
+  defp valid_attempt?(%{"runs" => [_ | _] = runs} = attempt), do: valid_time?(attempt) and is_list(attempt["checks"]) and Enum.all?(runs, &valid_run?/1)
   defp valid_attempt?(_), do: false
   defp valid_time?(%{"requested_at" => time} = attempt), do: is_integer(time) and (not Map.has_key?(attempt, "error") or is_binary(attempt["error"]))
   defp valid_time?(_), do: false
