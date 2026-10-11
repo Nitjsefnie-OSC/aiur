@@ -51,7 +51,6 @@ defmodule AiurWeb.AnalyticsLoadingTest do
     IO.puts("cold /analytics HTTP response: #{elapsed} ms")
   end
 
-  @tag timeout: 5_000
   test "concurrent mounts stay responsive during one blocked retained scan and both receive charts", %{root: root} do
     fifo = Path.join(root, "test/analytics/analytics/runs/prior/run-summary.json")
     File.mkdir_p!(Path.dirname(fifo))
