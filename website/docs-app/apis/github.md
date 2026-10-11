@@ -111,7 +111,9 @@ Create a GitHub App under **Settings → Developer settings → GitHub Apps** an
 | Contents | Read and write |
 | Issues | Read and write |
 | Pull requests | Read and write |
-| Administration, Actions, Secrets, Workflows | Never |
+| Checks | Read (CI failure annotations) |
+| Actions | Read and write when using automatic reruns (run attempts and failed jobs) |
+| Administration, Secrets, Workflows | Never |
 
 GitHub always adds `Metadata: Read-only` implicitly. Generate and download a private key (`.pem`); it can mint installation tokens for every repository the App is installed on, so keep it in a secure store.
 
@@ -688,13 +690,9 @@ The wrapper injects the credential only into the real `gh` process it spawns
 for a governed call, for the duration of that call — never into the agent's
 environment and never into the sibling processes the wrapper launches.
 
-So `env | grep -i -E 'GITHUB_TOKEN|GH_TOKEN'` in an agent shell returns
-nothing, and a bare `curl` to `api.github.com` from an agent workspace is
-unauthenticated.
+So `env | grep -i -E 'GITHUB_TOKEN|GH_TOKEN'` in an agent shell returns nothing, and a bare `curl` to `api.github.com` from an agent workspace is unauthenticated.
 
-This is a **policy boundary, not a capability boundary.** Agents run as the
-same OS user as the daemon, so an agent that deliberately goes looking can read
-the credential file, the shared budget database, or the operator keyring.
+This is a **policy boundary, not a capability boundary.** Agents run as the same OS user as the daemon, so an agent that deliberately goes looking can read the credential file, the shared budget database, or the operator keyring.
 
 What the file removes is the raw token from the *environment* of every agent
 process — where a dependency's build script, a `curl` one-liner, or a Node
@@ -740,11 +738,13 @@ Build queue closure reads use caller `build_queue_observe` and the configured ob
 
 Build queue writes are paced by `build_queue.max_writes_per_minute` (default 20). Promotion costs up to three GETs and one label POST; markers and withdrawals cost one request each. Withdrawal removes only `agent:todo` after holding dispatch and proving it unclaimed; `agent:queued` remains. No saving is claimed ([cost](/concepts/build-orders#queue-cost)).
 
-CI-wait recovery uses the [failure digest](/apis/ci-failure-evidence), fresh GraphQL head/queue evidence, PR changed paths and Actions run attempts (`ci_recovery` caller). Fully annotated tests outside the diff and known flakes get one failed-job rerun per head.
+CI-wait recovery uses the [failure digest](/apis/ci-failure-evidence), head/queue evidence, PR changed paths and Actions run attempts (`ci_recovery` caller). Fully annotated tests outside the diff and known flakes get one failed-job rerun per head; there is no fleet or hourly cap.
 
-A conflict-free head behind the configured base gets one expected-head branch update per PR. Attempts are journaled before writes; queued PRs are left alone. Actions: write is required; denial raises attention.
+Attempts are journaled before writes; queued PRs are left alone. Recovery does not update the base. A run GET returning 403/404 or a denied rerun POST raises one attention and permits the normal failed/rework handoff instead of holding CI wait.
 
-Three failed CI/rework handoffs raise one attention naming tests and hold further rework/fallback wakes. A full required-check pass resets the cycle count. Requests not observed within ten minutes also raise attention. No saving is claimed.
+Three failed CI/rework handoffs per PR raise one attention naming tests and hold further rework/fallback wakes. The Executor fixes or reruns the current head until all required checks pass, releasing the hold and resetting the cycle count. Acknowledging the alert alone does not release it.
+
+A rerun not observed within ten minutes raises attention. Journaled attention holds avoid repeated recovery reads; normal CI polling continues. No saving is claimed.
 
 Orphan-claim recovery reads mergeability/reviews before guarded add-before-remove state writes. It posts a reason comment and wakes the Executor ([Operating Aiur](/concepts/operating-aiur#pause-and-capacity)). Successful writes retain GitHub's returned state.
 

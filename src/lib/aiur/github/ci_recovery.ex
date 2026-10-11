@@ -10,7 +10,7 @@ defmodule Aiur.GitHub.CIRecovery do
            Transport.github_graphql(
              Keyword.get(opts, :request_fun, &Transport.default_request_fun/1),
              token,
-             "query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){headRefOid baseRefName isDraft state mergeable mergeStateStatus mergeQueueEntry{id}}}}",
+             "query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){headRefOid isDraft state mergeQueueEntry{id}}}}",
              %{owner: owner, repo: repo, number: number},
              caller: "ci_recovery"
            ),
@@ -24,9 +24,6 @@ defmodule Aiur.GitHub.CIRecovery do
 
   @spec read(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def read(path, opts), do: request(:get, path, nil, opts)
-
-  @spec update_branch(integer(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
-  def update_branch(number, sha, opts), do: request(:put, "/pulls/#{number}/update-branch", %{expected_head_sha: sha}, opts)
 
   @spec rerun(integer(), keyword()) :: {:ok, map()} | {:error, term()}
   def rerun(run, opts), do: request(:post, "/actions/runs/#{run}/rerun-failed-jobs", %{}, opts)

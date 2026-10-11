@@ -25,7 +25,22 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
       start_supervised!(
         {Agent,
          fn ->
-           %{attempt: 1, requests: [], behind: false, queued: false, changed: ["src/lib/other.ex"], permission: true, advance: true, extra: [], known: false, stale_evidence: false, passed: false}
+           %{
+             attempt: 1,
+             requests: [],
+             behind: false,
+             queued: false,
+             changed: ["src/lib/other.ex"],
+             actions_get_status: 200,
+             actions_post_status: 202,
+             graphql_error: false,
+             head: "head-1",
+             advance: true,
+             extra: [],
+             known: false,
+             stale_evidence: false,
+             passed: false
+           }
          end}
       )
 
@@ -82,23 +97,91 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert length(writes(ctx)) == 1
   end
 
-  test "permission failure raises one attention and never retries the write", ctx do
-    Agent.update(ctx.agent, &%{&1 | permission: false})
-    assert %{decision: :pending, recovery: "rerun_failed"} = recover(ctx)
-    assert_received {:attention, "ticket.3864.pr.ci_recovery.rerun_failed", details}
-    assert details[:message] =~ "UntouchedTest :: fails"
-    recover(ctx)
-    recover(ctx)
-    refute_received {:attention, "ticket.3864.pr.ci_recovery.rerun_failed", _}
-    assert length(writes(ctx)) == 1
+  for {method, status} <- [{:get, 403}, {:get, 404}, {:post, 403}, {:post, 404}] do
+    test "Actions #{method} #{status} falls back to rework once without repeated requests", ctx do
+      method = unquote(method)
+      status = unquote(status)
+      key = if method == :get, do: :actions_get_status, else: :actions_post_status
+      reason = if method == :get, do: "rerun_unavailable", else: "rerun_failed"
+      Agent.update(ctx.agent, &Map.put(&1, key, status))
+      assert %{decision: :failed} = result = recover(ctx)
+      refute CiRecovery.attention_hold?(result)
+      assert_received {:attention, topic, details}
+      assert topic == "ticket.3864.pr.ci_recovery." <> reason
+      assert details[:message] =~ "UntouchedTest :: fails"
+      first_requests = requests(ctx)
+      assert %{decision: :failed} = recover(ctx)
+      assert %{decision: :failed} = recover(ctx)
+      assert requests(ctx) == first_requests
+      refute_received {:attention, _, _}
+      assert writes(ctx) == if(method == :post, do: [{:post, "/actions/runs/99/rerun-failed-jobs"}], else: [])
+    end
   end
 
-  test "safe stale base uses an expected-head update once", ctx do
-    Agent.update(ctx.agent, &%{&1 | behind: true})
-    assert %{decision: :pending, recovery: "base_update_requested"} = recover(ctx)
-    assert %{decision: :pending, recovery: "base_update_pending"} = recover(ctx)
-    assert writes(ctx) == [{:put, "/pulls/42/update-branch"}]
-    assert Enum.find(requests(ctx), &(&1.method == :put)).body == %{expected_head_sha: "head-1"}
+  test "an approved BEHIND PR with a changed failing test reaches rework without updating its base", ctx do
+    setup_lifecycle(ctx)
+    Agent.update(ctx.agent, &%{&1 | behind: true, changed: ["src/test/untouched_test.exs"]})
+    state = lifecycle_poll(empty_orchestrator_state(), ctx, ctx.issue)
+    assert_received {:ci_watcher_update, "3864", "rework"}
+    assert state.ci_lifecycle.poll_cache["3864"].decision == :failed
+    assert writes(ctx) == []
+  end
+
+  test "Actions permission fallback reaches the lifecycle rework handoff", ctx do
+    setup_lifecycle(ctx)
+    Agent.update(ctx.agent, &%{&1 | actions_post_status: 403})
+    state = lifecycle_poll(empty_orchestrator_state(), ctx, ctx.issue)
+    assert_received {:ci_watcher_update, "3864", "rework"}
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.rerun_failed", _}
+    assert state.ci_lifecycle.poll_cache["3864"].decision == :failed
+    refute CiRecovery.attention_hold?(state.ci_lifecycle.poll_cache["3864"])
+    first_requests = requests(ctx)
+    lifecycle_poll(state, ctx, %{ctx.issue | updated_at: DateTime.from_unix!(2)})
+    assert requests(ctx) == first_requests
+    refute_received {:attention, _, _}
+  end
+
+  test "unavailable Actions evidence holds without repeating reads or attention", ctx do
+    Agent.update(ctx.agent, &%{&1 | actions_get_status: 500})
+    assert %{decision: :pending, recovery: "rerun_unavailable"} = recover(ctx)
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.rerun_unavailable", _}
+    first_requests = requests(ctx)
+    assert %{decision: :pending, recovery: "rerun_unavailable"} = recover(ctx)
+    assert requests(ctx) == first_requests
+    assert writes(ctx) == []
+    refute_received {:attention, _, _}
+  end
+
+  test "persisted observation holds issue no more requests until a new head", ctx do
+    Agent.update(ctx.agent, &%{&1 | graphql_error: true})
+    assert %{decision: :pending, recovery: "observation_unavailable"} = recover(ctx)
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.observation_unavailable", _}
+    first_requests = requests(ctx)
+    assert %{decision: :pending, recovery: "observation_unavailable"} = recover(ctx)
+    assert requests(ctx) == first_requests
+    refute_received {:attention, _, _}
+    Agent.update(ctx.agent, &%{&1 | graphql_error: false, head: "head-2"})
+    assert %{decision: :pending, recovery: "rerun_requested"} = recover(%{ctx | result: %{ctx.result | head_sha: "head-2"}})
+    assert length(requests(ctx)) > length(first_requests)
+  end
+
+  test "persisted digest evidence holds are returned before rebuilding the digest", ctx do
+    digest = fn _, _ ->
+      send(self(), :digest_built)
+      {:error, :digest_unavailable}
+    end
+
+    ctx = %{ctx | opts: Keyword.put(ctx.opts, :ci_failure_digest, digest)}
+    assert %{decision: :pending, recovery: "evidence_unavailable"} = recover(ctx)
+    assert_received :digest_built
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.evidence_unavailable", _}
+    assert %{decision: :pending, recovery: "evidence_unavailable"} = recover(ctx)
+    refute_received :digest_built
+    refute_received {:attention, _, _}
+    assert requests(ctx) == []
+    assert :ok = CiRecovery.record_pass(ctx.issue, ctx.result, ctx.opts)
+    assert %{decision: :pending, recovery: "evidence_unavailable"} = recover(ctx)
+    assert_received :digest_built
   end
 
   test "queued PRs are left alone", ctx do
@@ -110,15 +193,17 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
 
   test "three failed handoffs raise one attention naming tests, then hold", ctx do
     for n <- 1..3 do
-      result = %{ctx.result | head_sha: "cycle-#{n}"} |> Map.put(:ci_failure_digest, %FailureDigest{tests: [%{identity: "UntouchedTest :: fails"}]})
-      assert :ok = CiRecovery.record_failure(ctx.issue, result, ctx.opts)
+      result = Map.put(ctx.result, :ci_failure_digest, %FailureDigest{tests: [%{identity: "UntouchedTest :: fails"}]})
+      assert :ok = CiRecovery.record_failure(%{ctx.issue | updated_at: DateTime.from_unix!(n)}, result, ctx.opts)
     end
 
     assert_received {:attention, "ticket.3864.pr.ci_recovery.loop", details}
     assert details[:message] =~ "3 failed CI/rework cycles"
     assert details[:message] =~ "UntouchedTest :: fails"
+    first_requests = requests(ctx)
     assert %{decision: :pending, recovery: "loop"} = recover(ctx)
     assert %{decision: :pending, recovery: "loop"} = recover(ctx)
+    assert requests(ctx) == first_requests
     refute_received {:attention, "ticket.3864.pr.ci_recovery.loop", _}
     assert writes(ctx) == []
     assert :ok = CiRecovery.record_pass(ctx.issue, ctx.result, ctx.opts)
@@ -157,6 +242,10 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     refute_received {:attention, "ticket.3864.pr.ci_recovery.rerun_stuck", _}
     assert %{recovery: "rerun_stuck"} = CiRecovery.recover(ctx.issue, ctx.result, Keyword.put(ctx.opts, :ci_recovery_now, 1600))
     assert_received {:attention, "ticket.3864.pr.ci_recovery.rerun_stuck", _}
+    first_requests = requests(ctx)
+    assert %{recovery: "rerun_stuck"} = recover(ctx)
+    assert requests(ctx) == first_requests
+    refute_received {:attention, _, _}
   end
 
   test "lifecycle holds the rerun then hands a full current-head pass to the agent", ctx do
@@ -284,13 +373,16 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
       |> Enum.reject(&(&1.method == :get or &1.url == "https://api.github.com/graphql"))
       |> Enum.map(&{&1.method, URI.parse(&1.url).path |> String.replace_prefix("/repos/owner/repo", "")})
 
+  defp response(%{method: :post, url: "https://api.github.com/graphql"}, %{graphql_error: true}, _, _), do: {:error, :observation_failed}
+
   defp response(%{method: :post, url: "https://api.github.com/graphql"}, state, _, _) do
     ok(%{
       "data" => %{
         "repository" => %{
           "pullRequest" => %{
             "state" => "OPEN",
-            "headRefOid" => "head-1",
+            "headRefOid" => state.head,
+            "reviewDecision" => "APPROVED",
             "isDraft" => false,
             "baseRefName" => "main",
             "mergeable" => "MERGEABLE",
@@ -302,18 +394,12 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     })
   end
 
-  defp response(%{method: method, url: url}, state, agent, path) when method in [:put, :post] do
+  defp response(%{method: :post, url: url}, state, agent, path) do
     assert {:ok, entries} = JsonStore.read(path)
-
-    if method == :post do
-      assert get_in(entries, ["3864", "heads", "head-1", "runs"]) == [%{"id" => 99, "attempt" => 1}]
-      if state.permission and state.advance, do: Agent.update(agent, &%{&1 | attempt: &1.attempt + 1})
-    else
-      assert get_in(entries, ["3864", "updated", "sha"]) == "head-1"
-    end
-
-    assert String.contains?(url, "rerun-failed-jobs") or String.ends_with?(url, "update-branch")
-    if state.permission, do: {:ok, %{status: 202, body: %{}}}, else: {:ok, %{status: 403, body: %{"message" => "Resource not accessible by integration"}}}
+    assert get_in(entries, ["3864", "heads", state.head, "runs"]) == [%{"id" => 99, "attempt" => 1}]
+    assert String.contains?(url, "rerun-failed-jobs")
+    if state.actions_post_status == 202 and state.advance, do: Agent.update(agent, &%{&1 | attempt: &1.attempt + 1})
+    %{status: state.actions_post_status, body: %{"message" => "Resource not accessible by integration"}} |> then(&{:ok, &1})
   end
 
   defp response(%{url: url}, state, _, _) do
@@ -337,7 +423,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
         ok(Enum.map(state.changed, &%{"filename" => &1, "status" => "modified"}))
 
       String.ends_with?(url, "/actions/runs/99") ->
-        ok(%{"head_sha" => "head-1", "run_attempt" => state.attempt, "status" => "completed"})
+        {:ok, %{status: state.actions_get_status, body: %{"head_sha" => state.head, "run_attempt" => state.attempt, "status" => "completed"}}}
     end
   end
 

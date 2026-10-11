@@ -1,7 +1,7 @@
 defmodule Aiur.Events.GithubCIPoller.Recovery do
-  @moduledoc "One exact-head rerun, one base update, then bounded CI/rework escalation."
+  @moduledoc "One exact-head rerun, then bounded CI/rework escalation."
   require Logger
-  alias Aiur.{AlertFeed, Alerts, Config}
+  alias Aiur.{AlertFeed, Alerts}
   alias Aiur.CI.FailureDigest
   alias Aiur.GitHub.{CIRecovery, PullRequests}
   alias Aiur.GitHub.CIRecoveryStore, as: Store
@@ -19,21 +19,28 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   def recover(issue, %{pr_number: number, head_sha: sha} = result, opts) when is_integer(number) and is_binary(sha) do
     target = to_string(issue.identifier || issue.id)
 
-    with {:ok, entry} <- Store.read(target, number, opts),
-         {:ok, digest} <- digest(sha, opts) do
-      result = Map.put(result, :ci_failure_digest, digest)
-      recover_failure(issue, result, entry, opts)
-    else
+    case Store.read(target, number, opts) do
+      {:ok, entry} -> recover_entry(issue, result, entry, opts)
       {:error, reason} -> attention(issue, result, "evidence_unavailable", reason, opts)
     end
   end
 
   def recover(_issue, result, _opts), do: result
 
-  defp digest(sha, opts), do: Keyword.get(opts, :ci_failure_digest, &FailureDigest.build/2).(sha, opts)
+  defp recover_entry(_issue, %{head_sha: sha} = result, %{"hold" => %{"sha" => sha} = hold}, _opts),
+    do: hold_result(result, hold)
 
-  defp recover_failure(issue, result, %{"cycles" => cycles}, opts) when cycles >= 3,
+  defp recover_entry(issue, result, %{"cycles" => cycles}, opts) when cycles >= 3,
     do: attention(issue, result, "loop", "#{cycles} failed CI/rework cycles", opts)
+
+  defp recover_entry(issue, result, entry, opts) do
+    case digest(result.head_sha, opts) do
+      {:ok, digest} -> recover_failure(issue, Map.put(result, :ci_failure_digest, digest), entry, opts)
+      {:error, reason} -> attention(issue, result, "evidence_unavailable", reason, opts)
+    end
+  end
+
+  defp digest(sha, opts), do: Keyword.get(opts, :ci_failure_digest, &FailureDigest.build/2).(sha, opts)
 
   defp recover_failure(issue, result, entry, opts) do
     case CIRecovery.observe(result.pr_number, opts) do
@@ -53,12 +60,6 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
       pr["mergeQueueEntry"] != nil ->
         held(result, "merge_queue")
 
-      stale_base?(pr, entry) ->
-        update_branch(issue, result, opts)
-
-      match?(%{"sha" => sha} when sha == result.head_sha, entry["updated"]) ->
-        await_attempt(issue, result, entry["updated"], "base_update", opts)
-
       get_in(entry, ["heads", result.head_sha]) != nil ->
         rerun(issue, result, entry, opts)
 
@@ -71,7 +72,6 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   end
 
   defp current_ready_head?(pr, sha), do: pr["state"] == "OPEN" and pr["isDraft"] == false and pr["headRefOid"] == sha
-  defp stale_base?(pr, entry), do: pr["baseRefName"] == Config.base_branch() and pr["mergeable"] == "MERGEABLE" and pr["mergeStateStatus"] == "BEHIND" and is_nil(entry["updated"])
 
   defp retryable?(%{flake_only: true}, _number, _opts), do: true
 
@@ -90,17 +90,6 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   defp outside_diff?(%{path: path}, paths) when is_binary(path) and path != "", do: path not in paths
   defp outside_diff?(_, _), do: false
 
-  defp update_branch(issue, result, opts) do
-    with {:ok, _} <- update(issue, result, &Map.put(&1, "updated", %{"sha" => result.head_sha, "requested_at" => now(opts)}), opts),
-         {:ok, _} <- CIRecovery.update_branch(result.pr_number, result.head_sha, opts) do
-      held(result, "base_update_requested")
-    else
-      {:error, reason} ->
-        update(issue, result, &Map.update(&1, "updated", %{}, fn attempt -> Map.put(attempt, "error", inspect(reason)) end), opts)
-        attention(issue, result, "base_update_failed", reason, opts)
-    end
-  end
-
   defp rerun(issue, result, entry, opts) do
     case get_in(entry, ["heads", result.head_sha]) do
       nil -> start_rerun(issue, result, opts)
@@ -114,7 +103,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
          {:ok, _} <- update(issue, result, &put_in(&1, ["heads", result.head_sha], %{"runs" => runs, "checks" => check_ids(result), "requested_at" => now(opts)}), opts) do
       request_reruns(issue, result, runs, opts)
     else
-      {:error, reason} -> attention(issue, result, "rerun_unavailable", reason, opts)
+      {:error, reason} -> rerun_error(issue, result, "rerun_unavailable", reason, opts)
     end
   end
 
@@ -125,7 +114,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
 
       {:error, reason} ->
         update(issue, result, &put_in(&1, ["heads", result.head_sha, "error"], inspect(reason)), opts)
-        attention(issue, result, "rerun_failed", reason, opts)
+        rerun_error(issue, result, "rerun_failed", reason, opts)
     end
   end
 
@@ -168,12 +157,28 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   defp observe_rerun(issue, result, runs, attempt, opts) do
     observations = Enum.map(runs, &CIRecovery.read("/actions/runs/#{&1["id"]}", opts))
 
-    if fresh_failures?(result, attempt) and Enum.zip(runs, observations) |> Enum.all?(&rerun_completed?(&1, result.head_sha)) do
-      result
-    else
-      await_attempt(issue, result, attempt, "rerun", opts)
+    case Enum.find(observations, fn observation -> actions_denied?(observation) end) do
+      {:error, reason} ->
+        rerun_error(issue, result, "rerun_unavailable", reason, opts)
+
+      nil ->
+        if fresh_failures?(result, attempt) and Enum.zip(runs, observations) |> Enum.all?(&rerun_completed?(&1, result.head_sha)) do
+          result
+        else
+          await_attempt(issue, result, attempt, "rerun", opts)
+        end
     end
   end
+
+  defp rerun_error(issue, result, kind, reason, opts) do
+    mode = if actions_denied?(reason), do: "fallback", else: "hold"
+    attention(issue, result, kind, reason, opts, mode)
+  end
+
+  defp actions_denied?({:error, reason}), do: actions_denied?(reason)
+  defp actions_denied?({:invalid_actions_run, _id, observation}), do: actions_denied?(observation)
+  defp actions_denied?({:github, _classification, %{status: status}}), do: status in [403, 404]
+  defp actions_denied?(_), do: false
 
   defp fresh_failures?(result, attempt) do
     checks = result.ci_failure_digest.checks
@@ -200,7 +205,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
 
   @spec record_pass(map(), map(), keyword()) :: :ok | {:error, term()}
   def record_pass(issue, %{pr_number: number} = result, opts) when is_integer(number) do
-    case update(issue, result, &(&1 |> Map.put("cycles", 0) |> Map.delete("last_cycle") |> Map.put("attentions", [])), opts) do
+    case update(issue, result, &(&1 |> Map.put("cycles", 0) |> Map.delete("last_cycle") |> Map.delete("hold") |> Map.put("attentions", [])), opts) do
       {:ok, _} ->
         :ok
 
@@ -233,20 +238,27 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
 
   defp update(issue, result, fun, opts), do: Store.update(to_string(issue.identifier || issue.id), result.pr_number, fun, opts)
 
-  defp attention(issue, result, kind, reason, opts) do
-    message = "PR ##{Map.get(result, :pr_number)} CI recovery #{kind}: #{inspect(reason)}. Failing tests/checks: #{failure_names(result)}"
+  defp attention(issue, result, kind, reason, opts, mode \\ "hold") do
+    tests = failure_names(result)
+    hold = %{"sha" => result.head_sha, "reason" => kind, "tests" => tests, "mode" => mode}
+    message = "PR ##{Map.get(result, :pr_number)} CI recovery #{kind}: #{inspect(reason)}. Failing tests/checks: #{tests}"
     emitter = Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2)
 
-    case Store.read(to_string(issue.identifier || issue.id), result.pr_number, opts) do
+    case update(issue, result, &Map.put(&1, "hold", hold), opts) do
       {:ok, entry} ->
         unless kind in Map.get(entry, "attentions", []), do: emit_attention(issue, result, kind, message, emitter, opts)
+        hold_result(result, hold)
 
       {:error, error} ->
         Logger.warning("CI recovery journal unavailable: #{inspect(error)}")
         emit_attention(issue, result, "journal_failed", message, emitter, opts)
+        held(result, kind)
     end
+  end
 
-    held(result, kind)
+  defp hold_result(result, %{"tests" => tests} = hold) do
+    result = Map.put(result, :ci_recovery_tests, tests)
+    if hold["mode"] == "fallback", do: Map.put(result, :recovery, nil), else: held(result, hold["reason"])
   end
 
   defp emit_attention(issue, result, kind, message, emitter, opts) do
@@ -264,6 +276,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
     end
   end
 
+  defp failure_names(%{ci_recovery_tests: tests}) when is_binary(tests) and tests != "", do: tests
   defp failure_names(%{ci_failure_digest: %{tests: [_ | _] = tests}}), do: tests |> Enum.map(& &1.identity) |> Enum.uniq() |> Enum.join(", ")
   defp failure_names(result), do: result |> Map.get(:failures, []) |> Enum.map_join(", ", & &1.name)
   defp held(result, reason), do: result |> Map.put(:decision, :pending) |> Map.put(:pending_reason, :ci_recovery) |> Map.put(:recovery, reason)
