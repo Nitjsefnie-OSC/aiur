@@ -387,8 +387,7 @@ A claim is a lease with a 10-minute TTL. An `--executor` run registers and renew
 
 ### Executor roster states
 
-A stalled consumer still holds a claim and still renews its lease, so a
-presence-based list reports it as fine.
+A stalled consumer still holds a claim and still renews its lease, so a presence-based list reports it as fine.
 
 `aiur executor-roster` derives state from evidence, never from presence.
 
