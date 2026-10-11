@@ -8,7 +8,7 @@ const trigger = source.split(/^concurrency:/m)[0];
 assert.ok(/^  pull_request:$/m.test(trigger));
 assert.ok(trigger.includes('labeled, unlabeled'), 'label changes must reevaluate full-CI policy');
 assert.ok(/^  merge_group:$/m.test(trigger));
-assert.ok(!/^  push:$/m.test(trigger), 'main pushes must create no ci run');
+assert.ok(/  push:\n    branches: \[v2\]/.test(trigger), 'push CI is limited to v2; main pushes create no run');
 const jobs = new Map([...source.split(/^jobs:\n/m)[1].matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/gm)]
   .map(([, id, body]) => [id, body]));
 const fullJobs = ['build', 'coverage-partition', 'test', 'dialyzer', 'browser', 'layout-release', 'analytics', 'streamdeck', 'quarantine'];
@@ -56,8 +56,10 @@ for (const [event, full, required] of [
   }
 }
 assert.notEqual(gate('merge_group', false).status, 0, 'queue cannot claim fast evidence');
-assert.notEqual(gate('push', true).status, 0, 'gate refuses push event');
+assert.notEqual(gate('schedule', true).status, 0, 'gate refuses unsupported event');
 assert.equal(gate('merge_group', true, 'quarantine').status, 0, 'quarantine remains non-blocking');
+assert.ok(jobs.get('workflow-security').includes('Set up Elixir for evidence and classifier tests'));
+assert.ok(!jobs.get('workflow-security').includes("Set up Elixir for PR evidence\n        if:"));
 const affected = jobs.get('affected-tests');
 for (const guard of ['base_branch_literal_guard', 'state_owners', 'placement_rule', 'non_transition_facade', 'waiting_descriptor', 'application_child_order', 'health_scanner_child_order']) {
   assert.ok(affected.includes(`${guard}_test.exs`), `fast CI includes ${guard}`);

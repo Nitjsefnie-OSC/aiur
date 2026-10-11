@@ -161,7 +161,8 @@ repository guards), affected tests on the merge with the base, and the aggregate
 
 Merge groups and manual dispatches run the full set, including coverage, tests,
 Dialyzer, browser harness, release smoke, analytics and Stream Deck checks.
-`merge_policy.full_ci_labels` and `full_ci_paths` also force full PR runs.
+`merge_policy.full_ci_labels`, `full_ci_paths`, and unsafe affected-test selections
+also force full PR runs. Policy is read from the base commit.
 The `ci` workflow does not run on pushes to `main`; Docker publishing and the
 website workflow still do.
 

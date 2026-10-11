@@ -7,8 +7,8 @@ policy = YAML.safe_load(File.read(ARGV.fetch(0)), aliases: false).fetch('merge_p
 labels = policy.fetch('full_ci_labels', ['main-fix'])
 patterns = policy.fetch('full_ci_paths', [])
 raise 'full_ci_labels/full_ci_paths must be string arrays' unless [labels, patterns].all? { |list| list.is_a?(Array) && list.all? { |v| v.is_a?(String) && !v.empty? } }
-pr = JSON.parse(ENV.fetch('PR_JSON'))
-files = JSON.parse(ENV.fetch('FILES_JSON'))
+pr = JSON.parse(File.read(ARGV.fetch(1)))
+files = JSON.parse(File.read(ARGV.fetch(2)))
 paths = files.flat_map { |file| [file.fetch('filename'), file['previous_filename']].compact }
 full = paths.empty? || files.length >= 3000 || pr.fetch('labels').any? { |label| labels.map(&:downcase).include?(label.fetch('name').downcase) }
 # Match the daemon's **, *, ? semantics, including zero directories for **/.

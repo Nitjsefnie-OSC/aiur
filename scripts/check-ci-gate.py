@@ -6,7 +6,7 @@ import sys
 
 
 def required_jobs(event, full):
-    if event not in ('pull_request', 'merge_group', 'workflow_dispatch'):
+    if event not in ('pull_request', 'merge_group', 'workflow_dispatch', 'push'):
         raise ValueError(f'unsupported CI event: {event}')
     if event != 'pull_request' and not full:
         raise ValueError(f'{event} must run full CI')

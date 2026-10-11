@@ -31,7 +31,7 @@ function policy(event, ref, runId, attempt = 1, pr = 42, name = 'ci') {
 
 // Existing event policies deliberately remain unchanged, including exact groups.
 for (const [event, ref] of [
-
+  ['push', 'refs/heads/v2'],
   ['merge_group', 'refs/heads/gh-readonly-queue/main/pr-42-abc'],
   ['workflow_dispatch', 'refs/heads/main'],
 ]) {

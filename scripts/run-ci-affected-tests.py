@@ -14,10 +14,8 @@ else:
     if len(commands) != 1:
         raise ValueError('selector produced multiple commands')
     command = shlex.split(commands[0].removeprefix('cd src && mise exec -- '))
-    # Unsafe selection falls back to the ordinary ExUnit suite; build/lint and
-    # coverage are separate CI jobs and must not be recursively run here.
     if command == ['make', 'ci']:
-        command = ['mix', 'test', '--max-cases', '4']
+        raise ValueError('unsafe affected selection requires full CI')
     if command[:4] != ['mix', 'test', '--max-cases', '4']:
         raise ValueError('unsupported selector command')
     subprocess.run(command, check=True)

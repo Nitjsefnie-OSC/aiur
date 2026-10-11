@@ -2,12 +2,10 @@ name: ci
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-  # Required for GitHub's merge queue: the queue builds each candidate on a
-  # `gh-readonly-queue/<base>/pr-<n>-<sha>` ref and waits for the required
-  # checks to report against it. Without this trigger no workflow runs there,
-  # the required checks never appear, and every queued PR is ejected when the
-  # queue's check timeout expires. See #1381.
+  # The merge queue requires checks on its candidate ref (#1381).
   merge_group:
+  push:
+    branches: [v2]
   # Manual re-run path: lets an operator (or an agent) trigger CI on a branch
   # head directly when the pull_request synchronize path is not creating runs
   # (#2397). Checks attach to the head commit either way.
@@ -39,6 +37,11 @@ jobs:
       - name: Disclose rerun attempt
         if: ${{ github.run_attempt > 1 }}
         run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
+      - name: Set up Elixir for selection
+        uses: erlef/setup-beam@e6d7c94229049569db56a7ad5a540c051a010af9 # v1.20.4
+        with:
+          otp-version: '28'
+          elixir-version: '1.19.5'
       - name: Classify the changed paths
         id: classify
         env:
@@ -64,8 +67,7 @@ jobs:
       - name: Disclose rerun attempt
         if: ${{ github.run_attempt > 1 }}
         run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
-      - name: Set up Elixir for PR evidence
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Set up Elixir for evidence and classifier tests
         uses: erlef/setup-beam@e6d7c94229049569db56a7ad5a540c051a010af9 # v1.20.4
         with:
           otp-version: '28'
@@ -238,12 +240,6 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.full_ci == 'true') }}
     runs-on: ubuntu-latest
-    # Last-resort backstop only (#2461's measured value). The effective bound is
-    # the `timeout` wrapper on the test step below: a job-level timeout CANCELS
-    # the job, and a cancelled job skips its remaining steps, so the partition
-    # log and the known-flaky report never run and the wedge reports as a red
-    # with zero diagnostics -- observed on run 32790770281, coverage (3/4),
-    # which burned 45 minutes and printed not one test name.
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -730,6 +726,7 @@ jobs:
           test/aiur/application_child_order_test.exs
           test/aiur/pr_lifecycle/health_scanner_child_order_test.exs
       - name: Run affected tests on the PR merge
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
         env:
           PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: python3 ../scripts/run-ci-affected-tests.py "$PR_BASE"

@@ -7,7 +7,14 @@ mkdir "$test_dir/bin"
 cat > "$test_dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-  *'/files'*) printf '[%s]\n' "$TEST_FILES" ;;
+  *'/files'*)
+    if [[ "${TEST_BIGPATCH:-false}" == true ]]; then
+      python3 -c 'import json; print(json.dumps([[{"filename":"src/lib/aiur/affected_tests.ex","patch":"x"*200000}]]))'
+    elif [[ "${TEST_FILE_CAP:-false}" == true ]]; then
+      python3 -c 'import json; print(json.dumps([[{"filename":"website/docs-app/guide/a.md"}]*3000]))'
+    else
+      printf '[%s]\n' "$TEST_FILES"
+    fi ;;
   *) printf '{"base":{"sha":"base-sha"},"labels":%s,"draft":%s}\n' "$TEST_LABELS" "$TEST_DRAFT" ;;
 esac
 STUB
@@ -20,12 +27,14 @@ merge_policy:
   full_ci_paths: [".github/workflows/**", "src/mix.exs", "**/mix.lock"]
 YAML
 STUB
-chmod +x "$test_dir/bin/gh" "$test_dir/bin/git"
+mkdir "$test_dir/failbin"
+printf '#!/bin/sh\nexit 1\n' > "$test_dir/failbin/elixir"
+chmod +x "$test_dir/bin/gh" "$test_dir/bin/git" "$test_dir/failbin/elixir"
 classify() {
   : > "$test_dir/out"
   EVENT_NAME="$1" TEST_DRAFT="$2" TEST_FILES="$3" TEST_LABELS="${4:-[]}" REPO=o/r PR_NUMBER=7 \
     GITHUB_OUTPUT="$test_dir/out" GITHUB_STEP_SUMMARY="$test_dir/summary" \
-    PATH="$test_dir/bin:$PATH" bash "$root/scripts/classify-ci-changes.sh"
+    PATH="$test_dir/bin:$PATH" bash "$root/scripts/classify-ci-changes.sh" || return $?
   sort "$test_dir/out" | paste -sd' ' -
 }
 expect() {
@@ -43,10 +52,18 @@ for draft in true false; do
   expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"MAIN-FIX"}]'
   expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"urgent"}]'
   expect 'docs_only=false full_ci=true' pull_request "$draft" '[]'
+  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/test/support/helper.exs"}]'
+  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"scripts/example.sh"}]'
 done
-for event in merge_group workflow_dispatch; do
+for event in push merge_group workflow_dispatch; do
   expect 'docs_only=false full_ci=true' "$event" true '[]'
 done
+TEST_BIGPATCH=true expect 'docs_only=false full_ci=false' pull_request false '[]'
+TEST_FILE_CAP=true expect 'docs_only=false full_ci=true' pull_request false '[]'
+if PATH="$test_dir/failbin:$PATH" classify pull_request false '[{"filename":"src/lib/aiur/affected_tests.ex"}]' >/dev/null; then
+  echo 'selector failure must not publish a fast classification' >&2
+  exit 1
+fi
 workflow="$root/.github/workflows/ci.yml"
 ! grep -q 'outputs.draft\|pull_request.draft' "$workflow"
 grep -Fq 'full_ci: ${{ steps.classify.outputs.full_ci }}' "$workflow"
