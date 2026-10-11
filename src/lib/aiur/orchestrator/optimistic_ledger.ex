@@ -150,7 +150,12 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
 
   defp update(row, {:blocker, id, attrs}) do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
-    Map.update!(row, "blockers", &Enum.map(&1, fn blocker -> if blocker["id"] == id, do: Map.merge(blocker, Map.drop(attrs, ["id", "pr_head_sha_at_start"])), else: blocker end))
+
+    Map.update!(
+      row,
+      "blockers",
+      &Enum.map(&1, fn blocker -> if blocker["id"] == id, do: Map.merge(blocker, Map.drop(attrs, ["id", "pr_head_sha_at_start", "pr_head_ref_at_start"])), else: blocker end)
+    )
   end
 
   defp update(row, {:bump, counter, amount}) when counter in @counters and is_integer(amount) and amount >= 0,

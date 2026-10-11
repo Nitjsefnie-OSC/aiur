@@ -41,13 +41,15 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     issue
   end
 
-  defp dispatch(issue, parent) do
-    Dispatcher.do_dispatch_issue(%State{max_concurrent_agents: 1, effective_concurrent_agents: 1}, issue, nil, nil,
-      runner: fn _, _, opts ->
+  defp dispatch(issue, parent, options \\ []) do
+    options =
+      Keyword.put(options, :runner, fn started_issue, _, opts ->
+        send(parent, {:started_issue, started_issue})
         send(parent, {:started, opts})
         :ok
-      end
-    )
+      end)
+
+    Dispatcher.do_dispatch_issue(%State{max_concurrent_agents: 1, effective_concurrent_agents: 1}, issue, nil, nil, options)
   end
 
   test "two optimistic blockers write one attempt and one matching lifecycle point", %{path: path, parent: parent} do
@@ -110,15 +112,35 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
                end
              )
 
+    ProgressStore.record(id, %{stage: :pr_merged})
+    :sys.get_state(ProgressStore)
     started_at = issue.optimistic_start.started_at
     assert [%{sha: ^original_sha, ref: ^original_ref, pr_number: 41}] = issue.optimistic_start.blockers
     dispatch(issue, parent)
     receive_barrier({:started, _})
+    assert_received {:lifecycle, %{event: "optimistic_start", blockers: [^identifier], blocker_prs: [41]}}
     row = record(issue.identifier)
     assert row["started_at_ms"] == DateTime.to_unix(started_at, :millisecond)
 
-    assert [%{"id" => ^identifier, "pr_number" => 41, "pr_head_sha_at_start" => ^original_sha, "pr_head_ref_at_start" => ^original_ref, "last_head_sha" => ^original_sha, "pr_state" => "open"}] =
+    assert [%{"id" => ^identifier, "pr_number" => 41, "pr_head_sha_at_start" => ^original_sha, "pr_head_ref_at_start" => ^original_ref, "last_head_sha" => ^original_sha, "pr_state" => "merged"}] =
              row["blockers"]
+  end
+
+  test "raw prevalidated issue prepares its optimistic start in the shared dispatch path", %{path: path, parent: parent} do
+    start(path)
+    issue = candidate()
+    blocker = to_string(System.unique_integer([:positive]))
+    issue = %{issue | blocked_by: [%{id: blocker, identifier: blocker, state: "human-review"}]}
+    sha = String.duplicate("c", 40)
+    ref = "refs/heads/aiur/#{blocker}-manual"
+    ProgressStore.record(blocker, %{pr_number: 50, stage: :pr_opened})
+    :sys.get_state(ProgressStore)
+    assert issue.optimistic_start == nil
+    state = dispatch(issue, parent, blocker_subscriber: fn _, _ -> :ok end, blocker_ref_lookup: fn _ -> %{ref: ref, sha: sha} end)
+    receive_barrier({:started, _})
+    assert_received {:started_issue, %{optimistic_start: %{blockers: [%{sha: ^sha, ref: ^ref}]}}}
+    assert Map.has_key?(state.running, issue.id)
+    assert [%{"pr_head_sha_at_start" => ^sha, "pr_head_ref_at_start" => ^ref}] = record(issue.identifier)["blockers"]
   end
 
   test "normal dispatch starts the runner without ledger writes or optimistic telemetry", %{path: path, parent: parent} do

@@ -11,6 +11,8 @@ defmodule Aiur.Orchestrator.OptimisticDispatch do
   alias Aiur.StartTrigger.ProgressStore
 
   @spec prepare_for_dispatch(Issue.t(), keyword()) :: {:ok, Issue.t()} | {:error, atom()}
+  def prepare_for_dispatch(%Issue{optimistic_start: %{}} = issue, _opts), do: {:ok, issue}
+
   def prepare_for_dispatch(issue, opts) do
     lookup = Keyword.get(opts, :blocker_ref_lookup, &latest_ref/1)
 
@@ -46,9 +48,9 @@ defmodule Aiur.Orchestrator.OptimisticDispatch do
   end
 
   @spec record(Aiur.Issue.t(), String.t(), [String.t()]) :: :ok
-  def record(_issue, _attempt_id, []), do: :ok
+  def record(%{optimistic_start: nil}, _attempt_id, _ids), do: :ok
 
-  def record(issue, attempt_id, ids) do
+  def record(issue, attempt_id, _ids) do
     start = issue.optimistic_start
 
     blockers =
@@ -79,7 +81,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatch do
 
     Lifecycle.record(issue.identifier, attempt_id, :optimistic_start, :point, %{
       start_trigger: trigger,
-      blockers: ids,
+      blockers: Enum.map(blockers, & &1["id"]),
       blocker_prs: Enum.map(blockers, & &1["pr_number"])
     })
 

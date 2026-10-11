@@ -36,14 +36,19 @@ defmodule Aiur.Orchestrator.OptimisticLedgerTest do
   defp start(path, opts \\ []), do: start_supervised!({OptimisticLedger, [path: path] ++ opts})
 
   defp attrs(attempt \\ "attempt", at \\ 100) do
-    %{attempt_id: attempt, start_trigger: :pr_opened, started_at_ms: at, blockers: [%{"id" => "12", "pr_number" => 30, "pr_head_sha_at_start" => "original", "pr_state" => "open"}]}
+    %{
+      attempt_id: attempt,
+      start_trigger: :pr_opened,
+      started_at_ms: at,
+      blockers: [%{"id" => "12", "pr_number" => 30, "pr_head_sha_at_start" => "original", "pr_head_ref_at_start" => "refs/heads/aiur/12-original", "pr_state" => "open"}]
+    }
   end
 
   test "starts, updates and counters survive process restart without losing attempts", %{path: path} do
     start(path)
     assert :ok = OptimisticLedger.record_start("10", attrs())
     assert record("10")["counters"]["parks"] == 0
-    assert :ok = OptimisticLedger.update_blocker("10", "12", %{last_head_sha: "new", pr_head_sha_at_start: "overwrite"})
+    assert :ok = OptimisticLedger.update_blocker("10", "12", %{last_head_sha: "new", pr_head_sha_at_start: "overwrite", pr_head_ref_at_start: "overwrite"})
     assert :ok = OptimisticLedger.bump("10", :parks, 1)
     assert :ok = OptimisticLedger.set_status("10", :parked, 200)
     assert :ok = OptimisticLedger.record_start("10", attrs("retry", 300))
@@ -62,6 +67,7 @@ defmodule Aiur.Orchestrator.OptimisticLedgerTest do
     assert old["counters"]["parks"] == 1
     assert hd(old["blockers"])["last_head_sha"] == "new"
     assert hd(old["blockers"])["pr_head_sha_at_start"] == "original"
+    assert hd(old["blockers"])["pr_head_ref_at_start"] == "refs/heads/aiur/12-original"
   end
 
   test "close selects merged_after_redo and removes closed attempts from blocker reads", %{path: path} do
