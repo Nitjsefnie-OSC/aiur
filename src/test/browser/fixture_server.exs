@@ -1,3 +1,4 @@
+Code.require_file("../support/browser_harness/fixture_endpoint_start.ex", __DIR__)
 Code.require_file("../support/build_home/fixture_source.ex", __DIR__)
 Code.require_file("../support/browser_harness/fixtures.ex", __DIR__)
 Code.require_file("../support/browser_harness/fixture_controls.ex", __DIR__)
@@ -144,9 +145,8 @@ end
 
 defmodule Aiur.BrowserHarness.FixtureServer do
   alias Aiur.BrowserHarness.{FixtureEndpoint, VoiceSTT}
+  alias Aiur.BrowserHarness.FixtureEndpointStart
   alias Aiur.IssueLog
-
-  @port System.fetch_env!("AIUR_BROWSER_PORT") |> String.to_integer()
 
   def run do
     {:ok, _} = Application.ensure_all_started(:bandit)
@@ -174,21 +174,31 @@ defmodule Aiur.BrowserHarness.FixtureServer do
         strategy: :one_for_one
       )
 
-    Application.put_env(
-      :aiur,
-      Aiur.BrowserHarness.FixtureEndpoint,
-      server: true,
-      http: [ip: {127, 0, 0, 1}, port: @port],
-      url: [host: "127.0.0.1", port: @port],
-      secret_key_base: String.duplicate("b", 64),
-      adapter: Bandit.PhoenixAdapter,
-      pubsub_server: Aiur.BrowserHarness.FixturePubSub,
-      live_view: [signing_salt: "browser-harness-live-view"],
-      check_origin: false
-    )
+    port = System.fetch_env!("AIUR_BROWSER_PORT") |> String.to_integer()
 
-    {:ok, _} = FixtureEndpoint.start_link()
-    IO.puts("Aiur browser harness fixture ready at http://127.0.0.1:#{@port}")
+    {:ok, _pid} =
+      FixtureEndpointStart.start(
+        fn port ->
+          Application.put_env(
+            :aiur,
+            Aiur.BrowserHarness.FixtureEndpoint,
+            server: true,
+            http: [ip: {127, 0, 0, 1}, port: port],
+            url: [host: "127.0.0.1", port: port],
+            secret_key_base: String.duplicate("b", 64),
+            adapter: Bandit.PhoenixAdapter,
+            pubsub_server: Aiur.BrowserHarness.FixturePubSub,
+            live_view: [signing_salt: "browser-harness-live-view"],
+            check_origin: false
+          )
+
+          FixtureEndpoint.start_link()
+        end,
+        port
+      )
+
+    {:ok, {_ip, port}} = Bandit.PhoenixAdapter.server_info(FixtureEndpoint, :http)
+    IO.puts("Aiur browser harness fixture ready at http://127.0.0.1:#{port}")
     Process.sleep(:infinity)
   end
 

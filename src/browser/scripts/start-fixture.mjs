@@ -7,23 +7,39 @@ import { fixtureServerEnvironment } from './artifact-sanitizer.mjs'
 const browserRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.resolve(browserRoot, '..')
 
-const child = spawn('mise', ['exec', '--', 'mix', 'run', '--no-start', 'test/browser/fixture_server.exs'], {
-  cwd: sourceRoot,
-  env: fixtureServerEnvironment(),
-  stdio: 'inherit'
-})
+export async function startFixture(environment = process.env) {
+  const child = spawn('mise', ['exec', '--', 'mix', 'run', '--no-start', 'test/browser/fixture_server.exs'], {
+    cwd: sourceRoot,
+    env: fixtureServerEnvironment(environment),
+    stdio: ['ignore', 'pipe', 'inherit']
+  })
+  let output = ''
+  let resolvePort
+  let rejectPort
+  const port = new Promise((resolve, reject) => { resolvePort = resolve; rejectPort = reject })
+  const timeout = setTimeout(() => rejectPort(new Error('Fixture server did not bind within 60s')), 60_000)
 
-const stop = (signal) => {
-  if (!child.killed) child.kill(signal)
+  child.stdout.on('data', (chunk) => {
+    output = `${output}${String(chunk)}`.slice(-4096)
+    const match = output.match(/^AIUR_BROWSER_FIXTURE_PORT=(\d+)$/m)
+    if (match) resolvePort(Number(match[1]))
+  })
+  child.once('error', rejectPort)
+  child.once('exit', (code) => rejectPort(new Error(`Fixture server exited before binding (exit ${code})`)))
+
+  try {
+    return { port: await port, stop: () => { clearTimeout(timeout); child.kill('SIGTERM') } }
+  } catch (error) {
+    clearTimeout(timeout)
+    child.kill('SIGTERM')
+    throw error
+  }
 }
 
-process.once('SIGINT', () => stop('SIGINT'))
-process.once('SIGTERM', () => stop('SIGTERM'))
-child.once('error', (error) => {
-  process.stderr.write(`${error.message}\n`)
-  process.exitCode = 1
-})
-child.once('exit', (code, signal) => {
-  if (signal) process.exitCode = 1
-  else process.exitCode = code ?? 1
-})
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const fixture = await startFixture()
+  process.stdout.write(`Aiur browser harness fixture ready at http://127.0.0.1:${fixture.port}\n`)
+  const stop = (signal) => fixture.stop(signal)
+  process.once('SIGINT', () => stop('SIGINT'))
+  process.once('SIGTERM', () => stop('SIGTERM'))
+}
