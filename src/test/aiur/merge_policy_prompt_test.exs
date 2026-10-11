@@ -11,7 +11,7 @@ defmodule Aiur.MergePolicyPromptTest do
 
     on_exit(fn ->
       if previous, do: Workflow.set_workflow_file_path(previous), else: Workflow.clear_workflow_file_path()
-      File.rm_rf!(root)
+      Aiur.TestCleanup.rm_rf!(root)
     end)
 
     %{path: path}
