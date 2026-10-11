@@ -22,7 +22,9 @@ Ordered event, field, and supervisor lists retain their original sequence.
 
 Observed 2026-10-11 17:26:58 UTC, before creating the scratch demonstrations:
 89 open PRs. Command: `gh pr list --state open --limit 100 --json number,headRefName,baseRefName,files`.
-The result fits one page. Counts below name exact hot-file overlaps.
+The PR census fits one page. PR #2418 has more than 3,000 changed files;
+its complete 5,066-file Git comparison was checked separately and touches
+none of these hot files. Counts below name exact hot-file overlaps.
 
 | Hot file | Open PRs | PR numbers |
 | --- | ---: | --- |
@@ -31,6 +33,30 @@ The result fits one page. Counts below name exact hot-file overlaps.
 | `website/docs-app/reference/configuration.md` | 9 | 4257, 4152, 4064, 3928, 3894, 3006, 2946, 2870, 2510 |
 | `src/lib/aiur/run_telemetry/lifecycle.ex` | 5 | 4283, 4255, 4195, 4000, 2936 |
 | `src/test/support/state_writers_allowlist.exs` | 2 | 4218, 4154 |
+
+The component exemption files have the following overlaps.
+
+| TSV allowlist | Open PRs | PR numbers |
+| --- | ---: | --- |
+| `accounting.tsv` | 1 | 3989 |
+| `agent-runner.tsv` | 2 | 4000, 3989 |
+| `agent-sandbox.tsv` | 2 | 3989, 3855 |
+| `commands.tsv` | 1 | 3989 |
+| `config.tsv` | 1 | 3989 |
+| `control-cli.tsv` | 2 | 4021, 4014 |
+| `dashboard-ui.tsv` | 1 | 3989 |
+| `event-bus.tsv` | 1 | 3989 |
+| `executor-attention.tsv` | 1 | 4021 |
+| `github.tsv` | 1 | 3989 |
+| `harness-adapters.tsv` | 3 | 4000, 3989, 3855 |
+| `identity.tsv` | 1 | 3989 |
+| `orchestration.tsv` | 3 | 4195, 3993, 3855 |
+| `telemetry.tsv` | 2 | 4283, 3989 |
+| `tui.tsv` | 1 | 4000 |
+| `web-shell.tsv` | 1 | 3989 |
+| `workspace.tsv` | 2 | 4000, 3989 |
+
+All other component exemption TSVs have zero overlap in this census.
 
 The Executor should refresh this census immediately before landing. It is an
 observation, not a stable population estimate. A PR's file list must be complete
@@ -94,12 +120,12 @@ closed after verifying their bodies, branch identities, and results.
 
 ## One-week baseline: recorded lower bound
 
-The complete paginated merged-PR census for 2026-10-04 through 2026-10-11
-contains 439 PRs at observation time. Query:
+The complete paginated merged-PR census for the seven days ending
+2026-10-11 17:26:58 UTC contains 437 PRs. Query:
 
 ```bash
 gh api --method GET search/issues --paginate \
-  -f q='repo:aiur-team/aiur is:pr is:merged merged:2026-10-04..2026-10-11' \
+  -f q='repo:aiur-team/aiur is:pr is:merged merged:2026-10-04T17:26:58Z..2026-10-11T17:26:58Z' \
   -f per_page=100 --jq '.items[] | {number,closed_at}'
 ```
 

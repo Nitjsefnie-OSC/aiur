@@ -10,7 +10,7 @@ import sys
 import time
 from components.reference_rules import RULES, STRICT_RULES, edge_rules, report_cycles, seam_rules
 from components.ratchet import growth_errors, stale_entries, write_summary
-from components.manifest import read_manifest, format_json, write_manifest
+from components.manifest import read_manifest, write_manifest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'components'))
 from import_rules import client_imports, reverse_resources
@@ -326,9 +326,6 @@ def declaration_ownership(root, manifest):
     return problems, {'sections': len(sections), 'fields': len(fields),
                       'env vars': len(env), 'state paths': len(state)}
 
-
-def format_manifest(manifest):
-    return format_json(dict(manifest, components=sorted(manifest['components'], key=lambda c: (c['layer'], c['id']))))
 
 
 def main():
