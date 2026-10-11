@@ -111,7 +111,6 @@ Create a GitHub App under **Settings → Developer settings → GitHub Apps** an
 | Pull requests | Read and write |
 | Actions | Read for main-watch workflow attribution; write only for canary or cancelled-CI reruns. |
 | Administration, Secrets, Workflows | Never |
-| Administration, Secrets, Workflows | Never |
 
 GitHub always adds `Metadata: Read-only` implicitly. Generate and download a private key (`.pem`); it can mint installation tokens for every repository the App is installed on, so keep it in a secure store.
 
