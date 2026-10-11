@@ -23,7 +23,7 @@ defmodule Aiur.OptimisticStart.PromptTest do
     :ok
   end
 
-  # Baseline verified byte-for-byte against origin/main, not a hash of this implementation.
+  # Compatibility guard: baseline verified byte-for-byte against origin/main.
   test "ordinary prompt stays byte identical" do
     prompt = PromptBuilder.build_prompt(issue(nil))
     assert Base.encode16(:crypto.hash(:sha256, prompt)) == "29DADF9D0E6C32CAFB4B31C38CE4C07CDE5847D2678F04B8E97D198177E201E4"

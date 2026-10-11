@@ -63,6 +63,7 @@ defmodule Aiur.OptimisticStart.CheckoutTest do
     assert head(workspace) == ctx.sha
   end
 
+  # Compatibility guard: remote ticket precedence is existing behavior.
   test "existing remote ticket branch wins over the optimistic start point", ctx do
     git!(["-C", ctx.source, "checkout", "--quiet", "-b", @ticket])
     commit!(ctx.source, "ticket")
@@ -72,6 +73,7 @@ defmodule Aiur.OptimisticStart.CheckoutTest do
     assert head(ctx.workspace) == ticket_sha
   end
 
+  # Compatibility guard: an unavailable optimistic head keeps the existing base fallback.
   test "missing blocker ref falls back to the live base", ctx do
     point = %{ctx.start_point | ref: "refs/heads/aiur/12-missing"}
     assert :ok = Materialize.materialize_from_base(ctx.base, ctx.workspace, @ticket, nil, point)
@@ -85,6 +87,7 @@ defmodule Aiur.OptimisticStart.CheckoutTest do
     assert head(ctx.workspace) == ctx.sha
   end
 
+  # Compatibility guard: a rejected optimistic head keeps the existing base fallback.
   test "rewritten blocker history falls back to base", ctx do
     git!(["-C", ctx.source, "checkout", "--quiet", "-B", @blocker, ctx.base_sha])
     commit!(ctx.source, "rewrite")
