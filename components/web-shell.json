@@ -34,7 +34,8 @@
     "github-listeners",
     "pairing-discovery",
     "streamdeck-server",
-    "voice-stt"
+    "voice-stt",
+    "experiments-page"
   ],
   "owns": {
     "config": [

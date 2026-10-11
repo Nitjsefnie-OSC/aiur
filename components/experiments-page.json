@@ -1,0 +1,40 @@
+{
+  "id": "experiments-page",
+  "name": "Experiments dashboard page",
+  "layer": 4,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur_web/live/experiments_live.ex",
+    "src/lib/aiur_web/experiments/**",
+    "src/lib/aiur_web/routes/experiments.ex"
+  ],
+  "facades": [
+    "AiurWeb.Routes.Experiments"
+  ],
+  "facade_pending": null,
+  "requires": [
+    "web-kit",
+    "dashboard-ui",
+    "web-shell",
+    "experiments"
+  ],
+  "optional": [],
+  "owns": {
+    "config": [],
+    "env": [],
+    "state": [],
+    "capabilities": []
+  },
+  "prior": [],
+  "forbid": [
+    "Aiur.RunTelemetry",
+    "Aiur.RunTelemetry.*",
+    "Aiur.Orchestrator",
+    "Aiur.Orchestrator.*",
+    "Aiur.GitHub",
+    "Aiur.GitHub.*",
+    "AiurWeb.OperatorControlCenter.Analytics.Presenter",
+    "AiurWeb.OperatorControlCenter.Analytics.Charts",
+    "Aiur.Experiments.*"
+  ]
+}
