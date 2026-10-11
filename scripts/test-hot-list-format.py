@@ -129,6 +129,16 @@ class HotListFormatTest(unittest.TestCase):
         self.assertEqual(outside.read_text(), 'preserve schema')
         self.assertEqual((self.root / 'components/config.json').read_bytes(), before)
 
+    def test_unindexed_symlink_cannot_redirect_a_new_component_write(self):
+        manifest = read_manifest(self.root)
+        outside = self.root / 'components.schema.json'
+        outside.write_text('preserve schema')
+        (self.root / 'components/new-component.json').symlink_to(outside)
+        manifest['components'].append(dict(manifest['components'][0], id='new-component'))
+        with self.assertRaisesRegex(ValueError, 'symlinked component output'):
+            write_manifest(self.root, manifest)
+        self.assertEqual(outside.read_text(), 'preserve schema')
+
     def test_carry_preserves_both_sides_by_component_and_key(self):
         import copy
         spec = importlib.util.spec_from_file_location('carry', REPO / 'scripts/carry-component-additions.py')

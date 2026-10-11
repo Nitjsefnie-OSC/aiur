@@ -10,7 +10,14 @@ from components.manifest import format_json, read_manifest
 CODE_LISTS = {
     'src/lib/aiur/run_telemetry/lifecycle.ex': ('events', 'boundaries', 'metadata_fields'),
     'src/test/aiur/application_test.exs': ('terminal_only', 'dashboard', 'always'),
-    'src/test/aiur/application_child_order_test.exs': ('existing_children',),
+    'src/test/aiur/application_child_order_test.exs': ('existing_children', 'flags'),
+    'src/lib/aiur/run_telemetry/run_context.ex': ('volatile',),
+    'src/lib/aiur/run_telemetry/dataset.ex': ('carried_point_events',),
+    'src/lib/aiur/run_telemetry/writer/encoding.ex': ('carried_point_events',),
+    'src/lib/aiur/run_telemetry/sampler/process_tree.ex': ('metric_fields',),
+    'src/lib/aiur/run_telemetry/dataset/source.ex': ('supported_kinds',),
+    'src/lib/aiur/run_telemetry/procfs.ex': ('vanished_reasons',),
+    'src/lib/aiur/run_telemetry/sampler.ex': ('fleet_fields', 'fleet_admission_fields'),
 }
 
 

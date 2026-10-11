@@ -6,6 +6,8 @@ from pathlib import PurePosixPath
 
 def read_manifest(root):
     manifest = json.loads((root / 'components.json').read_text())
+    if not isinstance(manifest, dict):
+        raise ValueError('manifest must be an object')
     if 'component_files' not in manifest:
         return manifest
     if 'components' in manifest:
@@ -49,6 +51,9 @@ def write_manifest(root, manifest):
         for component in manifest['components']:
             if not isinstance(component.get('id'), str) or not re.fullmatch(r'[a-z][a-z0-9-]*', component['id']):
                 raise ValueError('unsafe component id')
+            target = root / 'components' / f'{component["id"]}.json'
+            if target.is_symlink() or (root / 'components').is_symlink():
+                raise ValueError('symlinked component output')
         for component in manifest['components']:
             (root / 'components' / f'{component["id"]}.json').write_text(format_json(component))
         original = {key: value for key, value in manifest.items() if key != 'components'}
