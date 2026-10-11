@@ -1,7 +1,7 @@
 defmodule Aiur.Orchestrator.OptimisticLedgerTest do
   use Aiur.TestSupport
-  alias Aiur.Orchestrator.{MembershipLifecycle, OptimisticLedger}
   alias Aiur.JsonStore
+  alias Aiur.Orchestrator.{MembershipLifecycle, OptimisticLedger}
 
   setup do
     :ok = Supervisor.terminate_child(Aiur.Supervisor, OptimisticLedger)
@@ -82,6 +82,18 @@ defmodule Aiur.Orchestrator.OptimisticLedgerTest do
     OptimisticLedger.close("10", :merged, 501)
     OptimisticLedger.close_observed(%Issue{identifier: "10", state: "closed"})
     assert OptimisticLedger.get("10")["outcome"] == "merged"
+  end
+
+  test "a later attempt merge preserves previously discarded work", %{path: path} do
+    start(path)
+    OptimisticLedger.record_start("10", attrs("old", 100))
+    OptimisticLedger.close("10", :discarded, 200)
+    OptimisticLedger.record_start("10", attrs("new", 300))
+    OptimisticLedger.close("10", :merged, 400)
+    assert {:ok, stored} = JsonStore.read(path)
+    assert stored["records"]["old"]["outcome"] == "discarded"
+    assert stored["records"]["old"]["closed_at_ms"] == 200
+    assert stored["records"]["new"]["outcome"] == "merged"
   end
 
   test "boot prunes only known closed records older than fourteen days", %{path: path} do

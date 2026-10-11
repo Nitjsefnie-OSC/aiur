@@ -1,8 +1,8 @@
 defmodule Aiur.Orchestrator.OptimisticDispatchTest do
   use Aiur.TestSupport
-  alias Aiur.Orchestrator.{CommentWake, Dispatcher, EventTopics, OptimisticLedger, State}
-  alias Aiur.StartTrigger.ProgressStore
+  alias Aiur.Orchestrator.{CommentWake, Dispatcher, EventTopics, MergedTicketReconciler, OptimisticLedger, State, TrackerTasks}
   alias Aiur.RunTelemetry.Lifecycle
+  alias Aiur.StartTrigger.ProgressStore
 
   setup do
     :ok = Supervisor.terminate_child(Aiur.Supervisor, OptimisticLedger)
@@ -106,6 +106,41 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     OptimisticLedger.bump(issue.identifier, :parks, 1)
     CommentWake.mark_pr_merged_issue_done(%State{}, issue.identifier, pr_body: "Refs #10", merged_by_login: "someone")
     assert OptimisticLedger.get(issue.identifier)["outcome"] == "merged_after_redo"
+  end
+
+  test "poll-confirmed merge closes its attempt even when another PR remains", %{path: path} do
+    start(path)
+    issue = %{candidate() | identifier: "1570", state: "in-progress"}
+    OptimisticLedger.record_start(issue.identifier, %{attempt_id: "merge", start_trigger: :pr_opened, started_at_ms: 100, blockers: [%{"id" => "12"}]})
+    now = DateTime.utc_now()
+
+    merge = %Aiur.RecentMerge{
+      id: "owner/repo#1600",
+      repository: "owner/repo",
+      number: 1600,
+      url: "https://example.test/pr/1600",
+      summary: "Closes #1570",
+      merged_at: now,
+      observation_source: :github_events,
+      backfilled?: false,
+      live_observed?: true,
+      first_observed_at: now,
+      last_observed_at: now,
+      content_hash: "hash"
+    }
+
+    {state, []} =
+      MergedTicketReconciler.reconcile(%State{snapshot_key: self()}, [issue],
+        recent_merges_fun: fn -> [merge] end,
+        now_fun: fn -> now end,
+        update_issue_state_fun: fn _, _, _ -> :ok end,
+        emit_alert_fun: fn _, _ -> :ok end,
+        open_pull_requests_fun: fn _ -> {:ok, [%{"number" => 1601, "draft" => false, "review_decision" => "REVIEW_REQUIRED"}]} end
+      )
+
+    assert map_size(state.tracker_tasks) == 1
+    assert OptimisticLedger.get(issue.identifier)["outcome"] == "merged"
+    TrackerTasks.stop(state)
   end
 
   test "optimistic telemetry preserves PR identities and filters unapproved metadata" do

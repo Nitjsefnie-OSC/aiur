@@ -79,7 +79,7 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
          {:ok, rows, writable?} <- decode(document) do
       state = %{state | records: rows, writable?: writable?}
       now = Keyword.get(opts, :now_ms, System.system_time(:millisecond))
-      kept = if writable?, do: Map.reject(rows, fn {_id, row} -> row["v"] == 1 and row["status"] == "closed" and row["closed_at_ms"] < now - @retention_ms end), else: rows
+      kept = if writable?, do: prune(rows, now), else: rows
       state = if writable? and kept != rows, do: persist(state, kept), else: state
       publish(state.records)
       {:ok, state}
@@ -109,15 +109,32 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
   end
 
   def handle_call({:update, ticket, operation}, _from, state) do
-    current = state.records |> Map.values() |> Enum.filter(&(&1["v"] == 1 and &1["ticket"] == ticket and &1["status"] != "closed")) |> Enum.max_by(& &1["started_at_ms"], fn -> nil end)
-
-    rows =
-      Map.new(state.records, fn {id, row} ->
-        applies? = match?({:close, _, _}, operation) or (not is_nil(current) and current["attempt_id"] == id)
-        {id, if(applies? and row["v"] == 1 and row["ticket"] == ticket and (row["status"] != "closed" or merged_correction?(row, operation)), do: update(row, operation), else: row)}
-      end)
-
+    attempts = state.records |> Map.values() |> Enum.filter(&(&1["v"] == 1 and &1["ticket"] == ticket))
+    latest = latest_id(attempts)
+    current = attempts |> Enum.reject(&(&1["status"] == "closed")) |> latest_id()
+    rows = Map.new(state.records, fn {id, row} -> {id, update_attempt(row, ticket, operation, current, latest)} end)
     write_reply(state, rows)
+  end
+
+  defp latest_id(attempts) do
+    case Enum.max_by(attempts, & &1["started_at_ms"], fn -> nil end) do
+      nil -> nil
+      row -> row["attempt_id"]
+    end
+  end
+
+  defp update_attempt(%{"v" => 1, "ticket" => ticket} = row, ticket, operation, current, latest) do
+    if row["status"] == "closed" do
+      if row["attempt_id"] == latest and merged_correction?(row, operation), do: update(row, operation), else: row
+    else
+      if match?({:close, _, _}, operation) or row["attempt_id"] == current, do: update(row, operation), else: row
+    end
+  end
+
+  defp update_attempt(row, _ticket, _operation, _current, _latest), do: row
+
+  defp prune(rows, now) do
+    Map.reject(rows, fn {_id, row} -> row["v"] == 1 and row["status"] == "closed" and row["closed_at_ms"] < now - @retention_ms end)
   end
 
   defp merged_correction?(%{"outcome" => "discarded"}, {:close, "merged", _at}), do: true
@@ -184,13 +201,16 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
 
   defp valid_record?(id, %{"v" => 1} = row) do
     row["attempt_id"] == id and is_binary(row["ticket"]) and is_integer(row["started_at_ms"]) and
-      is_list(row["blockers"]) and Enum.all?(row["blockers"], &(is_map(&1) and is_binary(&1["id"]))) and
+      valid_blockers?(row["blockers"]) and
       valid_counters?(row["counters"]) and
       row["status"] in ["running", "parked", "closed"] and (row["status"] != "closed" or is_integer(row["closed_at_ms"]))
   end
 
   defp valid_record?(_id, %{"v" => v}) when is_integer(v) and v > 1, do: true
   defp valid_record?(_id, _row), do: false
+
+  defp valid_blockers?(blockers) when is_list(blockers), do: Enum.all?(blockers, &(is_map(&1) and is_binary(&1["id"])))
+  defp valid_blockers?(_), do: false
 
   defp valid_counters?(counters) when is_map(counters), do: Enum.all?(@counters, &(is_integer(counters[&1]) and counters[&1] >= 0))
   defp valid_counters?(_), do: false
