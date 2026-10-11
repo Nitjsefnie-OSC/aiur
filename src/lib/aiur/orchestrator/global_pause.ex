@@ -11,7 +11,8 @@ defmodule Aiur.Orchestrator.GlobalPause do
   All state mutation runs inside the orchestrator GenServer process.
   """
 
-  alias Aiur.Orchestrator.{GlobalPauseStore, Lifecycle, SnapshotStore, State, StatusReport}
+  alias Aiur.ModelAvailability
+  alias Aiur.Orchestrator.{DispatchPolicy, GlobalPauseStore, Lifecycle, SnapshotStore, State, StatusReport}
 
   @call_timeout 15_000
 
@@ -112,7 +113,7 @@ defmodule Aiur.Orchestrator.GlobalPause do
       :ok ->
         state =
           next_state
-          |> maybe_wake_after_unpause(current, on?)
+          |> maybe_refresh_after_global_pause_change(current, on?)
 
         publish_global_pause(state)
         StatusReport.notify_dashboard(state)
@@ -140,8 +141,15 @@ defmodule Aiur.Orchestrator.GlobalPause do
   # An idle fleet may have a substantially widened timer. Unpausing is an
   # explicit admission request, so cancel that timer and reconcile fresh state
   # before any queued ticket can dispatch.
-  defp maybe_wake_after_unpause(state, true, false), do: state |> Lifecycle.request_refresh_state() |> elem(0)
-  defp maybe_wake_after_unpause(state, _current, _on?), do: state
+  defp maybe_refresh_after_global_pause_change(state, false, true),
+    do: state |> Lifecycle.request_refresh_state() |> elem(0)
+
+  defp maybe_refresh_after_global_pause_change(state, true, false) do
+    ModelAvailability.probe_stale_limits(DispatchPolicy.read_provider_backends(), [])
+    state |> Lifecycle.request_refresh_state() |> elem(0)
+  end
+
+  defp maybe_refresh_after_global_pause_change(state, _current, _on?), do: state
 
   defp publish_global_pause(%State{} = state) do
     SnapshotStore.publish_global_pause(

@@ -400,9 +400,6 @@ defmodule Aiur.Orchestrator.PauseResume do
   defp attach_resume_receipt(reply, _state, _issue_identifier), do: reply
 
   @spec pause_agent_call(State.t(), String.t() | TrackerIdentity.t()) :: {:reply, term(), State.t()}
-  def pause_agent_call(%State{globally_paused: true} = state, _issue_identifier),
-    do: {:reply, {:error, :globally_paused}, state}
-
   def pause_agent_call(%State{} = state, issue_identifier) do
     guard_control_call(state, :pause, issue_identifier, fn ->
       {reply, state} = pause_agent_reply(state, issue_identifier)
@@ -477,10 +474,10 @@ defmodule Aiur.Orchestrator.PauseResume do
 
   @spec request_control_call(State.t(), String.t(), :pause | :resume, pos_integer()) ::
           {:reply, {:ok, pos_integer()} | {:error, term()}, State.t()}
-  # Global-hold-wins: neither per-agent control can claim success while the
-  # daemon-wide switch masks its effect. A global unpause is the only way out.
-  def request_control_call(%State{globally_paused: true} = state, issue_identifier, action, request_id)
-      when action in [:pause, :resume] and is_binary(issue_identifier) and is_integer(request_id) and request_id > 0 do
+  # Global pause blocks individual resumes, but operators can still pause a
+  # running worker as an explicit containment action.
+  def request_control_call(%State{globally_paused: true} = state, issue_identifier, :resume, request_id)
+      when is_binary(issue_identifier) and is_integer(request_id) and request_id > 0 do
     {:reply, {:error, :globally_paused}, state}
   end
 
