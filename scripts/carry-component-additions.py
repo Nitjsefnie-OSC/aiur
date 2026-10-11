@@ -71,7 +71,7 @@ def main():
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parent.parent)
     args = parser.parse_args()
     root = args.root.resolve()
-    if Path(git(root, 'rev-parse', '--show-toplevel')).resolve() != root:
+    if Path(git(root, 'rev-parse', '--show-toplevel').strip()).resolve() != root:
         parser.error('--root must be the repository root')
     if git(root, 'status', '--porcelain', '--', 'components.json', 'components').strip():
         parser.error('commit manifest edits before carrying another PR')

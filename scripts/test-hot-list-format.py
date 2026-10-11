@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 from components.manifest import format_json, read_manifest, write_manifest
 
 REPO = Path(__file__).resolve().parent.parent
@@ -19,7 +20,7 @@ class HotListFormatTest(unittest.TestCase):
         self.scratch = tempfile.TemporaryDirectory()
         self.addCleanup(self.scratch.cleanup)
         self.root = Path(self.scratch.name)
-        for name in [*CHECKER.CODE_LISTS, 'src/test/support/state_writers_allowlist.exs', 'components.json']:
+        for name in [*CHECKER.CODE_LISTS, 'src/test/support/state_writers_allowlist.exs', 'components.json', 'components.schema.json']:
             target = self.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(REPO / name, target)
@@ -138,6 +139,35 @@ class HotListFormatTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'symlinked component output'):
             write_manifest(self.root, manifest)
         self.assertEqual(outside.read_text(), 'preserve schema')
+
+    def test_carry_command_accepts_git_newline_and_writes_valid_additions(self):
+        import copy
+        spec = importlib.util.spec_from_file_location('carry_command', REPO / 'scripts/carry-component-additions.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        before = read_manifest(self.root)
+        after = copy.deepcopy(before)
+        next(c for c in after['components'] if c['id'] == 'kernel')['paths'].append('src/lib/aiur/pr_addition.ex')
+
+        def git_output(root, *args):
+            if args == ('rev-parse', '--show-toplevel'):
+                return str(self.root) + '\n'
+            if args[0] == 'status':
+                return ''
+            if args[0] == 'merge-base':
+                return 'base\n'
+            self.fail(f'unexpected Git call: {args}')
+
+        with patch('sys.argv', ['carry', '--pr', '123', '--root', str(self.root)]), \
+                patch.object(module, 'git', side_effect=git_output), \
+                patch.object(module.subprocess, 'run') as fetch, \
+                patch.object(module, 'at_ref', side_effect=[before, after]):
+            module.main()
+        fetch.assert_called_once_with(['git', '-C', str(self.root), 'fetch', 'origin',
+                                      'pull/123/head:refs/aiur/carry/123'], check=True)
+        paths = next(c['paths'] for c in read_manifest(self.root)['components'] if c['id'] == 'kernel')
+        self.assertEqual(set(paths), set(next(c['paths'] for c in before['components'] if c['id'] == 'kernel')) |
+                         {'src/lib/aiur/pr_addition.ex'})
 
     def test_carry_preserves_both_sides_by_component_and_key(self):
         import copy
