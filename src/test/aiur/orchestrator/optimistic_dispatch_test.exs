@@ -1,6 +1,6 @@
 defmodule Aiur.Orchestrator.OptimisticDispatchTest do
   use Aiur.TestSupport
-  alias Aiur.Orchestrator.{CommentWake, Dispatcher, EventTopics, MergedTicketReconciler, OptimisticLedger, State, TrackerTasks}
+  alias Aiur.Orchestrator.{CommentWake, Dispatcher, EventTopics, MergedTicketReconciler, OptimisticDispatch, OptimisticLedger, State, TrackerTasks}
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.StartTrigger.ProgressStore
   alias Aiur.TestCleanup
@@ -36,6 +36,11 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     %Issue{id: id, identifier: id, state: "todo", selected_backend: "codex"}
   end
 
+  defp prepared(issue, evidence) do
+    assert {:ok, issue} = OptimisticDispatch.prepare(issue, evidence, blocker_subscriber: fn _, _ -> :ok end)
+    issue
+  end
+
   defp dispatch(issue, parent) do
     Dispatcher.do_dispatch_issue(%State{max_concurrent_agents: 1, effective_concurrent_agents: 1}, issue, nil, nil,
       runner: fn _, _, opts ->
@@ -48,15 +53,23 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
   test "two optimistic blockers write one attempt and one matching lifecycle point", %{path: path, parent: parent} do
     start(path)
     issue = candidate()
-    ids = [issue.id <> "-a", issue.id <> "-b"]
+    ids = Enum.map(1..2, fn _ -> to_string(System.unique_integer([:positive])) end)
 
-    for {id, number, sha} <- [{hd(ids), 41, "first"}, {List.last(ids), 42, "second"}] do
+    for {id, number, sha} <- [{hd(ids), 41, String.duplicate("a", 40)}, {List.last(ids), 42, String.duplicate("b", 40)}] do
       ProgressStore.record(id, %{pr_number: number, head_sha: sha, stage: :pr_ci_green})
     end
 
     :sys.get_state(ProgressStore)
     blockers = Enum.map(ids, &%{id: &1, identifier: &1, state: "human-review"})
     issue = %{issue | blocked_by: blockers}
+
+    evidence =
+      Enum.map(ids, fn id ->
+        facts = ProgressStore.lookup(id)
+        %{identifier: id, pr_number: facts.pr_number, head_ref: "refs/heads/aiur/#{id}-start", head_sha: facts.head_sha}
+      end)
+
+    issue = prepared(issue, evidence)
     state = dispatch(issue, parent)
     receive_barrier({:started, opts})
     assert Map.has_key?(state.running, issue.id)
@@ -69,11 +82,43 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     assert record["start_trigger"] == "pr_opened"
 
     assert Enum.map(record["blockers"], &Map.take(&1, ["id", "pr_number", "pr_head_sha_at_start", "pr_state"])) == [
-             %{"id" => hd(ids), "pr_number" => 41, "pr_head_sha_at_start" => "first", "pr_state" => "open"},
-             %{"id" => List.last(ids), "pr_number" => 42, "pr_head_sha_at_start" => "second", "pr_state" => "open"}
+             %{"id" => hd(ids), "pr_number" => 41, "pr_head_sha_at_start" => String.duplicate("a", 40), "pr_state" => "open"},
+             %{"id" => List.last(ids), "pr_number" => 42, "pr_head_sha_at_start" => String.duplicate("b", 40), "pr_state" => "open"}
            ]
 
     assert length(open_records()) == 1
+  end
+
+  test "ledger keeps evaluated fallback evidence when progress changes before spawn", %{path: path, parent: parent} do
+    start(path)
+    issue = candidate()
+    identifier = to_string(System.unique_integer([:positive]))
+    id = issue.id <> "-blocker"
+    issue = %{issue | blocked_by: [%{id: id, identifier: identifier, state: "human-review"}]}
+    original_sha = String.duplicate("a", 40)
+    original_ref = "refs/heads/aiur/#{identifier}-original"
+    ProgressStore.record(id, %{pr_number: 41, stage: :pr_opened})
+    :sys.get_state(ProgressStore)
+
+    assert {:ok, issue} =
+             OptimisticDispatch.prepare_for_dispatch(issue,
+               blocker_subscriber: fn _, _ -> :ok end,
+               blocker_ref_lookup: fn ^identifier ->
+                 ProgressStore.record(id, %{pr_number: 42, head_sha: String.duplicate("b", 40), head_ref: "refs/heads/aiur/#{identifier}-new", stage: :pr_ci_green})
+                 :sys.get_state(ProgressStore)
+                 %{ref: original_ref, sha: original_sha}
+               end
+             )
+
+    started_at = issue.optimistic_start.started_at
+    assert [%{sha: ^original_sha, ref: ^original_ref, pr_number: 41}] = issue.optimistic_start.blockers
+    dispatch(issue, parent)
+    receive_barrier({:started, _})
+    row = record(issue.identifier)
+    assert row["started_at_ms"] == DateTime.to_unix(started_at, :millisecond)
+
+    assert [%{"id" => ^identifier, "pr_number" => 41, "pr_head_sha_at_start" => ^original_sha, "pr_head_ref_at_start" => ^original_ref, "last_head_sha" => ^original_sha, "pr_state" => "open"}] =
+             row["blockers"]
   end
 
   test "normal dispatch starts the runner without ledger writes or optimistic telemetry", %{path: path, parent: parent} do
@@ -92,7 +137,9 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     File.write!(path, "broken")
     start(path)
     issue = candidate()
-    issue = %{issue | blocked_by: [%{id: issue.id <> "-a", state: "human-review"}]}
+    blocker = to_string(System.unique_integer([:positive]))
+    issue = %{issue | blocked_by: [%{id: blocker, identifier: blocker, state: "human-review"}]}
+    issue = prepared(issue, [%{identifier: blocker, pr_number: 41, head_ref: "refs/heads/aiur/#{blocker}-start", head_sha: String.duplicate("a", 40)}])
     state = dispatch(issue, parent)
     receive_barrier({:started, _})
     assert Map.has_key?(state.running, issue.id)
