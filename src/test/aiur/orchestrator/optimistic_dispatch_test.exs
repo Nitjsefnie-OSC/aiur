@@ -3,12 +3,13 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
   alias Aiur.Orchestrator.{CommentWake, Dispatcher, EventTopics, MergedTicketReconciler, OptimisticLedger, State, TrackerTasks}
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.StartTrigger.ProgressStore
+  alias Aiur.TestCleanup
 
   setup do
     :ok = Supervisor.terminate_child(Aiur.Supervisor, OptimisticLedger)
     on_exit(fn -> Supervisor.restart_child(Aiur.Supervisor, OptimisticLedger) end)
     path = Path.join(System.tmp_dir!(), "optimistic-dispatch-#{System.unique_integer([:positive])}/starts.json")
-    on_exit(fn -> File.rm_rf(Path.dirname(path)) end)
+    on_exit(fn -> TestCleanup.rm_rf!(Path.dirname(path)) end)
     workflow_path = Workflow.workflow_file_path()
     write_workflow_file_atomic!(workflow_path, File.read!(workflow_path) <> "\nbuild_queue:\n  start_trigger: pr_opened\n")
     :ok = Aiur.WorkflowStore.force_reload()
@@ -16,6 +17,16 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     Application.put_env(:aiur, :run_telemetry_lifecycle_recorder, fn :lifecycle, attrs, _ -> send(parent, {:lifecycle, attrs}) end)
     on_exit(fn -> Application.delete_env(:aiur, :run_telemetry_lifecycle_recorder) end)
     {:ok, path: path, parent: parent}
+  end
+
+  defp record(ticket) do
+    assert {:ok, row} = OptimisticLedger.get(ticket)
+    row
+  end
+
+  defp open_records do
+    assert {:ok, rows} = OptimisticLedger.open_records()
+    rows
   end
 
   defp start(path), do: start_supervised!({OptimisticLedger, path: path, alert: fn _, _ -> :ok end})
@@ -53,7 +64,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     assert_received {:lifecycle, %{event: "optimistic_start", attempt_id: ^attempt, blockers: ^ids, blocker_prs: [41, 42]}}
     refute_received {:lifecycle, %{event: "optimistic_start"}}
     assert Keyword.fetch!(opts, :telemetry_attempt_id) == attempt
-    record = OptimisticLedger.get(issue.identifier)
+    record = record(issue.identifier)
     assert record["attempt_id"] == attempt
     assert record["start_trigger"] == "pr_opened"
 
@@ -62,7 +73,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
              %{"id" => List.last(ids), "pr_number" => 42, "pr_head_sha_at_start" => "second", "pr_state" => "open"}
            ]
 
-    assert length(OptimisticLedger.open_records()) == 1
+    assert length(open_records()) == 1
   end
 
   test "normal dispatch starts the runner without ledger writes or optimistic telemetry", %{path: path, parent: parent} do
@@ -72,7 +83,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     receive_barrier({:started, _})
     assert_received {:lifecycle, %{event: "dispatch"}}
     refute_received {:lifecycle, %{event: "optimistic_start"}}
-    assert OptimisticLedger.get(issue.identifier) == nil
+    assert record(issue.identifier) == nil
     refute File.exists?(path)
   end
 
@@ -95,8 +106,8 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     issue = candidate()
     OptimisticLedger.record_start(issue.identifier, %{attempt_id: "merge", start_trigger: :pr_opened, started_at_ms: 100, blockers: [%{"id" => "12"}]})
     EventTopics.route(%State{}, %{topic: "ticket.#{issue.identifier}.pr.merged", pr: %{"body" => "Refs #10", "merged_by" => %{"login" => "someone"}}})
-    assert OptimisticLedger.get(issue.identifier)["outcome"] == "merged"
-    assert OptimisticLedger.get(issue.identifier)["status"] == "closed"
+    assert record(issue.identifier)["outcome"] == "merged"
+    assert record(issue.identifier)["status"] == "closed"
   end
 
   test "poll-confirmed merge uses the same ledger closure as the event route", %{path: path} do
@@ -105,7 +116,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
     OptimisticLedger.record_start(issue.identifier, %{attempt_id: "merge", start_trigger: :pr_opened, started_at_ms: 100, blockers: [%{"id" => "12"}]})
     OptimisticLedger.bump(issue.identifier, :parks, 1)
     CommentWake.mark_pr_merged_issue_done(%State{}, issue.identifier, pr_body: "Refs #10", merged_by_login: "someone")
-    assert OptimisticLedger.get(issue.identifier)["outcome"] == "merged_after_redo"
+    assert record(issue.identifier)["outcome"] == "merged_after_redo"
   end
 
   test "poll-confirmed merge closes its attempt even when another PR remains", %{path: path} do
@@ -139,7 +150,7 @@ defmodule Aiur.Orchestrator.OptimisticDispatchTest do
       )
 
     assert map_size(state.tracker_tasks) == 1
-    assert OptimisticLedger.get(issue.identifier)["outcome"] == "merged"
+    assert record(issue.identifier)["outcome"] == "merged"
     TrackerTasks.stop(state)
   end
 

@@ -23,7 +23,7 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
   def bump(ticket, counter, amount), do: call({:update, ticket, {:bump, to_string(counter), amount}})
 
   @spec set_status(String.t(), atom() | String.t(), integer()) :: :ok | {:error, atom()}
-  def set_status(ticket, status, _at_ms), do: call({:update, ticket, {:status, to_string(status)}})
+  def set_status(ticket, status, at_ms), do: call({:update, ticket, {:status, to_string(status), at_ms}})
 
   @spec close(String.t(), atom() | String.t(), integer()) :: :ok | {:error, atom()}
   def close(ticket, outcome, at_ms) do
@@ -37,22 +37,30 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
       else: :ok
   end
 
-  @spec get(String.t()) :: map() | nil
-  def get(ticket), do: records() |> Enum.filter(&(&1["ticket"] == ticket)) |> Enum.max_by(& &1["started_at_ms"], fn -> nil end)
+  @spec get(String.t()) :: {:ok, map() | nil} | {:error, :ledger_unavailable}
+  def get(ticket) do
+    with {:ok, rows} <- records() do
+      {:ok, rows |> Enum.filter(&(&1["ticket"] == ticket)) |> Enum.max_by(& &1["started_at_ms"], fn -> nil end)}
+    end
+  end
 
-  @spec open_records() :: [map()]
-  def open_records, do: Enum.reject(records(), &(&1["status"] == "closed"))
+  @spec open_records() :: {:ok, [map()]} | {:error, :ledger_unavailable}
+  def open_records do
+    with {:ok, rows} <- records(), do: {:ok, Enum.reject(rows, &(&1["status"] == "closed"))}
+  end
 
-  @spec by_blocker(String.t()) :: [map()]
-  def by_blocker(id), do: Enum.filter(open_records(), fn row -> Enum.any?(row["blockers"], &(&1["id"] == id)) end)
+  @spec by_blocker(String.t()) :: {:ok, [map()]} | {:error, :ledger_unavailable}
+  def by_blocker(id) do
+    with {:ok, rows} <- open_records(), do: {:ok, Enum.filter(rows, fn row -> Enum.any?(row["blockers"], &(&1["id"] == id)) end)}
+  end
 
   defp records do
-    case :ets.lookup(@table, :records) do
-      [{:records, rows}] -> rows
-      [] -> []
+    case {Process.whereis(__MODULE__), :ets.lookup(@table, :records)} do
+      {pid, [{:records, :available, rows}]} when is_pid(pid) -> {:ok, rows}
+      _ -> {:error, :ledger_unavailable}
     end
   rescue
-    ArgumentError -> []
+    ArgumentError -> {:error, :ledger_unavailable}
   end
 
   defp call(message) do
@@ -81,7 +89,7 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
       now = Keyword.get(opts, :now_ms, System.system_time(:millisecond))
       kept = if writable?, do: prune(rows, now), else: rows
       state = if writable? and kept != rows, do: persist(state, kept), else: state
-      publish(state.records)
+      publish(state)
       {:ok, state}
     else
       {:error, reason} -> {:ok, unavailable(state, reason)}
@@ -148,7 +156,7 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
   defp update(row, {:bump, counter, amount}) when counter in @counters and is_integer(amount) and amount >= 0,
     do: update_in(row, ["counters", counter], &(&1 + amount))
 
-  defp update(row, {:status, status}) when status in ["running", "parked"], do: Map.put(row, "status", status)
+  defp update(row, {:status, status, at}) when status in ["running", "parked"] and is_integer(at), do: Map.merge(row, %{"status" => status, "status_changed_at_ms" => at})
 
   defp update(row, {:close, outcome, at}) when outcome in ["merged", "merged_after_redo", "discarded"] and is_integer(at) do
     outcome = if outcome == "merged" and row["counters"]["parks"] > 0, do: "merged_after_redo", else: outcome
@@ -162,15 +170,18 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
 
   defp persist(state, rows) do
     JsonStore.write!(state.path, %{"v" => 1, "records" => rows})
-    publish(rows)
-    %{state | records: rows}
+    next = %{state | records: rows}
+    publish(next)
+    next
   rescue
     error -> unavailable(state, error)
   end
 
-  defp publish(rows) do
-    visible = for {_id, %{"v" => 1} = row} <- rows, do: row
-    :ets.insert(@table, {:records, visible})
+  defp publish(state) do
+    supported? = Enum.all?(state.records, fn {_id, row} -> row["v"] == 1 end)
+    availability = if state.writable? and supported?, do: :available, else: :unavailable
+    visible = for {_id, %{"v" => 1} = row} <- state.records, do: row
+    :ets.insert(@table, {:records, availability, visible})
   end
 
   defp unavailable(state, reason) do
@@ -182,7 +193,9 @@ defmodule Aiur.Orchestrator.OptimisticLedger do
       state.alert.("system.optimistic.ledger_unavailable", message: "Optimistic starts cannot be persisted", reason: inspect(reason), needs_attention: true)
     end
 
-    %{state | writable?: false}
+    next = %{state | writable?: false}
+    publish(next)
+    next
   end
 
   defp path(opts) do
