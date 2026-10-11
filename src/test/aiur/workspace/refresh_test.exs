@@ -10,7 +10,7 @@ defmodule Aiur.Workspace.RefreshTest do
     workspace = Path.join(test_root, "ws")
     File.mkdir_p!(workspace)
 
-    on_exit(fn -> File.rm_rf!(test_root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(test_root) end)
     {:ok, workspace: workspace, test_root: test_root}
   end
 
@@ -285,12 +285,14 @@ defmodule Aiur.Workspace.RefreshTest do
     test_root: test_root
   } do
     init_repo!(workspace)
-    git!(["-C", workspace, "checkout", "--quiet", "-b", "aiur/123-fix-login"])
-    trace = Path.join(test_root, "branch-trace-#{System.unique_integer([:positive])}")
+    git!(workspace, ["checkout", "--quiet", "-b", "aiur/123-fix-login"])
+    trace_root = Path.join(test_root, "branch-traces")
+    File.mkdir_p!(trace_root)
+    trace = Path.join(trace_root, "123-fix-login")
 
     write_workflow_file!(Workflow.workflow_file_path(),
       workspace_root: test_root,
-      hook_before_run: "printf '%s\\n' \"$AIUR_TICKET_BRANCH\" >> #{trace}; exit 65"
+      hook_before_run: "printf '%s\\n' \"$AIUR_TICKET_BRANCH\" >> #{Aiur.Shell.escape(trace_root)}/\"${AIUR_TICKET_BRANCH#aiur/}\"; exit 65"
     )
 
     issue = %{
@@ -334,6 +336,11 @@ defmodule Aiur.Workspace.RefreshTest do
 
   defp git!(args) do
     {out, 0} = System.cmd("git", args, stderr_to_stdout: true)
+    out
+  end
+
+  defp git!(workspace, args) do
+    {out, 0} = System.cmd(System.get_env("AIUR_REAL_GIT") || "/usr/bin/git", ["-C", workspace | args], stderr_to_stdout: true)
     out
   end
 end
