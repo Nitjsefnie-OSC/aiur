@@ -33,7 +33,7 @@ defmodule Aiur.Experiments.Auto.DeployLedger do
   @spec previous(keyword()) :: {:ok, map() | nil} | {:error, term()}
   def previous(opts \\ []) do
     boot_id = Keyword.get(opts, :boot_id, Aiur.Boot.run_id())
-    with {:ok, rows} <- read(Keyword.get(opts, :path, path()), false), do: {:ok, rows |> Enum.reject(&(&1["boot_id"] == boot_id)) |> List.last()}
+    with {:ok, rows} <- read(Keyword.get(opts, :path, path()), false), do: {:ok, rows |> Enum.take_while(&(&1["boot_id"] != boot_id)) |> List.last()}
   end
 
   @spec list({DateTime.t(), DateTime.t()}, keyword()) :: {:ok, [map()]} | {:error, term()}
