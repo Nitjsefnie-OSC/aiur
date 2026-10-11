@@ -5,8 +5,8 @@ defmodule Aiur.PromptBuilder do
 
   require Logger
 
-  alias Aiur.{CodingAgent, Config, ExternalContent, MergePolicy, Workflow}
   alias Aiur.AgentRunner.MergePolicyPrompt
+  alias Aiur.{CodingAgent, Config, ExternalContent, MergePolicy, Workflow}
 
   @render_opts [strict_filters: true, strict_variables: true]
   @shared_prompt_path Path.expand("../../prompts/shared-agent-instructions.md", __DIR__)
