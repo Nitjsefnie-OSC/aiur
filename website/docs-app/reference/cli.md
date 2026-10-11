@@ -484,17 +484,16 @@ Clear persists unmark intents before paced writes; crashes resume on restart. A 
 
 ## `pr merge`
 
-`aiur pr merge <N> --reviewed-sha <full-sha>` performs a standalone squash merge using the operator's stored `gh` credential. It works with the daemon stopped. The login must be in `tracker.github.human_mergers`; agent workspaces, the agent account and App identities are refused.
+`aiur pr merge <N> --reviewed-sha <full-sha>` uses the operator's stored `gh` credential without requiring a daemon. The login must be in `tracker.github.human_mergers`; agent workspaces, agent accounts and App identities refuse.
 
-Checks cover head, draft, approval/bypass, CI, conflicts and premerge commands on the merge result. Failed checks refuse; commands have ten minutes each. The checkout and PR branch stay unchanged.
+Checks cover head, draft, CI, conflicts, attribution and premerge commands on the merge result (ten minutes each). Every identity needs a current-head approval; open changes-requested reviews refuse. The operator checkout and PR branch stay unchanged.
 
-- `--dry-run`: evaluate gates without posting a review or merging.
-- `--approve-body-file <file>`: approve the reviewed head before merging.
-- `--inherited <check>`: repeatable; currently refuses because verified
-  main-watch inheritance evidence is not yet connected.
+- `--dry-run`: evaluate gates without posting a review, enqueueing or merging.
+- `--approve-body-file <file>`: post a real approval on the pinned head, then apply the same gates. Self-approval and open changes requests refuse.
+- `--inherited <check>`: repeatable; refuses until verified watcher evidence is connected.
 
-Under `ci: wait`, every required check must pass. The `pending_ok` gate needs current-head local-test evidence and an enabled watcher; full-CI labels on the PR or linked tickets, and full-CI paths, still force waiting. Config currently accepts only `wait`; this command does not enable early merges.
+Under `ci: wait`, every required check must pass. The `pending_ok` gate needs current-head local-test evidence and an enabled watcher; full-CI labels on the PR or linked tickets, and full-CI paths, force waiting. Config currently accepts only `wait`.
 
-Exit codes: `0` merged or dry run; `2` policy refusal (`REFUSE` per reason); `1` tool/network error.
+A merge-queue rule produces `ENQUEUED`, never a direct or bypass merge, and records that state. Rerun the pinned command after the queue merges to record the observed merge. Unknown branch-rule state refuses. Bases without a queue use a pinned squash merge.
 
-Successful merges print the policy and pending checks, append `~/.aiur/logs/pr-merge/merges.ndjson`, and notify a running daemon with `system.pr.merged`. Ledger or daemon notification failures print a warning without retrying the merge. Failure logs share that directory.
+Exit codes: `0` merged, enqueued, observed merged or dry run; `2` policy refusal; `1` tool/network error. Records and failure logs live in `~/.aiur/logs/pr-merge/`. Only observed merges notify the daemon with `system.pr.merged`; it verifies GitHub independently. Ledger or notification failures warn without retrying the merge.

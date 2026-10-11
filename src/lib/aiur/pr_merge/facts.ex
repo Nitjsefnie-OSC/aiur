@@ -2,6 +2,15 @@ defmodule Aiur.PrMerge.Facts do
   @moduledoc false
   alias Aiur.PrMerge.{Checks, Client, Rules}
 
+  @spec observe(function(), map(), pos_integer()) :: {:ok, map()} | {:error, String.t()}
+  def observe(api, settings, number) do
+    with {:ok, raw} <- api.("get", "repos/#{settings.tracker.github.repo}/pulls/#{number}", nil),
+         {:ok, pr} <- normalize(raw, number),
+         true <- pr.base == settings.tracker.base_branch or {:error, "PR base differs from tracker.base_branch"} do
+      {:ok, pr}
+    end
+  end
+
   @spec read(function(), map(), pos_integer(), map()) :: {:ok, map()} | {:error, String.t()}
   def read(api, settings, number, user) do
     repo = settings.tracker.github.repo
@@ -17,7 +26,15 @@ defmodule Aiur.PrMerge.Facts do
          {:ok, %{"object" => %{"sha" => base_sha}}} <- api.("get", "repos/#{repo}/git/ref/heads/#{URI.encode(pr.base, &URI.char_unreserved?/1)}", nil) do
       paths = Enum.flat_map(files, &Enum.reject([&1["filename"], &1["previous_filename"]], fn value -> value == nil end))
       facts = pr |> Map.merge(Checks.classify(checks.checks)) |> Map.merge(rules)
-      {:ok, Map.merge(facts, %{approved: checks.approved, full_ci: Aiur.MergePolicy.requires_full_ci?(labels ++ pr.labels, paths, settings.merge_policy), base_sha: base_sha})}
+
+      {:ok,
+       Map.merge(facts, %{
+         approved: checks.approved,
+         changes_requested: checks.changes_requested,
+         operator_id: user["id"],
+         full_ci: Aiur.MergePolicy.requires_full_ci?(labels ++ pr.labels, paths, settings.merge_policy),
+         base_sha: base_sha
+       })}
     else
       {:error, _reason} = error -> error
       _ -> {:error, "invalid PR facts"}
@@ -31,6 +48,13 @@ defmodule Aiur.PrMerge.Facts do
         {:ok,
          %{
            number: number,
+           node_id: raw["node_id"],
+           author_id: get_in(raw, ["user", "id"]),
+           merged: raw["merged"] == true,
+           merge_commit_sha: raw["merge_commit_sha"],
+           merged_by: get_in(raw, ["merged_by", "login"]),
+           merged_at: raw["merged_at"],
+           base_sha: get_in(raw, ["base", "sha"]),
            head: head,
            base: base,
            draft: draft,

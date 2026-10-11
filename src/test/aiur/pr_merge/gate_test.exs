@@ -69,10 +69,10 @@ defmodule Aiur.PrMerge.GateTest do
     assert Gate.refusals(pr(%{state: "CLOSED", conflict: true}), policy(), opts()) == ["PR is not open", "conflict"]
   end
 
-  test "approval must exist or be explicitly requested unless bypass is verified" do
-    assert Gate.refusals(pr(%{approved: false}), policy(), opts()) == ["approval or verified bypass identity required"]
-    assert Gate.refusals(pr(%{approved: false, bypass: true}), policy(), opts()) == []
-    assert Gate.refusals(pr(%{approved: false}), policy(), opts(%{approve_body: "Reviewed"})) == []
+  test "approval at the current head is required even with bypass or a planned review" do
+    assert Gate.refusals(pr(%{approved: false}), policy(), opts()) == ["approval at current head required"]
+    assert Gate.refusals(pr(%{approved: false, bypass: true}), policy(), opts()) == ["approval at current head required"]
+    assert Gate.refusals(pr(%{approved: false, author_id: 3, operator_id: 5}), policy(), opts(%{approve_body: "Reviewed"})) == ["approval at current head required"]
   end
 
   test "attribution scan covers title and body case insensitively" do

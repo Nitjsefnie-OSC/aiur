@@ -1,5 +1,6 @@
 defmodule Aiur.PrMerge.Checks do
   @moduledoc false
+  alias Aiur.PrMerge.Reviews
 
   @spec read(function(), String.t(), pos_integer(), String.t()) :: {:ok, map()} | {:error, String.t()}
   def read(api, repo, number, head) do
@@ -11,8 +12,9 @@ defmodule Aiur.PrMerge.Checks do
          true <- not Map.has_key?(response, "errors"),
          %{"nodes" => [%{"commit" => %{"oid" => ^head, "statusCheckRollup" => rollup}}]} <- pr["commits"],
          {:ok, checks} <- contexts(rollup),
-         %{"nodes" => tickets, "pageInfo" => %{"hasNextPage" => false}} <- pr["closingIssuesReferences"] do
-      {:ok, %{approved: pr["reviewDecision"] == "APPROVED", checks: checks, tickets: tickets}}
+         %{"nodes" => tickets, "pageInfo" => %{"hasNextPage" => false}} <- pr["closingIssuesReferences"],
+         {:ok, reviews} <- Reviews.read(api, repo, number, head) do
+      {:ok, Map.merge(reviews, %{checks: checks, tickets: tickets})}
     else
       {:error, _reason} = error -> error
       _ -> {:error, "incomplete or head-mismatched GitHub check observation"}
@@ -61,7 +63,7 @@ defmodule Aiur.PrMerge.Checks do
     """
     query($owner:String!, $name:String!, $number:Int!) {
       repository(owner:$owner, name:$name) { pullRequest(number:$number) {
-        reviewDecision closingIssuesReferences(first:100) { nodes { number repository { nameWithOwner } } pageInfo { hasNextPage } } commits(last:1) { nodes { commit { oid statusCheckRollup {
+        closingIssuesReferences(first:100) { nodes { number repository { nameWithOwner } } pageInfo { hasNextPage } } commits(last:1) { nodes { commit { oid statusCheckRollup {
           contexts(first:100) { nodes {
             __typename ... on CheckRun { name status conclusion checkSuite { app { databaseId } } }
             ... on StatusContext { context state }

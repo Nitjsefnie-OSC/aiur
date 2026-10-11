@@ -9,7 +9,9 @@ defmodule Aiur.PrMerge.Gate do
     |> reject(pr.draft, "draft PR")
     |> reject(pr.state != "OPEN", "PR is not open")
     |> reject(pr.conflict, "conflict")
-    |> reject(not (pr.approved or pr.bypass or opts.approve_body != nil), "approval or verified bypass identity required")
+    |> reject(not pr.approved, "approval at current head required")
+    |> reject(Map.get(pr, :changes_requested, false), "changes requested by reviewer")
+    |> reject(opts.approve_body != nil and not distinct_author?(pr), "approval requires a known PR author distinct from operator")
     |> Kernel.++(Enum.map(pr.failed, &"CI failed: #{&1}"))
     |> Kernel.++(Enum.map(opts.inherited, &"inherited failure not verified by base watcher: #{&1}"))
     |> Kernel.++(pending_refusals(pr, policy))
@@ -18,6 +20,12 @@ defmodule Aiur.PrMerge.Gate do
 
   @spec pending(map()) :: [String.t()]
   def pending(pr), do: Enum.uniq(pr.required -- pr.passed)
+
+  defp distinct_author?(pr) do
+    author = Map.get(pr, :author_id)
+    operator = Map.get(pr, :operator_id)
+    is_integer(author) and is_integer(operator) and author != operator
+  end
 
   defp pending_refusals(pr, policy) do
     if pending(pr) == [] do

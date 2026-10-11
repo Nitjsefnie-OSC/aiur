@@ -1,6 +1,6 @@
 # merge_policy
 
-The top-level policy is validated and displayed by `aiur status` and `aiur capabilities`; workers receive the current local-test mode on every turn (merge enforcement and main watching ship separately).
+The operator merge command enforces this policy, `aiur status` and `aiur capabilities` display it, and workers receive the local-test mode on every turn.
 
 | Key | Type | Default | Controls |
 | --- | --- | --- | --- |
@@ -16,6 +16,8 @@ The top-level policy is validated and displayed by `aiur status` and `aiur capab
 | `merge_policy.main_watch.fixer_label` | string | `main-fix` | Label for fixer tickets and their full-CI requirement. |
 | `merge_policy.main_watch.canary_minutes` | integer | 45 | Minutes without a completed watched run before a canary rerun; `0` disables. |
 | `merge_policy.main_watch.red_fallback_minutes` | integer | 0 | Optional full-CI wait after main stays red this many minutes; absent/`0` disables, `60` enables a one-hour threshold; enforcement ships in MP4. |
+
+Premerge commands execute PR-authored code as the operator's Unix user. Token environment variables are removed, but that user can still read the stored `gh` credential. The default command list is empty; configure only checks for code you trust to execute.
 
 `on_red: dispatch_fixer` requires `fixer_label` in `full_ci_labels`. Lists reject blank entries; canary and red-fallback minutes must be nonnegative integers. Invalid values name the dotted config path.
 

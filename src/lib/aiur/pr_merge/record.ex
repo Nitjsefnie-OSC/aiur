@@ -2,6 +2,7 @@ defmodule Aiur.PrMerge.Record do
   @moduledoc false
   alias Aiur.ControlCLI.Protocol
   alias Aiur.Events.Publisher
+  alias Aiur.GitHub.Transport
   alias Aiur.JSONSafe
   @spec append(map(), String.t()) :: :ok | {:error, term()}
   def append(record, root) do
@@ -57,12 +58,34 @@ defmodule Aiur.PrMerge.Record do
 
   @spec publish(String.t()) :: :ok
   def publish(encoded) do
+    Protocol.exit_marker(if verify_and_publish(encoded) == :ok, do: 0, else: 1)
+  end
+
+  @spec verify_and_publish(String.t(), keyword()) :: :ok | {:error, :unverified_merge}
+  def verify_and_publish(encoded, opts \\ []) do
     with {:ok, json} <- Base.decode64(encoded),
-         {:ok, record} when is_map(record) <- Jason.decode(json),
-         {:ok, _id, _subscribers} <- Publisher.publish("system.pr.merged", record, source: :pr_merge_cli) do
-      Protocol.exit_marker(0)
+         {:ok, %{"repo" => repo, "pr" => number, "sha" => head, "merged_sha" => merged_sha}} <- Jason.decode(json),
+         true <- is_integer(number) and number > 0 and is_binary(head) and is_binary(merged_sha),
+         {:ok, settings} <- Keyword.get(opts, :settings, &Aiur.Config.settings_uncached/0).(),
+         true <- repo == settings.tracker.github.repo,
+         {:ok, token} <- Transport.require_token(opts),
+         request <- Keyword.get(opts, :request_fun, &Transport.default_request_fun/1),
+         {:ok, raw} <- Transport.fetch_json_map(request, token, "https://api.github.com/repos/#{repo}/pulls/#{number}", caller: "pr_merge_record_verification"),
+         %{
+           "merged" => true,
+           "state" => "closed",
+           "head" => %{"sha" => ^head},
+           "merge_commit_sha" => ^merged_sha,
+           "base" => %{"ref" => base},
+           "merged_by" => %{"login" => actor},
+           "merged_at" => merged_at
+         } <- raw,
+         true <- base == settings.tracker.base_branch and is_binary(actor) and is_binary(merged_at),
+         verified <- %{repo: repo, pr: number, sha: head, merged_sha: merged_sha, state: "merged", actor: actor, merged_at: merged_at},
+         {:ok, _id, _subscribers} <- Keyword.get(opts, :publish, &Publisher.publish/3).("system.pr.merged", verified, source: :pr_merge_cli) do
+      :ok
     else
-      _ -> Protocol.exit_marker(1)
+      _ -> {:error, :unverified_merge}
     end
   end
 end

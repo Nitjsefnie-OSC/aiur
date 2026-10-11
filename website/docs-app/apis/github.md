@@ -808,17 +808,16 @@ The path scope and webhook signature are independent locks:
 Do not remove the catch-all `404`: the same origin serves the operator dashboard, and a host-wide tunnel would expose it to anyone who learned the hostname.
 ## Operator PR merge command
 
-`aiur pr merge` uses the operator's stored `gh` credential in its standalone
-process; it never sends that credential to the daemon. Its direct GitHub reads
-are outside the agent guard ledger. No quota saving is claimed.
+`aiur pr merge` uses the operator's stored `gh` credential in its standalone process; it never sends that credential to the daemon. Its direct GitHub reads are outside the agent guard ledger. No quota saving is claimed.
 
-Before and after premerge checks it reads the PR, current-head GraphQL check
-rollup (including legacy statuses), linked-ticket labels, paginated changed
-files, applied branch rules, legacy protection, ruleset bypass actors and the
-current base ref. Incomplete check collections or file lists fail closed.
-The final squash request pins the reviewed head SHA.
+Before and after premerge checks it reads the PR, current-head check rollup, linked-ticket labels, paginated paths and reviews, applied rules, protection and base ref. Incomplete observations fail closed.
 
-A requested approval also
-pins that SHA. GitHub remains the final authority on bypass permissions.
+Reviews use each reviewer's latest decision. An approval must match the current head; changes requests refuse for every identity. A requested operator approval is pinned and reread.
 
-The command records the merge locally and sends only its outcome to the daemon. See [the command reference](/reference/cli#pr-merge) for flags and refusal rules.
+A merge-queue rule routes the pinned head through GraphQL enqueueing;
+it never authorizes a direct bypass merge. Without a queue, squash merge pins
+the reviewed head. The ledger distinguishes enqueueing from observed merges.
+
+The daemon independently verifies the configured repository, PR head, base and
+merge SHA against GitHub before publishing `system.pr.merged`; caller-supplied
+actor data is replaced with GitHub's merge attribution. See [the command reference](/reference/cli#pr-merge).

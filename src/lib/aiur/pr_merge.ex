@@ -1,6 +1,6 @@
 defmodule Aiur.PrMerge do
-  @moduledoc "Standalone, operator-only squash merge with policy gates."
-  alias Aiur.PrMerge.{Client, Facts, Gate, Identity, MergeResult, Record}
+  @moduledoc "Standalone, operator-only merge or merge-queue enqueue with policy gates."
+  alias Aiur.PrMerge.{Client, Facts, Gate, Identity, MergeResult, Queue, Record}
 
   @spec run(map(), keyword()) :: non_neg_integer()
   def run(opts, deps \\ []) do
@@ -20,11 +20,55 @@ defmodule Aiur.PrMerge do
          {:ok, user} <- api.("get", "user", nil),
          :ok <- Identity.allowed(user, settings.tracker.github),
          :ok <- main_note(settings, deps, puts),
-         {:ok, pr} <- Facts.read(api, settings, opts.number, user),
-         :ok <- gate(pr, settings, opts),
+         {:ok, observation} <- Facts.observe(api, settings, opts.number) do
+      observed(api, observation, settings, opts, token, deps, puts, user)
+    end
+  end
+
+  defp observed(_api, %{merged: true} = pr, settings, opts, _token, deps, puts, _user) do
+    cond do
+      pr.state != "CLOSED" ->
+        {:error, "inconsistent GitHub merged observation"}
+
+      pr.head != opts.reviewed_sha ->
+        {:refuse, ["merged PR head differs from reviewed head"]}
+
+      not (is_binary(pr.merge_commit_sha) and is_binary(pr.merged_by) and is_binary(pr.merged_at)) ->
+        {:error, "incomplete GitHub merged observation"}
+
+      opts.dry_run ->
+        puts.("DRY RUN observed MERGED ##{pr.number} #{pr.merge_commit_sha}; no record written")
+        :ok
+
+      true ->
+        root = Keyword.get(deps, :log_root, Path.expand("~/.aiur/logs/pr-merge"))
+
+        record = %{
+          repo: settings.tracker.github.repo,
+          pr: pr.number,
+          sha: pr.head,
+          base_sha: pr.base_sha,
+          state: "merged",
+          merged_sha: pr.merge_commit_sha,
+          merged_at: pr.merged_at,
+          actor: pr.merged_by,
+          policy: settings.merge_policy.ci,
+          pending: [],
+          pending_count: 0
+        }
+
+        puts.("MERGED ##{pr.number} #{pr.merge_commit_sha}; observed GitHub merge")
+        record(record, root, deps, puts)
+        :ok
+    end
+  end
+
+  defp observed(api, _observation, settings, opts, token, deps, puts, user) do
+    with {:ok, pr} <- Facts.read(api, settings, opts.number, user),
+         :ok <- preflight(pr, settings, opts),
          :ok <- merge_result(pr, settings, token, deps, puts),
          {:ok, fresh} <- Facts.read(api, settings, opts.number, user),
-         :ok <- gate(fresh, settings, opts),
+         :ok <- preflight(fresh, settings, opts),
          true <- fresh.base_sha == pr.base_sha or {:refuse, ["base moved during premerge checks; rerun"]} do
       finish(api, fresh, settings, opts, deps, puts, user)
     end
@@ -39,6 +83,12 @@ defmodule Aiur.PrMerge do
     end
 
     :ok
+  end
+
+  defp preflight(pr, settings, opts) do
+    reasons = Gate.refusals(pr, settings.merge_policy, opts)
+    reasons = if opts.approve_body != nil and not opts.dry_run, do: List.delete(reasons, "approval at current head required"), else: reasons
+    if reasons == [], do: :ok, else: {:refuse, reasons}
   end
 
   defp gate(pr, settings, opts) do
@@ -67,28 +117,54 @@ defmodule Aiur.PrMerge do
 
     with :ok <- File.mkdir_p(root),
          :ok <- approve(api, repo, pr, opts.approve_body),
-         {:ok, %{"merged" => true, "sha" => sha}} <- api.("put", "repos/#{repo}/pulls/#{pr.number}/merge", merge_body(pr)) do
-      record = %{
-        repo: repo,
-        pr: pr.number,
-        sha: pr.head,
-        base_sha: pr.base_sha,
-        merged_sha: sha,
-        pending: Gate.pending(pr),
-        pending_count: length(Gate.pending(pr)),
-        policy: settings.merge_policy.ci,
-        actor: user["login"],
-        merged_at: DateTime.to_iso8601(DateTime.utc_now())
-      }
-
-      puts.("MERGED ##{pr.number} #{sha}; policy ci=#{record.policy}; pending=#{Enum.join(record.pending, ",")}")
-      record(record, root, deps, puts)
-      :ok
-    else
-      {:ok, %{"message" => message}} -> {:error, message}
-      {:error, _} = error -> error
-      _ -> {:error, "GitHub did not confirm a merge"}
+         {:ok, fresh} <- Facts.read(api, settings, pr.number, user),
+         :ok <- gate(fresh, settings, opts),
+         true <- fresh.base_sha == pr.base_sha or {:refuse, ["base moved during approval; rerun"]} do
+      deliver(api, fresh, settings, root, deps, puts, user)
     end
+  end
+
+  defp deliver(api, %{merge_queue: true} = pr, settings, root, _deps, puts, user) do
+    with {:ok, entry} <- Queue.enqueue(api, pr) do
+      record = record_data(pr, settings, user) |> Map.merge(%{state: "enqueued", queue_entry: entry, enqueued_at: DateTime.to_iso8601(DateTime.utc_now())})
+      puts.("ENQUEUED ##{pr.number} #{pr.head}; policy ci=#{record.policy}; pending=#{Enum.join(record.pending, ",")}")
+      if Record.append(record, root) != :ok, do: puts.("WARNING enqueued, but queue ledger write failed")
+      :ok
+    end
+  end
+
+  defp deliver(api, %{merge_queue: false} = pr, settings, root, deps, puts, user) do
+    repo = settings.tracker.github.repo
+
+    case api.("put", "repos/#{repo}/pulls/#{pr.number}/merge", merge_body(pr)) do
+      {:ok, %{"merged" => true, "sha" => sha}} ->
+        record = record_data(pr, settings, user) |> Map.merge(%{state: "merged", merged_sha: sha, merged_at: DateTime.to_iso8601(DateTime.utc_now())})
+        puts.("MERGED ##{pr.number} #{sha}; policy ci=#{record.policy}; pending=#{Enum.join(record.pending, ",")}")
+        record(record, root, deps, puts)
+        :ok
+
+      {:ok, %{"message" => message}} ->
+        {:error, message}
+
+      {:error, _reason} = error ->
+        error
+
+      _ ->
+        {:error, "GitHub did not confirm a merge"}
+    end
+  end
+
+  defp record_data(pr, settings, user) do
+    %{
+      repo: settings.tracker.github.repo,
+      pr: pr.number,
+      sha: pr.head,
+      base_sha: pr.base_sha,
+      pending: Gate.pending(pr),
+      pending_count: length(Gate.pending(pr)),
+      policy: settings.merge_policy.ci,
+      actor: user["login"]
+    }
   end
 
   defp approve(_api, _repo, _pr, nil), do: :ok

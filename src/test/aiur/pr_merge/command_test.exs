@@ -47,7 +47,19 @@ defmodule Aiur.PrMerge.CommandTest do
   defp response("get", "repos/owner/repo/pulls/1", _),
     do:
       {:ok,
-       %{"head" => %{"sha" => @head}, "base" => %{"ref" => "main"}, "state" => "open", "draft" => false, "title" => "Change", "body" => "", "labels" => [], "changed_files" => 1, "mergeable" => true}}
+       %{
+         "node_id" => "PR_test",
+         "user" => %{"id" => 99},
+         "head" => %{"sha" => @head},
+         "base" => %{"ref" => "main"},
+         "state" => "open",
+         "draft" => false,
+         "title" => "Change",
+         "body" => "",
+         "labels" => [],
+         "changed_files" => 1,
+         "mergeable" => true
+       }}
 
   defp response("post", "graphql", _) do
     {:ok,
@@ -74,6 +86,9 @@ defmodule Aiur.PrMerge.CommandTest do
        }
      }}
   end
+
+  defp response("get", "repos/owner/repo/pulls/1/reviews?per_page=100&page=1", _),
+    do: {:ok, [%{"id" => 1, "user" => %{"id" => 7}, "state" => "APPROVED", "commit_id" => @head, "submitted_at" => "2026-10-11T01:00:00Z"}]}
 
   defp response("get", "repos/owner/repo/rules/branches/main", _),
     do: {:ok, [%{"type" => "required_status_checks", "ruleset_id" => 1, "parameters" => %{"required_status_checks" => [%{"context" => "lint"}]}}]}
