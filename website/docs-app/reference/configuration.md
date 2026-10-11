@@ -736,7 +736,6 @@ The durable repository Executor state also records every daemon start and stop i
 | `opencode.prewarm_disabled` | boolean | false | Disables opencode session pre-warming. |
 
 ## experiments
-
 The daemon owns [experiment](../concepts/experiments) writes through control RPC.
 
 | Key | Type | Default | Description |
