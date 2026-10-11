@@ -1,5 +1,6 @@
 defmodule Aiur.CoreTest do
   use Aiur.TestSupport
+  import Aiur.TestSupport.RejectedWorkflow
 
   alias Aiur.Config.Schema
   alias Aiur.Events.Exchange
@@ -81,14 +82,10 @@ defmodule Aiur.CoreTest do
     assert config.agent.max_concurrent_builds == 4
     assert Config.max_concurrent_builds() == 4
 
-    write_workflow_file!(Workflow.workflow_file_path(), poll_interval_seconds: "invalid")
-
-    assert_raise ArgumentError, ~r/interval_seconds/, fn ->
-      Config.settings!().polling.interval_seconds
-    end
-
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), poll_interval_seconds: "invalid")
     assert message =~ "polling.interval_seconds"
+    # The rejected reload leaves the last known good config in effect (#3961).
+    assert Config.settings!().polling.interval_seconds == 120
 
     write_workflow_file!(Workflow.workflow_file_path(), poll_interval_seconds: 45)
     assert Config.settings!().polling.interval_seconds == 45
@@ -97,16 +94,13 @@ defmodule Aiur.CoreTest do
     assert Config.settings!().max_vertical_panes == 4
     assert Config.max_vertical_panes() == 4
 
-    write_workflow_file!(Workflow.workflow_file_path(), max_vertical_panes: 0)
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), max_vertical_panes: 0)
     assert message =~ "max_vertical_panes"
 
-    write_workflow_file!(Workflow.workflow_file_path(), max_turns: 0)
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), max_turns: 0)
     assert message =~ "agent.max_turns"
 
-    write_workflow_file!(Workflow.workflow_file_path(), max_concurrent_builds: -1)
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), max_concurrent_builds: -1)
     assert message =~ "agent.max_concurrent_builds"
 
     write_workflow_file!(Workflow.workflow_file_path(), max_concurrent_builds: 0)
@@ -119,8 +113,7 @@ defmodule Aiur.CoreTest do
     write_workflow_file!(Workflow.workflow_file_path(), max_turns: "none")
     assert Config.settings!().agent.max_turns == nil
 
-    write_workflow_file!(Workflow.workflow_file_path(), tracker_active_states: "Todo,  Review,")
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), tracker_active_states: "Todo,  Review,")
     assert message =~ "tracker.active_states"
 
     write_workflow_file!(Workflow.workflow_file_path(),
@@ -130,12 +123,12 @@ defmodule Aiur.CoreTest do
 
     assert {:error, :missing_linear_project_slug} = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(),
-      tracker_project_slug: "project",
-      codex_command: ""
-    )
+    assert {:error, {:invalid_workflow_config, message}} =
+             write_rejected_workflow_file!(Workflow.workflow_file_path(),
+               tracker_project_slug: "project",
+               codex_command: ""
+             )
 
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
     assert message =~ "codex.command"
     assert message =~ "can't be blank"
 
@@ -158,12 +151,10 @@ defmodule Aiur.CoreTest do
 
     assert :ok = Config.validate!()
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: 123)
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), codex_approval_policy: 123)
     assert message =~ "codex.approval_policy"
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_thread_sandbox: 123)
-    assert {:error, {:invalid_workflow_config, message}} = Config.validate!()
+    assert {:error, {:invalid_workflow_config, message}} = write_rejected_workflow_file!(Workflow.workflow_file_path(), codex_thread_sandbox: 123)
     assert message =~ "codex.thread_sandbox"
 
     write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "123")
@@ -1098,7 +1089,7 @@ defmodule Aiur.CoreTest do
     issue_id = "issue-exhausted"
     ref = make_ref()
     orchestrator_name = Module.concat(__MODULE__, :ExhaustedRetryOrchestrator)
-    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll?: false)
 
     on_exit(fn ->
       stop_test_orchestrator(pid)
@@ -1127,12 +1118,10 @@ defmodule Aiur.CoreTest do
     log =
       capture_log(fn ->
         send(pid, {:DOWN, ref, :process, self(), {:turn_start_failed, :provider_rejected}})
-        # Synchronous barrier inside the capture window: `:sys.get_state/1`
-        # blocks until the orchestrator has fully handled the :DOWN (and emitted
-        # both its "giving up" warning and the retry_exhausted alert), so the log
-        # is captured deterministically. A bare `Process.sleep/1` raced the
-        # async alert emission under suite load and flaked (#589).
-        :sys.get_state(pid)
+
+        await_orchestrator_state(pid, fn state ->
+          Enum.all?(state.tracker_tasks, fn {_ref, job} -> job.key != {:retry_exhausted, issue_id} end)
+        end)
       end)
 
     state = :sys.get_state(pid)
@@ -1307,7 +1296,7 @@ defmodule Aiur.CoreTest do
       restore_env("GITHUB_TOKEN", previous_github_token)
     end)
 
-    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name)
+    {:ok, pid} = Orchestrator.start_link(name: orchestrator_name, initial_poll?: false)
 
     on_exit(fn ->
       stop_test_orchestrator(pid)
@@ -1331,7 +1320,6 @@ defmodule Aiur.CoreTest do
     end)
 
     send(pid, {:DOWN, ref, :process, self(), :response_timeout})
-    Process.sleep(50)
 
     assert %{attempt: 1, retry_token: retry_token, error: "agent exited: :response_timeout"} =
              :sys.get_state(pid).retry_attempts[issue_id]
@@ -1339,22 +1327,19 @@ defmodule Aiur.CoreTest do
     log =
       capture_log(fn ->
         send(pid, {:retry_issue, issue_id, retry_token})
-        Process.sleep(50)
+        await_orchestrator_state(pid, &(get_in(&1.retry_attempts, [issue_id, :retry_poll_failures]) == 1))
 
         assert %{attempt: 1, retry_poll_failures: 1, retry_token: retry_token} =
                  :sys.get_state(pid).retry_attempts[issue_id]
 
         send(pid, {:retry_issue, issue_id, retry_token})
-        Process.sleep(50)
+        await_orchestrator_state(pid, &(get_in(&1.retry_attempts, [issue_id, :retry_poll_failures]) == 2))
 
         assert %{attempt: 1, retry_poll_failures: 2, retry_token: retry_token} =
                  :sys.get_state(pid).retry_attempts[issue_id]
 
         send(pid, {:retry_issue, issue_id, retry_token})
-        # Barrier: blocks until the third retry (exhaustion path) is fully
-        # handled, so the synchronous `[alert]` log line is emitted before
-        # capture_log flushes — deterministic vs. a fixed sleep.
-        _ = :sys.get_state(pid)
+        await_orchestrator_state(pid, &Map.has_key?(&1.released_claims, issue_id))
       end)
 
     state = :sys.get_state(pid)
@@ -2563,7 +2548,7 @@ defmodule Aiur.CoreTest do
               if [ ! -f "#{port_closed_once}" ]; then
                 touch "#{port_closed_once}"
                 touch "#{port_closed_after_completion}"
-                exit 0
+                exec 0<&-; sleep 1; exit 0 # stdin closes first, so the queued write hits EPIPE (#4017)
               fi
             fi
             ;;
@@ -2668,9 +2653,18 @@ defmodule Aiur.CoreTest do
                  body: "repair from replacement"
                })
 
+      assert_receive {:DOWN, ^old_ref, :process, ^old_worker, _reason}, 15_000
       refute Process.alive?(old_worker)
 
-      replacement = :sys.get_state(orchestrator_pid).running[issue.id]
+      state =
+        await_orchestrator_state(orchestrator_pid, fn state ->
+          case state.running[issue.id] do
+            %{pid: pid} when is_pid(pid) -> pid != old_worker
+            _ -> false
+          end
+        end)
+
+      replacement = state.running[issue.id]
       assert is_pid(replacement.pid)
       assert Process.alive?(replacement.pid)
       assert replacement.pid != old_worker

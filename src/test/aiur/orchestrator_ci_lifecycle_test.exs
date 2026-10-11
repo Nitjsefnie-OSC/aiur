@@ -1,22 +1,18 @@
 defmodule Aiur.OrchestratorCILifecycleTest do
   use Aiur.TestSupport
-
-  alias Aiur.{AgentQueueStore, CIApprovalStore, ExecutorListener, ExecutorWakeInbox, Orchestrator, PollCadence, TrackerIdentity}
+  alias Aiur.{AgentQueueStore, CIApprovalStore, ExecutorListener, ExecutorWakeInbox, Orchestrator, PollCadence, TestSupport.WakeInboxAck, TrackerIdentity}
   alias Aiur.AgentRunner.MessageHandler
   alias Aiur.Events.{Exchange, Publisher}
   alias Aiur.GitHub.ResourceStore
-  alias Aiur.Orchestrator.{CiLifecycle, IssueSync, State}
+  alias Aiur.Orchestrator.{CiLifecycle, IssueSync, State, TrackerTasks}
 
   defmodule RecordingGitHubClient do
     alias Aiur.GitHub.IssueState
-
     @recipient_key {__MODULE__, :recipient}
     @update_result_key {__MODULE__, :update_result}
     @issues_key {__MODULE__, :issues}
     @request_key {__MODULE__, :request}
-
     def request_with(fun), do: Process.put(@request_key, fun)
-
     def record_to(pid), do: Process.put(@recipient_key, pid)
     def return(result), do: Process.put(@update_result_key, result)
     def return_issues(issues), do: Process.put(@issues_key, issues)
@@ -69,6 +65,17 @@ defmodule Aiur.OrchestratorCILifecycleTest do
     defp recipient, do: Process.get(@recipient_key)
   end
 
+  defmodule SlowTransitionClient do
+    def update_issue_state(issue_id, next_state, opts) do
+      recipient = Application.fetch_env!(:aiur, :ci_slow_transition_recipient)
+      send(recipient, {:ci_transition_started, self(), issue_id, next_state, opts})
+
+      receive do
+        :finish_ci_transition -> :ok
+      end
+    end
+  end
+
   setup do
     previous_client = Application.get_env(:aiur, :github_client_module)
     previous_store_path = Application.get_env(:aiur, :ci_approval_store_path)
@@ -96,13 +103,76 @@ defmodule Aiur.OrchestratorCILifecycleTest do
   end
 
   describe "CI lifecycle coordination" do
+    test "CI poll fetch runs outside the owner and late results preserve current state" do
+      recipient = self()
+      ticket = issue(unique_identifier("async-ci"), "human-review")
+      state = running_state(ticket, self(), :paused, paused_reason: :ci_wait)
+
+      continuation = fn current ->
+        send(recipient, :ci_poll_continued)
+        current
+      end
+
+      next =
+        CiLifecycle.start_poll(state, continuation,
+          ci_issue_fetcher: fn _states ->
+            send(recipient, {:ci_fetch_started, self()})
+
+            receive do
+              :finish_ci_fetch -> {:ok, [ticket]}
+            end
+          end,
+          ci_poller: fn _targets, _opts ->
+            {:ok, %{results: [%{target: ticket.identifier, decision: :pending, head_sha: "new-head"}], errors: []}}
+          end,
+          alert_loader: fn -> [] end
+        )
+
+      receive_barrier({:ci_fetch_started, worker})
+      assert worker != self()
+      ref = next.tracker_tasks |> Map.keys() |> hd()
+      current = %{next | running: %{}, claimed: MapSet.new(["concurrent-claim"]), ci_lifecycle: %{next.ci_lifecycle | approved_heads: %{"concurrent-ticket" => "concurrent-head"}}}
+      send(worker, :finish_ci_fetch)
+      receive_barrier({^ref, result})
+      assert {:handled, applied} = TrackerTasks.result(current, ref, result)
+      receive_barrier(:ci_poll_continued)
+      assert applied.running == %{}
+      assert applied.claimed == MapSet.new(["concurrent-claim"])
+      assert applied.ci_lifecycle.approved_heads["concurrent-ticket"] == "concurrent-head"
+      assert applied.tracker_tasks == %{}
+      refute Map.has_key?(Map.get(applied.ci_lifecycle, :last_results, %{}), ticket.identifier)
+    end
+
+    test "CI transition writes run outside owner and cannot restore an exited runner" do
+      Application.put_env(:aiur, :github_client_module, SlowTransitionClient)
+      Application.put_env(:aiur, :ci_slow_transition_recipient, self())
+      on_exit(fn -> Application.delete_env(:aiur, :ci_slow_transition_recipient) end)
+      name = {__MODULE__, make_ref()}
+      :yes = :global.register_name(name, self())
+      on_exit(fn -> :global.unregister_name(name) end)
+      ticket = issue(unique_identifier("async-ci-write"), "human-review")
+      state = %{running_state(ticket, self(), :paused, paused_reason: :ci_wait) | snapshot_key: {:global, name}}
+
+      next = CiLifecycle.transition_ci_ticket(state, ticket, "ci-wait")
+      receive_barrier({:ci_transition_started, worker, issue_id, "ci-wait", opts})
+      assert worker != self()
+      assert issue_id == ticket.id
+      assert opts == [expected_state: "human-review"]
+      ref = next.tracker_tasks |> Map.keys() |> hd()
+      send(worker, :finish_ci_transition)
+      receive_barrier({^ref, result})
+      assert {:handled, applied} = TrackerTasks.result(%{next | running: %{}}, ref, result)
+      assert applied.running == %{}
+      assert applied.tracker_tasks == %{}
+    end
+
     test "observes human-review handoffs outside active states and records one Executor wake" do
       Publisher.set_tracked_fn(fn _ -> true end)
-      start_supervised!({ExecutorWakeInbox, debounce_ms: 10})
-      start_supervised!({ExecutorListener, name: Aiur.ExecutorListener.CIHandoffTest})
       on_exit(fn -> Publisher.set_tracked_fn(fn _ -> true end) end)
 
       previous = issue(unique_identifier("human-review-handoff"), "rework")
+      start_supervised!({ExecutorWakeInbox, debounce_ms: 10})
+      start_supervised!({ExecutorListener, name: Aiur.ExecutorListener.CIHandoffTest, patterns: ["ticket.#{previous.identifier}.agent.handoff.human_review"]})
       current = %{previous | state: "human-review"}
       sha = String.duplicate("e", 40)
       key = ResourceStore.key_for_repo(:branch_pull_request_listing, "its-everdred/aiur", previous.id)
@@ -150,17 +220,17 @@ defmodule Aiur.OrchestratorCILifecycleTest do
       _second = CiLifecycle.poll_github_ci(%{first | last_ci_poll_started_at_ms: nil}, opts)
       assert_received :ci_issue_fetch
       _ = :sys.get_state(Aiur.ExecutorListener.CIHandoffTest)
-      :ok = ExecutorWakeInbox.acknowledge([wake])
+      :ok = WakeInboxAck.ack_as_owner([wake])
       assert :timeout = ExecutorWakeInbox.wait(0)
     end
 
     test "seeds existing human-review issues on the first CI poll without waking" do
       Publisher.set_tracked_fn(fn _ -> true end)
-      start_supervised!({ExecutorWakeInbox, debounce_ms: 10})
-      start_supervised!({ExecutorListener, name: Aiur.ExecutorListener.CIHandoffBootTest})
       on_exit(fn -> Publisher.set_tracked_fn(fn _ -> true end) end)
 
       current = issue(unique_identifier("human-review-at-boot"), "human-review")
+      start_supervised!({ExecutorWakeInbox, debounce_ms: 10})
+      start_supervised!({ExecutorListener, name: Aiur.ExecutorListener.CIHandoffBootTest, patterns: ["ticket.#{current.identifier}.agent.handoff.human_review"]})
 
       opts = [
         ci_issue_fetcher: fn ["ci-wait", "human-review"] -> {:ok, [current]} end,
@@ -212,10 +282,8 @@ defmodule Aiur.OrchestratorCILifecycleTest do
 
       next = poll_ci(state, issue, %{delivered: true, head_sha: "head-77", pr_number: 77})
 
-      # A target the batch displaced because a webhook delivery answered it
-      # must not move state and must not cache a projection: the real verdict
-      # comes from the next non-displaced read (R10 — a CI verdict is never
-      # answered from a held body at any age).
+      # A webhook-displaced verdict cannot move state or cache a projection.
+      # Wait for a non-displaced read; held bodies never answer CI (R10).
       assert next.ci_lifecycle.poll_cache == %{}
       assert next.claimed == MapSet.new()
     end
@@ -405,12 +473,10 @@ defmodule Aiur.OrchestratorCILifecycleTest do
         })
 
       sync_recorder(recorder)
-
       assert_received {:recorded, 1, {:tracker_update, ^identifier, "rework", [expected_state: "ci-wait"]}}
       refute_received {:recorded, 2, _message}
 
-      # The OCC-5 CI/PR projection still caches even when the tracker write
-      # itself fails and the transition is left untouched.
+      # Cache the CI projection even when the tracker write fails.
       assert next.running == state.running
 
       assert next.ci_lifecycle.poll_cache == %{
@@ -419,7 +485,10 @@ defmodule Aiur.OrchestratorCILifecycleTest do
                  pr_number: 941,
                  head_sha: "failed-head",
                  draft?: false,
-                 review_decision: nil
+                 review_decision: nil,
+                 recovery: nil,
+                 failures: [%{name: "lint", result: "failure", excerpt: "failed"}],
+                 tracker_state: "ci-wait"
                }
              }
 
@@ -652,8 +721,7 @@ defmodule Aiur.OrchestratorCILifecycleTest do
       next = poll_ci(state, issue, result, alert_emitter: emitter)
       sync_recorder(recorder)
 
-      # Approved + green + draft is always wrong: the daemon alerts so the
-      # stall is loud instead of an indistinguishable BLOCKED.
+      # Alert on approved + green + draft so the stall cannot hide as BLOCKED.
       assert_received {:parked_alert, ^ref, ^alert_topic, alert_opts}
       assert Keyword.get(alert_opts, :needs_attention) == true
 
@@ -664,7 +732,10 @@ defmodule Aiur.OrchestratorCILifecycleTest do
                  pr_number: 941,
                  head_sha: "stalled-head",
                  draft?: true,
-                 review_decision: "APPROVED"
+                 review_decision: "APPROVED",
+                 recovery: nil,
+                 failures: [],
+                 tracker_state: "human-review"
                }
              }
 
@@ -1000,7 +1071,10 @@ defmodule Aiur.OrchestratorCILifecycleTest do
                  pr_number: nil,
                  head_sha: "same-head",
                  draft?: false,
-                 review_decision: nil
+                 review_decision: nil,
+                 recovery: nil,
+                 failures: [],
+                 tracker_state: "ci-wait"
                }
              }
 
@@ -1571,8 +1645,8 @@ defmodule Aiur.OrchestratorCILifecycleTest do
 
       first = poll_ci(state, issue, parked_observation(), alert_emitter: emitter)
       assert MapSet.member?(first.ci_lifecycle.parked_ready_alerts, identifier)
-
-      second = poll_ci(first, issue, parked_observation(), alert_emitter: emitter)
+      # Past the :ci cadence gate, so dedupe (not the throttle) suppresses the re-emit.
+      second = poll_ci(%{first | last_ci_poll_started_at_ms: nil}, issue, parked_observation(), alert_emitter: emitter)
 
       assert_received {:parked_alert, ^ref, _topic, _opts}
       refute_received {:parked_alert, ^ref, _topic, _opts}
@@ -1585,15 +1659,15 @@ defmodule Aiur.OrchestratorCILifecycleTest do
       state = running_state(issue, self(), :working, [])
       ref = make_ref()
       emitter = capture_alert_emitter(self(), ref)
-
+      # A published :ci cadence would throttle the chained poll into a silent no-op (#3860).
+      PollCadence.publish_effective_interval_ms(300_000, class: :ci)
+      on_exit(&PollCadence.forget_effective_interval_ms/0)
       first = poll_ci(state, issue, parked_observation(), alert_emitter: emitter)
       assert MapSet.member?(first.ci_lifecycle.parked_ready_alerts, identifier)
       assert_received {:parked_alert, ^ref, _topic, _opts}
-
       armed = parked_observation(%{auto_merge_request: %{"enabledAt" => "2026-08-13T20:00:00Z"}})
-      next = poll_ci(first, issue, armed, alert_emitter: emitter)
+      next = poll_ci(%{first | last_ci_poll_started_at_ms: nil}, issue, armed, alert_emitter: emitter)
       resolved_topic = "ticket.#{identifier}.pr.parked_ready.resolved"
-
       assert_received {:parked_alert, ^ref, ^resolved_topic, resolve_opts}
       assert Keyword.get(resolve_opts, :needs_attention) == false
       refute MapSet.member?(next.ci_lifecycle.parked_ready_alerts, identifier)
@@ -1817,8 +1891,8 @@ defmodule Aiur.OrchestratorCILifecycleTest do
         state,
         Keyword.merge(
           [
-            # Hermetic: parked-ready restart dedupe seeds from the durable
-            # alert ledger; tests never read the real ledger.
+            # Hermetic digest and alert ledger; recovery behavior has its own tests.
+            ci_failure_digest: fn _, _ -> {:ok, %Aiur.CI.FailureDigest{}} end,
             parked_ready_alert_loader: fn -> MapSet.new() end,
             draft_stall_alert_loader: fn -> MapSet.new() end,
             ci_issue_fetcher: fn ["ci-wait", "human-review"] -> {:ok, [issue]} end,

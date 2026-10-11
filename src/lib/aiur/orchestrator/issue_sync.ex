@@ -1,7 +1,7 @@
 defmodule Aiur.Orchestrator.IssueSync do
   @moduledoc """
   Synchronizes polled issues into orchestrator state and derived events.
-  All functions execute inside the orchestrator GenServer process.
+  Remote reconciliation work runs outside the orchestrator process.
   """
 
   require Logger
@@ -9,8 +9,9 @@ defmodule Aiur.Orchestrator.IssueSync do
   alias Aiur.{AgentQueue, AgentQueueStore, AlertFeed, Alerts, CodingAgent, Config, CurrentRunMembership, DispatchBudgetStore, Issue, Tracker, TrackerIdentity}
   alias Aiur.GitHub.ResourceStore
   alias Aiur.GitHub.StatePolicy
-  alias Aiur.Orchestrator
-  alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, MembershipLifecycle, OperatorMessages, PushRouting, Reconciler, Slots, State}
+  alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, Lifecycle, MembershipLifecycle, OperatorMessages, PushRouting, Reconciler, Slots, State, TicketTransition, TrackerTasks}
+  alias Aiur.Orchestrator.PressureAdmission
+  alias Aiur.Orchestrator.StatusObservation
   alias Aiur.PollCadence
 
   @idle_terminal_verification_batch_size 25
@@ -92,7 +93,7 @@ defmodule Aiur.Orchestrator.IssueSync do
   """
   @spec reconcile_contradictory_state_labels(State.t(), list()) :: {State.t(), list()}
   def reconcile_contradictory_state_labels(%State{} = state, issues) when is_list(issues) do
-    reconcile_contradictory_state_labels(state, issues, &Tracker.update_issue_state/2)
+    reconcile_contradictory_state_labels(state, issues, guarded_update_fun(issues))
   end
 
   @doc false
@@ -113,7 +114,7 @@ defmodule Aiur.Orchestrator.IssueSync do
             {healed_issue, state_acc} =
               heal_contradictory_state(issue, winner_for(state_labels, issue, state_acc), state_acc, update_state_fun)
 
-            {[healed_issue | acc], state_acc}
+            {retain_healed_issue(acc, healed_issue), state_acc}
 
           # `state_labels == []` is the GitHub normalizer's zero-label signal
           # (state is nil alongside it); `state_labels == nil` with no state is
@@ -124,7 +125,7 @@ defmodule Aiur.Orchestrator.IssueSync do
           %Issue{state_labels: state_labels, state: state} = issue
           when (state_labels == [] or (state_labels == nil and is_nil(state))) and state != "Closed" ->
             {healed_issue, state_acc} = heal_or_leave_missing_state_label(issue, state_acc, update_state_fun)
-            {[healed_issue | acc], state_acc}
+            {retain_healed_issue(acc, healed_issue), state_acc}
 
           _issue ->
             {[issue | acc], state_acc}
@@ -171,7 +172,7 @@ defmodule Aiur.Orchestrator.IssueSync do
   """
   @spec sync_stranded_ticket_reconciliation(State.t(), list()) :: State.t()
   def sync_stranded_ticket_reconciliation(%State{} = state, issues) when is_list(issues) do
-    sync_stranded_ticket_reconciliation(state, issues, &Tracker.update_issue_state/2)
+    sync_stranded_ticket_reconciliation(state, issues, guarded_update_fun(issues))
   end
 
   @doc false
@@ -224,7 +225,8 @@ defmodule Aiur.Orchestrator.IssueSync do
     Map.has_key?(state.running, issue_id) or
       MapSet.member?(state.claimed, issue_id) or
       Map.has_key?(state.retry_attempts, issue_id) or
-      Map.has_key?(state.auto_resume, issue_id)
+      Map.has_key?(state.auto_resume, issue_id) or
+      TrackerTasks.issue_pending?(state, issue_id)
   end
 
   # States where an open ticket is deliberately unowned need no claim: an
@@ -237,7 +239,7 @@ defmodule Aiur.Orchestrator.IssueSync do
       Issue.parked?(issue) or
       Issue.queued?(issue) or
       parked_marker?(issue) or
-      DispatchPolicy.todo_issue_blocked_by_non_terminal?(issue, DispatchPolicy.terminal_state_set()) or
+      DispatchPolicy.todo_issue_held_by_dependency?(issue, DispatchPolicy.terminal_state_set()) or
       external_wait_state?(issue.state) or
       DispatchPolicy.normalize_issue_state(issue.state) == "todo"
   end
@@ -264,8 +266,19 @@ defmodule Aiur.Orchestrator.IssueSync do
   # released-claim record so the strand stays visible to the operator.
   defp requeue_stranded_ticket(%State{} = state, %Issue{} = issue, update_state_fun) do
     restored = restore_state_for(issue, state)
+    input = Reconciler.issue_input(state, issue.id)
 
-    case update_state_fun.(issue.identifier, restored) do
+    TrackerTasks.run(state, {:stranded_repair, issue.id}, fn -> update_state_fun.(issue.identifier, restored) end, fn current, result ->
+      if Reconciler.issue_input(current, issue.id) == input and stranded_ticket?(current, issue) do
+        apply_stranded_repair(current, issue, restored, result)
+      else
+        Lifecycle.wake_tick(current)
+      end
+    end)
+  end
+
+  defp apply_stranded_repair(state, issue, restored, result) do
+    case result do
       :ok ->
         alert_stranded_ticket_requeued(state, issue, restored)
 
@@ -447,6 +460,14 @@ defmodule Aiur.Orchestrator.IssueSync do
   end
 
   defp heal_missing_state_label(%Issue{} = issue, state, update_state_fun) do
+    if TrackerTasks.owner?(state) do
+      schedule_label_heal(state, issue, restore_target_for(issue, state) || "todo", update_state_fun, &heal_missing_state_label_sync/3)
+    else
+      heal_missing_state_label_sync(issue, state, update_state_fun)
+    end
+  end
+
+  defp heal_missing_state_label_sync(%Issue{} = issue, state, update_state_fun) do
     restored = restore_target_for(issue, state) || "todo"
     healed_issue = %{issue | state: restored, state_labels: [restored]}
 
@@ -666,6 +687,36 @@ defmodule Aiur.Orchestrator.IssueSync do
   end
 
   defp heal_contradictory_state(%Issue{} = issue, winner, state, update_state_fun) do
+    if TrackerTasks.owner?(state) do
+      schedule_label_heal(state, issue, winner, update_state_fun, fn issue, current, update ->
+        heal_contradictory_state_sync(issue, winner, current, update)
+      end)
+    else
+      heal_contradictory_state_sync(issue, winner, state, update_state_fun)
+    end
+  end
+
+  defp schedule_label_heal(state, issue, target, update_state_fun, apply_heal) do
+    input = Reconciler.issue_input(state, issue.id)
+
+    state =
+      TrackerTasks.run(state, {:label_heal, issue.id}, fn -> write_label_heal({issue, target, update_state_fun}) end, fn arg1, arg2 -> apply_label_heal(arg1, arg2, {apply_heal, input, issue}) end)
+
+    # Until the guarded write finishes, dispatch has no authoritative healed issue.
+    {nil, state}
+  end
+
+  defp retain_healed_issue(acc, nil), do: acc
+  defp retain_healed_issue(acc, issue), do: [issue | acc]
+
+  defp guarded_update_fun(issues) do
+    fn identifier, target ->
+      issue = Enum.find(issues, &(&1.identifier == identifier))
+      TicketTransition.write_state(identifier, target, writer: :issue_sync, expected_state: issue.state)
+    end
+  end
+
+  defp heal_contradictory_state_sync(%Issue{} = issue, winner, state, update_state_fun) do
     healed_issue = %{issue | state: winner, state_labels: [winner]}
 
     case update_state_fun.(issue.identifier, winner) do
@@ -782,9 +833,9 @@ defmodule Aiur.Orchestrator.IssueSync do
     state = %{state | active_attention_topics: active_attention_topics()}
     state = Reconciler.resolve_orphaned_divergence_attentions(state)
     previous_issues = state.last_polled_issues
-    current_issues = issues_by_id(issues)
+    current_issues = Map.merge(Map.filter(previous_issues, fn {id, _issue} -> TrackerTasks.issue_pending?(state, id) end), issues_by_id(issues))
 
-    retained_issues =
+    {state, retained_issues} =
       record_disappearing_idle_terminals(
         state,
         previous_issues,
@@ -806,8 +857,6 @@ defmodule Aiur.Orchestrator.IssueSync do
         |> emit_dependency_transition_events(previous_issue, issue)
       end)
 
-    # `issues` is the active poll: pass it so the recheck prefers a freshly
-    # polled blockee over the snapshot stored in the running entry.
     state = PushRouting.recheck_cleared_dependency_pauses(state, fetch_issue_states_fun, issues)
 
     %{
@@ -815,6 +864,7 @@ defmodule Aiur.Orchestrator.IssueSync do
       | last_polled_issues: retained_issues,
         released_claims: purge_resolved_released_claims(state.released_claims, retained_issues, terminal_states)
     }
+    |> StatusObservation.observe_tickets(issues, retained_issues)
   end
 
   # A `released_claims` entry exists only to tell the operator that a claim was
@@ -864,13 +914,67 @@ defmodule Aiur.Orchestrator.IssueSync do
     disappearing_idle_issue_ids =
       previous_issues
       |> Map.keys()
-      |> Enum.reject(fn issue_id ->
-        Map.has_key?(current_issues, issue_id) or
-          Map.has_key?(state.running, issue_id) or
-          Map.has_key?(state.retry_attempts, issue_id)
-      end)
+      |> Enum.reject(fn arg1 -> idle_terminal_missing?(arg1, {current_issues, state}) end)
       |> Enum.sort()
 
+    state = %{state | terminal_verification_attempts: Map.take(state.terminal_verification_attempts, disappearing_idle_issue_ids)}
+
+    async? = TrackerTasks.owner?(state) and disappearing_idle_issue_ids != []
+
+    cond do
+      async? and TrackerTasks.running?(state, :idle_terminal_verification) ->
+        {state, Map.merge(current_issues, Map.take(previous_issues, disappearing_idle_issue_ids))}
+
+      async? ->
+        verification_ids = Enum.take(disappearing_idle_issue_ids, @idle_terminal_verification_batch_size)
+        state = %{state | terminal_verification_attempts: Enum.reduce(verification_ids, state.terminal_verification_attempts, &Map.put_new(&2, &1, 0))}
+        inputs = Map.new(verification_ids, &{&1, {Reconciler.issue_input(state, &1), state.terminal_verification_attempts[&1]}})
+
+        state =
+          TrackerTasks.run(
+            state,
+            :idle_terminal_verification,
+            fn ->
+              fetch_idle_terminal_states({fetch_issue_states_fun, verification_ids})
+            end,
+            fn arg1, arg2 ->
+              apply_idle_terminal_states(
+                arg1,
+                arg2,
+                {inputs, mark_reconciled_fun, observe_membership_fun, set_terminal_verification_pending_fun, terminal_states, verification_ids}
+              )
+            end
+          )
+
+        {state, Map.merge(current_issues, Map.take(previous_issues, disappearing_idle_issue_ids))}
+
+      true ->
+        record_disappearing_idle_terminals_sync(
+          state,
+          current_issues,
+          disappearing_idle_issue_ids,
+          fetch_issue_states_fun,
+          observe_membership_fun,
+          terminal_states,
+          mark_reconciled_fun,
+          set_terminal_verification_pending_fun
+        )
+    end
+  end
+
+  defp filter_terminal_result({:ok, issues}, ids) when is_list(issues), do: {:ok, Enum.filter(issues, &(&1.id in ids))}
+  defp filter_terminal_result(result, _ids), do: result
+
+  defp record_disappearing_idle_terminals_sync(
+         state,
+         current_issues,
+         disappearing_idle_issue_ids,
+         fetch_issue_states_fun,
+         observe_membership_fun,
+         terminal_states,
+         mark_reconciled_fun,
+         set_terminal_verification_pending_fun
+       ) do
     pending_issue_ids =
       record_refreshed_terminal_membership(
         disappearing_idle_issue_ids,
@@ -880,13 +984,11 @@ defmodule Aiur.Orchestrator.IssueSync do
         set_terminal_verification_pending_fun
       )
 
-    retain_pending_terminal_verification(
-      pending_issue_ids,
-      mark_reconciled_fun,
-      set_terminal_verification_pending_fun
-    )
+    {state, pending_issue_ids} = MembershipLifecycle.bound_terminal_verification(state, Enum.take(disappearing_idle_issue_ids, @idle_terminal_verification_batch_size), pending_issue_ids)
 
-    Map.merge(current_issues, Map.take(previous_issues, pending_issue_ids))
+    retain_pending_terminal_verification(pending_issue_ids, mark_reconciled_fun)
+
+    {state, Map.merge(current_issues, Map.take(state.last_polled_issues, pending_issue_ids))}
   end
 
   defp record_refreshed_terminal_membership(
@@ -991,7 +1093,7 @@ defmodule Aiur.Orchestrator.IssueSync do
          set_terminal_verification_pending_fun
        ) do
     _ =
-      safely_set_terminal_verification_pending(
+      CurrentRunMembership.set_terminal_verification_pending(
         set_terminal_verification_pending_fun,
         issue.tracker_identity,
         true
@@ -1027,36 +1129,20 @@ defmodule Aiur.Orchestrator.IssueSync do
   end
 
   defp clear_refreshed_terminal_verification(issue, set_terminal_verification_pending_fun) do
-    case safely_set_terminal_verification_pending(
+    case CurrentRunMembership.set_terminal_verification_pending(
            set_terminal_verification_pending_fun,
            issue.tracker_identity,
            false
          ) do
-      :ok -> :ok
+      result when result in [:ok, :skipped] -> :ok
       :error -> {:error, :terminal_verification_marker_failed}
     end
   end
 
-  defp retain_pending_terminal_verification([], _mark_reconciled_fun, _set_terminal_verification_pending_fun), do: :ok
+  defp retain_pending_terminal_verification([], _mark_reconciled_fun), do: :ok
 
-  defp retain_pending_terminal_verification(
-         pending_issue_ids,
-         mark_reconciled_fun,
-         _set_terminal_verification_pending_fun
-       )
-       when is_list(pending_issue_ids) do
+  defp retain_pending_terminal_verification(pending_issue_ids, mark_reconciled_fun) when is_list(pending_issue_ids) do
     safely_mark_reconciled(mark_reconciled_fun, :unavailable)
-  end
-
-  defp safely_set_terminal_verification_pending(set_terminal_verification_pending_fun, identity, pending?) do
-    case set_terminal_verification_pending_fun.(identity, pending?) do
-      :ok -> :ok
-      _ -> :error
-    end
-  rescue
-    _error -> :error
-  catch
-    _kind, _reason -> :error
   end
 
   defp safely_mark_reconciled(mark_reconciled_fun, status) do
@@ -1140,7 +1226,7 @@ defmodule Aiur.Orchestrator.IssueSync do
         Alerts.emit_system(
           "ticket.#{issue.identifier}.issue.label.added.agent.human-review",
           issue: issue,
-          worker_host: Orchestrator.running_worker_host(state, issue.id),
+          worker_host: State.WorkerHost.running_worker_host(state, issue.id),
           reason: task_state_alert_reason(current_state),
           needs_attention: task_state_needs_attention?(current_state),
           severity: task_state_alert_severity(current_state)
@@ -1158,7 +1244,7 @@ defmodule Aiur.Orchestrator.IssueSync do
         Alerts.emit_system(
           "ticket.#{issue.identifier}.issue.label.added.agent.#{current_state}",
           issue: issue,
-          worker_host: Orchestrator.running_worker_host(state, issue.id),
+          worker_host: State.WorkerHost.running_worker_host(state, issue.id),
           reason: task_state_alert_reason(current_state),
           needs_attention: task_state_needs_attention?(current_state),
           severity: task_state_alert_severity(current_state)
@@ -1224,7 +1310,7 @@ defmodule Aiur.Orchestrator.IssueSync do
 
       case Alerts.emit_system(topic,
              issue: issue,
-             worker_host: Orchestrator.running_worker_host(state, issue.id),
+             worker_host: State.WorkerHost.running_worker_host(state, issue.id),
              reason: message,
              needs_attention: true,
              severity: "warning",
@@ -1251,7 +1337,7 @@ defmodule Aiur.Orchestrator.IssueSync do
       active? ->
         case Alerts.emit_system("#{topic}.resolved",
                issue: issue,
-               worker_host: Orchestrator.running_worker_host(state, issue.id),
+               worker_host: State.WorkerHost.running_worker_host(state, issue.id),
                reason: "Tracker moved the ticket out of agent:error; the observed error condition is resolved.",
                needs_attention: false,
                severity: "info",
@@ -1364,7 +1450,7 @@ defmodule Aiur.Orchestrator.IssueSync do
       {true, false} ->
         Alerts.emit_system("ticket.#{issue.identifier}.agent.unpaused",
           issue: issue,
-          worker_host: Orchestrator.running_worker_host(state, issue.id),
+          worker_host: State.WorkerHost.running_worker_host(state, issue.id),
           reason: "Tracker removed agent:paused; tracker=agent:#{issue.state}. No operator action is needed.",
           needs_attention: false,
           severity: "info"
@@ -1387,7 +1473,7 @@ defmodule Aiur.Orchestrator.IssueSync do
     unless active_attention?(state, topic) do
       Alerts.emit_system(topic,
         issue: issue,
-        worker_host: Orchestrator.running_worker_host(state, issue.id),
+        worker_host: State.WorkerHost.running_worker_host(state, issue.id),
         reason:
           "Tracker added agent:paused (tracker pause override); tracker=agent:#{issue.state}. " <>
             "This clears when the operator removes agent:paused.",
@@ -1406,7 +1492,7 @@ defmodule Aiur.Orchestrator.IssueSync do
     if force? or active_attention?(state, topic) do
       Alerts.emit_system("#{topic}.resolved",
         issue: issue,
-        worker_host: Orchestrator.running_worker_host(state, issue.id),
+        worker_host: State.WorkerHost.running_worker_host(state, issue.id),
         reason: "Tracker removed agent:paused; the tracker pause override is resolved.",
         needs_attention: false,
         severity: "info",
@@ -1463,39 +1549,32 @@ defmodule Aiur.Orchestrator.IssueSync do
   end
 
   defp unsubscribe_and_maybe_enqueue_dependency(state_acc, issue, blocker) do
-    case AutoSubscriptions.auto_unsubscribe_for_dependency(issue, blocker) do
-      :ok ->
-        enqueue_dependency_event(state_acc, issue, blocker, :dependency_removed)
-
-      {:error, reason} ->
-        blocker_id = blocker["identifier"] || Map.get(blocker, :identifier)
-
-        Logger.warning(
-          "IssueSync: unsubscription failed for dependency_removed " <>
-            "(#{issue.identifier} unblocked by #{blocker_id}): " <>
-            "#{inspect(reason)}; event will emit on next reconcile"
-        )
-
-        state_acc
-    end
+    reconcile_dependency_subscription(state_acc, issue, blocker, :dependency_removed, &AutoSubscriptions.auto_unsubscribe_for_dependency/2)
   end
 
   defp subscribe_and_maybe_enqueue_dependency(state_acc, issue, blocker) do
-    case AutoSubscriptions.auto_subscribe_for_dependency(issue, blocker) do
-      :ok ->
-        enqueue_dependency_event(state_acc, issue, blocker, :dependency_added)
+    reconcile_dependency_subscription(state_acc, issue, blocker, :dependency_added, &AutoSubscriptions.auto_subscribe_for_dependency/2)
+  end
 
-      {:error, reason} ->
-        blocker_id = blocker["identifier"] || Map.get(blocker, :identifier)
+  defp reconcile_dependency_subscription(state, issue, blocker, event_type, mutation) do
+    apply_result = fn current, result ->
+      case result do
+        :ok ->
+          enqueue_dependency_event(current, issue, blocker, event_type)
 
-        Logger.warning(
-          "IssueSync: subscription failed for dependency_added " <>
-            "(#{issue.identifier} blocked by #{blocker_id}): " <>
-            "#{inspect(reason)}; event will emit on next reconcile"
-        )
+        {:error, reason} ->
+          blocker_id = blocker["identifier"] || Map.get(blocker, :identifier)
 
-        state_acc
+          Logger.warning(
+            "IssueSync: dependency subscription mutation failed for #{event_type} " <>
+              "(#{issue.identifier}, blocker #{blocker_id}): #{inspect(reason)}; event will emit on next reconcile"
+          )
+
+          current
+      end
     end
+
+    TrackerTasks.chain(state, {:dependency_subscription, issue.id, blocker[:id]}, fn -> mutation.(issue, blocker) end, apply_result)
   end
 
   # Public because `PushRouting` enqueues a `:blocker_became_terminal` event
@@ -1697,19 +1776,16 @@ defmodule Aiur.Orchestrator.IssueSync do
     live_count = State.active_running_count(state.running)
     effective_cap = Slots.effective_concurrent_agent_limit(state)
 
-    %{
+    Map.merge(PressureAdmission.envelope_context(sample), %{
       state: state,
       ready_count: length(ready_issues),
       live_count: live_count,
       occupied_slots: Slots.used_slots(state),
       effective_cap: effective_cap,
       configured_cap: Slots.max_concurrent_agent_limit(state),
-      load: Map.get(sample, :load),
-      target: Map.get(sample, :target),
-      schedulers: Map.get(sample, :schedulers),
       constraints: Enum.map(constraint_entries, & &1.identity),
       binding_constraint: selected_binding_constraint(state, constraint_entries, ready_issues)
-    }
+    })
   end
 
   defp dependency_circular_waits(state, issues) do
@@ -1843,9 +1919,9 @@ defmodule Aiur.Orchestrator.IssueSync do
 
   defp envelope_ramping?(_context), do: false
 
-  defp load_below_or_at_target?(%{load: load, target: target, schedulers: schedulers})
+  defp load_below_or_at_target?(%{load: load, ramp_threshold: target, schedulers: schedulers} = context)
        when is_number(load) and is_number(target) and target > 0 and is_integer(schedulers) and schedulers > 0,
-       do: load <= target * schedulers
+       do: if(context.metric == "CPU PSI some avg60 (%)", do: load < target, else: load <= target * schedulers)
 
   defp load_below_or_at_target?(_context), do: false
 
@@ -1909,7 +1985,7 @@ defmodule Aiur.Orchestrator.IssueSync do
 
   defp fleet_capacity_starvation_reason(context) do
     "Ready tickets=#{context.ready_count}, live agents=#{context.live_count}, " <>
-      "load=#{context.load}/#{context.target * context.schedulers}, effective cap=#{context.effective_cap}, " <>
+      "#{context.metric}=#{inspect(context.load)}/#{inspect(context.threshold)}, effective cap=#{context.effective_cap}, " <>
       "configured cap=#{context.configured_cap}; binding constraint=#{fleet_capacity_constraint(context)}."
   end
 
@@ -1920,7 +1996,7 @@ defmodule Aiur.Orchestrator.IssueSync do
 
   defp fleet_capacity_constraint(%{effective_cap: effective, configured_cap: configured, live_count: live})
        when effective <= live and effective < configured,
-       do: "load envelope (effective cap=#{effective})"
+       do: "adaptive envelope (effective cap=#{effective})"
 
   defp fleet_capacity_constraint(%{effective_cap: effective, configured_cap: configured, live_count: live})
        when effective <= live and effective == configured,
@@ -1960,7 +2036,7 @@ defmodule Aiur.Orchestrator.IssueSync do
     end
   end
 
-  defp capacity_hold_identity(:build), do: "build-queue"
+  defp capacity_hold_identity(:cpu_pressure), do: "cpu-pressure"
   defp capacity_hold_identity(:envelope), do: "load-envelope"
   defp capacity_hold_identity(:file_descriptors), do: "fd"
   defp capacity_hold_identity(:run_queue), do: "run-queue"
@@ -2223,7 +2299,7 @@ defmodule Aiur.Orchestrator.IssueSync do
           not Issue.paused?(issue) and
           not Issue.parked?(issue) and
           DispatchPolicy.issue_routable_to_worker?(issue) and
-          !DispatchPolicy.todo_issue_blocked_by_non_terminal?(issue, DispatchPolicy.terminal_state_set())
+          !DispatchPolicy.todo_issue_held_by_dependency?(issue, DispatchPolicy.terminal_state_set())
 
       _ ->
         false
@@ -2258,7 +2334,7 @@ defmodule Aiur.Orchestrator.IssueSync do
     issues
     |> Enum.filter(fn issue ->
       DispatchPolicy.candidate_issue?(issue, active_states, terminal_states) and
-        !DispatchPolicy.todo_issue_blocked_by_non_terminal?(issue, terminal_states)
+        !DispatchPolicy.todo_issue_held_by_dependency?(issue, terminal_states)
     end)
     |> Enum.reject(fn issue ->
       Map.has_key?(state.running, issue.id) or MapSet.member?(state.claimed, issue.id) or
@@ -2307,7 +2383,7 @@ defmodule Aiur.Orchestrator.IssueSync do
   defp dispatch_capacity_constraint_entry(_constraint), do: []
 
   defp dispatch_constraint_identity(:build), do: "build"
-  defp dispatch_constraint_identity(:build_queue), do: "build-queue"
+  defp dispatch_constraint_identity(:cpu_pressure), do: "cpu-pressure"
   defp dispatch_constraint_identity(:fd), do: "fd"
   defp dispatch_constraint_identity(:load), do: "load"
   defp dispatch_constraint_identity(:load_envelope), do: "load-envelope"
@@ -2318,14 +2394,14 @@ defmodule Aiur.Orchestrator.IssueSync do
 
   defp render_capacity_constraint(%{kind: :build, detail: detail}), do: "prewarm build (#{detail})"
 
-  defp render_capacity_constraint(%{kind: :build_queue, detail: detail}),
-    do: "build-queue gate (#{detail})"
+  defp render_capacity_constraint(%{kind: :cpu_pressure, detail: detail}),
+    do: "CPU PSI gate (#{detail})"
 
   defp render_capacity_constraint(%{kind: :fd, detail: detail}), do: "FD gate (#{detail})"
   defp render_capacity_constraint(%{kind: :load, detail: detail}), do: "load gate (#{detail})"
 
   defp render_capacity_constraint(%{kind: :load_envelope, detail: detail}),
-    do: "load-envelope limit (#{detail})"
+    do: "adaptive envelope limit (#{detail})"
 
   defp render_capacity_constraint(%{kind: :memory, detail: detail}), do: "memory gate (#{detail})"
 
@@ -2392,7 +2468,7 @@ defmodule Aiur.Orchestrator.IssueSync do
       %Issue{} = issue ->
         Alerts.emit_system("system.dispatch.todo_capacity_exceeded",
           issue: issue,
-          worker_host: Orchestrator.running_worker_host(state, issue.id),
+          worker_host: State.WorkerHost.running_worker_host(state, issue.id),
           reason: "Todo issue count exceeds the current dispatch capacity.",
           needs_attention: true,
           severity: "warning"
@@ -2405,5 +2481,70 @@ defmodule Aiur.Orchestrator.IssueSync do
           severity: "warning"
         )
     end
+  end
+
+  defp write_label_heal({issue, target, update_state_fun}) do
+    update_state_fun.(issue.identifier, target)
+  end
+
+  defp apply_label_heal(current, result, {apply_heal, input, issue}) do
+    if Reconciler.issue_input(current, issue.id) == input do
+      {_issue, current} = apply_heal.(issue, current, fn _identifier, _target -> result end)
+      Lifecycle.wake_tick(current)
+    else
+      Lifecycle.wake_tick(current)
+    end
+  end
+
+  defp idle_terminal_missing?(issue_id, {current_issues, state}) do
+    Map.has_key?(current_issues, issue_id) or
+      Map.has_key?(state.running, issue_id) or
+      Map.has_key?(state.retry_attempts, issue_id)
+  end
+
+  defp fetch_idle_terminal_states({fetch_issue_states_fun, verification_ids}) do
+    fetch_issue_states_fun.(verification_ids)
+  end
+
+  defp apply_idle_terminal_states(
+         current,
+         result,
+         {inputs, mark_reconciled_fun, observe_membership_fun, set_terminal_verification_pending_fun, terminal_states, verification_ids}
+       ) do
+    eligible_ids =
+      Enum.filter(verification_ids, &({Reconciler.issue_input(current, &1), current.terminal_verification_attempts[&1]} == inputs[&1]))
+
+    pending_ids =
+      record_refreshed_terminal_membership(
+        eligible_ids,
+        fn arg1 ->
+          apply_idle_terminal_entry(
+            arg1,
+            {eligible_ids, result}
+          )
+        end,
+        observe_membership_fun,
+        terminal_states,
+        set_terminal_verification_pending_fun
+      )
+
+    {current, pending_ids} = MembershipLifecycle.bound_terminal_verification(current, eligible_ids, pending_ids)
+
+    retain_pending_terminal_verification(pending_ids, mark_reconciled_fun)
+
+    resolved_ids = eligible_ids -- pending_ids
+
+    %{
+      current
+      | last_polled_issues: Map.drop(current.last_polled_issues, resolved_ids),
+        released_claims: Map.drop(current.released_claims, resolved_ids)
+    }
+  end
+
+  defp apply_idle_terminal_entry(
+         _ids,
+         {eligible_ids, result}
+       ) do
+    filter_terminal_result(result, eligible_ids)
   end
 end

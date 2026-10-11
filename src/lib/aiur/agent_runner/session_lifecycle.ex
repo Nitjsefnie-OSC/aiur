@@ -3,9 +3,10 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   require Logger
   alias Aiur.Accounts
   alias Aiur.Accounts.UsageReadings
-  alias Aiur.{AgentPubSub, Alerts, CodingAgent, Config, Issue, ModelDiscovery, Tracker}
-  alias Aiur.AgentRunner.{CodexUpdateRelay, MessageHandler, ModelLabelRefresh, SessionResume, TurnLoop}
-  alias Aiur.Claude.{DisplayTailer, RemoteControl, Telemetry}
+  alias Aiur.{AgentPubSub, Alerts, CodingAgent, Config, Issue, ModelDiscovery, ProcessTree, Tracker}
+  alias Aiur.AgentRunner.{CodexUpdateRelay, DispatchSelectionEvent, MessageHandler, ModelLabelRefresh, SessionResume, TurnBudget, TurnLoop}
+  alias Aiur.Claude.{DisplayTailer, Telemetry}
+  alias Aiur.CodingAgent.HeadroomDispatch
   alias Aiur.LiveConversation.Source
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.Workspace.Ownership
@@ -145,7 +146,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   @spec run_session(Path.t(), Issue.t(), pid() | nil, keyword(), worker_host()) ::
           :ok | {:completed, Issue.t()} | {:error, term()} | {:account_selection_wait, String.t()}
   def run_session(workspace, issue, codex_update_recipient, opts, worker_host) do
-    max_turns = Keyword.get(opts, :max_turns, Config.agent_max_turns_for(issue))
+    max_turns = Keyword.get(opts, :max_turns, TurnBudget.max_turns_for(issue))
     issue_state_fetcher = Keyword.get(opts, :issue_state_fetcher, &Tracker.fetch_issue_states_by_ids/1)
     orchestrator = Keyword.get(opts, :orchestrator, Aiur.Orchestrator)
 
@@ -444,8 +445,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
          session_context
        ) do
     report_session_execution(codex_update_recipient, issue, session)
-
-    # Persist the live session handle so the next aiur restart can resume it.
+    DispatchSelectionEvent.write(workspace, worker_host, issue)
     SessionResume.persist_session_handle(session, issue.identifier, worker_host)
     SessionResume.log_resume_outcome(issue, session, Keyword.get(session_context.session_opts, :resume_thread_id))
     report_repl_session(codex_update_recipient, issue, session)
@@ -666,7 +666,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   defp maybe_put_provider_processes(provider, worker_host) when is_binary(worker_host), do: provider
 
   defp maybe_put_provider_processes(%{root_pid: root_pid} = provider, _worker_host),
-    do: Map.put(provider, :descendant_pids, RemoteControl.process_tree(root_pid))
+    do: Map.put(provider, :descendant_pids, ProcessTree.process_tree(root_pid))
 
   defp maybe_put_provider_processes(provider, _worker_host), do: provider
 
@@ -692,8 +692,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
 
     # Rejoin the prior agent thread across an aiur restart instead of cold-
     # starting a fresh conversation that re-discovers the work (issue #378).
-    # Only a resumable, local backend with a persisted handle qualifies; any
-    # miss degrades silently to a clean start.
+    # Only a resumable, local backend with a persisted handle qualifies; any miss degrades silently to a clean start.
     resume_thread_id = Keyword.get(opts, :resume_thread_id) || SessionResume.load_resume_thread_id(session_backend, worker_host, issue.identifier)
 
     session_opts =
@@ -707,7 +706,8 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
         attempt_id: Keyword.get(opts, :telemetry_attempt_id)
       ]
       |> maybe_put_rc_name(rc?, issue)
-      |> maybe_put_account(session_backend, config_for_accounts(opts), opts)
+      |> maybe_put_account(session_backend, config_for_accounts(opts), HeadroomDispatch.account_opts(issue, session_backend, opts))
+      |> HeadroomDispatch.put_selection_reason(issue)
       |> SessionResume.maybe_put_resume_thread_id(resume_thread_id)
 
     {session_backend, rc?, session_opts}
@@ -719,8 +719,8 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
     account_backend = if backend == "claude-repl", do: "claude", else: backend
 
     case Keyword.get(opts, :account_name) do
-      name when is_binary(name) and account_backend == "claude" ->
-        Keyword.merge(session_opts, account_name: name, env: Accounts.profile_env("claude", name))
+      name when is_binary(name) and account_backend in ["claude", "codex"] ->
+        Keyword.merge(session_opts, account_name: name, env: Accounts.profile_env(account_backend, name))
 
       _ ->
         case Accounts.capability(account_backend) do

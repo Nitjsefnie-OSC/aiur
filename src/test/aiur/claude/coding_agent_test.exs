@@ -2,21 +2,43 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
   use Aiur.TestSupport
 
   alias Aiur.AgentRunner.{ToolExecutor, TurnAlerts}
+  alias Aiur.AppServer.Transport
   alias Aiur.Claude.CodingAgent, as: ClaudeAgent
   alias Aiur.Codex.DynamicTool
   alias Aiur.CodingAgent
-  alias Aiur.Issue
-  alias Aiur.ModelAvailability
+  alias Aiur.{Issue, ModelAvailability}
   alias Aiur.Orchestrator
   alias Aiur.Orchestrator.{RateLimitFallback, State}
   alias Aiur.Workflow
+
+  test "stop kills the child tree before closing the port" do
+    port =
+      Port.open(
+        {:spawn_executable, String.to_charlist(System.find_executable("bash"))},
+        [:binary, :exit_status, :stderr_to_stdout, args: [~c"-c", ~c"sleep 600 & printf '%s\n' $!; wait"], line: 64_000]
+      )
+
+    assert_receive {^port, {:data, {:eol, child}}}, 2_000
+    child_pid = String.to_integer(child)
+    {:os_pid, root_pid} = Port.info(port, :os_pid)
+
+    on_exit(fn ->
+      for pid <- [child_pid, root_pid], do: System.cmd("kill", ["-KILL", to_string(pid)], stderr_to_stdout: true)
+    end)
+
+    assert {_, 0} = System.cmd("kill", ["-0", child], stderr_to_stdout: true)
+    assert :ok = ClaudeAgent.stop_session(%{port: port})
+    assert Port.info(port) == nil
+    assert {_, status} = System.cmd("kill", ["-0", child], stderr_to_stdout: true)
+    assert status != 0
+  end
 
   test "spawned claude shell receives workspace, configured base, and launch vars" do
     root = Aiur.TestSupport.tmp_root!("aiur_claude_env")
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     marker = Path.join(workspace, "env_marker")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -50,7 +72,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -102,7 +124,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -167,7 +189,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -248,7 +270,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     failed_call =
       ~s({"jsonrpc":"2.0","id":101,"method":"item/tool/call","params":{"tool":"emit_alert","arguments":{"name":"phase.work.start","message":"starting"}}})
@@ -304,7 +326,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     File.mkdir_p!(config_ws)
     File.mkdir_p!(tag_ws)
     frames = Path.join(root, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     # Global claude.model default. The first session inherits it; the second
     # carries a per-issue model resolved from a `model:claude-opus-4-8` tag,
@@ -359,7 +381,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     root = Aiur.TestSupport.tmp_root!("aiur_claude_port_closed")
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -371,7 +393,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
 
     # Close the agent's stdio out from under the caller, mirroring the aiur peer
     # closing the agent's stdout read-end mid-session.
-    Port.close(session.port)
+    Transport.close(session.port)
 
     assert {:error, :port_closed} =
              ClaudeAgent.send_operator_message(session, %{kind: :text, body: "queued operator message"})
@@ -387,7 +409,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -414,7 +436,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -510,7 +532,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -545,7 +567,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
@@ -600,7 +622,7 @@ defmodule Aiur.Claude.CodingAgentWorkspaceTest do
     workspace = Path.join(root, "agent-1")
     File.mkdir_p!(workspace)
     frames = Path.join(workspace, "frames.jsonl")
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       agent_kind: "claude",
