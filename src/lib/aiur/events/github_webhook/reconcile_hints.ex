@@ -58,7 +58,7 @@ defmodule Aiur.Events.GithubWebhook.ReconcileHints do
   @spec main_check_reconcile(map(), String.t(), keyword()) :: result()
   def main_check_reconcile(subject, event_type, opts) do
     suite = Map.get(subject, "check_suite") || subject
-    enabled = Keyword.get_lazy(opts, :main_watch_enabled, &Aiur.MainWatch.enabled?/0)
+    enabled = Keyword.get_lazy(opts, :main_watch_enabled, fn -> Aiur.MergePolicy.current().main_watch.enabled end)
     base = Keyword.get_lazy(opts, :base_branch, &Aiur.Config.base_branch/0)
 
     if enabled and main_actions_check?(subject, suite, base) do
