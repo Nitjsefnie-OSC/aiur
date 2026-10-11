@@ -3,6 +3,8 @@ defmodule Aiur.TestCleanup do
 
   @retries 40
   @retry_ms 50
+  # Short: a live writer is back within a millisecond or two, and every cleanup pays this.
+  @settle_ms 5
 
   @doc """
   Removes a per-test directory that an app-level writer was pointed at.
@@ -40,8 +42,7 @@ defmodule Aiur.TestCleanup do
   defp remove!(path, rm, retries) do
     case rm.(path) do
       {:ok, _removed} ->
-        # One interval is enough to see a live writer put the directory back.
-        Process.sleep(@retry_ms)
+        Process.sleep(@settle_ms)
         if File.exists?(path), do: retry!(path, rm, retries, "it reappeared after removal"), else: :ok
 
       # ENOTEMPTY (rendered :eexist) is the only failure a write in flight causes.
