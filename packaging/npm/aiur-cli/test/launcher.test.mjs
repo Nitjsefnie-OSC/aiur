@@ -122,16 +122,13 @@ function runShim({ args = [], fakeBin, platform, arch, env = {}, forceTTY = fals
       : [path.join(root, "bin", "aiur.js"), ...args];
   return spawnSync(NODE_EXEC, nodeArgs, { encoding: "utf8", env: fullEnv, cwd });
 }
-
 beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), "aiur-shim-"));
   captureFile = path.join(root, "capture.txt");
 });
-
 afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
-
 test("happy path: resolves platform package and execs launcher with args + env", () => {
   const { fakeBin } = setupPackage();
   const result = runShim({ args: ["--host", "127.0.0.1", "WORKFLOW.md"], fakeBin });
