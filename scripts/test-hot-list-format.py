@@ -60,7 +60,7 @@ class HotListFormatTest(unittest.TestCase):
         self.assertEqual(path.read_bytes(), first)
         self.assertEqual(CHECKER.check(self.root), [])
 
-    def test_sorting_does_not_reorder_object_lists(self):
+    def test_future_object_list_order_is_preserved(self):
         values = [{'from': 'z'}, {'from': 'a'}]
         self.assertEqual(json.loads(format_json({'seams': values}))['seams'], values)
 
@@ -77,7 +77,7 @@ class HotListFormatTest(unittest.TestCase):
         path.write_text(comment + '\n' + ' '.join(body.splitlines()) + '\n')
         self.assertIn('src/test/support/state_writers_allowlist.exs: writers need one tuple per line, with sorted unique keys', CHECKER.check(self.root))
 
-    def test_inline_manifest_is_still_supported(self):
+    def test_future_inline_manifest_compatibility(self):
         expected = read_manifest(self.root)
         (self.root / 'components.json').write_text(format_json(expected))
         self.assertEqual(read_manifest(self.root), expected)
