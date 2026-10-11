@@ -155,6 +155,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
       for (const page of [pair.design, pair.product]) await page.locator('#ax-cog').click()
       for (const page of [pair.design, pair.product]) await page.locator('#ax-pause').click()
       await expect(pair.product.locator('#ax-paused')).toHaveClass(/show/)
+      for (const page of [pair.design, pair.product]) await page.keyboard.press('Escape')
       await finishTransitions(pair)
       // Chip geometry varies with the truthful copy; the masked header screenshot checks its placement.
       await equalStyle(pair, '#ax-paused', properties.filter(key => !['width', 'height', 'margin'].includes(key)))
@@ -164,8 +165,9 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
       const maskHeight = Math.max(...chipBoxes.map(box => box.height))
       for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: `#ax-paused { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); width: ${maskWidth}px !important; height: ${maskHeight}px !important; font-size: 0 !important; line-height: 0 !important; }` })
       for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: '.brand-logo, .wm, #ax-cog, #ax-title { visibility: hidden !important; }' })
+      // The closed menu keeps a box, so its copy mask would paint over this header capture.
+      pair.allowlist = pair.allowlist.filter(entry => entry.id !== 'global-pause-menu-copy')
       await expectDesignParity(pair, { name: `top-paused-${label}`, region: 'header.ax-top' })
-      for (const page of [pair.design, pair.product]) await page.keyboard.press('Escape')
     } finally {
       await designContext.close()
       await productContext.close()
