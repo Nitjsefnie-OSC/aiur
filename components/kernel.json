@@ -4,6 +4,7 @@
   "layer": 0,
   "kind": "required",
   "paths": [
+    "src/lib/aiur/a_merge_proof_alpha.ex",
     "src/lib/aiur/boot.ex",
     "src/lib/aiur/bounded.ex",
     "src/lib/aiur/coordination_tasks.ex",

@@ -69,6 +69,7 @@ A ticket that becomes terminal or leaves the run scope resolves its active advis
 
 | Key | Type | Default | Controls |
 | --- | --- | --- | --- |
+| `tracker.merge_proof_alpha` | string | scratch only | Merge demonstration alpha; never ship. |
 | `tracker.kind` | string | required | Selects `linear`, `github`, or `memory`. |
 | `tracker.propagate_blocker_pushes` | boolean or nil | nil | Unset enables optimistic queue members; otherwise false. Cascade direct blocker pushes into idle dependents. Coalesces for 2 seconds, at most 2 propagations concurrently. Live agents pull themselves; conflicts dispatch rework. |
 | `tracker.restack_after_blocker_merge` | boolean | true | Fast-forward restack idle GitHub dependents after a blocker squash-merges. Requires git 2.40+. Live agents restack themselves; false disables only the daemon path. |
