@@ -25,9 +25,9 @@ defmodule Aiur.Application do
   alias Aiur.CodingAgent.RouteCredentials
   alias Aiur.Config, as: AiurConfig
   alias Aiur.Config.RoutingValue
+  alias Aiur.Experiments.Auto
   alias Aiur.GitHub.{BlockerProgress, Config}
   alias Aiur.Identity.Machine
-  alias Aiur.Experiments.Auto
   @impl true
   def start(_type, _args) do
     :ok = Aiur.Boot.mark()
