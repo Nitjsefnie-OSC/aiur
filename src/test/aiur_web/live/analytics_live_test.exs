@@ -276,13 +276,13 @@ defmodule AiurWeb.AnalyticsLiveTest do
   end
 
   test "renders exact source-gated values in the keyboard-reachable pressure table" do
-    Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture!(RunTelemetry.boot_id()))
+    Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture!(RunTelemetry.boot_id(), {17, 20, 20}))
 
     {:ok, _view, html} = loaded_live(build_conn(), "/analytics")
 
     assert html =~ ~s(<table id="analytics-pressure-table">)
-    assert html =~ "13"
-    assert html =~ "16 / 16 / 12"
+    assert html =~ "17 now / 20 cap (fleet)"
+    assert html =~ "16 / 20 / 20"
     assert html =~ ">2<"
     assert html =~ "2 / 8"
     assert html =~ "189s"
@@ -719,7 +719,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     path
   end
 
-  defp pressure_fixture!(boot_id) do
+  defp pressure_fixture!(boot_id, capacity) do
     root = Path.join(System.tmp_dir!(), "aiur-analytics-pressure-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     path = Path.join(root, "telemetry.ndjson")
@@ -740,10 +740,10 @@ defmodule AiurWeb.AnalyticsLiveTest do
           "actor_type" => "daemon",
           "availability" => "unavailable",
           "fleet_capacity_status" => "current",
-          "fleet_agents_occupied" => 13,
+          "fleet_agents_occupied" => elem(capacity, 0),
           "fleet_agents_configured" => 16,
-          "fleet_agents_max" => 16,
-          "fleet_agents_effective" => 12,
+          "fleet_agents_max" => elem(capacity, 1),
+          "fleet_agents_effective" => elem(capacity, 2),
           "fleet_capacity_observed_at_ms" => DateTime.to_unix(~U[2026-07-11 00:00:40Z], :millisecond),
           "build_gate_status" => "measured",
           "build_gate_capacity" => 2,
