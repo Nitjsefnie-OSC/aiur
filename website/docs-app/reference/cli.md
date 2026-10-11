@@ -59,7 +59,7 @@ Background mode is the shape that matters for an agent Executor. `aiur --bg` sta
 
 Background runs persist daemon Logger messages at `<logs-root>/log/aiur.log` without `--debug`. `--debug` additionally enables debug-level messages. The default background root is `~/.aiur/logs/<launch-id>/`; `log/boot.out.log` captures release stdout and stderr.
 
-`aiur status` prints `MERGE POLICY` configuration and, when enabled, base-branch CI state (`main=unknown`, `main=green`, or `main=red since HH:MM`, UTC); `aiur capabilities` reports its mode as `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)).
+`aiur status` prints `MERGE POLICY` and, when enabled, base CI state with SHA and completed-run age (`main=green sha=abc123 age=180s`). Red includes its full UTC start date; failed polls lead with `main=unavailable` and retain the last known state. `aiur capabilities` reports `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)).
 
 `aiur status` shows degraded CODEOWNERS trust with cause and age ([GitHub trust](/apis/github#who-aiur-trusts)). With ready work and free slots, it names preflight holds, stale polling, `awaiting dispatch`, or empty-cycle reasons and age. Prewarm holds keep their cause; unexplained empty cycles report `unknown`.
 

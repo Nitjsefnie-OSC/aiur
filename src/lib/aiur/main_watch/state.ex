@@ -57,7 +57,7 @@ defmodule Aiur.MainWatch.State do
   end
 
   defp remember(state, observation) do
-    entry = Map.take(observation, [:sha, :completed_at, :checks])
+    entry = Map.take(observation, [:sha, :completed_at, :checks, :digest, :run_fingerprint, :failed_workflow, :run_urls, :suspect_merges])
     history = Enum.reject(state.history, &(&1.sha == entry.sha)) ++ [entry]
     %{state | history: history}
   end

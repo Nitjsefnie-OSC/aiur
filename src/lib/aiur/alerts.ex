@@ -131,7 +131,7 @@ defmodule Aiur.Alerts do
   # Executor would act on. The check is against the durable ledger rather than
   # caller-held state, so an emitter that loses its in-memory latch — a restart,
   # a fresh CLI process — still cannot replay a transition that already landed.
-  # Reads with the same default options `write_alert_ledger_entry/3` appends
+  # Reads and writes use the same ledger options, so the gate checks the ledger the emit writes.
   # Fails open: an unreadable ledger must not swallow a real transition.
   defp repeat_resolution?(topic) do
     AlertFeed.duplicate_resolution?(topic)

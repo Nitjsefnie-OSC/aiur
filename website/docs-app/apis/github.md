@@ -35,21 +35,15 @@ The development `scripts/aiurdev --test` and `--test3` harnesses still read GitH
 
 Each CI poll reads the configured base branch's active rules and classic branch protection once for the batch, then requires every required check on the current PR head from its configured integration.
 
-A failed required-check lookup keeps a green aggregate pending; missing and skipped required checks cannot pass.
-The two reads are attributed to `ci_required_checks` and bypass the shared read cache because they govern a CI verdict.
+A failed required-check lookup keeps a green aggregate pending; missing and skipped required checks cannot pass. The two reads are attributed to `ci_required_checks` and bypass the shared read cache because they govern a CI verdict.
 
-Draft PRs remain pending even when
-their fast gate is green. Completed work must be marked ready before CI wait so
-`ready_for_review` can start the full suite.
+Draft PRs remain pending even when their fast gate is green. Completed work must be marked ready before CI wait so `ready_for_review` can start the full suite.
 
 The PR review poll keeps its own per-ticket cursor, seeded from that ticket's first polling cutoff. Issue comments cannot advance it. Aiur retains that cursor while review reads are disabled for a ticket state or a review read fails.
 
 Review submissions are polled during `agent:ci-wait` as well as `agent:human-review`, so trusted `CHANGES_REQUESTED` and explicitly blocking `COMMENTED` reviews can route either state to `agent:rework` without waiting for CI to finish, including body-only reviews without inline threads.
 
-Body-only `COMMENTED` reviews need a line or heading starting with `Blocking:`,
-`Blockers:`, `Must fix:`, or `Changes required:`, or an update, rebase, merge, or
-fix requested “before merge”. Clean summaries such as “No blockers; waiting on
-CI” or “All blockers resolved” do not route to rework.
+Body-only `COMMENTED` reviews need a line or heading starting with `Blocking:`, `Blockers:`, `Must fix:`, or `Changes required:`, or an update, rebase, merge, or fix requested “before merge”. Clean summaries such as “No blockers; waiting on CI” or “All blockers resolved” do not route to rework.
 
 Failed CI in `agent:human-review` routes to rework when that head already passed
 CI or the head changed. An inherited failure on a dismissed head remains held;
@@ -764,7 +758,13 @@ A label write also corrects the labels on the issue Aiur already holds, and does
 
 A write that fails records nothing.
 
-Main watch accepts completed base-branch Actions checks without a PR. Failure events include tests, flake classifications and suspect merges. Reruns require Actions write. Denied reads emit `system.main.ci.unavailable` once until success; status marks the retained state unavailable. No quota saving is claimed.
+Main watch accepts base Actions checks without a PR and debounces bursts for two seconds. At the default 120-second polling cadence, an unchanged completed census costs two Core reads: `main_watch_commits` and `main_watch_runs`. Fingerprints reuse completed checks until a run changes.
+
+A cold 20-SHA green census costs 42 reads; one changed SHA costs four. These are transport-test counts, not live measurements. Each reconciliation caps all transport calls at 64, including evidence, suspects and reruns; exhausted or incomplete reads retain known state and mark it unavailable.
+
+Failure events carry tests, flake classifications and suspects. Evidence uses existing CI callers; associations use `main_watch_suspects`, permissions `main_watch_permissions`, and reruns `main_watch_canary`. Actions write is cached until daemon restart; permission changes require a restart.
+
+An idle completed head or any active watched run suppresses canaries; an eligible cancellation without write permission raises one persisted attention. Status shows the retained SHA and completed-run age, with unavailable first after read errors or poll crashes.
 
 ## Optional webhook
 

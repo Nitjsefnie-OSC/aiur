@@ -14,17 +14,14 @@ defmodule Aiur.MainWatch.GitHubTest do
           ok(Enum.map(~w(new pending cancelled old), &%{"sha" => &1}))
 
         String.contains?(url, "/actions/runs?") ->
-          sha = URI.decode_query(URI.parse(url).query)["head_sha"]
+          runs = [
+            run(4, "new", "ci", "completed", "success"),
+            run(3, "pending", "ci", "in_progress", nil),
+            run(2, "cancelled", "ci", "completed", "cancelled"),
+            run(1, "old", "ci", "completed", "success")
+          ]
 
-          {id, status, conclusion} =
-            case sha do
-              "new" -> {4, "completed", "success"}
-              "pending" -> {3, "in_progress", nil}
-              "cancelled" -> {2, "completed", "cancelled"}
-              "old" -> {1, "completed", "success"}
-            end
-
-          ok(%{"workflow_runs" => [run(id, sha, "ci", status, conclusion), run(id + 10, sha, "website", "completed", "failure")]})
+          ok(%{"workflow_runs" => runs ++ Enum.map(runs, &Map.merge(&1, %{"id" => &1["id"] + 10, "name" => "website", "conclusion" => "failure"}))})
 
         String.contains?(url, "/check-runs?") ->
           ok(%{"check_runs" => [check(1, 1, "success"), check(2, 2, "failure")]})
@@ -52,10 +49,7 @@ defmodule Aiur.MainWatch.GitHubTest do
           ok([%{"sha" => "new"}, %{"sha" => "old"}])
 
         String.contains?(url, "/actions/runs?") ->
-          sha = URI.decode_query(URI.parse(url).query)["head_sha"]
-          runs = [run(1, sha, "ci", "completed", "success")]
-          runs = if sha == "old", do: runs ++ [run(2, sha, "deploy", "completed", "success")], else: runs
-          ok(%{"workflow_runs" => runs})
+          ok(%{"workflow_runs" => [run(1, "new", "ci", "completed", "success"), run(1, "old", "ci", "completed", "success"), run(2, "old", "deploy", "completed", "success")]})
 
         String.contains?(url, "/check-runs?") ->
           ok(%{"check_runs" => [check(1, 1, "success"), check(2, 2, "success")]})
@@ -129,6 +123,81 @@ defmodule Aiur.MainWatch.GitHubTest do
     assert {:ok, %{observations: [observation]}} = GitHub.poll("main", ["ci"], request_fun: request, actions_write: false)
     assert observation.checks == [%{name: "test", conclusion: "success"}]
     assert observation.digest.checks == []
+  end
+
+  test "one branch census reuses completed history and refreshes a changed rerun" do
+    shas = Enum.map(1..20, &"counted-#{&1}")
+    runs = Enum.with_index(shas, 1) |> Enum.map(fn {sha, id} -> run(id, sha, "ci", "completed", "success") end)
+    {:ok, calls} = Agent.start_link(fn -> %{runs: runs, requests: []} end)
+
+    request = fn %{url: url} ->
+      current = Agent.get_and_update(calls, fn state -> {state.runs, %{state | requests: state.requests ++ [url]}} end)
+
+      cond do
+        String.contains?(url, "/commits?") ->
+          ok(Enum.map(shas, &%{"sha" => &1}))
+
+        String.contains?(url, "/actions/runs?") ->
+          query = URI.decode_query(URI.parse(url).query)
+          assert query == %{"branch" => "main", "event" => "push", "per_page" => "100"}
+          ok(%{"workflow_runs" => current ++ [run(99, "outside-window", "ci", "completed", "failure")]})
+
+        String.contains?(url, "/check-runs?") ->
+          ok(%{"check_runs" => [check(1, 1, "success")]})
+
+        String.ends_with?(url, "/status") ->
+          ok(%{"statuses" => []})
+
+        true ->
+          flunk("unchanged history must not fetch evidence: #{url}")
+      end
+    end
+
+    opts = [request_fun: request, actions_write: false]
+    assert {:ok, cold} = GitHub.poll("main", ["ci"], opts)
+    assert Enum.map(cold.observations, & &1.sha) == Enum.reverse(shas)
+    assert length(Agent.get(calls, & &1.requests)) == 42
+    Agent.update(calls, &%{&1 | requests: []})
+    history = Enum.reduce(cold.observations, Aiur.MainWatch.State.new(), fn observation, state -> Aiur.MainWatch.State.record_history(state, observation, observation.completed_at) end).history
+    assert {:ok, warm} = GitHub.poll("main", ["ci"], Keyword.put(opts, :history, history))
+    assert warm.observations == cold.observations
+    assert length(Agent.get(calls, & &1.requests)) == 2
+
+    Agent.update(calls, fn state -> %{state | requests: [], runs: [Map.put(hd(state.runs), "run_attempt", 2) | tl(state.runs)]} end)
+    assert {:ok, rerun} = GitHub.poll("main", ["ci"], Keyword.put(opts, :history, warm.observations))
+    assert length(Agent.get(calls, & &1.requests)) == 4
+    refute List.last(rerun.observations).run_fingerprint == List.last(warm.observations).run_fingerprint
+
+    Agent.update(calls, &%{&1 | requests: []})
+    legacy = Enum.map(rerun.observations, &Map.delete(&1, :run_fingerprint))
+    assert {:ok, migrated} = GitHub.poll("main", ["ci"], Keyword.put(opts, :history, legacy))
+    assert migrated.observations == rerun.observations
+    assert length(Agent.get(calls, & &1.requests)) == 42
+  end
+
+  test "paginated branch census is accepted only when every watched workflow and SHA is represented" do
+    complete = for sha <- ~w(new old), name <- ~w(ci deploy), do: run(1, sha, name, "completed", "success")
+
+    request_for = fn runs ->
+      fn %{url: url} ->
+        cond do
+          String.contains?(url, "/commits?") -> ok([%{"sha" => "new"}, %{"sha" => "old"}])
+          String.contains?(url, "/actions/runs?") -> {:ok, %{status: 200, body: %{"workflow_runs" => runs}, headers: [{"link", "<https://api.github.com/next>; rel=\"next\""}]}}
+          String.contains?(url, "/check-runs?") -> ok(%{"check_runs" => [check(1, 1, "success"), check(2, 2, "success")]})
+          String.ends_with?(url, "/status") -> ok(%{"statuses" => []})
+          true -> flunk("must not fetch older pages: #{url}")
+        end
+      end
+    end
+
+    assert {:ok, %{observations: observations}} = GitHub.poll("main", ["ci", "deploy"], request_fun: request_for.(complete), actions_write: false)
+    assert Enum.map(observations, & &1.sha) == ["old", "new"]
+
+    for incomplete <- [Enum.reject(complete, &(&1["head_sha"] == "old")), Enum.reject(complete, &(&1["name"] == "deploy"))] do
+      assert {:error, :main_runs_incomplete} = GitHub.poll("main", ["ci", "deploy"], request_fun: request_for.(incomplete), actions_write: false)
+    end
+
+    assert {:error, :main_runs_incomplete} = GitHub.poll("main", [], request_fun: request_for.(complete), actions_write: false)
   end
 
   test "pagination and provider errors cannot produce a partial green verdict" do

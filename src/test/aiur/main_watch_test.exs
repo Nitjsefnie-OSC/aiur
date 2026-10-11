@@ -158,6 +158,87 @@ defmodule Aiur.MainWatchTest do
     assert MainWatch.inherited?("test", "base", server) == :unknown
   end
 
+  test "idle green base stays quiet across canary windows" do
+    clock = start_supervised!({Agent, fn -> 46 * 60_000 end})
+    server = launch(%{Persistence.empty() | started_at: 0}, config: %{workflows: [], canary_minutes: 45}, now_fun: fn -> Agent.get(clock, & &1) end)
+    green = %{observation("green", 1) | checks: [%{name: "test", conclusion: "success"}]}
+    poll = %{result([green]) | runs: [%{run("success", 1) | sha: "green"}]}
+    finish_poll(server, {:ok, poll})
+    assert MainWatch.state(server).status == :green
+    refute_received {:emitted, _, _}
+    Agent.update(clock, fn _ -> 92 * 60_000 end)
+    GenServer.cast(server, :reconcile)
+    finish_poll(server, {:ok, poll})
+    refute_received {:emitted, _, _}
+  end
+
+  test "canary permission attention stays latched across windows and restart" do
+    clock = start_supervised!({Agent, fn -> 46 * 60_000 end})
+    opts = [config: %{workflows: [], canary_minutes: 45}, now_fun: fn -> Agent.get(clock, & &1) end]
+    server = launch(%{Persistence.empty() | started_at: 0}, opts)
+    poll = %{result([]) | commits: ["old"], runs: [run("cancelled", 0)]}
+    data = finish_poll(server, {:ok, poll})
+    assert_received {:emitted, "system.main.ci.canary", %{outcome: %{reason: ":actions_write_unavailable"}}}
+    assert data.canary_permission_notified
+    stop_supervised!(MainWatch)
+    Agent.update(clock, fn _ -> 92 * 60_000 end)
+    server = launch(data, opts)
+    finish_poll(server, {:ok, poll})
+    refute_received {:emitted, _, _}
+  end
+
+  test "a crashed poll retains green evidence and marks it unavailable" do
+    server = launch(Persistence.empty())
+    green = %{observation("green", 1) | checks: [%{name: "test", conclusion: "success"}]}
+    finish_poll(server, {:ok, result([green])})
+    GenServer.cast(server, :reconcile)
+    receive_barrier({:poll_worker, worker})
+    Process.exit(worker, :kill)
+    receive_barrier({:saved, data})
+    assert data.unavailable
+    assert %{status: :green, sha: "green", completed_at: 1, unavailable: true} = MainWatch.state(server)
+    assert_received {:emitted, "system.main.ci.unavailable", %{reason: reason}}
+    assert reason =~ "poll_crashed"
+  end
+
+  test "webhook burst is debounced into one reconciliation" do
+    server = launch(Persistence.empty(), debounce_ms: 20)
+    finish_poll(server, {:ok, result([])})
+    Enum.each(1..16, fn _ -> GenServer.cast(server, :reconcile) end)
+    finish_poll(server, {:ok, result([])})
+    Process.sleep(50)
+    refute_received {:poll_worker, _}
+  end
+
+  test "one reconciliation never issues more than 64 transport requests" do
+    requests = :atomics.new(1, [])
+    green = %{observation("green", 1) | checks: [%{name: "test", conclusion: "success"}]}
+
+    poll = fn _, _, opts ->
+      Enum.reduce_while(1..65, {:ok, result([green])}, fn id, success ->
+        case opts[:request_fun].(%{id: id}) do
+          {:ok, _} -> {:cont, success}
+          error -> {:halt, error}
+        end
+      end)
+    end
+
+    server =
+      launch(Persistence.empty(),
+        poll_fun: poll,
+        request_fun: fn _ ->
+          :atomics.add_get(requests, 1, 1)
+          {:ok, %{status: 200}}
+        end
+      )
+
+    receive_barrier({:saved, data})
+    assert :atomics.get(requests, 1) == 64
+    assert data.unavailable
+    assert %{status: :unknown, unavailable: true} = MainWatch.state(server)
+    assert_received {:emitted, "system.main.ci.unavailable", %{reason: ":main_watch_request_limit"}}
+  end
+
   defp launch(initial, overrides \\ []) do
     parent = self()
 
@@ -185,6 +266,7 @@ defmodule Aiur.MainWatchTest do
       branch: "main",
       repo: "owner/repo",
       interval_ms: 60_000,
+      debounce_ms: 0,
       subscribe: false,
       actions_write: false,
       load_fun: fn _, _ -> initial end,

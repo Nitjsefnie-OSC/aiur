@@ -63,24 +63,18 @@ defmodule Aiur.MainWatch.GitHub do
   end
 
   defp runs(owner, repo, branch, commits, workflows, token, opts) do
-    Enum.reduce_while(commits, {:ok, []}, fn sha, {:ok, acc} ->
-      url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{branch: branch, head_sha: sha, event: "push", per_page: 100})
+    url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{branch: branch, event: "push", per_page: 100})
 
-      case runs_page(url, token, opts) do
-        {:ok, runs} -> {:cont, {:ok, acc ++ Enum.filter(runs, &watched?(&1, sha, branch, workflows))}}
-        error -> {:halt, error}
-      end
-    end)
-    |> case do
-      {:ok, runs} -> {:ok, runs |> Enum.map(&normalize/1) |> Enum.sort_by(& &1.id, :desc)}
-      error -> error
+    with {:ok, runs} <- runs_page(url, token, commits, branch, workflows, opts) do
+      {:ok, runs |> Enum.filter(&watched?(&1, commits, branch, workflows)) |> Enum.map(&normalize/1) |> Enum.sort_by(& &1.id, :desc)}
     end
   end
 
-  defp runs_page(url, token, opts) do
+  defp runs_page(url, token, commits, branch, workflows, opts) do
     case request_fun(opts).(%{method: :get, url: url, token: token, caller: "main_watch_runs"}) do
       {:ok, %{status: 200, body: %{"workflow_runs" => runs}} = response} when is_list(runs) ->
-        if Transport.parse_next_page_url(Map.get(response, :headers, [])), do: {:error, :main_runs_incomplete}, else: {:ok, runs}
+        incomplete = Transport.parse_next_page_url(Map.get(response, :headers, [])) && not window_covered?(runs, commits, branch, workflows)
+        if incomplete, do: {:error, :main_runs_incomplete}, else: {:ok, runs}
 
       {:ok, %{status: 200}} ->
         {:error, :invalid_main_runs}
@@ -93,8 +87,17 @@ defmodule Aiur.MainWatch.GitHub do
     end
   end
 
-  defp watched?(run, sha, branch, workflows),
-    do: run["head_sha"] == sha and run["head_branch"] == branch and run["event"] == "push" and (workflows == [] or run["name"] in workflows)
+  # Further pages contain older runs; ignore them only after covering the entire watched window.
+  defp window_covered?(_runs, _commits, _branch, []), do: false
+
+  defp window_covered?(runs, commits, branch, workflows) do
+    Enum.all?(commits, fn sha ->
+      Enum.all?(workflows, fn name -> Enum.any?(runs, &watched?(&1, [sha], branch, [name])) end)
+    end)
+  end
+
+  defp watched?(run, commits, branch, workflows),
+    do: run["head_sha"] in commits and run["head_branch"] == branch and run["event"] == "push" and (workflows == [] or run["name"] in workflows)
 
   defp normalize(run),
     do: %{
@@ -119,7 +122,7 @@ defmodule Aiur.MainWatch.GitHub do
     latest = runs |> Enum.filter(&(&1.sha == sha)) |> Enum.uniq_by(& &1.name)
 
     if complete_workflows?(latest, workflows) and Enum.all?(latest, &(&1.status == "completed" and &1.conclusion not in [nil, "cancelled"])) do
-      case observation(sha, latest, opts) do
+      case cached_observation(sha, latest, opts) do
         {:ok, observation} -> {:cont, {:ok, acc ++ [observation]}}
         error -> {:halt, error}
       end
@@ -130,6 +133,18 @@ defmodule Aiur.MainWatch.GitHub do
 
   defp complete_workflows?([], _), do: false
   defp complete_workflows?(runs, workflows), do: Enum.all?(workflows, fn name -> Enum.any?(runs, &(&1.name == name)) end)
+
+  defp cached_observation(sha, runs, opts) do
+    fingerprint = Enum.map(runs, &{&1.name, &1.id, &1.attempt, &1.suite_id, &1.status, &1.conclusion, &1.completed_at}) |> Enum.sort()
+    cached = Enum.find(Keyword.get(opts, :history, []), &(&1.sha == sha and Map.get(&1, :run_fingerprint) == fingerprint))
+    fields = [:sha, :completed_at, :checks, :digest, :failed_workflow, :run_urls, :suspect_merges, :run_fingerprint]
+
+    if is_map(cached) and Enum.all?(fields, &Map.has_key?(cached, &1)) do
+      {:ok, Map.take(cached, fields)}
+    else
+      with {:ok, observation} <- observation(sha, runs, opts), do: {:ok, Map.put(observation, :run_fingerprint, fingerprint)}
+    end
+  end
 
   defp observation(sha, runs, opts) do
     suites = Enum.map(runs, & &1.suite_id)

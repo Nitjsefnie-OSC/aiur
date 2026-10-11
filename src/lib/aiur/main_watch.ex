@@ -9,6 +9,8 @@ defmodule Aiur.MainWatch do
   alias Aiur.MainWatch.{Canary, GitHub, Persistence, State, Suspects}
   alias Aiur.MergePolicy
 
+  @request_limit 64
+
   @spec enabled?() :: boolean()
   def enabled?, do: MergePolicy.current().main_watch.enabled
 
@@ -46,7 +48,7 @@ defmodule Aiur.MainWatch do
     if subscribe, do: Exchange.subscribe("system.pr.merged")
     data = Keyword.get(opts, :load_fun, &Persistence.load/2).(repo, branch)
     send(self(), :poll)
-    {:ok, %{data: data, config: config, branch: branch, repo: repo, interval: interval, opts: opts, task: nil, dirty: false}}
+    {:ok, %{data: data, config: config, branch: branch, repo: repo, interval: interval, opts: opts, task: nil, dirty: false, debounce: nil}}
   end
 
   @impl true
@@ -59,7 +61,7 @@ defmodule Aiur.MainWatch do
   end
 
   @impl true
-  def handle_cast(:reconcile, server), do: {:noreply, start_poll(server)}
+  def handle_cast(:reconcile, server), do: {:noreply, schedule_reconcile(server)}
 
   @impl true
   def handle_info(:poll, server) do
@@ -73,26 +75,36 @@ defmodule Aiur.MainWatch do
     {:noreply, save(%{server | data: data})}
   end
 
-  def handle_info({:event, _event}, server), do: {:noreply, start_poll(server)}
+  def handle_info({:event, _event}, server), do: {:noreply, schedule_reconcile(server)}
+
+  def handle_info(:reconcile_due, server), do: {:noreply, start_poll(%{server | debounce: nil})}
 
   def handle_info({ref, {capability, result}}, %{task: %{ref: ref}} = server) do
     Process.demonitor(ref, [:flush])
     next = consume(result, %{server | task: nil, opts: Keyword.put(server.opts, :actions_write, capability)})
-    {:noreply, if(next.dirty, do: start_poll(%{next | dirty: false}), else: next)}
+    {:noreply, if(next.dirty, do: schedule_reconcile(%{next | dirty: false}), else: next)}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: %{ref: ref}} = server) do
     Logger.warning("main-watch poll failed: #{inspect(reason)}")
-    {:noreply, %{server | task: nil}}
+    next = consume({:error, {:poll_crashed, reason}}, %{server | task: nil})
+    {:noreply, if(next.dirty, do: schedule_reconcile(%{next | dirty: false}), else: next)}
   end
 
   def handle_info(_message, server), do: {:noreply, server}
+
+  defp schedule_reconcile(%{debounce: nil} = server) do
+    delay = Keyword.get(server.opts, :debounce_ms, 2_000)
+    %{server | debounce: Process.send_after(self(), :reconcile_due, delay)}
+  end
+
+  defp schedule_reconcile(server), do: server
 
   defp start_poll(%{task: task} = server) when not is_nil(task), do: %{server | dirty: true}
 
   defp start_poll(server) do
     poll = Keyword.get(server.opts, :poll_fun, &GitHub.poll/3)
-    opts = server.opts
+    opts = server.opts |> Keyword.put(:history, server.data.state.history) |> bounded_requests()
 
     task =
       Task.Supervisor.async_nolink(Aiur.TaskSupervisor, fn ->
@@ -100,7 +112,7 @@ defmodule Aiur.MainWatch do
 
         result =
           case poll.(server.branch, server.config.workflows, Keyword.put(opts, :actions_write, capability)) do
-            {:ok, result} -> {:ok, prepare(result, server)}
+            {:ok, result} -> {:ok, prepare(result, %{server | opts: opts})}
             error -> error
           end
 
@@ -108,6 +120,15 @@ defmodule Aiur.MainWatch do
       end)
 
     %{server | task: task}
+  end
+
+  defp bounded_requests(opts) do
+    count = :atomics.new(1, [])
+    request = Keyword.get(opts, :request_fun, &Aiur.GitHub.Transport.default_request_fun/1)
+
+    Keyword.put(opts, :request_fun, fn call ->
+      if :atomics.add_get(count, 1, 1) <= @request_limit, do: request.(call), else: {:error, :main_watch_request_limit}
+    end)
   end
 
   defp prepare(result, server) do
@@ -127,7 +148,7 @@ defmodule Aiur.MainWatch do
 
     completed = completed_at(result, server.data)
 
-    decision = Canary.decide(completed, result.runs, server.config.canary_minutes, result.actions_write, now)
+    decision = Canary.decide(completed, result.runs, server.config.canary_minutes, result.actions_write, now, List.first(result.commits))
     window = max(server.config.canary_minutes * 60_000, 1)
     allowed = is_nil(server.data.canary_at) or now - server.data.canary_at >= window
 
@@ -221,14 +242,17 @@ defmodule Aiur.MainWatch do
 
   defp canary(data, result, now, server) do
     minutes = server.config.canary_minutes
-    decision = Canary.decide(data.last_completed_at || data.started_at, result.runs, minutes, result.actions_write, now)
+    decision = Canary.decide(data.last_completed_at || data.started_at, result.runs, minutes, result.actions_write, now, List.first(result.commits))
     window = max(minutes * 60_000, 1)
 
-    if decision != :noop and (is_nil(data.canary_at) or now - data.canary_at >= window) do
+    capability_attention = decision == {:attention, :actions_write_unavailable}
+    notified = Map.get(data, :canary_permission_notified, false)
+
+    if decision != :noop and not (capability_attention and notified) and (is_nil(data.canary_at) or now - data.canary_at >= window) do
       outcome = Map.get(result, :canary_outcome, {:error, :not_attempted})
       payload = %{window: div(now, window), decision: inspect(decision), outcome: outcome_payload(outcome), run_urls: Enum.map(result.runs, & &1.url)}
       event = {"system.main.ci.canary", payload}
-      %{data | canary_at: now, pending: data.pending ++ [event]}
+      data |> Map.put(:canary_permission_notified, notified or capability_attention) |> Map.put(:canary_at, now) |> Map.put(:pending, data.pending ++ [event])
     else
       data
     end

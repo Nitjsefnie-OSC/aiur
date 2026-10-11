@@ -19,6 +19,8 @@ The top-level policy is validated and displayed by `aiur status` and `aiur capab
 
 `on_red: dispatch_fixer` requires `fixer_label` in `full_ci_labels`. Lists reject blank entries; canary and red-fallback minutes must be nonnegative integers. Invalid values name the dotted config path.
 
-`aiur status` adds `main=unknown`, `main=green`, or `main=red since HH:MM` (UTC), with a fixer ticket when available. New failure signatures emit `system.main.ci.failed`; known-flake-only failures emit `system.main.ci.flaked`. A later green SHA emits `system.main.ci.failed.resolved`. State and failure history survive daemon restarts.
+`aiur status` shows `main=unknown` or a color with the completed-run SHA and age, such as `main=green sha=abc123 age=180s`. Red includes its full UTC start date and any fixer ticket. Failed polls show `main=unavailable last_known=green sha=abc123 age=180s`; missing metadata stays `unknown`.
+
+New failure signatures emit `system.main.ci.failed`; known-flake-only failures emit `system.main.ci.flaked`. A later green SHA emits `system.main.ci.failed.resolved`. State and failure history survive daemon restarts.
 
 Actions read permission is required to attribute checks to workflows. Failed or denied reads retain the last known state and emit `system.main.ci.unavailable` once until the next successful observation.
