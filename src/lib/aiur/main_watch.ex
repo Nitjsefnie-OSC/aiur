@@ -27,7 +27,8 @@ defmodule Aiur.MainWatch do
   def state(server \\ __MODULE__) do
     GenServer.call(server, :state)
   catch
-    :exit, _ -> %{status: :unknown, red_since: nil}
+    :exit, {:noproc, _} -> %{watcher: :not_running, status: :unknown, red_since: nil}
+    :exit, _ -> %{watcher: :unavailable, status: :unknown, red_since: nil, unavailable: true}
   end
 
   @spec inherited?(String.t(), String.t(), GenServer.server()) :: atom()
@@ -52,7 +53,11 @@ defmodule Aiur.MainWatch do
   end
 
   @impl true
-  def handle_call(:state, _from, server), do: {:reply, Map.put(server.data.state, :unavailable, server.data.unavailable), server}
+  def handle_call(:state, _from, server) do
+    watcher = if server.data.unavailable, do: :unavailable, else: :running
+    state = server.data.state |> Map.put(:unavailable, server.data.unavailable) |> Map.put(:watcher, watcher)
+    {:reply, state, server}
+  end
 
   def handle_call({:inherited, check, base}, _from, server) do
     now = Keyword.get(server.opts, :now_fun, fn -> System.system_time(:millisecond) end).()

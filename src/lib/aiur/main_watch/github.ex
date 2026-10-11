@@ -7,8 +7,9 @@ defmodule Aiur.MainWatch.GitHub do
   def poll(branch, workflows, opts \\ []) do
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts),
-         {:ok, commits} <- commits(owner, repo, branch, token, opts),
-         {:ok, runs} <- runs(owner, repo, branch, commits, workflows, token, opts),
+         {:ok, commit_window} <- commits(owner, repo, branch, token, opts),
+         {commits, dates} = commit_window,
+         {:ok, runs} <- runs(owner, repo, branch, commits, dates, workflows, token, opts),
          {:ok, observations} <- observations(commits, runs, workflows, opts) do
       {:ok, %{observations: observations, runs: runs, commits: commits, actions_write: Keyword.get_lazy(opts, :actions_write, fn -> actions_write?(opts) end)}}
     end
@@ -52,7 +53,12 @@ defmodule Aiur.MainWatch.GitHub do
 
     case request_fun(opts).(%{method: :get, url: url, token: token, caller: "main_watch_commits"}) do
       {:ok, %{status: 200, body: commits}} when is_list(commits) ->
-        if Enum.all?(commits, &(is_map(&1) and is_binary(&1["sha"]))), do: {:ok, commits |> Enum.take(20) |> Enum.map(& &1["sha"])}, else: {:error, :invalid_main_commits}
+        if Enum.all?(commits, &(is_map(&1) and is_binary(&1["sha"]))) do
+          window = Enum.take(commits, 20)
+          {:ok, {Enum.map(window, & &1["sha"]), Enum.map(window, &timestamp(get_in(&1, ["commit", "committer", "date"])))}}
+        else
+          {:error, :invalid_main_commits}
+        end
 
       {:ok, response} ->
         {:error, Errors.github_status_error(response)}
@@ -62,18 +68,18 @@ defmodule Aiur.MainWatch.GitHub do
     end
   end
 
-  defp runs(owner, repo, branch, commits, workflows, token, opts) do
+  defp runs(owner, repo, branch, commits, dates, workflows, token, opts) do
     url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{branch: branch, event: "push", per_page: 100})
 
-    with {:ok, runs} <- runs_page(url, token, commits, branch, workflows, opts) do
+    with {:ok, runs} <- runs_page(url, token, dates, opts) do
       {:ok, runs |> Enum.filter(&watched?(&1, commits, branch, workflows)) |> Enum.map(&normalize/1) |> Enum.sort_by(& &1.id, :desc)}
     end
   end
 
-  defp runs_page(url, token, commits, branch, workflows, opts) do
+  defp runs_page(url, token, dates, opts) do
     case request_fun(opts).(%{method: :get, url: url, token: token, caller: "main_watch_runs"}) do
       {:ok, %{status: 200, body: %{"workflow_runs" => runs}} = response} when is_list(runs) ->
-        incomplete = Transport.parse_next_page_url(Map.get(response, :headers, [])) && not window_covered?(runs, commits, branch, workflows)
+        incomplete = Transport.parse_next_page_url(Map.get(response, :headers, [])) && not window_covered?(runs, dates)
         if incomplete, do: {:error, :main_runs_incomplete}, else: {:ok, runs}
 
       {:ok, %{status: 200}} ->
@@ -87,13 +93,11 @@ defmodule Aiur.MainWatch.GitHub do
     end
   end
 
-  # Further pages contain older runs; ignore them only after covering the entire watched window.
-  defp window_covered?(_runs, _commits, _branch, []), do: false
+  # Merge-queue commits may have no push run; older pages are safe to omit only once their time window is covered.
+  defp window_covered?(runs, dates) do
+    created_at = Enum.map(runs, &timestamp(&1["created_at"]))
 
-  defp window_covered?(runs, commits, branch, workflows) do
-    Enum.all?(commits, fn sha ->
-      Enum.all?(workflows, fn name -> Enum.any?(runs, &watched?(&1, [sha], branch, [name])) end)
-    end)
+    dates != [] and created_at != [] and Enum.all?(dates ++ created_at, &is_integer/1) and Enum.min(created_at) <= Enum.min(dates)
   end
 
   defp watched?(run, commits, branch, workflows),
@@ -178,12 +182,14 @@ defmodule Aiur.MainWatch.GitHub do
     |> Enum.uniq_by(&{get_in(&1, ["check_suite", "id"]), &1["name"]})
   end
 
-  defp timestamp(value) do
-    case value && DateTime.from_iso8601(value) do
+  defp timestamp(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
       {:ok, datetime, _} -> DateTime.to_unix(datetime, :millisecond)
       _ -> nil
     end
   end
+
+  defp timestamp(_), do: nil
 
   defp request_fun(opts), do: Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
 end

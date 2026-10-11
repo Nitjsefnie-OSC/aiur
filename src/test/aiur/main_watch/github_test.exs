@@ -175,29 +175,40 @@ defmodule Aiur.MainWatch.GitHubTest do
     assert length(Agent.get(calls, & &1.requests)) == 42
   end
 
-  test "paginated branch census is accepted only when every watched workflow and SHA is represented" do
-    complete = for sha <- ~w(new old), name <- ~w(ci deploy), do: run(1, sha, name, "completed", "success")
+  test "paginated census covers time despite merge-queue commits without push runs and default workflows" do
+    commits = for day <- 20..1//-1, do: %{"sha" => "commit-#{day}", "commit" => %{"committer" => %{"date" => "2026-09-#{String.pad_leading(to_string(day), 2, "0")}T00:00:00Z"}}}
+    push_commits = Enum.drop(commits, 7)
 
-    request_for = fn runs ->
-      fn %{url: url} ->
-        cond do
-          String.contains?(url, "/commits?") -> ok([%{"sha" => "new"}, %{"sha" => "old"}])
-          String.contains?(url, "/actions/runs?") -> {:ok, %{status: 200, body: %{"workflow_runs" => runs}, headers: [{"link", "<https://api.github.com/next>; rel=\"next\""}]}}
-          String.contains?(url, "/check-runs?") -> ok(%{"check_runs" => [check(1, 1, "success"), check(2, 2, "success")]})
-          String.ends_with?(url, "/status") -> ok(%{"statuses" => []})
-          true -> flunk("must not fetch older pages: #{url}")
-        end
-      end
+    runs =
+      Enum.with_index(push_commits, 1) |> Enum.map(fn {commit, id} -> Map.put(run(id, commit["sha"], "ci", "completed", "success"), "created_at", get_in(commit, ["commit", "committer", "date"])) end)
+
+    older = Map.put(run(100, "outside-window", "ci", "completed", "success"), "created_at", "2026-08-31T00:00:00Z")
+
+    for workflows <- [["ci"], []] do
+      assert {:ok, result} = GitHub.poll("main", workflows, request_fun: census_request(commits, runs ++ [older]), actions_write: false)
+      assert result.commits == Enum.map(commits, & &1["sha"])
+      assert Enum.map(result.observations, & &1.sha) == Enum.map(Enum.reverse(push_commits), & &1["sha"])
+      assert length(result.runs) == 13
     end
+  end
 
-    assert {:ok, %{observations: observations}} = GitHub.poll("main", ["ci", "deploy"], request_fun: request_for.(complete), actions_write: false)
-    assert Enum.map(observations, & &1.sha) == ["old", "new"]
+  test "paginated census rejects uncovered time even when every workflow and SHA is represented" do
+    commits = [%{"sha" => "new", "commit" => %{"committer" => %{"date" => "2026-10-09T00:00:00Z"}}}]
+    newer = Map.put(run(1, "new", "ci", "completed", "success"), "created_at", "2026-10-10T00:00:00Z")
 
-    for incomplete <- [Enum.reject(complete, &(&1["head_sha"] == "old")), Enum.reject(complete, &(&1["name"] == "deploy"))] do
-      assert {:error, :main_runs_incomplete} = GitHub.poll("main", ["ci", "deploy"], request_fun: request_for.(incomplete), actions_write: false)
+    for workflows <- [["ci"], []] do
+      assert {:error, :main_runs_incomplete} = GitHub.poll("main", workflows, request_fun: census_request(commits, [newer]), actions_write: false)
     end
+  end
 
-    assert {:error, :main_runs_incomplete} = GitHub.poll("main", [], request_fun: request_for.(complete), actions_write: false)
+  test "paginated census rejects missing or invalid commit and run dates" do
+    commit = %{"sha" => "new", "commit" => %{"committer" => %{"date" => "2026-10-10T00:00:00Z"}}}
+    run = Map.put(run(1, "new", "ci", "completed", "success"), "created_at", "2026-10-10T00:00:00Z")
+
+    for invalid <- [nil, "not-a-date", 123] do
+      assert {:error, :main_runs_incomplete} = GitHub.poll("main", ["ci"], request_fun: census_request([put_in(commit, ["commit", "committer", "date"], invalid)], [run]), actions_write: false)
+      assert {:error, :main_runs_incomplete} = GitHub.poll("main", ["ci"], request_fun: census_request([commit], [Map.put(run, "created_at", invalid)]), actions_write: false)
+    end
   end
 
   test "pagination and provider errors cannot produce a partial green verdict" do
@@ -242,6 +253,18 @@ defmodule Aiur.MainWatch.GitHubTest do
 
     refute GitHub.actions_write?(request_fun: fn _ -> {:error, :closed} end)
     refute GitHub.actions_write?(request_fun: fn _ -> ok(%{"permissions" => "unknown"}) end)
+  end
+
+  defp census_request(commits, runs) do
+    fn %{url: url} ->
+      cond do
+        String.contains?(url, "/commits?") -> ok(commits)
+        String.contains?(url, "/actions/runs?") -> {:ok, %{status: 200, body: %{"workflow_runs" => runs}, headers: [{"link", "<https://api.github.com/next>; rel=\"next\""}]}}
+        String.contains?(url, "/check-runs?") -> ok(%{"check_runs" => [check(1, 1, "success")]})
+        String.ends_with?(url, "/status") -> ok(%{"statuses" => []})
+        true -> flunk("must not fetch older pages: #{url}")
+      end
+    end
   end
 
   defp run(id, sha, name, status, conclusion),

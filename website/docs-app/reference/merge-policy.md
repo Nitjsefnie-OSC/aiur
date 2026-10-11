@@ -24,3 +24,7 @@ The top-level policy is validated and displayed by `aiur status` and `aiur capab
 New failure signatures emit `system.main.ci.failed`; known-flake-only failures emit `system.main.ci.flaked`. A later green SHA emits `system.main.ci.failed.resolved`. State and failure history survive daemon restarts.
 
 Actions read permission is required to attribute checks to workflows. Failed or denied reads retain the last known state and emit `system.main.ci.unavailable` once until the next successful observation.
+
+Named workflows must run on every base push. For example, `[ci, "Publish Docker Image"]` works when both run on every push; a path-filtered workflow can leave status on an older SHA. Merge-queue commits without push runs are skipped. The first Actions page must reach back to the oldest commit in the 20-commit window.
+
+Status reports `watcher=running`, `watcher=unavailable` or `watcher=not_running` separately from the configured flag. Enabling watching after boot requires restarting the daemon to start its watcher.

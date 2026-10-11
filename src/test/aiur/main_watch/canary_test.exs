@@ -19,6 +19,16 @@ defmodule Aiur.MainWatch.CanaryTest do
     assert :noop = Canary.decide(0, runs, 45, false, 46 * 60_000, "latest")
   end
 
+  test "completed latest workflow suppresses a cancelled sibling workflow" do
+    runs = [
+      %{id: 3, sha: "latest", status: "completed", conclusion: "success", attempt: 1},
+      %{id: 2, sha: "latest", status: "completed", conclusion: "cancelled", attempt: 1}
+    ]
+
+    assert :noop = Canary.decide(0, runs, 45, true, 46 * 60_000, "latest")
+    assert :noop = Canary.decide(0, runs, 45, false, 46 * 60_000, "latest")
+  end
+
   test "queued or running first attempts suppress the canary" do
     cancelled = %{id: 2, sha: "latest", status: "completed", conclusion: "cancelled", attempt: 1}
 
