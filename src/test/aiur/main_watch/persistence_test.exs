@@ -11,7 +11,7 @@ defmodule Aiur.MainWatch.PersistenceTest do
 
     on_exit(fn ->
       restart_store(previous_path)
-      File.rm_rf!(root)
+      Aiur.TestCleanup.rm_rf!(root)
     end)
 
     restart_store(path)
