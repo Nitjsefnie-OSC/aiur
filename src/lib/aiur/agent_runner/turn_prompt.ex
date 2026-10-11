@@ -1,6 +1,7 @@
 defmodule Aiur.AgentRunner.TurnPrompt do
   @moduledoc false
 
+  alias Aiur.AgentRunner.OptimisticPrompt
   alias Aiur.{Issue, PromptBuilder}
 
   defp turn_of(nil), do: ""
@@ -9,15 +10,21 @@ defmodule Aiur.AgentRunner.TurnPrompt do
   @doc false
   @spec build_turn_prompt(Issue.t(), keyword(), pos_integer(), pos_integer() | nil) :: String.t()
   def build_turn_prompt(issue, opts, 1, _max_turns) do
-    case first_turn_mode(issue, opts) do
-      :resumed -> resumed_turn_prompt()
-      :continuation -> continuation_turn_prompt(issue, opts, continuation_reason(issue))
-      :cold -> PromptBuilder.build_prompt(issue, opts)
-    end
+    workspace = Keyword.get(opts, :workspace)
+    prompt_opts = Keyword.delete(opts, :workspace)
+
+    prompt =
+      case first_turn_mode(issue, prompt_opts) do
+        :resumed -> resumed_turn_prompt() <> OptimisticPrompt.render(issue.optimistic_start)
+        :continuation -> continuation_turn_prompt(issue, prompt_opts, continuation_reason(issue))
+        :cold -> PromptBuilder.build_prompt(issue, prompt_opts)
+      end
+
+    prompt <> conflict_guidance(workspace)
   end
 
-  def build_turn_prompt(_issue, opts, turn_number, max_turns) do
-    """
+  def build_turn_prompt(issue, opts, turn_number, max_turns) do
+    prompt = """
     Continuation guidance:
 
     - The previous turn completed normally, but the issue is still in an active state.
@@ -29,8 +36,49 @@ defmodule Aiur.AgentRunner.TurnPrompt do
     - If manual `scripts/aiurdev --test` / `--test3` is blocked inside this agent workspace, stop that verification path and report it; do not retry from `/tmp`, a copied harness, or another clone.
     - Focus on the remaining ticket work and do not end the turn while the issue stays active unless you are truly blocked.
     #{PromptBuilder.integration_branch_restatement()}
+    #{PromptBuilder.merge_policy_restatement()}
     #{PromptBuilder.rename_test_audit_restatement()}
     """
+
+    prompt <> OptimisticPrompt.render(issue.optimistic_start)
+  end
+
+  defp conflict_guidance(workspace) when is_binary(workspace) do
+    workspace
+    |> Path.join("logs/before-run-merge-conflict.md")
+    |> File.read()
+    |> case do
+      {:ok, note} -> render_conflict_guidance(note)
+      {:error, _missing_or_unreadable_note} -> ""
+    end
+  end
+
+  defp conflict_guidance(_workspace), do: ""
+
+  defp render_conflict_guidance(note) do
+    case String.split(note, "## Conflicting files\n", parts: 2) do
+      [_heading, file_section] ->
+        files =
+          file_section
+          |> String.split("\n")
+          |> Enum.map(&String.trim/1)
+          |> Enum.filter(&String.starts_with?(&1, "- "))
+          |> Enum.map(&String.trim_leading(&1, "- "))
+
+        if files == [] do
+          ""
+        else
+          """
+
+          Base merge conflict from preflight:
+          Merge `origin/$AIUR_BASE_BRANCH` and resolve these files before continuing:
+          #{Enum.map_join(files, "\n", &"- `#{String.replace(&1, "`", "\\`")}`")}
+          """
+        end
+
+      [_missing_or_legacy_heading] ->
+        ""
+    end
   end
 
   # #2806: on a no-op run the old prompt pushed the agent HARDER to find work
@@ -43,7 +91,7 @@ defmodule Aiur.AgentRunner.TurnPrompt do
   # `Aiur.AgentRunner.TurnProgress.prompt_digest/1` strips it (it matches on the
   # "- Aiur observed that the last N turn" opening). Keep that opening intact if
   # this wording changes, or the no-op counter can never reach its cap.
-  defp noop_run_bullet(opts) when is_list(opts) do
+  defp noop_run_bullet(opts) do
     case Keyword.get(opts, :turn_progress) do
       %{consecutive_noops: noops} when is_integer(noops) and noops > 0 ->
         "\n    - Aiur observed that the last #{noops} turn(s) changed nothing it can see: no commit, no push, " <>
@@ -56,8 +104,6 @@ defmodule Aiur.AgentRunner.TurnPrompt do
         ""
     end
   end
-
-  defp noop_run_bullet(_opts), do: ""
 
   @doc """
   Which first-turn prompt a dispatch gets.
@@ -100,6 +146,7 @@ defmodule Aiur.AgentRunner.TurnPrompt do
     - If manual `scripts/aiurdev --test` / `--test3` is blocked inside this agent workspace, stop that verification path and report it; do not retry from `/tmp`, a copied harness, or another clone.
     - Do not end the turn while the issue stays active unless you are truly blocked.
     #{PromptBuilder.integration_branch_restatement()}
+    #{PromptBuilder.merge_policy_restatement()}
     #{PromptBuilder.rename_test_audit_restatement()}
     """
   end

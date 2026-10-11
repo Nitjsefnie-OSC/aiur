@@ -59,10 +59,85 @@ defmodule Aiur.LogFileTest do
           value -> Application.put_env(:aiur, :log_file, value)
         end
 
-        File.rm_rf!(tmp_root)
+        Aiur.TestCleanup.rm_rf!(tmp_root)
       end)
 
       %{log_file: log_file}
+    end
+
+    test "test logger rotates oversized output and retains recent messages", %{log_file: log_file} do
+      System.put_env("AIUR_DEBUG", "1")
+      on_exit(fn -> System.delete_env("AIUR_DEBUG") end)
+      assert :ok = LogFile.configure()
+      require Logger
+
+      for _ <- 1..12 do
+        Logger.info(String.duplicate("x", 1024 * 1024))
+        Logger.flush()
+        :ok = :logger_std_h.filesync(:aiur_file_log)
+      end
+
+      Logger.info("recent rotation marker")
+      Logger.flush()
+      :ok = :logger_std_h.filesync(:aiur_file_log)
+      assert File.read!(log_file) =~ "recent rotation marker"
+      assert File.regular?(log_file <> ".0")
+      total = Enum.sum(for path <- Path.wildcard(log_file <> "*"), do: File.stat!(path).size)
+      assert total < 10 * 1024 * 1024
+    end
+
+    test "headless boot persists daemon messages without debug", %{log_file: log_file} do
+      original_debug = System.get_env("AIUR_DEBUG")
+      original_root = System.get_env("AIUR_LOGS_ROOT")
+      original_headless = Application.get_env(:aiur, :headless)
+      original_level = Logger.level()
+      System.delete_env("AIUR_DEBUG")
+      System.delete_env("AIUR_LOGS_ROOT")
+      Application.put_env(:aiur, :headless, true)
+      Logger.configure(level: :info)
+
+      on_exit(fn ->
+        if original_debug, do: System.put_env("AIUR_DEBUG", original_debug), else: System.delete_env("AIUR_DEBUG")
+        if original_root, do: System.put_env("AIUR_LOGS_ROOT", original_root), else: System.delete_env("AIUR_LOGS_ROOT")
+        if is_nil(original_headless), do: Application.delete_env(:aiur, :headless), else: Application.put_env(:aiur, :headless, original_headless)
+        Logger.configure(level: original_level)
+      end)
+
+      assert :ok = LogFile.configure()
+      require Logger
+      Logger.info("dispatch cycle diagnostic 2980")
+      Logger.flush()
+      :ok = :logger_std_h.filesync(:aiur_file_log)
+      assert File.read!(log_file) =~ "dispatch cycle diagnostic 2980"
+      assert Logger.level() == :info
+    end
+
+    test "background boot writes into the exported run root before headless is configured", %{log_file: log_file} do
+      original_debug = System.get_env("AIUR_DEBUG")
+      original_root = System.get_env("AIUR_LOGS_ROOT")
+      original_headless = Application.get_env(:aiur, :headless)
+      original_level = Logger.level()
+      System.delete_env("AIUR_DEBUG")
+      System.put_env("AIUR_LOGS_ROOT", Path.dirname(Path.dirname(log_file)))
+      Application.delete_env(:aiur, :log_file)
+      Application.put_env(:aiur, :headless, false)
+      Logger.configure(level: :info)
+
+      on_exit(fn ->
+        if original_debug, do: System.put_env("AIUR_DEBUG", original_debug), else: System.delete_env("AIUR_DEBUG")
+        if original_root, do: System.put_env("AIUR_LOGS_ROOT", original_root), else: System.delete_env("AIUR_LOGS_ROOT")
+        if is_nil(original_headless), do: Application.delete_env(:aiur, :headless), else: Application.put_env(:aiur, :headless, original_headless)
+        Logger.configure(level: original_level)
+      end)
+
+      assert :ok = LogFile.ensure_session_log_file()
+      assert :ok = LogFile.configure()
+      require Logger
+      Logger.info("background boot diagnostic 2980")
+      Logger.flush()
+      :ok = :logger_std_h.filesync(:aiur_file_log)
+      assert File.read!(log_file) =~ "background boot diagnostic 2980"
+      assert Logger.level() == :info
     end
 
     test "removes the default console handler so logs do not flash on stdout", %{log_file: log_file} do
@@ -197,8 +272,6 @@ defmodule Aiur.LogFileTest do
       File.mkdir_p!(dir)
 
       on_exit(fn ->
-        File.rm_rf!(dir)
-
         case original_path do
           nil -> Aiur.Workflow.clear_workflow_file_path()
           path -> Aiur.Workflow.set_workflow_file_path(path)
@@ -208,6 +281,8 @@ defmodule Aiur.LogFileTest do
           nil -> System.delete_env("AIUR_DEBUG")
           value -> System.put_env("AIUR_DEBUG", value)
         end
+
+        Aiur.TestCleanup.rm_rf!(dir)
       end)
 
       %{dir: dir}

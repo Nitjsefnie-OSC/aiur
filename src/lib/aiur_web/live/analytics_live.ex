@@ -40,6 +40,7 @@ defmodule AiurWeb.AnalyticsLive do
      |> assign(:analytics, AiurWeb.Presenter.analytics_navigation())
      |> assign(:tracker_kind, kind(&Aiur.Config.tracker_kind/0, "tracker unavailable"))
      |> assign(:agent_kind, kind(&Aiur.Config.agent_kind/0, "agent unavailable"))
+     |> assign(:capture_enabled?, Aiur.RunTelemetry.telemetry_enabled?())
      |> assign(:range, :run)
      |> assign(:sort, :cpu)
      |> assign(:time_domain, nil)
@@ -119,10 +120,11 @@ defmodule AiurWeb.AnalyticsLive do
       <:banner>
         <Overview.decisions_banner retained_counts={@retained_counts} navigate />
       </:banner>
-
       {Phoenix.HTML.raw("<style>" <> Styles.css() <> "</style>")}
-
       <section id="analytics-page" class="analytics-root" aria-label="Run analytics">
+        <p :if={!@capture_enabled?} id="analytics-capture-off" role="status" class="an-empty">
+          Analytics capture is off (observability.telemetry_enabled: false). Experiments will have no data for this period.
+        </p>
         <div :if={@unavailable} class="an-empty" data-empty-reason={@unavailable}>
           <div :if={@unavailable == :no_telemetry}>
             <p><b>No run telemetry to analyze yet.</b></p>
@@ -137,7 +139,6 @@ defmodule AiurWeb.AnalyticsLive do
             <p>The durable run-telemetry stream could not be analyzed right now.</p>
           </div>
         </div>
-
         <div :if={!@unavailable} class="an-controls">
           <div>
             <span class="an-scope">Scope: <b>{scope_label(@analytics_scope)}</b></span>
@@ -147,7 +148,7 @@ defmodule AiurWeb.AnalyticsLive do
             <p :if={@source} class="an-source" data-source-kind={@source.kind} title={source_title(@source)}>
               Source: <b>{source_kind_label(@source.kind)}</b>
               <span :if={@source.boot_id} class="an-source-boot"> · boot {short_boot(@source.boot_id)}</span>
-              <span class="an-source-age"> · {age_label(@source.age_ms)}</span>
+              <span class="an-source-age"> · {age_label(@source.age_ms)}</span><span :if={@model && Map.get(@model, :retained_runs)}> · newest {@model.retained_runs.included} of {@model.retained_runs.total} retained runs</span>
             </p>
           </div>
           <div class="an-seg" role="group" aria-label="Time range">
@@ -155,7 +156,6 @@ defmodule AiurWeb.AnalyticsLive do
             <button type="button" class={[@range == :full && "on"]} phx-click="range" phx-value-range="full">Full log</button>
           </div>
         </div>
-
         <div :if={!is_nil(@time_domain)} class="an-zoombar" role="status">
           <span>Zoomed to {Charts.time_domain_label(@chart_model, @time_domain)}</span>
           <button type="button" phx-click="reset-time-domain">Reset</button>
@@ -418,29 +418,29 @@ defmodule AiurWeb.AnalyticsLive do
 
   defp rtk_absent(:disabled) do
     rtk_state(
-      "Output compression is off",
-      "rtk is not enabled. Set `agent.rtk.enabled: true` to let agents filter shell output."
+      "Savings reporting is off",
+      "rtk savings reporting is off. Set `agent.rtk.enabled: true` to show the host-level report; this does not control a host-wide hook."
     )
   end
 
   defp rtk_absent(:not_installed) do
     rtk_state(
       "rtk is not installed",
-      "rtk is enabled but no `rtk` executable is on the daemon's PATH, so nothing is being filtered."
+      "rtk reporting is enabled but no `rtk` executable is on the daemon's PATH, so savings are unavailable."
     )
   end
 
   defp rtk_absent(:gh_rewrite_not_excluded) do
     rtk_state(
-      "rtk is enabled but held back",
-      ~s(rtk's hook would rewrite `gh`, which would reshape the calls the GitHub quota guard governs. Add `exclude_commands = ["gh"]` under `[hooks]` in rtk's config to admit it.)
+      "rtk gh rewrite detected",
+      ~s(The host rtk hook would rewrite `gh`, reshaping calls the GitHub quota guard governs. A host-wide hook applies regardless of `agent.rtk.enabled`; configure rtk with `exclude_commands = ["gh"]` under `[hooks]`. Savings are withheld, but this report does not disable the hook.)
     )
   end
 
   defp rtk_absent(:no_data) do
     rtk_state(
       "No commands filtered yet",
-      "rtk is admitted but has recorded no commands, so there is no saving to report."
+      "rtk has recorded no commands, so there is no saving to report."
     )
   end
 

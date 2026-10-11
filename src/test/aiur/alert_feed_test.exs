@@ -8,7 +8,7 @@ defmodule Aiur.AlertFeedTest do
   setup do
     root = Aiur.TestSupport.tmp_root!("aiur-alert-feed")
     ledger = Path.join(root, "project.alerts.ndjson")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     {:ok, root: root, ledger: ledger}
   end
 
@@ -35,6 +35,22 @@ defmodule Aiur.AlertFeedTest do
     """)
 
     assert [] = AlertFeed.list(ledger_paths: [ledger], needs_attention: true)
+  end
+
+  test "re-emitted attention lists the latest event time and text", %{ledger: ledger} do
+    topic = "system.github.connectivity_lost"
+    first_time = "2026-10-01T07:08:17Z"
+    latest_time = "2026-10-06T08:58:18Z"
+    opts = [ledger_path: ledger]
+
+    assert :ok = AlertLedger.append(alert(topic, first_time, true, "preflight failed for #2633"), opts)
+    assert :ok = AlertLedger.append(alert(topic, latest_time, true, "preflight failed for #2979"), opts)
+
+    assert [listed] = AlertFeed.list(ledger_paths: [ledger], needs_attention: true)
+    assert listed["timestamp"] == latest_time
+    assert listed["first_seen_at"] == first_time
+    assert listed["message"] == "preflight failed for #2979"
+    assert listed["reason"] == "preflight failed for #2979"
   end
 
   test "collapses a backlog of repeated resolutions down to the transition that opened it", %{ledger: ledger} do

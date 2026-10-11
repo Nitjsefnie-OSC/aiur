@@ -28,6 +28,6 @@ export function build(outputDir = path.join(packageRoot, 'dist')) {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  build();
+  build(path.resolve(packageRoot, process.argv[2] ?? 'dist'));
   console.log('✓ Build complete');
 }

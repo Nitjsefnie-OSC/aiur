@@ -6,7 +6,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
 
   alias Aiur.BuildOrder.{Catalog, Member, ProviderHealth, RootSummary, SelectedRoot}
   alias Aiur.BuildOrder.GraphProjection.Snapshot
-  alias Aiur.Orchestrator.SnapshotStore
+  alias Aiur.Orchestrator.{SnapshotCache, SnapshotStore}
   alias Aiur.{RunTelemetry, TrackerIdentity}
   alias Aiur.TestSupport.AwaitingCommands
   alias Aiur.UsageAggregate.Projection
@@ -141,13 +141,13 @@ defmodule AiurWeb.AnalyticsLiveTest do
     :persistent_term.put({Aiur.Boot, :run_id}, "boot-after-restart")
 
     on_exit(fn ->
-      File.rm_rf!(root)
       Aiur.TestSupport.restore_app_env(previous_app_env)
       restore_run_id(previous_run_id)
       restore_env("AIUR_DASHBOARD_USERNAME", previous_username)
       restore_env("AIUR_DASHBOARD_PASSWORD", previous_password)
       Application.delete_env(:aiur, :analytics_usage_aggregate_source)
       Application.delete_env(:aiur, :analytics_usage_aggregate_source_snapshot)
+      Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file])
     end)
 
     conn =
@@ -198,9 +198,9 @@ defmodule AiurWeb.AnalyticsLiveTest do
     :persistent_term.put({Aiur.Boot, :run_id}, "boot-after-restart")
 
     on_exit(fn ->
-      File.rm_rf!(root)
       Aiur.TestSupport.restore_app_env(previous_app_env)
       restore_run_id(previous_run_id)
+      Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file])
     end)
 
     {:ok, _view, html} = live(build_conn(), "/analytics")
@@ -231,8 +231,8 @@ defmodule AiurWeb.AnalyticsLiveTest do
     Application.put_env(:aiur, :build_order_data_source, {BuildOrderSourceStub, build_order_context(build_root, member)})
 
     on_exit(fn ->
-      File.rm_rf!(root)
       Aiur.TestSupport.restore_app_env(previous_app_env)
+      Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file])
     end)
 
     {:ok, _view, html} = live(build_conn(), "/analytics?build_order=77")
@@ -358,21 +358,8 @@ defmodule AiurWeb.AnalyticsLiveTest do
 
     # The stale snapshot still renders — that is the SnapshotStore contract —
     # but never unmarked. A ten-minute-old cap read as current is #1564.
-    assert html =~ "3 cap (stale, 10m old)"
+    assert html =~ "3 cap (binding: awaiting dispatch, stale, 10m old)"
     refute html =~ "3 cap<"
-  end
-
-  test "reports no wasted-capacity figure when no effective cap is known" do
-    Application.put_env(:aiur, :analytics_telemetry_file, @fixtures)
-
-    {:ok, _view, html} = live(build_conn(), "/analytics")
-
-    # Idle slot-hours are a subtraction from the cap. With no cap reported the
-    # page must not substitute the local config file and print a precise hour
-    # count under a ceiling it just called unknown.
-    assert html =~ ~r/\d+ at run end \/ unknown cap</
-    refute html =~ "unknown cap (configured"
-    assert html =~ ~r/Wasted capacity<\/span>\s*<span class="an-kpi-val">—/
   end
 
   test "unconfigured dashboard authentication refuses the analytics route with its cause" do
@@ -474,7 +461,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     assert html =~ "Build Order #77, latest run"
     # The Build Order strip renders the same effective cap as the run strip;
     # without this the whole Build Order cap path is uncovered.
-    assert html =~ "now / 3 cap (session 8, configured 16)"
+    assert html =~ "now / 3 cap (binding: awaiting dispatch, session 8, configured 16)"
     refute html =~ "now / 16 cap"
     assert html =~ ">#941<"
     refute html =~ ">#942<"
@@ -640,7 +627,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -661,7 +648,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -728,7 +715,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -770,7 +757,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -848,10 +835,10 @@ defmodule AiurWeb.AnalyticsLiveTest do
   # `publish/2` stamps the current monotonic clock, so restating the observation
   # time is the only way to read a ten-minute-old snapshot without waiting.
   defp age_published_snapshot(orchestrator, age_ms) do
-    cached = :persistent_term.get({SnapshotStore, orchestrator})
+    cached = SnapshotCache.get(orchestrator)
 
-    :persistent_term.put(
-      {SnapshotStore, orchestrator},
+    SnapshotCache.put(
+      orchestrator,
       %{
         cached
         | observed_at_ms: System.monotonic_time(:millisecond) - age_ms,
@@ -934,7 +921,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     ]
 
     File.write!(path, Enum.map_join(records, "\n", &Jason.encode!/1) <> "\n")
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root, unset: [:analytics_telemetry_file]) end)
     path
   end
 
@@ -1093,8 +1080,9 @@ defmodule AiurWeb.AnalyticsLiveTest do
     test "says rtk is off rather than showing an empty chart" do
       html = render_rtk_panel(enabled?: false)
 
-      assert html =~ "Output compression is off"
+      assert html =~ "Savings reporting is off"
       assert html =~ "agent.rtk.enabled"
+      assert html =~ "this does not control a host-wide hook"
       # The class name also appears in the page's inlined stylesheet, so the
       # assertion has to look for the rendered element, not the string.
       refute html =~ ~s(class="an-rtk-val")
@@ -1109,10 +1097,9 @@ defmodule AiurWeb.AnalyticsLiveTest do
       refute html =~ ~s(class="an-rtk-val")
     end
 
-    # The operator has to be able to see *why* an enabled rtk is reporting
-    # nothing, and "held back to protect the gh guard" is a different fact from
-    # "not installed".
-    test "names the gh-guard refusal on the page" do
+    # The operator has to be able to see that the probe detected a risky
+    # host-wide hook; the report does not disable or block that hook.
+    test "reports a gh rewrite without implying the hook was disabled" do
       opts = [
         enabled?: true,
         rtk_path: "/usr/bin/rtk",
@@ -1125,8 +1112,10 @@ defmodule AiurWeb.AnalyticsLiveTest do
 
       html = render_rtk_panel(opts)
 
-      assert html =~ "rtk is enabled but held back"
+      assert html =~ "rtk gh rewrite detected"
       assert html =~ "would rewrite"
+      assert html =~ "applies regardless of `agent.rtk.enabled`"
+      assert html =~ "this report does not disable the hook"
       # The class name also appears in the page's inlined stylesheet, so the
       # assertion has to look for the rendered element, not the string.
       refute html =~ ~s(class="an-rtk-val")

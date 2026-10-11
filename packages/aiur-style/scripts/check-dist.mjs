@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 
 import fs from 'fs';
-import { build } from './build.mjs';
 import path from 'path';
 import { tmpdir } from 'os';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,7 +36,10 @@ try {
 
   // Build into temp directory
   console.log('Building into temporary directory...');
-  build(tempDistDir);
+  execFileSync(process.execPath, [path.join(__dirname, 'build.mjs'), tempDistDir], {
+    cwd: packageRoot,
+    stdio: 'inherit'
+  });
 
   // Compare files
   console.log('Comparing dist/ with build output...');
@@ -73,19 +75,13 @@ try {
   if (diffs.length > 0) {
     console.error('✗ dist/ is out of date:');
     diffs.forEach(diff => console.error(`  ${diff}`));
-    process.exit(1);
+    process.exitCode = 1;
   } else {
     console.log('✓ dist/ is up to date');
-    process.exit(0);
   }
 } catch (error) {
   console.error('✗ check-dist failed:', error.message);
-  process.exit(1);
+  process.exitCode = 1;
 } finally {
-  // Clean up temp directory
-  try {
-    execSync(`rm -rf "${tempDir}"`);
-  } catch (e) {
-    // Ignore cleanup errors
-  }
+  fs.rmSync(tempDir, { recursive: true, force: true });
 }
