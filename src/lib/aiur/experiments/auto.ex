@@ -18,7 +18,9 @@ defmodule Aiur.Experiments.Auto do
 
   @spec status() :: map()
   def status do
-    %{enabled: settings().enabled, sources: [], deploy_ledger: not is_nil(Process.whereis(DeployLedger))}
+    config = settings()
+    sources = if config.enabled, do: configured_sources(config), else: []
+    %{enabled: config.enabled, sources: sources, deploy_ledger: not is_nil(Process.whereis(DeployLedger))}
   end
 
   @spec previous_deploy(keyword()) :: {:ok, map() | nil} | {:error, term()}
@@ -26,6 +28,12 @@ defmodule Aiur.Experiments.Auto do
 
   @spec deploys({DateTime.t(), DateTime.t()}, keyword()) :: {:ok, [map()]} | {:error, term()}
   def deploys(range, opts \\ []), do: DeployLedger.list(range, opts)
+
+  defp configured_sources(config) do
+    [{:aiur_version, config.version_line}, {:repo_release, config.release_line}, {:feature, true}]
+    |> Enum.filter(&elem(&1, 1))
+    |> Enum.map(fn {source, _enabled?} -> %{source: source, last_seen: nil} end)
+  end
 
   defp settings do
     case Aiur.Config.settings() do
