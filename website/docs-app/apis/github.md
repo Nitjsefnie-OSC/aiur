@@ -764,7 +764,7 @@ A label write also corrects the labels on the issue Aiur already holds, and does
 
 A write that fails records nothing.
 
-Main watch accepts completed check deliveries without a PR only for the configured base branch and GitHub Actions app. It reports failure signatures, annotated tests, known flakes and suspect merges. Canary reruns require a capability probe confirming Actions write permission; without it, a silent window raises Executor attention. Failed or denied reads emit `system.main.ci.unavailable` once until a successful read and retain the last known state. These reads and reruns claim no quota saving.
+Main watch accepts completed base-branch Actions checks without a PR. Failure events include tests, flake classifications and suspect merges. Reruns require Actions write. Denied reads emit `system.main.ci.unavailable` once until success; status marks the retained state unavailable. No quota saving is claimed.
 
 ## Optional webhook
 
