@@ -4,10 +4,10 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   import Aiur.OrchestratorDeactivateSupport
   alias Aiur.CI.FailureDigest
   alias Aiur.ControlCLI.CiWait
-  alias Aiur.{Issue, JsonStore}
   alias Aiur.Events.GithubCIPoller.Recovery, as: CiRecovery
   alias Aiur.GitHub.CIRecoveryStore, as: CiRecoveryStore
   alias Aiur.GitHub.ResourceStore
+  alias Aiur.{Issue, JsonStore}
   alias Aiur.Orchestrator.CiLifecycle
   alias Aiur.Orchestrator.StatusReport.SnapshotPayload
   alias Aiur.OrchestratorDeactivateSupport.CIWatcherGitHubClient
