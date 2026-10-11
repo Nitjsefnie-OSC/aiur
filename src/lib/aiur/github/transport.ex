@@ -140,10 +140,10 @@ defmodule Aiur.GitHub.Transport do
     quota_request(req, fn -> Req.post(url, options) end)
   end
 
-  defp do_request(%{method: :patch, url: url, token: token, body: body} = req) do
+  defp do_request(%{method: method, url: url, token: token, body: body} = req) when method in [:patch, :put] do
     quota_request(req, fn ->
       options = github_headers(token, req) |> request_options(req) |> Keyword.put(:json, body)
-      Req.patch(url, options)
+      Req.request(Keyword.merge(options, method: method, url: url))
     end)
   end
 
