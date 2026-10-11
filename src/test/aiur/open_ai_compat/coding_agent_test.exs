@@ -1,6 +1,6 @@
 defmodule Aiur.OpenAICompat.CodingAgentTest do
   use ExUnit.Case, async: true
-
+  @moduletag :r7_characterization
   alias Aiur.Issue
   alias Aiur.OpenAICompat.{CodingAgent, Transport}
 
