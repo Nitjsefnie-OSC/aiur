@@ -14,7 +14,9 @@ for (const cell of HOME_MATRIX) test(`computed styles match the design: ${cell.n
   test.setTimeout(60_000)
   const pair = await transplant(browser, cell)
   try {
-    censusStates.push({ state: cell.name, records: pair.censusRecords })
+    // Only the first state needs syntax trees; keep each state’s fresh selector evidence.
+    const records = censusStates.length ? pair.censusRecords.filter(record => record.selector) : pair.censusRecords
+    censusStates.push({ state: cell.name, records })
     const dead = pair.censusRecords.filter(r => r.selector).flatMap(r => r.matches.filter(m => DEAD.test(m.selector)))
     // Future re-import guard: every matrix cell still proves deleted selectors have no matches.
     expect(dead.filter(m => m.count > 0), 'dead selector matched').toEqual([])
@@ -206,13 +208,15 @@ test('home base utilities keep the design font stack', async ({ browser }) => {
 test('snapshot codec preserves every native computed property', async ({ browser }) => {
   const pair = await transplant(browser, BASE)
   try {
-    const encoded = await pair.product.evaluate(styleSnapshot, { roots: '.bd-card.now', custom: pair.custom, index: 0 })
-    expect(typeof encoded).toBe('string')
-    const actual = JSON.parse(encoded)[0].styles.element
-    const native = await pair.product.locator('.bd-card.now').first().evaluate((element, custom) => {
-      const style = getComputedStyle(element)
-      return Object.fromEntries([...style, ...custom].filter(property => !property.startsWith('--') || custom.includes(property)).map(property => [property, style.getPropertyValue(property)]))
-    }, pair.custom)
-    expect(actual).toEqual(native)
+    for (const selector of ['.bd-card.now', 'svg']) {
+      const encoded = await pair.product.evaluate(styleSnapshot, { roots: selector, custom: pair.custom, index: 0 })
+      expect(typeof encoded).toBe('string')
+      const actual = JSON.parse(encoded)[0].styles.element
+      const native = await pair.product.locator(selector).first().evaluate((element, custom) => {
+        const style = getComputedStyle(element)
+        return Object.fromEntries([...style, ...custom].filter(property => !property.startsWith('--') || custom.includes(property)).map(property => [property, style.getPropertyValue(property)]))
+      }, pair.custom)
+      expect(actual).toEqual(native)
+    }
   } finally { await pair.close() }
 })

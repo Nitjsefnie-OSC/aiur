@@ -89,11 +89,12 @@ export function styleSnapshot({ roots, custom = [], reduced = false, index }) {
   const matches = [...document.querySelectorAll(roots)]
   const nodes = (index == null ? matches : [matches[index]]).flatMap(root => [root, ...root.querySelectorAll('*')])
   const excluded = reduced ? ['animation-duration', 'animation-iteration-count', 'transition-duration', 'scroll-behavior'] : []
+  // The engine exposes the same standard property names for every element and pseudo-element.
+  const properties = [...getComputedStyle(document.documentElement)].filter(property => !property.startsWith('--') && !excluded.includes(property))
+  for (const property of custom) if (!excluded.includes(property) && !properties.includes(property)) properties.push(property)
   const read = style => {
     const values = {}
-    for (const property of [...style, ...custom]) {
-      if (!excluded.includes(property) && (!property.startsWith('--') || custom.includes(property))) values[property] = style.getPropertyValue(property)
-    }
+    for (const property of properties) values[property] = style.getPropertyValue(property)
     return values
   }
   const snapshot = nodes.map(e => {
