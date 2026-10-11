@@ -6,7 +6,7 @@ defmodule Aiur.Claude.CodingAgent.Methods do
 
   require Logger
   alias Aiur.AgentRunner.ToolExecutor
-  alias Aiur.AppServer.{Messages, OperatorDelivery, Rpc, TurnState}
+  alias Aiur.AppServer.{Messages, OperatorDelivery, Rpc, Transport, TurnState}
   alias Aiur.AppServer.Rpc.StreamDiagnostics
   alias Aiur.Claude.{AccountMeters, CodingAgent, NotificationPolicy}
 
@@ -112,7 +112,7 @@ defmodule Aiur.Claude.CodingAgent.Methods do
   end
 
   @doc false
-  @spec handle_malformed(map(), String.t(), port()) :: {:continue, map()}
+  @spec handle_malformed(map(), String.t(), port() | pid()) :: {:continue, map()}
   def handle_malformed(state, payload_string, port) do
     Rpc.log_non_json_stream_line(payload_string, "turn stream", "Claude")
 
@@ -144,7 +144,7 @@ defmodule Aiur.Claude.CodingAgent.Methods do
   defp session_now(session), do: Map.get(session, :clock, &DateTime.utc_now/0).()
 
   @doc false
-  @spec metadata_from_message(port(), term()) :: map()
+  @spec metadata_from_message(port() | pid(), term()) :: map()
   def metadata_from_message(port, payload) do
     port |> port_metadata() |> maybe_set_usage(payload)
   end
@@ -173,12 +173,14 @@ defmodule Aiur.Claude.CodingAgent.Methods do
   defp put_if_number(metadata, _key, _value), do: metadata
 
   @doc false
-  @spec port_metadata(port()) :: map()
-  def port_metadata(port) when is_port(port) do
-    case :erlang.port_info(port, :os_pid) do
+  @spec port_metadata(port() | pid()) :: map()
+  def port_metadata(port) when is_port(port) or is_pid(port) do
+    case Transport.os_pid(port) do
       {:os_pid, os_pid} ->
-        %{provider_pid: to_string(os_pid), claude_app_server_pid: to_string(os_pid)}
-        |> maybe_put_agent_process_group(os_pid)
+        port
+        |> Transport.metadata()
+        |> Map.merge(%{provider_pid: to_string(os_pid), claude_app_server_pid: to_string(os_pid)})
+        |> maybe_put_agent_process_group(Transport.metadata(port)[:pgid] || os_pid)
 
       _ ->
         %{}

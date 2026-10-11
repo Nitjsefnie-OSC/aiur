@@ -11,7 +11,7 @@ defmodule Aiur.Claude.CodingAgent do
   @behaviour Aiur.AppServer.Adapter
 
   require Logger
-  alias Aiur.AppServer.{Adapter, Messages, Rpc}
+  alias Aiur.AppServer.{Adapter, Messages, Rpc, Transport}
   alias Aiur.Claude.{AccountGeneration, NotificationPolicy}
   alias Aiur.Claude.CodingAgent.Methods
   alias Aiur.Codex.DynamicTool
@@ -22,7 +22,7 @@ defmodule Aiur.Claude.CodingAgent do
   @turn_start_id 3
 
   @type session :: %{
-          port: port(),
+          port: port() | pid(),
           metadata: map(),
           thread_id: String.t(),
           workspace: Path.t(),
@@ -109,7 +109,7 @@ defmodule Aiur.Claude.CodingAgent do
 
   @spec stop_session(session()) :: :ok
   @impl Aiur.CodingAgent.Backend
-  def stop_session(%{port: port} = session) when is_port(port) do
+  def stop_session(%{port: port} = session) when is_port(port) or is_pid(port) do
     AccountGeneration.process_stopped(session)
   after
     stop_port(port)
@@ -122,7 +122,7 @@ defmodule Aiur.Claude.CodingAgent do
         %{port: port, thread_id: thread_id, workspace: workspace} = session,
         %{kind: :text, body: text}
       )
-      when is_port(port) and is_binary(thread_id) and is_binary(text) do
+      when (is_port(port) or is_pid(port)) and is_binary(thread_id) and is_binary(text) do
     request_id = :erlang.unique_integer([:positive])
 
     frame = %{
@@ -170,7 +170,8 @@ defmodule Aiur.Claude.CodingAgent do
       workspace,
       Aiur.Claude.Config.command(),
       fn port -> on_provider_started.(provider_metadata(port)) end,
-      env: telemetry_env ++ env
+      env: telemetry_env ++ env,
+      backend: "claude"
     )
   end
 
@@ -179,15 +180,16 @@ defmodule Aiur.Claude.CodingAgent do
       workspace,
       Aiur.Claude.Config.command(),
       fn port -> on_provider_started.(provider_metadata(port)) end,
-      env: env
+      env: env,
+      backend: "claude"
     )
   end
 
   defp provider_metadata(port) do
-    case :erlang.port_info(port, :os_pid) do
+    case Transport.os_pid(port) do
       {:os_pid, os_pid} ->
         %{root_pid: os_pid}
-        |> maybe_put_process_group(os_pid)
+        |> maybe_put_process_group(Transport.metadata(port)[:pgid] || os_pid)
         |> Map.put(:descendant_pids, ProcessTree.process_tree(os_pid))
 
       _ ->
@@ -295,12 +297,12 @@ defmodule Aiur.Claude.CodingAgent do
 
   @impl Aiur.AppServer.Adapter
   @doc false
-  @spec handle_malformed(map(), String.t(), port()) :: {:continue, map()}
+  @spec handle_malformed(map(), String.t(), port() | pid()) :: {:continue, map()}
   defdelegate handle_malformed(state, payload_string, port), to: Methods
 
   @impl Aiur.AppServer.Adapter
   @doc false
-  @spec metadata_from_message(port(), term()) :: map()
+  @spec metadata_from_message(port() | pid(), term()) :: map()
   defdelegate metadata_from_message(port, payload), to: Methods
 
   @impl Aiur.AppServer.Adapter
@@ -312,8 +314,18 @@ defmodule Aiur.Claude.CodingAgent do
     Rpc.with_timeout_response(port, request_id, Config.agent_read_timeout_ms(), "", "Claude")
   end
 
+  defp stop_port(port) when is_pid(port) do
+    metadata = Transport.metadata(port)
+    Transport.close(port)
+    Aiur.ProcessReaper.unregister({:os_pid, metadata[:relay_pid]})
+    Aiur.ProcessReaper.unregister({:os_pid, metadata[:provider_pid]})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
   defp stop_port(port) when is_port(port) do
-    case :erlang.port_info(port, :os_pid) do
+    case Transport.os_pid(port) do
       {:os_pid, os_pid} ->
         Aiur.ProcessReaper.unregister({:os_pid, os_pid})
         ProcessTree.graceful_kill_tree(os_pid)
@@ -323,7 +335,7 @@ defmodule Aiur.Claude.CodingAgent do
     end
 
     try do
-      Port.close(port)
+      Transport.close(port)
       :ok
     rescue
       ArgumentError -> :ok
@@ -357,17 +369,13 @@ defmodule Aiur.Claude.CodingAgent do
 
   @impl Aiur.AppServer.Adapter
   @doc false
-  @spec send_frame(port(), map()) :: :ok | {:error, :port_closed}
+  @spec send_frame(port() | pid(), map()) :: :ok | {:error, :port_closed}
   def send_frame(port, message) do
     line = message |> Map.put("jsonrpc", "2.0") |> Jason.encode!()
-    Port.command(port, line <> "\n")
+    Transport.command(port, line <> "\n")
     :ok
   rescue
-    # The port (the agent backend's stdin/stdout) has already closed — the
-    # backend exited or the peer tore the transport down. Swallow the write so
-    # a transport teardown never crashes the turn with an unhandled
-    # ArgumentError; the `{:exit_status, ...}` message already queued for this
-    # port drives the clean `{:error, {:port_exit, N}}` result.
+    # The queued exit-status message reports transport teardown to the turn loop.
     ArgumentError -> {:error, :port_closed}
   end
 end
