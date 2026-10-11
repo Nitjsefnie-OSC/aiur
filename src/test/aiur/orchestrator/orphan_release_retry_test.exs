@@ -4,7 +4,7 @@ defmodule Aiur.Orchestrator.OrphanReleaseRetryTest do
   alias Aiur.Issue
   alias Aiur.Orchestrator.{StartupClaimReconciler, State}
 
-  test "stale review base falls back to guarded rework in the same recovery attempt" do
+  test "stale review base does not fall back to rework" do
     opts =
       Keyword.merge(opts(),
         open_pr_fetcher: fn _ -> {:ok, %{"number" => 42}} end,
@@ -18,15 +18,10 @@ defmodule Aiur.Orchestrator.OrphanReleaseRetryTest do
       )
 
     {released, [result]} = StartupClaimReconciler.reconcile(%State{}, [issue()], opts)
-    assert result.state == "rework"
-    assert result.state_labels == ["rework"]
-    assert released.startup_claim_reconciliation_failures == %{}
-    assert released.orphaned_claim_since == %{}
+    assert result.state == "in-progress"
+    assert released.startup_claim_reconciliation_failures["3710"].reason == {:stale_review_base, %{pr_number: 42}}
     assert_received {:write, "human-review"}
-    assert_received {:write, "rework"}
-    assert_received {:comment, body}
-    assert body =~ "to rework"
-    assert body =~ "Integrate the base"
+    refute_received {:write, "rework"}
     refute_received {:comment, _}
   end
 

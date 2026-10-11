@@ -95,6 +95,17 @@ defmodule Aiur.GitHub.HumanReviewGateMergeQueueTest do
     refute_receive {:label_written, _labels}, 100
   end
 
+  test "pull_request_mergeability returns only GitHub's explicit mergeability status" do
+    for status <- ["MERGEABLE", "CONFLICTING", "UNKNOWN"] do
+      fetch = fn %{method: :post, body: %{"query" => query, "variables" => %{"number" => 77}}} ->
+        assert query =~ "AiurPullRequestMergeability"
+        {:ok, %{status: 200, body: %{"data" => %{"repository" => %{"pullRequest" => %{"mergeable" => status}}}}}}
+      end
+
+      assert HumanReviewGate.pull_request_mergeability(77, request_fun: fetch) == {:ok, status}
+    end
+  end
+
   describe "the rework writer leaves a pull request approved at its head and queued alone" do
     @pr %{"number" => 77, "head" => %{"sha" => "tested-head"}}
     @threads [open_pr_fetcher: &__MODULE__.open_pr/1, unresolved_threads_fetcher: &__MODULE__.unresolved/1]

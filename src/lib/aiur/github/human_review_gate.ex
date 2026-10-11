@@ -33,6 +33,25 @@ defmodule Aiur.GitHub.HumanReviewGate do
   end
 
   @doc false
+  @spec pull_request_mergeability(integer(), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def pull_request_mergeability(pr_number, opts \\ []) do
+    query = "query AiurPullRequestMergeability($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { mergeable } } }"
+
+    with {:ok, token} <- Transport.require_token(opts),
+         {:ok, {owner, name}} <- Transport.parse_repo(),
+         {:ok, %{"data" => %{"repository" => %{"pullRequest" => %{"mergeable" => mergeability}}}}} <-
+           Transport.github_graphql(Keyword.get(opts, :request_fun, &Transport.default_request_fun/1), token, query, %{"owner" => owner, "name" => name, "number" => pr_number},
+             caller: "orphan_claim_mergeability"
+           ),
+         true <- mergeability in ["MERGEABLE", "CONFLICTING", "UNKNOWN"] do
+      {:ok, mergeability}
+    else
+      {:error, _reason} = error -> error
+      _invalid -> {:error, :invalid_mergeability_observation}
+    end
+  end
+
+  @doc false
   @spec verify_human_review_review_threads_clear(map(), String.t()) :: :ok | {:error, term()}
   def verify_human_review_review_threads_clear(context, state_name) do
     if StatePolicy.human_review_target_state?(state_name) do

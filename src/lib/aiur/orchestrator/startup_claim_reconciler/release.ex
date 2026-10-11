@@ -2,12 +2,9 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
   @moduledoc false
 
   alias Aiur.{Alerts, Config, Issue, Tracker}
-  alias Aiur.GitHub.Client, as: GitHubClient
+  alias Aiur.GitHub.{Client, HumanReviewGate}
   alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
   alias Aiur.Orchestrator.StartupClaimReconciler.Observation
-
-  # Without this the rework agent finds no review to answer and no-ops (#3846).
-  @stale_base_note " No review asked for a change: the pull request is behind its base branch and conflicts with or touches files changed there. Integrate the base, push, and hand it back for review."
 
   @spec run(Issue.t(), keyword()) :: {:ok, String.t()} | {:error, term()} | {:defer, term()}
   def run(issue, opts) do
@@ -43,11 +40,6 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
       false ->
         {:defer, :workspace_owned}
 
-      {:error, {:stale_review_base, _}} = error ->
-        if DispatchPolicy.state_slug(target) == "human-review",
-          do: write_release(issue, lifecycle_state_name("rework", opts), Keyword.put(opts, :release_note, @stale_base_note)),
-          else: error
-
       {:error, _reason} = error ->
         error
     end
@@ -64,22 +56,46 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
   end
 
   defp pr_target(pr, opts) do
-    fetch = Keyword.get(opts, :pr_fetcher, &GitHubClient.fetch_open_pull_request/1)
+    fetch = Keyword.get(opts, :pr_fetcher, &Client.fetch_open_pull_request/1)
 
     case fetch.(Map.fetch!(pr, "number")) do
-      {:ok, %{"mergeable" => false}} -> {:ok, "rework"}
-      {:ok, %{"mergeable" => true} = current} -> review_target(current, opts)
+      {:ok, %{} = current} -> mergeability_target(current, opts)
       {:ok, nil} -> {:error, :pull_request_changed}
       {:ok, _unknown} -> {:error, :mergeability_unknown}
       {:error, _reason} = error -> error
     end
   end
 
+  defp mergeability_target(%{"mergeable" => false, "number" => number} = pr, opts) do
+    fetch = Keyword.get(opts, :mergeability_fetcher, &HumanReviewGate.pull_request_mergeability/1)
+
+    case fetch.(number) do
+      {:ok, "CONFLICTING"} -> {:ok, "rework"}
+      {:ok, status} when status in ["MERGEABLE", "UNKNOWN"] -> review_target(pr, opts)
+      {:ok, _unknown} -> {:error, :mergeability_unknown}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp mergeability_target(%{"mergeable" => true} = pr, opts), do: review_target(pr, opts)
+  defp mergeability_target(%{"mergeable" => "MERGEABLE"} = pr, opts), do: review_target(pr, opts)
+  defp mergeability_target(%{"mergeable" => "UNKNOWN"} = pr, opts), do: review_target(pr, opts)
+  defp mergeability_target(%{"mergeable" => "CONFLICTING"}, _opts), do: {:ok, "rework"}
+  defp mergeability_target(_pr, _opts), do: {:error, :mergeability_unknown}
+
   defp review_target(pr, opts) do
     case ReworkGate.open_pull_request_rework_verdict(pr, opts) do
-      {:ok, :rework} -> {:ok, "rework"}
-      {:skip, :no_unresolved_review_threads} -> body_review_target(pr, opts)
-      {:error, _reason} = error -> error
+      {:ok, :rework} ->
+        case ReworkGate.approved_and_queued?(pr, opts) do
+          {:ok, true} -> body_review_target(pr, opts)
+          _not_approved_and_queued -> {:ok, "rework"}
+        end
+
+      {:skip, :no_unresolved_review_threads} ->
+        body_review_target(pr, opts)
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
