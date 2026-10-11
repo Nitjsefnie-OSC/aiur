@@ -164,6 +164,7 @@
       "reason": "#3306 lifecycle-write owner: #3259 preserves the exact sanctioned scan exception"
     },
     {
+<<<<<<< HEAD
       "from": "orchestration",
       "to_module": "Aiur.Workspace.HostLock",
       "kind": "reference",
@@ -172,6 +173,15 @@
         "src/lib/aiur/orchestrator/restack_scheduler.ex"
       ],
       "reason": "#3771: host lock handoff for idle dependent workspace mutation"
+=======
+      "id": "experiments", "name": "Experiment specifications and evidence", "layer": 3, "kind": "optional",
+      "paths": ["src/lib/aiur/experiments.ex", "src/lib/aiur/experiments/**", "src/lib/aiur/experiments_cli.ex"],
+      "facades": ["Aiur.Experiments.Auto", "Aiur.Experiments", "Aiur.Experiments.Spec", "Aiur.Experiments.Predicate", "Aiur.Experiments.Observation", "Aiur.Experiments.MetricPack", "Aiur.ExperimentsCLI", "Aiur.Experiments.CapabilityProvider"], "facade_pending": null,
+      "requires": ["kernel", "config", "event-bus", "identity", "workspace"], "optional": ["telemetry", "accounting", "tracker"],
+      "owns": {"config": ["experiments"], "env": [], "state": ["experiments_path"], "capabilities": ["experiments", "experiments.metric_packs"]},
+      "prior": [],
+      "forbid": ["Aiur.Orchestrator", "Aiur.Orchestrator.*", "Aiur.GitHub", "Aiur.GitHub.*"]
+>>>>>>> ae7422b15 (Add automatic config and deploy ledger)
     },
     {
       "from": "orchestration",

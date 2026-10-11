@@ -222,22 +222,16 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 
 `poll_seconds: 0` disables periodic refreshes, not dispatch-time freshness checks.
 
-When a prewarm build or freshness probe holds fleet dispatch, an independent idle
-watchdog releases the gate for cold-clone fallback once the hold has been stalled
-for 10 minutes.
+When a prewarm build or freshness probe holds fleet dispatch, an independent idle watchdog releases the gate for cold-clone fallback once the hold has been stalled for 10 minutes.
 
 "Stalled" means the hold's worker process is dead with no completion signal in
 flight. A build that is still progressing — however slow a cold `deps` +
 `compile` + `dialyzer` run may be — is never killed by the watchdog.
 
-The `system.dispatch.prewarm_blocked` alert is not raised for a routine refresh:
-a freshness probe that self-clears in seconds holds dispatch too briefly to
-matter to an operator.
+The `system.dispatch.prewarm_blocked` alert is not raised for a routine refresh: a freshness probe that self-clears in seconds holds dispatch too briefly to matter to an operator.
 
-The alert fires only once a hold has persisted past the routine bound: a probe
-that fails or exceeds its own timeout, a build that genuinely holds the fleet,
-or a stalled hold the watchdog releases. Its `.resolved` fires when the gate
-clears.
+The alert fires only once a hold has persisted past the routine bound: a probe that fails or exceeds its own timeout, a build that genuinely holds the fleet,
+or a stalled hold the watchdog releases. Its `.resolved` fires when the gate clears.
 
 ## pr_watch
 
@@ -249,11 +243,8 @@ clears.
 
 ## pr_health
 
-Periodic scan of open pull requests for conditions that stall PRs silently: a
-PR authored by a configured human merger (unmergeable by construction, since
-GitHub blocks self-approval), a non-draft PR older than `stale_hours` with no
-review, and a rework ticket whose PR's own contribution has genuinely changed
-since its blocking review.
+Periodic scan of open pull requests for conditions that stall PRs silently: a PR authored by a configured human merger (unmergeable by construction, since
+GitHub blocks self-approval), a non-draft PR older than `stale_hours` with no review, and a rework ticket whose PR's own contribution has genuinely changed since its blocking review.
 
 Findings raise needs-attention alerts in the Executor's alert feed
 (`system.pr_health.unmergeable_author` / `system.pr_health.stale_unreviewed` /
@@ -261,19 +252,15 @@ Findings raise needs-attention alerts in the Executor's alert feed
 
 Enabling the scan enables the **rework re-queue**: a ticket in
 `agent:rework` whose PR's own contribution diff (`merge-base..head`) changed
-since the blocking `CHANGES_REQUESTED` review is moved to `agent:human-review`
-for the second look — GitHub keeps `reviewDecision = CHANGES_REQUESTED` until
+since the blocking `CHANGES_REQUESTED` review is moved to `agent:human-review` for the second look — GitHub keeps `reviewDecision = CHANGES_REQUESTED` until
 a brand-new review, so nothing else re-queues it.
 
-A PR whose head only moved via merges of the base branch (own contribution
-unchanged) is NOT re-queued; it raises `system.pr_health.rework_merge_only` so
+A PR whose head only moved via merges of the base branch (own contribution unchanged) is NOT re-queued; it raises `system.pr_health.rework_merge_only` so
 the merge-only state is visible distinctly from genuine rework.
 
-A re-queue that the thread-clearance gate refuses (the reworked PR still has
-unresolved review threads — the normal state of a rework ticket) raises
+A re-queue that the thread-clearance gate refuses (the reworked PR still has unresolved review threads — the normal state of a rework ticket) raises
 `system.pr_health.rework_requeue_failed`; the head is not throttled on a failed
-write, so the re-queue retries on the next tick instead of silently stranding
-the ticket in rework.
+write, so the re-queue retries on the next tick instead of silently stranding the ticket in rework.
 
 | Key | Type | Default | Controls |
 | --- | --- | --- | --- |
@@ -291,8 +278,7 @@ the ticket in rework.
 
 ## upgrade
 
-The `aiur run` upgrade-version notice is optional and opt-out: it caches with a
-TTL (the registry is contacted at most once a day), fails open and silent when
+The `aiur run` upgrade-version notice is optional and opt-out: it caches with a TTL (the registry is contacted at most once a day), fails open and silent when
 unreachable, never runs under `aiurdev`, and is channel-aware — a `nightly` or
 `next` user is never offered a lower `latest`.
 
@@ -460,6 +446,27 @@ The daemon owns [experiment](../concepts/experiments) writes through control RPC
 | `experiments.script_timeout_ms` | integer | 60000 | Script metric timeout in milliseconds; positive, reserved for metric packs. |
 | `experiments.checkpoint_interval_ms` | integer | 3600000 | Observation checkpoint interval in milliseconds; positive, reserved for snapshot capture. |
 | `experiments.max_snapshot_observations` | integer | 50000 | Maximum observations in a snapshot; positive, reserved for snapshot capture. |
+
+### experiments.auto
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `experiments.auto.enabled` | boolean | true | Enable automatic line workers and the deploy ledger. |
+| `experiments.auto.version_line` | boolean | true | Enable base-semver version lines. |
+| `experiments.auto.release_line` | boolean | true | Enable repository release lines. |
+| `experiments.auto.release_tag_pattern` | string | v* | Release tag pattern; non-empty, no whitespace. |
+| `experiments.auto.release_include_prereleases` | boolean | false | Include prerelease tags. |
+| `experiments.auto.release_min_interval_days` | integer | 7 | Minimum days between release lines; positive. |
+| `experiments.auto.feature_label` | string | experiment:feature | Non-empty label marking measured feature epics. |
+| `experiments.auto.feature_live_signal` | string | auto | One of auto, merge, release, daemon_boot. |
+| `experiments.auto.feature_quiet_hours` | integer | 6 | Hours without new epic members; positive. |
+| `experiments.auto.live_signal_max_wait_hours` | integer | 72 | Hours before falling back to merge time; positive. |
+| `experiments.auto.before_days` | integer | 14 | Baseline window length in days; positive. |
+| `experiments.auto.after_days` | integer | 14 | Initial after window length in days; positive. |
+| `experiments.auto.after_step_days` | integer | 7 | After window extension in days; positive. |
+| `experiments.auto.after_max_days` | integer | 42 | Maximum after window days; at least after_days. |
+| `experiments.auto.metric_packs` | string list | ["delivery"] | Metric packs used for automatic experiments. |
+
 ## build_queue
 Build queue configuration for GitHub workflows (Linear is unsupported); the daemon reconciles stored queue membership after tracker signals or on the configured interval, with a two-second debounce.
 

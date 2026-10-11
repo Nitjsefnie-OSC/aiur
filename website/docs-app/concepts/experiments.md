@@ -317,3 +317,12 @@ Token totals use the pinned provider relationship registry to avoid counting
 cache and reasoning subsets twice. Unknown revisions are unavailable. Missing
 USD spend is not replaced with another currency or zero. Stale or unhealthy
 accounting is unavailable; changing aggregate generations cannot be mixed.
+
+## Automatic experiment foundation
+
+`experiments.auto` configures version, release and feature lines. The deploy
+ledger records each recording daemon boot at `experiments/deploys.ndjson` under
+the repository state node. It retains the latest 5,000 boots, including version,
+base semver, boot time and build-stamp SHA and dirty flag when available.
+Missing build evidence stays null. Deploys alone never create experiments.
+Line detection and baseline capture are delivered by the source and snapshot workers.
