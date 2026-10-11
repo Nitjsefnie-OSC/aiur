@@ -17,6 +17,7 @@ defmodule Aiur.Config.Schema.Observability do
     field(:capture_tags, :map, default: %{})
     field(:capture_label_prefixes, {:array, :string}, default: ["experiment:", "cohort:", "feature:"])
     field(:telemetry_enabled, :boolean, default: true)
+    field(:capture_github_facts, :boolean, default: true)
     field(:telemetry_retention_max_bytes, :integer, default: 64 * 1024 * 1024)
     field(:telemetry_retention_max_age_days, :integer, default: 30)
     field(:telemetry_retention_prune_interval_bytes, :integer)
@@ -36,6 +37,7 @@ defmodule Aiur.Config.Schema.Observability do
         :capture_tags,
         :capture_label_prefixes,
         :telemetry_enabled,
+        :capture_github_facts,
         :telemetry_retention_max_bytes,
         :telemetry_retention_max_age_days,
         :telemetry_retention_prune_interval_bytes
