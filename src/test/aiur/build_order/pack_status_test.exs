@@ -51,7 +51,7 @@ defmodule Aiur.BuildOrder.PackStatusTest do
         do: Application.put_env(:aiur, :build_order_workspace_directory, previous_workspace_directory),
         else: Application.delete_env(:aiur, :build_order_workspace_directory)
 
-      File.rm_rf(directory)
+      Aiur.TestCleanup.rm_rf!(directory)
     end)
 
     {:ok, pack_path: pack_path, status_path: PackPaths.status_path(pack_path), workspace_directory: workspace_directory}
@@ -585,8 +585,8 @@ defmodule Aiur.BuildOrder.PackStatusTest do
       if previous_pack, do: Application.put_env(:aiur, :build_order_planning_pack, previous_pack), else: Application.delete_env(:aiur, :build_order_planning_pack)
       if previous_packs, do: Application.put_env(:aiur, :build_order_planning_packs, previous_packs), else: Application.delete_env(:aiur, :build_order_planning_packs)
       if previous_dirs, do: System.put_env("AIUR_BUILD_ORDER_DIRS", previous_dirs), else: System.delete_env("AIUR_BUILD_ORDER_DIRS")
-      File.rm_rf(state_root)
-      File.rm_rf(override_directory)
+      Aiur.TestCleanup.rm_rf!(state_root)
+      Aiur.TestCleanup.rm_rf!(override_directory)
     end)
 
     test = self()
@@ -650,7 +650,7 @@ defmodule Aiur.BuildOrder.PackStatusTest do
         do: System.put_env("AIUR_BUILD_ORDER_DIRS", previous_dirs),
         else: System.delete_env("AIUR_BUILD_ORDER_DIRS")
 
-      File.rm_rf(state_root)
+      Aiur.TestCleanup.rm_rf!(state_root)
     end)
 
     test = self()
@@ -711,7 +711,7 @@ defmodule Aiur.BuildOrder.PackStatusTest do
       if previous_pack, do: Application.put_env(:aiur, :build_order_planning_pack, previous_pack), else: Application.delete_env(:aiur, :build_order_planning_pack)
       if previous_packs, do: Application.put_env(:aiur, :build_order_planning_packs, previous_packs), else: Application.delete_env(:aiur, :build_order_planning_packs)
       if previous_dirs, do: System.put_env("AIUR_BUILD_ORDER_DIRS", previous_dirs), else: System.delete_env("AIUR_BUILD_ORDER_DIRS")
-      File.rm_rf(state_root)
+      Aiur.TestCleanup.rm_rf!(state_root)
     end)
 
     poller =

@@ -3,7 +3,6 @@ defmodule Aiur.TestCleanup do
 
   @retries 40
   @retry_ms 50
-  @settle_checks 3
 
   @doc """
   Removes a per-test directory that an app-level writer was pointed at.
@@ -30,7 +29,7 @@ defmodule Aiur.TestCleanup do
     Enum.each(Keyword.get(opts, :unset, []), &Application.delete_env(:aiur, &1))
 
     case for {key, value} <- Application.get_all_env(:aiur), inside?(value, path), do: key do
-      [] -> remove!(path, Keyword.get(opts, :rm, &File.rm_rf/1), @retries, false)
+      [] -> remove!(path, Keyword.get(opts, :rm, &File.rm_rf/1), @retries)
       keys -> raise "cannot remove #{path}: :aiur env #{inspect(Enum.sort(keys))} still points into it; restore before cleanup"
     end
   end
@@ -38,10 +37,12 @@ defmodule Aiur.TestCleanup do
   defp inside?(value, path) when is_binary(value), do: value == path or String.starts_with?(value, path <> "/")
   defp inside?(_value, _path), do: false
 
-  defp remove!(path, rm, retries, raced?) do
+  defp remove!(path, rm, retries) do
     case rm.(path) do
       {:ok, _removed} ->
-        settle!(path, rm, retries, raced?, @settle_checks)
+        # One interval is enough to see a live writer put the directory back.
+        Process.sleep(@retry_ms)
+        if File.exists?(path), do: retry!(path, rm, retries, "it reappeared after removal"), else: :ok
 
       # ENOTEMPTY (rendered :eexist) is the only failure a write in flight causes.
       {:error, reason, file} when reason in [:eexist, :enotempty] ->
@@ -61,17 +62,5 @@ defmodule Aiur.TestCleanup do
             "(a live writer keeps putting them back, or they cannot be deleted): #{inspect(left)}"
   end
 
-  defp retry!(path, rm, retries, _why), do: remove!(path, rm, retries - 1, true)
-
-  defp settle!(_path, _rm, _retries, _raced?, 0), do: :ok
-
-  defp settle!(path, rm, retries, raced?, checks) do
-    Process.sleep(@retry_ms)
-
-    if File.exists?(path) do
-      retry!(path, rm, retries, "it reappeared after removal")
-    else
-      settle!(path, rm, retries, raced?, checks - 1)
-    end
-  end
+  defp retry!(path, rm, retries, _why), do: remove!(path, rm, retries - 1)
 end

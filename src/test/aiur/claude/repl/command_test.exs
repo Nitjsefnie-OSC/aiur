@@ -132,7 +132,7 @@ defmodule Aiur.Claude.Repl.CommandTest do
   describe "resume_session_id/2" do
     setup do
       dir = Aiur.TestSupport.tmp_root!("cmd-resume")
-      on_exit(fn -> File.rm_rf(dir) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
       %{projects_dir: dir, workspace: "/ws/aiur/613"}
     end
 

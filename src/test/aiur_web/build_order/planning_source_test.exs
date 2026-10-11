@@ -81,7 +81,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
         else: Application.delete_env(:aiur, :build_order_workspace_directory)
 
       File.rm(path)
-      File.rm_rf(workspace_directory)
+      Aiur.TestCleanup.rm_rf!(workspace_directory, unset: [:build_order_planning_pack])
     end)
 
     {:ok, workspace_directory: workspace_directory}
@@ -142,7 +142,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     File.write!(path, @pack)
     File.write!(Path.join(directory, "tickets/T-2.md"), "# Draft body\n\nContext remains readable.")
     Application.put_env(:aiur, :build_order_planning_pack, path)
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     [root] = PlanningSource.catalog().data.entries
     {:ok, snapshot} = PlanningSource.demand(root.identity)
@@ -244,7 +244,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
 
     on_exit(fn ->
       Application.delete_env(:aiur, :build_order_planning_packs)
-      File.rm_rf(directory)
+      Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack])
     end)
 
     assert %Snapshot{data: %Catalog{entries: [entry]}} = PlanningSource.catalog()
@@ -289,7 +289,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
 
     on_exit(fn ->
       Application.delete_env(:aiur, :build_order_planning_packs)
-      File.rm_rf(directory)
+      Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack])
     end)
 
     assert %Snapshot{data: %Catalog{entries: [root]}} = PlanningSource.catalog()
@@ -390,7 +390,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     File.write!(Path.join(directory, "status.json"), ~s({"members":{"4101":"completed"}}))
     Application.put_env(:aiur, :build_order_planning_pack, path)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     [root] = PlanningSource.catalog().data.entries
     assert root.progress == 50
@@ -412,7 +412,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     Application.put_env(:aiur, :build_order_planning_pack, path)
     put_membership(4101, :running)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     [root] = PlanningSource.catalog().data.entries
     assert root.progress == 50
@@ -440,7 +440,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     Application.put_env(:aiur, :build_order_planning_pack, path)
     put_membership(4101, :completed)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     [root] = PlanningSource.catalog().data.entries
     assert root.progress == 0
@@ -470,7 +470,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
       ProviderHealth.new(:unknown, :unavailable, false, failure: :pack_status_unavailable)
     end)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     snapshot = PlanningSource.catalog()
     assert snapshot.health.state == :healthy
@@ -491,7 +491,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
       ProviderHealth.new(:unknown, :unavailable, false, failure: :pack_status_unavailable)
     end)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     snapshot = PlanningSource.catalog()
     assert snapshot.health.state == :healthy
@@ -532,7 +532,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     Application.put_env(:aiur, :build_order_planning_pack, path)
     put_membership(4102, :running)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     snapshot = PlanningSource.catalog()
     assert snapshot.health.state == :healthy
@@ -573,7 +573,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
       ProviderHealth.new(2, :stale, false, failure: :planning_call_budget_exhausted)
     end)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     snapshot = PlanningSource.catalog()
     assert snapshot.health.state == :healthy
@@ -591,7 +591,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     File.write!(Path.join(directory, "status.json"), ~s({"members":[]}))
     Application.put_env(:aiur, :build_order_planning_pack, path)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     snapshot = PlanningSource.catalog()
     assert snapshot.health.state == :healthy
@@ -637,7 +637,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     File.write!(Path.join(directory, "status.json"), ~s({"members":{"4101":"completed"}}))
     Application.put_env(:aiur, :build_order_planning_pack, path)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     Application.put_env(:aiur, :build_order_planning_membership_snapshot, fn ->
       {:ok, identity} =
@@ -700,7 +700,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     Application.put_env(:aiur, :build_order_planning_pack, path)
 
     on_exit(fn ->
-      File.rm_rf(directory)
+      Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack])
       File.rm(outside_document)
     end)
 
@@ -816,7 +816,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
       %{generation: 0, health: :healthy, freshness: %{status: :unavailable}, members: []}
     end)
 
-    on_exit(fn -> File.rm_rf(directory) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack]) end)
 
     catalog = PlanningSource.catalog()
     assert catalog.health.state == :healthy
@@ -916,7 +916,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     on_exit(fn ->
       if previous_root, do: Application.put_env(:aiur, :repo_base_root, previous_root), else: Application.delete_env(:aiur, :repo_base_root)
       if previous_dirs, do: System.put_env("AIUR_BUILD_ORDER_DIRS", previous_dirs), else: System.delete_env("AIUR_BUILD_ORDER_DIRS")
-      File.rm_rf(directory)
+      Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack])
     end)
 
     roots = PlanningSource.catalog().data.entries
@@ -957,7 +957,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     on_exit(fn ->
       if previous_root, do: Application.put_env(:aiur, :repo_base_root, previous_root), else: Application.delete_env(:aiur, :repo_base_root)
       if previous_dirs, do: System.put_env("AIUR_BUILD_ORDER_DIRS", previous_dirs), else: System.delete_env("AIUR_BUILD_ORDER_DIRS")
-      File.rm_rf(state_root)
+      Aiur.TestCleanup.rm_rf!(state_root)
     end)
 
     log = capture_log(fn -> send(self(), {:catalog, PlanningSource.catalog()}) end)
@@ -1018,7 +1018,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
     on_exit(fn ->
       if previous_root, do: Application.put_env(:aiur, :repo_base_root, previous_root), else: Application.delete_env(:aiur, :repo_base_root)
       if previous_dirs, do: System.put_env("AIUR_BUILD_ORDER_DIRS", previous_dirs), else: System.delete_env("AIUR_BUILD_ORDER_DIRS")
-      File.rm_rf(state_root)
+      Aiur.TestCleanup.rm_rf!(state_root)
     end)
 
     snapshot = PlanningSource.catalog()
@@ -1125,7 +1125,7 @@ defmodule AiurWeb.BuildOrder.PlanningSourceTest do
 
     on_exit(fn ->
       Application.delete_env(:aiur, :build_order_planning_packs)
-      File.rm_rf(directory)
+      Aiur.TestCleanup.rm_rf!(directory, unset: [:build_order_planning_pack])
     end)
 
     entries = PlanningSource.catalog().data.entries

@@ -1940,7 +1940,7 @@ defmodule Aiur.WorkspaceAndConfigTest do
     File.mkdir_p!(explicit_cache)
     assert {:ok, canonical_explicit_workspace} = Aiur.PathSafety.canonicalize(explicit_workspace)
 
-    on_exit(fn -> File.rm_rf(explicit_root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(explicit_root) end)
 
     write_workflow_file!(Workflow.workflow_file_path(),
       workspace_root: explicit_root,
@@ -2975,7 +2975,7 @@ defmodule Aiur.WorkspaceAndConfigTest do
 
     on_exit(fn ->
       File.chmod(test_root, 0o755)
-      File.rm_rf(test_root)
+      Aiur.TestCleanup.rm_rf!(test_root)
     end)
 
     nonexistent_root = Path.join(test_root, "does-not-exist")
@@ -3053,7 +3053,7 @@ defmodule Aiur.WorkspaceAndConfigTest do
         do: Application.delete_env(:aiur, :github_budget_dir),
         else: Application.put_env(:aiur, :github_budget_dir, previous_root)
 
-      File.rm_rf(test_root)
+      Aiur.TestCleanup.rm_rf!(test_root)
     end)
 
     write_workflow_file!(Workflow.workflow_file_path(), workspace_root: workspace)
@@ -3164,7 +3164,7 @@ defmodule Aiur.WorkspaceAndConfigTest do
         path -> Application.put_env(:aiur, :build_gate_dir_override, path)
       end
 
-      File.rm_rf(test_root)
+      Aiur.TestCleanup.rm_rf!(test_root)
     end)
 
     workspace = Path.join(test_root, "workspace")

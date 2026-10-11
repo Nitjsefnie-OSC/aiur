@@ -7,6 +7,7 @@ defmodule Aiur.TestCleanupTest do
   setup do
     root = Aiur.TestSupport.tmp_root!("aiur-test-cleanup")
     File.mkdir_p!(Path.join(root, "state"))
+    # on-exit-rm-rf: allow the helper under test must not clean up after itself
     on_exit(fn -> File.rm_rf(root) end)
     %{root: root}
   end

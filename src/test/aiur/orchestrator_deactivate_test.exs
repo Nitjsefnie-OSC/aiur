@@ -5667,7 +5667,7 @@ defmodule Aiur.OrchestratorDeactivateTest do
           Application.delete_env(:aiur, :runtime_state_dir)
         end
 
-        File.rm_rf(tmp_dir)
+        Aiur.TestCleanup.rm_rf!(tmp_dir)
       end)
 
       fake_pid = spawn_link(fn -> fake_agent_loop() end)
@@ -7097,7 +7097,7 @@ defmodule Aiur.OrchestratorDeactivateTest do
       test_root = Aiur.TestSupport.tmp_root!("aiur-pr-anchored-route")
 
       File.mkdir_p!(test_root)
-      on_exit(fn -> File.rm_rf(test_root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(test_root) end)
       {:ok, test_root: test_root}
     end
 
@@ -7296,7 +7296,7 @@ defmodule Aiur.OrchestratorDeactivateTest do
       test_root = Aiur.TestSupport.tmp_root!("aiur-pr-anchored-teardown")
 
       File.mkdir_p!(test_root)
-      on_exit(fn -> File.rm_rf(test_root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(test_root) end)
       {:ok, test_root: test_root}
     end
 

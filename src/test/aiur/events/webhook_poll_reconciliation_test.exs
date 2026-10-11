@@ -45,7 +45,7 @@ defmodule Aiur.Events.WebhookPollReconciliationTest do
 
       ResourceStore.reset()
       clear_replay_window()
-      File.rm_rf(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     {:ok, store_path: store_path}

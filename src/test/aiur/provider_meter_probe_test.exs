@@ -173,7 +173,7 @@ defmodule Aiur.ProviderMeterProbeTest do
   defp baseline_path do
     dir = Aiur.TestSupport.tmp_root!("aiur-probe-baseline")
     File.mkdir_p!(dir)
-    on_exit(fn -> File.rm_rf(dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
     Path.join(dir, "balance-baseline.json")
   end
 

@@ -38,7 +38,7 @@ defmodule Aiur.Workspace.ProvisionerTest do
   test "local workspaces get command guards and a private scratch directory" do
     workspace = Aiur.TestSupport.tmp_root!("aiur-provision-scratch")
     File.mkdir_p!(workspace)
-    on_exit(fn -> File.rm_rf(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
 
     assert :ok = Provisioner.maybe_install_agent_support(workspace, nil)
     assert File.dir?(Path.join(workspace, ".aiur-runtime/tmp"))
@@ -66,7 +66,7 @@ defmodule Aiur.Workspace.ProvisionerTest do
     # builds running under `test_root`, and one still writing when teardown
     # walks the tree makes `rm_rf!` raise `:eexist` and fail the test on its
     # cleanup rather than on its subject — likelier the busier the box (#2548).
-    on_exit(fn -> File.rm_rf(test_root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(test_root) end)
 
     File.mkdir_p!(bin_dir)
     File.write!(active_path, "0\n")
@@ -121,7 +121,7 @@ defmodule Aiur.Workspace.ProvisionerTest do
     home = Path.join(root, "home")
     File.mkdir_p!(workspace)
     File.mkdir_p!(home)
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     runner = fn "worker-1", script, timeout ->
       assert is_integer(timeout) and timeout > 0
@@ -158,7 +158,7 @@ defmodule Aiur.Workspace.ProvisionerTest do
     File.mkdir_p!(outside)
     File.write!(Path.join(outside, "sentinel"), "unchanged")
     File.ln_s!(outside, Path.join(workspace, ".aiur-runtime/gh"))
-    on_exit(fn -> File.rm_rf(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     runner = fn _host, script, _timeout ->
       {output, status} =

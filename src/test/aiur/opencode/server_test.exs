@@ -47,7 +47,7 @@ defmodule Aiur.Opencode.ServerTest do
 
     on_exit(fn ->
       restore_env(original_env)
-      File.rm_rf(root)
+      Aiur.TestCleanup.rm_rf!(root)
     end)
 
     slot_index = System.unique_integer([:positive])
