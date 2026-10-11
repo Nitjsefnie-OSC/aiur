@@ -2,6 +2,7 @@ defmodule Aiur.PrMerge.Client do
   @moduledoc "Operator-only transport: the credential is held by the standalone process."
 
   @spec request(String.t(), String.t(), String.t(), map() | nil) :: {:ok, term()} | {:error, String.t()}
+  @spec request(String.t(), String.t(), String.t(), map() | nil, (keyword() -> term())) :: {:ok, term()} | {:error, String.t()}
   def request(token, method, path, body \\ nil, transport \\ &Req.request/1) do
     opts = [url: "https://api.github.com/" <> path, method: %{"get" => :get, "post" => :post, "put" => :put}[method], headers: headers(token), retry: false, receive_timeout: 30_000]
     opts = if body, do: Keyword.put(opts, :json, body), else: opts
