@@ -92,7 +92,7 @@ function setupPackage({
   return { shim: path.join(root, "bin", "aiur.js"), fakeBin };
 }
 
-function runShim({ args = [], fakeBin, platform, arch, env = {}, forceTTY = false } = {}) {
+function runShim({ args = [], fakeBin, platform, arch, env = {}, forceTTY = false, cwd } = {}) {
   const fullEnv = {
     ...process.env,
     AIUR_TEST_OUT: captureFile,
@@ -120,7 +120,7 @@ function runShim({ args = [], fakeBin, platform, arch, env = {}, forceTTY = fals
             `require(${JSON.stringify(path.join(root, "bin", "aiur.js"))});`,
         ]
       : [path.join(root, "bin", "aiur.js"), ...args];
-  return spawnSync(NODE_EXEC, nodeArgs, { encoding: "utf8", env: fullEnv });
+  return spawnSync(NODE_EXEC, nodeArgs, { encoding: "utf8", env: fullEnv, cwd });
 }
 
 beforeEach(() => {
@@ -267,7 +267,10 @@ for (const command of nonLaunchCommands) {
       writeFileSync(executable, `#!/bin/bash\necho '${tool}:$*' >>"$AIUR_TEST_OUT"\nexit 1\n`);
       chmodSync(executable, 0o755);
     }
+    // A local path must not turn the standalone PR command into a launch.
+    if (command === "pr") mkdirSync(path.join(root, "pr"));
     const result = runShim({
+      cwd: command === "pr" ? root : undefined,
       args: [command, "--format", "records"], fakeBin,
       env: { PATH: `${fakeBin}:/usr/bin:/bin`, AIUR_SKIP_TMUX_INSTALL: "", AIUR_SKIP_OPENCODE_INSTALL: "" },
     });
