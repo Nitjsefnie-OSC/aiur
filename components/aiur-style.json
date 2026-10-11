@@ -1,12 +1,16 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "aiur-style",
+  "name": "Shared styles",
+  "layer": 5,
+  "kind": "optional",
+  "paths": [
+    "packages/aiur-style/**"
+  ],
   "facades": [
     "*"
   ],
-  "id": "aiur-style",
-  "kind": "optional",
-  "layer": 5,
-  "name": "Shared styles",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [],
   "optional": [],
   "owns": {
     "config": [],
@@ -14,9 +18,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    "packages/aiur-style/**"
-  ],
-  "prior": [],
-  "requires": []
+  "prior": []
 }

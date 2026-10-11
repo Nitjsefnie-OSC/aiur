@@ -1,12 +1,18 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "voice-conversation-core",
+  "name": "Host-agnostic voice assistant core (MP-E6, born as a package)",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [
+    ".github/workflows/voice-converse-standalone.yml",
+    "packages/elixir/voice_converse/**",
+    "scripts/check-voice-converse-isolation.sh"
+  ],
   "facades": [
     "*"
   ],
-  "id": "voice-conversation-core",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Host-agnostic voice assistant core (MP-E6, born as a package)",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [],
   "optional": [],
   "owns": {
     "config": [],
@@ -14,11 +20,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    ".github/workflows/voice-converse-standalone.yml",
-    "packages/elixir/voice_converse/**",
-    "scripts/check-voice-converse-isolation.sh"
-  ],
-  "prior": [],
-  "requires": []
+  "prior": []
 }

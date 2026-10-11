@@ -1,12 +1,30 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "github",
+  "name": "GitHub client, budget, read cache, domain",
+  "layer": 2,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur/allowed_contributors.ex",
+    "src/lib/aiur/allowed_contributors/**",
+    "src/lib/aiur/ci/failure_digest.ex",
+    "src/lib/aiur/ci_approval_store.ex",
+    "src/lib/aiur/codeowners.ex",
+    "src/lib/aiur/codeowners/**",
+    "src/lib/aiur/github/**",
+    "src/lib/aiur/global_config_startup.ex",
+    "src/lib/aiur/open_ticket_source.ex",
+    "src/lib/aiur/open_ticket_source/**"
+  ],
   "facades": [
     "*"
   ],
-  "id": "github",
-  "kind": "optional",
-  "layer": 2,
-  "name": "GitHub client, budget, read cache, domain",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "config",
+    "kernel",
+    "signal",
+    "tracker"
+  ],
   "optional": [
     "event-bus",
     "github-listeners"
@@ -26,28 +44,10 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    "src/lib/aiur/allowed_contributors.ex",
-    "src/lib/aiur/allowed_contributors/**",
-    "src/lib/aiur/ci/failure_digest.ex",
-    "src/lib/aiur/ci_approval_store.ex",
-    "src/lib/aiur/codeowners.ex",
-    "src/lib/aiur/codeowners/**",
-    "src/lib/aiur/github/**",
-    "src/lib/aiur/global_config_startup.ex",
-    "src/lib/aiur/open_ticket_source.ex",
-    "src/lib/aiur/open_ticket_source/**"
-  ],
   "prior": [
     "GHB",
     "GHC",
     "GHD",
     "GHR"
-  ],
-  "requires": [
-    "config",
-    "kernel",
-    "signal",
-    "tracker"
   ]
 }

@@ -1,19 +1,8 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
-  "facades": [
-    "*"
-  ],
   "id": "kernel",
-  "kind": "required",
-  "layer": 0,
   "name": "Kernel primitives",
-  "optional": [],
-  "owns": {
-    "config": [],
-    "env": [],
-    "state": [],
-    "capabilities": []
-  },
+  "layer": 0,
+  "kind": "required",
   "paths": [
     "src/lib/aiur/boot.ex",
     "src/lib/aiur/bounded.ex",
@@ -44,8 +33,19 @@
     "src/lib/aiur/yaml.ex",
     "src/priv/pidfd_reap.py"
   ],
+  "facades": [
+    "*"
+  ],
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [],
+  "optional": [],
+  "owns": {
+    "config": [],
+    "env": [],
+    "state": [],
+    "capabilities": []
+  },
   "prior": [
     "K"
-  ],
-  "requires": []
+  ]
 }

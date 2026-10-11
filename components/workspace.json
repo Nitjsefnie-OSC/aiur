@@ -1,12 +1,24 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "workspace",
+  "name": "Workspace and repo base",
+  "layer": 2,
+  "kind": "required",
+  "paths": [
+    "src/lib/aiur/prewarm/**",
+    "src/lib/aiur/repo_base.ex",
+    "src/lib/aiur/workspace.ex",
+    "src/lib/aiur/workspace/**"
+  ],
   "facades": [
     "*"
   ],
-  "id": "workspace",
-  "kind": "required",
-  "layer": 2,
-  "name": "Workspace and repo base",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "agent-sandbox",
+    "config",
+    "kernel",
+    "tracker"
+  ],
   "optional": [],
   "owns": {
     "config": [
@@ -37,19 +49,7 @@
     ],
     "capabilities": []
   },
-  "paths": [
-    "src/lib/aiur/prewarm/**",
-    "src/lib/aiur/repo_base.ex",
-    "src/lib/aiur/workspace.ex",
-    "src/lib/aiur/workspace/**"
-  ],
   "prior": [
     "WS"
-  ],
-  "requires": [
-    "agent-sandbox",
-    "config",
-    "kernel",
-    "tracker"
   ]
 }

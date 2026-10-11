@@ -1,14 +1,26 @@
 {
-  "facade_pending": null,
+  "id": "conversations",
+  "name": "Transcript access and event-to-conversation anchors (MP-E4 owns the contract)",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur/agent_event_feed.ex",
+    "src/lib/aiur/agent_log.ex",
+    "src/lib/aiur/conversation/anchors.ex",
+    "src/lib/aiur/conversation/history.ex"
+  ],
   "facades": [
     "Aiur.AgentEventFeed",
     "Aiur.Conversation.Anchors",
     "Aiur.Conversation.History"
   ],
-  "id": "conversations",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Transcript access and event-to-conversation anchors (MP-E4 owns the contract)",
+  "facade_pending": null,
+  "requires": [
+    "agent-runner",
+    "event-bus",
+    "identity",
+    "kernel"
+  ],
   "optional": [
     "executor-attention"
   ],
@@ -20,21 +32,9 @@
       "conversations.read"
     ]
   },
-  "paths": [
-    "src/lib/aiur/agent_event_feed.ex",
-    "src/lib/aiur/agent_log.ex",
-    "src/lib/aiur/conversation/anchors.ex",
-    "src/lib/aiur/conversation/history.ex"
-  ],
   "prior": [
     "PRJ",
     "RUN",
     "SD"
-  ],
-  "requires": [
-    "agent-runner",
-    "event-bus",
-    "identity",
-    "kernel"
   ]
 }

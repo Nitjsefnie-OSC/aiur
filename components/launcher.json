@@ -1,12 +1,19 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "launcher",
+  "name": "Shared bash engine and `aiurdev`",
+  "layer": 4,
+  "kind": "required",
+  "paths": [
+    "packaging/**",
+    "scripts/aiurdev"
+  ],
   "facades": [
     "*"
   ],
-  "id": "launcher",
-  "kind": "required",
-  "layer": 4,
-  "name": "Shared bash engine and `aiurdev`",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "control-cli"
+  ],
   "optional": [],
   "owns": {
     "config": [],
@@ -30,12 +37,5 @@
     ],
     "capabilities": []
   },
-  "paths": [
-    "packaging/**",
-    "scripts/aiurdev"
-  ],
-  "prior": [],
-  "requires": [
-    "control-cli"
-  ]
+  "prior": []
 }

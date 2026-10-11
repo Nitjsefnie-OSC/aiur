@@ -1,15 +1,29 @@
 {
-  "facade_pending": null,
+  "id": "identity",
+  "name": "Identity and capabilities (MP-R1)",
+  "layer": 1,
+  "kind": "required",
+  "paths": [
+    "src/lib/aiur/capabilities.ex",
+    "src/lib/aiur/capabilities/**",
+    "src/lib/aiur/identity.ex",
+    "src/lib/aiur/identity/**",
+    "src/lib/aiur_web/controllers/capabilities_controller.ex",
+    "src/lib/aiur_web/routes/capabilities.ex"
+  ],
   "facades": [
     "Aiur.Capabilities",
     "Aiur.Capabilities.Provider",
     "Aiur.Identity",
     "AiurWeb.Routes.Capabilities"
   ],
-  "id": "identity",
-  "kind": "required",
-  "layer": 1,
-  "name": "Identity and capabilities (MP-R1)",
+  "facade_pending": null,
+  "requires": [
+    "config",
+    "event-bus",
+    "kernel",
+    "web-kit"
+  ],
   "optional": [],
   "owns": {
     "config": [],
@@ -20,19 +34,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    "src/lib/aiur/capabilities.ex",
-    "src/lib/aiur/capabilities/**",
-    "src/lib/aiur/identity.ex",
-    "src/lib/aiur/identity/**",
-    "src/lib/aiur_web/controllers/capabilities_controller.ex",
-    "src/lib/aiur_web/routes/capabilities.ex"
-  ],
-  "prior": [],
-  "requires": [
-    "config",
-    "event-bus",
-    "kernel",
-    "web-kit"
-  ]
+  "prior": []
 }

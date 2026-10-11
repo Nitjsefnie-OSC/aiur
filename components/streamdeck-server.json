@@ -1,12 +1,27 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "streamdeck-server",
+  "name": "Daemon side of the Stream Deck (MP-R6)",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur_web/controllers/streamdeck*.ex",
+    "src/lib/aiur_web/routes/streamdeck.ex",
+    "src/lib/aiur_web/sockets/streamdeck.ex",
+    "src/lib/aiur_web/stream_deck_grid.ex",
+    "src/lib/aiur_web/streamdeck*.ex",
+    "src/lib/aiur_web/streamdeck_logs/*.ex"
+  ],
   "facades": [
     "*"
   ],
-  "id": "streamdeck-server",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Daemon side of the Stream Deck (MP-R6)",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "commands",
+    "conversations",
+    "identity",
+    "projections",
+    "web-kit"
+  ],
   "optional": [
     "build-orders",
     "voice-stt"
@@ -19,22 +34,7 @@
       "streamdeck"
     ]
   },
-  "paths": [
-    "src/lib/aiur_web/controllers/streamdeck*.ex",
-    "src/lib/aiur_web/routes/streamdeck.ex",
-    "src/lib/aiur_web/sockets/streamdeck.ex",
-    "src/lib/aiur_web/stream_deck_grid.ex",
-    "src/lib/aiur_web/streamdeck*.ex",
-    "src/lib/aiur_web/streamdeck_logs/*.ex"
-  ],
   "prior": [
     "SD"
-  ],
-  "requires": [
-    "commands",
-    "conversations",
-    "identity",
-    "projections",
-    "web-kit"
   ]
 }

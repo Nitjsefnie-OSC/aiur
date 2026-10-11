@@ -1,32 +1,8 @@
 {
-  "facade_pending": null,
-  "facades": [
-    "Aiur.CurrentRunOutcomeSnapshot",
-    "Aiur.CurrentRunProjections",
-    "Aiur.CurrentRunSummary",
-    "Aiur.ProgressRetention",
-    "Aiur.ProgressTracker",
-    "Aiur.Projections.UnitsPolicy",
-    "Aiur.Projections.UnitsRow",
-    "Aiur.Projections.UnitsRow.Sources",
-    "Aiur.TicketActivity"
-  ],
   "id": "projections",
-  "kind": "required",
-  "layer": 3,
   "name": "Current-run read models",
-  "optional": [
-    "conversations",
-    "github-listeners"
-  ],
-  "owns": {
-    "config": [],
-    "env": [],
-    "state": [
-      "progress_retention_state_dir"
-    ],
-    "capabilities": []
-  },
+  "layer": 3,
+  "kind": "required",
   "paths": [
     "src/lib/aiur/current_run_outcome_snapshot.ex",
     "src/lib/aiur/current_run_outcome_snapshot/**",
@@ -41,9 +17,18 @@
     "src/lib/aiur/ticket_activity.ex",
     "src/lib/aiur/ticket_activity/**"
   ],
-  "prior": [
-    "PRJ"
+  "facades": [
+    "Aiur.CurrentRunOutcomeSnapshot",
+    "Aiur.CurrentRunProjections",
+    "Aiur.CurrentRunSummary",
+    "Aiur.ProgressRetention",
+    "Aiur.ProgressTracker",
+    "Aiur.Projections.UnitsPolicy",
+    "Aiur.Projections.UnitsRow",
+    "Aiur.Projections.UnitsRow.Sources",
+    "Aiur.TicketActivity"
   ],
+  "facade_pending": null,
   "requires": [
     "agent-runner",
     "event-bus",
@@ -51,5 +36,20 @@
     "orchestration",
     "signal",
     "tracker"
+  ],
+  "optional": [
+    "conversations",
+    "github-listeners"
+  ],
+  "owns": {
+    "config": [],
+    "env": [],
+    "state": [
+      "progress_retention_state_dir"
+    ],
+    "capabilities": []
+  },
+  "prior": [
+    "PRJ"
   ]
 }

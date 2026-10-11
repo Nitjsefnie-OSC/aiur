@@ -1,12 +1,19 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "notification-policy",
+  "name": "Notification policy and per-device preferences store (MP-N5)",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [],
   "facades": [
     "*"
   ],
-  "id": "notification-policy",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Notification policy and per-device preferences store (MP-N5)",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "commands",
+    "event-bus",
+    "identity",
+    "push-relay"
+  ],
   "optional": [
     "build-orders",
     "build-queue"
@@ -17,12 +24,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [],
-  "prior": [],
-  "requires": [
-    "commands",
-    "event-bus",
-    "identity",
-    "push-relay"
-  ]
+  "prior": []
 }

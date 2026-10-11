@@ -1,14 +1,23 @@
 {
-  "facade_pending": null,
+  "id": "signal",
+  "name": "Signal and telemetry port",
+  "layer": 1,
+  "kind": "required",
+  "paths": [
+    "src/lib/aiur/log_file.ex",
+    "src/lib/aiur/perf.ex",
+    "src/lib/aiur/signal.ex"
+  ],
   "facades": [
     "Aiur.LogFile",
     "Aiur.Perf",
     "Aiur.Signal"
   ],
-  "id": "signal",
-  "kind": "required",
-  "layer": 1,
-  "name": "Signal and telemetry port",
+  "facade_pending": null,
+  "requires": [
+    "event-bus",
+    "kernel"
+  ],
   "optional": [],
   "owns": {
     "config": [],
@@ -16,14 +25,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    "src/lib/aiur/log_file.ex",
-    "src/lib/aiur/perf.ex",
-    "src/lib/aiur/signal.ex"
-  ],
-  "prior": [],
-  "requires": [
-    "event-bus",
-    "kernel"
-  ]
+  "prior": []
 }

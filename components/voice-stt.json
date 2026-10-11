@@ -1,12 +1,25 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "voice-stt",
+  "name": "Speech-to-text and TTS (MP-R5)",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur/eleven_labs.ex",
+    "src/lib/aiur/eleven_labs/**",
+    "src/lib/aiur/voice.ex",
+    "src/lib/aiur/voice/**",
+    "src/lib/aiur_web/sockets/voice.ex",
+    "src/lib/aiur_web/voice*.ex"
+  ],
   "facades": [
     "*"
   ],
-  "id": "voice-stt",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Speech-to-text and TTS (MP-R5)",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "config",
+    "identity",
+    "web-kit"
+  ],
   "optional": [],
   "owns": {
     "config": [
@@ -21,20 +34,7 @@
       "voice.tts"
     ]
   },
-  "paths": [
-    "src/lib/aiur/eleven_labs.ex",
-    "src/lib/aiur/eleven_labs/**",
-    "src/lib/aiur/voice.ex",
-    "src/lib/aiur/voice/**",
-    "src/lib/aiur_web/sockets/voice.ex",
-    "src/lib/aiur_web/voice*.ex"
-  ],
   "prior": [
     "VOX"
-  ],
-  "requires": [
-    "config",
-    "identity",
-    "web-kit"
   ]
 }

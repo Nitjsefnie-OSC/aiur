@@ -1,12 +1,27 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "dashboard-ui",
+  "name": "LiveView pages and Operator Control Center",
+  "layer": 4,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur/event_humanizer.ex",
+    "src/lib/aiur/event_humanizer_helpers.ex",
+    "src/lib/aiur_web/**",
+    "src/lib/aiur_web/routes/dashboard_pages.ex",
+    "src/lib/aiur_web/sockets/live_view.ex"
+  ],
   "facades": [
     "*"
   ],
-  "id": "dashboard-ui",
-  "kind": "optional",
-  "layer": 4,
-  "name": "LiveView pages and Operator Control Center",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "kernel",
+    "orchestration",
+    "projections",
+    "signal",
+    "web-kit",
+    "web-shell"
+  ],
   "optional": [
     "accounting",
     "build-orders",
@@ -25,22 +40,7 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    "src/lib/aiur/event_humanizer.ex",
-    "src/lib/aiur/event_humanizer_helpers.ex",
-    "src/lib/aiur_web/**",
-    "src/lib/aiur_web/routes/dashboard_pages.ex",
-    "src/lib/aiur_web/sockets/live_view.ex"
-  ],
   "prior": [
     "WEB"
-  ],
-  "requires": [
-    "kernel",
-    "orchestration",
-    "projections",
-    "signal",
-    "web-kit",
-    "web-shell"
   ]
 }

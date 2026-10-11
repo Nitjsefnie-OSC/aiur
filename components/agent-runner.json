@@ -1,21 +1,8 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
-  "facades": [
-    "*"
-  ],
   "id": "agent-runner",
-  "kind": "required",
-  "layer": 2,
   "name": "Turn engine for one ticket",
-  "optional": [
-    "build-orders"
-  ],
-  "owns": {
-    "config": [],
-    "env": [],
-    "state": [],
-    "capabilities": []
-  },
+  "layer": 2,
+  "kind": "required",
   "paths": [
     "src/lib/aiur/agent_context_presentation.ex",
     "src/lib/aiur/agent_directory.ex",
@@ -33,9 +20,10 @@
     "src/lib/aiur/prompt_builder.ex",
     "src/lib/aiur/session_handle.ex"
   ],
-  "prior": [
-    "RUN"
+  "facades": [
+    "*"
   ],
+  "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "agent-sandbox",
     "config",
@@ -45,5 +33,17 @@
     "kernel",
     "tracker",
     "workspace"
+  ],
+  "optional": [
+    "build-orders"
+  ],
+  "owns": {
+    "config": [],
+    "env": [],
+    "state": [],
+    "capabilities": []
+  },
+  "prior": [
+    "RUN"
   ]
 }

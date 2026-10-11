@@ -1,12 +1,17 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "skills",
+  "name": "`aiur-agent` and Executor skills",
+  "layer": 5,
+  "kind": "required",
+  "paths": [
+    ".claude/skills/**",
+    "src/prompts/**"
+  ],
   "facades": [
     "*"
   ],
-  "id": "skills",
-  "kind": "required",
-  "layer": 5,
-  "name": "`aiur-agent` and Executor skills",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [],
   "optional": [],
   "owns": {
     "config": [],
@@ -14,10 +19,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [
-    ".claude/skills/**",
-    "src/prompts/**"
-  ],
-  "prior": [],
-  "requires": []
+  "prior": []
 }

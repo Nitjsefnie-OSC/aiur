@@ -1,25 +1,8 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
-  "facades": [
-    "*"
-  ],
   "id": "harness-adapters",
-  "kind": "required",
-  "layer": 2,
   "name": "Harness adapter package (MP-R7)",
-  "optional": [
-    "accounting"
-  ],
-  "owns": {
-    "config": [
-      "agent"
-    ],
-    "env": [],
-    "state": [],
-    "capabilities": [
-      "remote_control"
-    ]
-  },
+  "layer": 2,
+  "kind": "required",
   "paths": [
     "src/lib/aiur/agent_tools/**",
     "src/lib/aiur/app_server/**",
@@ -38,17 +21,34 @@
     "src/lib/aiur/rtk_startup_check.ex",
     "src/priv/agent_relay.py"
   ],
-  "prior": [
-    "CA",
-    "CDX",
-    "CLD",
-    "OAI"
+  "facades": [
+    "*"
   ],
+  "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "agent-sandbox",
     "config",
     "identity",
     "kernel"
+  ],
+  "optional": [
+    "accounting"
+  ],
+  "owns": {
+    "config": [
+      "agent"
+    ],
+    "env": [],
+    "state": [],
+    "capabilities": [
+      "remote_control"
+    ]
+  },
+  "prior": [
+    "CA",
+    "CDX",
+    "CLD",
+    "OAI"
   ],
   "shared_with": [
     "orchestration"

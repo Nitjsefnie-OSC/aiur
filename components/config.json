@@ -1,12 +1,26 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "config",
+  "name": "Config and workflow",
+  "layer": 0,
+  "kind": "required",
+  "paths": [
+    "src/lib/aiur/agent_config.ex",
+    "src/lib/aiur/config.ex",
+    "src/lib/aiur/config/**",
+    "src/lib/aiur/env.ex",
+    "src/lib/aiur/env/**",
+    "src/lib/aiur/merge_policy.ex",
+    "src/lib/aiur/workflow.ex",
+    "src/lib/aiur/workflow_store.ex",
+    "src/lib/aiur/workflow_store/**"
+  ],
   "facades": [
     "*"
   ],
-  "id": "config",
-  "kind": "required",
-  "layer": 0,
-  "name": "Config and workflow",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [
+    "kernel"
+  ],
   "optional": [],
   "owns": {
     "config": [
@@ -23,21 +37,7 @@
       "merge_policy"
     ]
   },
-  "paths": [
-    "src/lib/aiur/agent_config.ex",
-    "src/lib/aiur/config.ex",
-    "src/lib/aiur/config/**",
-    "src/lib/aiur/env.ex",
-    "src/lib/aiur/env/**",
-    "src/lib/aiur/merge_policy.ex",
-    "src/lib/aiur/workflow.ex",
-    "src/lib/aiur/workflow_store.ex",
-    "src/lib/aiur/workflow_store/**"
-  ],
   "prior": [
     "CFG"
-  ],
-  "requires": [
-    "kernel"
   ]
 }

@@ -1,5 +1,19 @@
 {
-  "facade_pending": null,
+  "id": "build-orders",
+  "name": "Build Order graph, catalog, progress, pages",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur/build_order/**",
+    "src/lib/aiur/build_order_funnel_health.ex",
+    "src/lib/aiur/build_orders_cli.ex",
+    "src/lib/aiur/build_progress.ex",
+    "src/lib/aiur/epic_cli.ex",
+    "src/lib/aiur_web/build_order*.ex",
+    "src/lib/aiur_web/build_order/**",
+    "src/lib/aiur_web/build_order_presenter/**",
+    "src/lib/aiur_web/live/build_order*.ex"
+  ],
   "facades": [
     "Aiur.BuildOrder.Catalog",
     "Aiur.BuildOrder.Component",
@@ -20,10 +34,23 @@
     "AiurWeb.BuildOrder.DataSource",
     "AiurWeb.BuildOrder.Runtime"
   ],
-  "id": "build-orders",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Build Order graph, catalog, progress, pages",
+  "facade_pending": null,
+  "requires": [
+    "accounting",
+    "agent-runner",
+    "commands",
+    "config",
+    "event-bus",
+    "github",
+    "github-listeners",
+    "identity",
+    "kernel",
+    "orchestration",
+    "projections",
+    "tracker",
+    "web-kit",
+    "workspace"
+  ],
   "optional": [
     "build-queue",
     "conversations",
@@ -48,34 +75,7 @@
       "build_orders.progress"
     ]
   },
-  "paths": [
-    "src/lib/aiur/build_order/**",
-    "src/lib/aiur/build_order_funnel_health.ex",
-    "src/lib/aiur/build_orders_cli.ex",
-    "src/lib/aiur/build_progress.ex",
-    "src/lib/aiur/epic_cli.ex",
-    "src/lib/aiur_web/build_order*.ex",
-    "src/lib/aiur_web/build_order/**",
-    "src/lib/aiur_web/build_order_presenter/**",
-    "src/lib/aiur_web/live/build_order*.ex"
-  ],
   "prior": [
     "BO"
-  ],
-  "requires": [
-    "accounting",
-    "agent-runner",
-    "commands",
-    "config",
-    "event-bus",
-    "github",
-    "github-listeners",
-    "identity",
-    "kernel",
-    "orchestration",
-    "projections",
-    "tracker",
-    "web-kit",
-    "workspace"
   ]
 }

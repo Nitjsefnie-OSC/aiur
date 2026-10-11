@@ -1,12 +1,14 @@
 {
-  "facade_pending": "MP-R1-C1-T02",
+  "id": "watch-apps",
+  "name": "Apple Watch and Android watch targets (MP-N7)",
+  "layer": 5,
+  "kind": "optional",
+  "paths": [],
   "facades": [
     "*"
   ],
-  "id": "watch-apps",
-  "kind": "optional",
-  "layer": 5,
-  "name": "Apple Watch and Android watch targets (MP-N7)",
+  "facade_pending": "MP-R1-C1-T02",
+  "requires": [],
   "optional": [],
   "owns": {
     "config": [],
@@ -14,7 +16,5 @@
     "state": [],
     "capabilities": []
   },
-  "paths": [],
-  "prior": [],
-  "requires": []
+  "prior": []
 }

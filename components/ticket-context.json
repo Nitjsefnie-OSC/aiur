@@ -1,5 +1,14 @@
 {
-  "facade_pending": null,
+  "id": "ticket-context",
+  "name": "Ticket details and history for dashboard dialogs",
+  "layer": 3,
+  "kind": "optional",
+  "paths": [
+    "src/lib/aiur/build_order/ticket_detail*.ex",
+    "src/lib/aiur/build_order/ticket_history*.ex",
+    "src/lib/aiur/ticket_context.ex",
+    "src/lib/aiur_web/build_order/ticket_context_*.ex"
+  ],
   "facades": [
     "Aiur.BuildOrder.TicketDetail.State",
     "Aiur.BuildOrder.TicketDetailCoordinator",
@@ -12,29 +21,7 @@
     "AiurWeb.BuildOrder.TicketContextPresenter",
     "AiurWeb.BuildOrder.TicketContextSelection"
   ],
-  "id": "ticket-context",
-  "kind": "optional",
-  "layer": 3,
-  "name": "Ticket details and history for dashboard dialogs",
-  "optional": [
-    "build-orders"
-  ],
-  "owns": {
-    "config": [],
-    "env": [],
-    "state": [],
-    "capabilities": []
-  },
-  "paths": [
-    "src/lib/aiur/build_order/ticket_detail*.ex",
-    "src/lib/aiur/build_order/ticket_history*.ex",
-    "src/lib/aiur/ticket_context.ex",
-    "src/lib/aiur_web/build_order/ticket_context_*.ex"
-  ],
-  "prior": [
-    "BO",
-    "WEB"
-  ],
+  "facade_pending": null,
   "requires": [
     "agent-runner",
     "config",
@@ -44,5 +31,18 @@
     "kernel",
     "projections",
     "tracker"
+  ],
+  "optional": [
+    "build-orders"
+  ],
+  "owns": {
+    "config": [],
+    "env": [],
+    "state": [],
+    "capabilities": []
+  },
+  "prior": [
+    "BO",
+    "WEB"
   ]
 }
