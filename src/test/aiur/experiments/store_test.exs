@@ -16,7 +16,7 @@ defmodule Aiur.Experiments.StoreTest do
     on_exit(fn ->
       if previous_failure == :disabled, do: :persistent_term.erase(failure_key), else: :persistent_term.put(failure_key, previous_failure)
       if previous, do: Application.put_env(:aiur, :experiments_dir, previous), else: Application.delete_env(:aiur, :experiments_dir)
-      File.rm_rf!(root)
+      Aiur.TestCleanup.rm_rf!(root)
     end)
 
     %{root: root}
