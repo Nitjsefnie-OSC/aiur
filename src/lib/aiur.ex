@@ -27,7 +27,7 @@ defmodule Aiur.Application do
   alias Aiur.Config.RoutingValue
   alias Aiur.GitHub.{BlockerProgress, Config}
   alias Aiur.Identity.Machine
-
+  alias Aiur.Experiments.Auto
   @impl true
   def start(_type, _args) do
     :ok = Aiur.Boot.mark()
@@ -510,7 +510,11 @@ defmodule Aiur.Application do
     ]
     |> List.flatten()
     |> Enum.reject(&is_nil/1)
+<<<<<<< HEAD
     |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu] ++ Aiur.Experiments.children(recording?))
+=======
+    |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu] ++ List.wrap(Aiur.Experiments.child(recording?)) ++ Auto.child_specs(recording?: recording?))
+>>>>>>> ae7422b15 (Add automatic config and deploy ledger)
   end
 
   defp configured_tailscale_funnel?({:ok, %{server: %{tailscale_funnel: enabled}}}), do: enabled
