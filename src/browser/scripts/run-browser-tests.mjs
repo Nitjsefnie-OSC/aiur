@@ -71,7 +71,7 @@ export async function runBrowserTests(args, environment = process.env) {
 
     return { ...result, artifactRoot, port }
   } finally {
-    fixture.stop()
+    await fixture.stop()
     await sanitizeArtifactRoot(artifactRoot, environment)
 
     const retainArtifacts = !result || result.code !== 0 || result.signal || environment.AIUR_BROWSER_SCREENSHOTS === '1' || environment.AIUR_BROWSER_KEEP_ARTIFACTS === '1'

@@ -18,6 +18,12 @@ export async function startFixture(environment = process.env) {
   let rejectPort
   const port = new Promise((resolve, reject) => { resolvePort = resolve; rejectPort = reject })
   const timeout = setTimeout(() => rejectPort(new Error('Fixture server did not bind within 60s')), 60_000)
+  const closed = new Promise((resolve) => child.once('close', resolve))
+  const stop = (signal = 'SIGTERM') => {
+    clearTimeout(timeout)
+    child.kill(signal)
+    return closed
+  }
 
   child.stdout.on('data', (chunk) => {
     output = `${output}${String(chunk)}`.slice(-4096)
@@ -28,10 +34,9 @@ export async function startFixture(environment = process.env) {
   child.once('exit', (code) => rejectPort(new Error(`Fixture server exited before binding (exit ${code})`)))
 
   try {
-    return { port: await port, stop: () => { clearTimeout(timeout); child.kill('SIGTERM') } }
+    return { port: await port, stop }
   } catch (error) {
-    clearTimeout(timeout)
-    child.kill('SIGTERM')
+    await stop()
     throw error
   }
 }
