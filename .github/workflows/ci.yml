@@ -21,17 +21,14 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 && 'main' || format('{0}-{1}', github.event_name == 'pull_request' && github.run_attempt == 1 && github.event.pull_request.number || github.run_id, github.run_attempt) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
-# Job timeouts (#2461): 3-4x observed duration; re-measure when profiles change.
 jobs:
   # Drafts run only changes, lint and build, gated on the live draft state that
   # `changes` reads (never the event payload, #4002). Job-level skips on drafts are
   # not full-suite evidence; the CI poller requires successful required checks.
-  # Ready PRs retain the existing docs-only step shortcuts and check names.
   # Path classifier (docs-only CI, #website). A pull request that touches only
   # `website/**` (the marketing site and `website/docs-app`) has nothing the
   # Elixir engine, the browser harness, the Stream Deck package or the release
   # smoke can regress, so those jobs skip their work on such a PR.
-  #
   # The jobs are NOT skipped. Every engine job still runs and still publishes
   # its check name; only its steps short-circuit. The human-only merge ruleset
   # requires 12 contexts by name (docs/security/human-only-merge-ruleset.json),
@@ -573,7 +570,7 @@ jobs:
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: make dialyzer
   browser:
-    name: browser harness
+    name: browser smoke
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
     needs: changes
@@ -587,37 +584,13 @@ jobs:
       - name: Disclose rerun attempt
         if: ${{ (github.run_attempt > 1) && needs.changes.outputs.docs_only != 'true' }}
         run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
-      - name: Set up Node
+      - name: Set up browser harness
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: src/browser/package-lock.json
-      - name: Install fixture build tools
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        run: apt-get update && apt-get install -y --no-install-recommends build-essential
-      - name: Set up Elixir
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        uses: ./.github/actions/setup-elixir
-      - name: Cache Playwright browser
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('src/browser/package-lock.json') }}
-      - name: Install browser harness dependencies
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        working-directory: src/browser
-        run: npm ci
-      - name: Install Chromium
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        working-directory: src/browser
-        run: npx playwright install --with-deps chromium
+        uses: ./.github/actions/setup-browser
       - name: Run browser, accessibility, and performance smoke
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
-        run: npm test
+        run: npm run test:core
       - name: Run visual regression baselines
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
@@ -636,6 +609,33 @@ jobs:
           path: src/browser/.artifacts-run-*/
           if-no-files-found: ignore
           include-hidden-files: true
+  home-css:
+    name: browser home CSS
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.draft != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Verify home CSS
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        uses: ./.github/actions/verify-home-css
+  browser-harness:
+    name: browser harness
+    needs: [changes, browser, home-css]
+    if: ${{ always() && needs.changes.outputs.draft != 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require both browser suites
+        env:
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          HOME_CSS_RESULT: ${{ needs.home-css.result }}
+        run: test "$BROWSER_RESULT" = success && test "$HOME_CSS_RESULT" = success
   streamdeck:
     name: streamdeck
     needs: changes
