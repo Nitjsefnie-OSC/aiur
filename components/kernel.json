@@ -31,6 +31,7 @@
     "src/lib/aiur/system_pressure.ex",
     "src/lib/aiur/tracker_identity.ex",
     "src/lib/aiur/yaml.ex",
+    "src/lib/aiur/zz_merge_proof_omega.ex",
     "src/priv/pidfd_reap.py"
   ],
   "facades": [

@@ -109,6 +109,7 @@ A ticket that becomes terminal or leaves the run scope resolves its active advis
 | `tracker.linear.project_slug` | string | nil | Linear project polled by Aiur. |
 | `tracker.linear.endpoint` | string | `https://api.linear.app/graphql` | Linear GraphQL endpoint. |
 | `tracker.linear.assignee` | string | env fallback | Linear assignee filter. |
+| `tracker.merge_proof_omega` | string | scratch only | Merge demonstration omega; never ship. |
 
 ## polling
 
