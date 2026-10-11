@@ -807,7 +807,6 @@ The path scope and webhook signature are independent locks:
 | HMAC-SHA256 signature | Requests from anyone who does not know the shared webhook secret. |
 
 Do not remove the catch-all `404`: the same origin serves the operator dashboard, and a host-wide tunnel would expose it to anyone who learned the hostname.
-
 ## Operator PR merge command
 
 `aiur pr merge` uses the operator's stored `gh` credential in its standalone
@@ -818,8 +817,9 @@ Before and after premerge checks it reads the PR, current-head GraphQL check
 rollup (including legacy statuses), linked-ticket labels, paginated changed
 files, applied branch rules, legacy protection, ruleset bypass actors and the
 current base ref. Incomplete check collections or file lists fail closed.
-The final squash request pins the reviewed head SHA. A requested approval also
+The final squash request pins the reviewed head SHA.
+
+A requested approval also
 pins that SHA. GitHub remains the final authority on bypass permissions.
 
-The command records the merge locally and sends only its outcome to the daemon.
-See [the command reference](/reference/cli#pr-merge) for flags and refusal rules.
+The command records the merge locally and sends only its outcome to the daemon. See [the command reference](/reference/cli#pr-merge) for flags and refusal rules.

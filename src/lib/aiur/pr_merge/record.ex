@@ -1,6 +1,8 @@
 defmodule Aiur.PrMerge.Record do
   @moduledoc false
   alias Aiur.ControlCLI.Protocol
+  alias Aiur.Events.Publisher
+  alias Aiur.JSONSafe
   @spec append(map(), String.t()) :: :ok | {:error, term()}
   def append(record, root) do
     with :ok <- File.mkdir_p(root), do: File.write(Path.join(root, "merges.ndjson"), Jason.encode!(record) <> "\n", [:append, :sync])
@@ -30,24 +32,26 @@ defmodule Aiur.PrMerge.Record do
         %{}
 
       engine ->
-        case System.cmd("bash", [engine, "__pr-merge-state"], stderr_to_stdout: true, env: [{"GH_TOKEN", nil}, {"GITHUB_TOKEN", nil}]) do
-          {json, 0} ->
-            case Jason.decode(String.trim(json)) do
-              {:ok, state} when is_map(state) -> state
-              _ -> %{}
-            end
-
-          _ ->
-            %{}
-        end
+        engine |> state_request() |> decode_state()
     end
   end
+
+  defp state_request(engine), do: System.cmd("bash", [engine, "__pr-merge-state"], stderr_to_stdout: true, env: [{"GH_TOKEN", nil}, {"GITHUB_TOKEN", nil}])
+
+  defp decode_state({json, 0}) do
+    case Jason.decode(String.trim(json)) do
+      {:ok, state} when is_map(state) -> state
+      _ -> %{}
+    end
+  end
+
+  defp decode_state(_response), do: %{}
 
   @spec print_watcher_state() :: :ok
   def print_watcher_state do
     module = Module.concat([Aiur, MainWatch])
-    state = if Code.ensure_loaded?(module) and function_exported?(module, :state, 0), do: apply(module, :state, []), else: %{}
-    IO.puts(Jason.encode!(Aiur.JSONSafe.normalize(state)))
+    state = if Code.ensure_loaded?(module) and function_exported?(module, :state, 0), do: module.state(), else: %{}
+    IO.puts(Jason.encode!(JSONSafe.normalize(state)))
     Protocol.exit_marker(0)
   end
 
@@ -55,7 +59,7 @@ defmodule Aiur.PrMerge.Record do
   def publish(encoded) do
     with {:ok, json} <- Base.decode64(encoded),
          {:ok, record} when is_map(record) <- Jason.decode(json),
-         {:ok, _id, _subscribers} <- Aiur.Events.Publisher.publish("system.pr.merged", record, source: :pr_merge_cli) do
+         {:ok, _id, _subscribers} <- Publisher.publish("system.pr.merged", record, source: :pr_merge_cli) do
       Protocol.exit_marker(0)
     else
       _ -> Protocol.exit_marker(1)

@@ -23,8 +23,12 @@ defmodule Aiur.PrMerge.Checks do
   def classify(checks) do
     Enum.reduce(checks, %{passed: [], failed: [], pending: []}, fn check, acc ->
       name = check["name"] || check["context"]
-      if state(check) != :failed and String.contains?(name, "${{"), do: acc, else: Map.update!(acc, state(check), &(&1 ++ if(state(check) == :passed, do: names(check, name), else: [name])))
+      if state(check) != :failed and String.contains?(name, "${{"), do: acc, else: Map.update!(acc, state(check), &(&1 ++ classified_names(check, name)))
     end)
+  end
+
+  defp classified_names(check, name) do
+    if state(check) == :passed, do: names(check, name), else: [name]
   end
 
   defp names(check, name) do

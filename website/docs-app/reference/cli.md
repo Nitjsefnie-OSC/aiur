@@ -481,9 +481,7 @@ Mutations print each ticket's outcome; partial success exits 1 and names refusal
 Clear persists unmark intents before paced writes; crashes resume on restart. A budget hold reports `writes_paused`; rerun after it lifts. Wait for successful clear before downgrading; `agent:todo` remains dispatchable. The build queue uses the `agent:queued` membership marker; `aiur units --condition queued` still means tickets carrying `agent:todo`.
 
 `queue show` exit codes: 0 for `running` or `writes_paused`; 1 for `disabled`, `unsupported_tracker`, `store_unavailable`, or a refused selection; 64 for invalid launcher arguments; 124 for an RPC timeout. Refusal statuses still print their read model.
-
 ## `pr merge`
-
 `aiur pr merge <N> --reviewed-sha <full-sha>` performs a standalone squash merge using the operator's stored `gh` credential. It works with the daemon stopped. The login must be in `tracker.github.human_mergers`; agent workspaces, the agent account and App identities are refused.
 
 The command checks the reviewed head, draft state, approval or verified bypass, required CI, conflicts and configured premerge checks. Failed checks always refuse. Premerge checks run on a detached merge-result worktree, with ten minutes per command. The operator checkout and PR branch are
@@ -496,5 +494,7 @@ untouched.
 
 Under `ci: wait`, every required check must pass. The `pending_ok` gate needs current-head local-test evidence and an enabled watcher; full-CI labels on the PR or linked tickets, and full-CI paths, still force waiting. Config currently accepts only `wait`; this command does not enable early merges.
 
-Exit codes are `0` for merged or successful dry run, `2` for policy refusal (one `REFUSE` line per reason), and `1` for tool/network errors. Successful merges print the policy and pending checks, append `~/.aiur/logs/pr-merge/merges.ndjson`, and notify a running daemon with `system.pr.merged`.
-Ledger or daemon notification failures print a warning without retrying the merge. Premerge failure logs live in the same directory.
+Exit codes: `0` merged or dry run; `2` policy refusal (`REFUSE` per reason); `1` tool/network error.
+
+Successful merges print the policy and pending checks, append `~/.aiur/logs/pr-merge/merges.ndjson`, and notify a running daemon with `system.pr.merged`.
+Ledger or daemon notification failures print a warning without retrying the merge. Failure logs share that directory.
