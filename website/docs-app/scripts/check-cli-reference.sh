@@ -48,6 +48,9 @@ source_flags="$(
     sed -n '/^  @switches /p' "$repo_root/src/lib/aiur/experiments_cli.ex" \
       | rg -o '[a-z_]+:' | tr -d ':' | sed '/^spec_json$/d; s/^/--/; s/_/-/g'
 
+    # Alerts also validates transported argv in its control client.
+    sed -n '/^  defp parse(\[/p' "$repo_root/src/lib/aiur/alerts_cli.ex"
+
     # doctor delegates its flag parser to the standalone helper.
     sed -n 's/.*\$mode == \(--repair\).*/\1/p' "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor"
 
