@@ -160,7 +160,14 @@ defmodule Aiur.MainWatchTest do
 
   test "idle green base stays quiet across canary windows" do
     clock = start_supervised!({Agent, fn -> 46 * 60_000 end})
-    server = launch(%{Persistence.empty() | started_at: 0}, config: %{workflows: [], canary_minutes: 45}, now_fun: fn -> Agent.get(clock, & &1) end)
+
+    server =
+      launch(%{Persistence.empty() | started_at: 0},
+        config: %{workflows: [], canary_minutes: 45},
+        now_fun: fn -> Agent.get(clock, & &1) end,
+        suspects_fun: fn _, _, _, _, _ -> flunk("green CI must not fetch suspect associations") end
+      )
+
     green = %{observation("green", 1) | checks: [%{name: "test", conclusion: "success"}]}
     poll = %{result([green]) | runs: [%{run("success", 1) | sha: "green"}]}
     finish_poll(server, {:ok, poll})

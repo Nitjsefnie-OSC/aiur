@@ -139,7 +139,7 @@ defmodule Aiur.MainWatch do
 
     latest =
       Enum.map(latest, fn observation ->
-        if observation.sha == state.sha do
+        if observation.sha == state.sha or Enum.all?(observation.checks, &(&1.conclusion in ~w(success neutral skipped))) do
           observation
         else
           Map.put(observation, :suspect_merges, suspects.(state.last_green_sha, observation.sha, result.commits, server.data.early_merges, server.opts))
