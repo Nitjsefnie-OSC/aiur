@@ -44,7 +44,7 @@ Background mode is the shape that matters for an agent Executor. `aiur --bg` sta
 | `aiur --todo 142 --only` | Queues the named IDs and asks GitHub to remove `agent:todo` from other pending tickets. It is GitHub-only, is bounded to 50 cleanup targets, and stops after three consecutive rate-limit failures. Removing `agent:todo` from a promoted queue member creates an external hold, cleared with `aiur queue release`. Cleanup is skipped if a requested ID fails, so the operation does not silently dequeue work after a bad request. | `aiur --todo 142 --only` |
 | `AIUR_CONTROL_RPC_TIMEOUT_SECONDS=<n> aiur --todo …` | `--todo` sizes its deadline by the request, rather than using the shared 10-second control-RPC deadline. Queue add/remove also use 15s plus 3s per ID and honor this override; their timeout leaves the outcome unknown. Its default window is 15s, plus 3s per requested ID, plus 90s when `--only` is given. The daemon self-limits 10 seconds inside that window: a run it cannot finish stops itself, names the tickets it never reached, and exits nonzero, so the outcome is always definite rather than "unknown". This variable overrides the whole window when set to a positive integer; a zero or malformed value is ignored in favor of the sizing above. | `AIUR_CONTROL_RPC_TIMEOUT_SECONDS=300 aiur --todo 142 --only` |
 | `aiur --bg` | Starts detached headless execution. Against an existing live session it exits successfully and names bare `aiur` as the attach command. A default headless session has no agent-list or chat panes; use the dashboard or control commands. | `aiur --bg` |
-| `aiur --debug` | Enables debug logs and durable chat-pane recording for this run. | `aiur --debug` |
+| `aiur --debug` | Enables debug logs and durable chat-pane recording for this run. Analytics capture does not depend on `--debug`. | `aiur --debug` |
 | `aiur --pause` | Cold-starts with the global provisioning switch paused. | `aiur --pause` |
 | `aiur --max-agents 6` | Launch-only session cap. It wins over `agent.max_concurrent_agents`; Aiur warns when it exceeds that setting. `status` identifies the active binding. | `aiur --max-agents 6` |
 | `aiur --interactive` | Requests the terminal UI, including from a background launch. | `aiur --bg --interactive` |
@@ -416,14 +416,14 @@ A notification monitor must use that `<repo>` prefix (for example,
 `khala.executor.wakes.ndjson`), check that the wake file exists before declaring
 itself armed, and never substitute the `aiur` prefix in a consumer repository.
 
-A `tail -F -n0` follower is a low-latency notification aid only. It skips the
-existing prefix, may filter wake classes, has no consumer identity or lease,
-and never advances the durable cursor.
+A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor.
+Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at arm time.
+The `aiur-run` monitor command does this.
 
 `executor-wait` is the normal discovery and consumption path. Use
 `executor-fast-forward` only after independently verifying the exact prefix
-already covered. The 10,000-record bound remains an emergency disk bound, not
-evidence of consumption.
+already covered. The 10,000-record bound remains an emergency disk bound, not evidence of consumption.
+Exceeding it trims the journal to the newest 8,000 records, consumed first: one rewrite per 2,000 wakes.
 
 `AIUR_EXECUTOR_ID` names this consumer when `--as` is omitted. Nothing infers consumer identity from the terminal, parent process, or any other environment signal.
 

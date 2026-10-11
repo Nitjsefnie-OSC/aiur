@@ -101,6 +101,7 @@ observability:
   # capture_tags: {variant: B}
   # capture_label_prefixes: ["experiment:", "cohort:", "feature:"]
   # telemetry_enabled: true
+  # capture_github_facts: true
   # Retain useful cross-session telemetry without splitting an individual boot.
   telemetry_retention_max_bytes: 67108864
   telemetry_retention_max_age_days: 30
