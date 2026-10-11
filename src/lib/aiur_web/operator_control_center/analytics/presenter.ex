@@ -20,7 +20,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
   alias Aiur.{Orchestrator, RunTelemetry}
   alias Aiur.Orchestrator.CapacityBinding
   alias Aiur.RunTelemetry.{Dataset, SummaryMerge, Timeline}
-  alias AiurWeb.OperatorControlCenter.Analytics.{LatestRun, ProjectedSeries, TicketRow}
+  alias AiurWeb.OperatorControlCenter.Analytics.{LatestRun, ProjectedSeries, TicketRow, WastedCapacity}
 
   @default_buckets 180
   @max_series_actors 8
@@ -380,21 +380,6 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
   # the effective cap — not the configured one, so the figure counts slots the
   # dispatcher could have filled rather than slots that were never on offer.
   #
-  # A missing bucket cap is omitted; `nil` means no bucket had a usable cap.
-  defp wasted_slot_hours(series, _ctx, bucket_hours) do
-    series
-    |> Enum.reduce({0.0, 0}, fn s, {acc, known} ->
-      case Map.get(s, :fleet_agents_effective) do
-        cap when is_number(cap) and is_number(s.conc) -> {acc + max(cap - s.conc, 0) * bucket_hours, known + 1}
-        _unknown -> {acc, known}
-      end
-    end)
-    |> case do
-      {_total, 0} -> nil
-      {total, _known} -> round1(total)
-    end
-  end
-
   # ---- per-actor summary ----
 
   defp actor_summary(key, actor) do
@@ -474,7 +459,6 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
       if fleet_status == "current" do
         acc
         |> put_max(:fleet_agents_occupied, field(sample, :fleet_agents_occupied))
-        |> put_latest_effective_capacity(ts, field(sample, :fleet_agents_effective))
         |> put_latest_metrics(ts,
           fleet_agents_configured: field(sample, :fleet_agents_configured),
           fleet_agents_max: field(sample, :fleet_agents_max),
@@ -512,16 +496,6 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
       cell
       |> Map.put(key, if(is_number(value), do: value, else: nil))
       |> Map.put(ts_key, ts)
-    else
-      cell
-    end
-  end
-
-  defp put_latest_effective_capacity(cell, ts, value) do
-    if ts >= Map.get(cell, :effective_capacity_ts, -1) do
-      cell
-      |> Map.put(:fleet_agents_effective, if(is_number(value), do: value, else: nil))
-      |> Map.put(:effective_capacity_ts, ts)
     else
       cell
     end
@@ -577,7 +551,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
       end
 
     cell
-    |> Map.drop([:metric_ts, :fleet_state_ts, :build_state_ts, :fleet_observed_ts, :build_observed_ts, :effective_capacity_ts])
+    |> Map.drop([:metric_ts, :fleet_state_ts, :build_state_ts, :fleet_observed_ts, :build_observed_ts])
     |> drop_unavailable_fleet(fleet)
     |> drop_unavailable_build(build)
     |> Map.put(:pressure_state, state)
@@ -695,7 +669,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
     mean_cpu = mean(Enum.sum(Enum.map(series, & &1.total_cpu)), length(series))
     mem_now = (List.last(series) || %{}) |> Map.get(:total_mem, 0)
     bucket_hours = ctx.bw / 1000 / 3600
-    wasted = wasted_slot_hours(series, ctx, bucket_hours)
+    {wasted, wasted_partial?} = WastedCapacity.summarize(series, bucket_hours, ctx.cap_available?)
     merged = Enum.count(tickets, fn {_id, t} -> merged?(t) end)
     # A Build Order knows its own size; telemetry only knows the tickets that ran,
     # so inferring scope from it would report a build complete before it started.
@@ -713,7 +687,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
       total: total,
       done_pct: pct(merged, total),
       wasted_slot_hours: wasted,
-      wasted_slot_hours_partial: Enum.any?(series, &(not is_number(Map.get(&1, :fleet_agents_effective)))) or not ctx.cap_available?,
+      wasted_slot_hours_partial: wasted_partial?,
       sessions: ctx.dataset |> Dataset.boot_ids() |> length(),
       active_ms: round(ctx.bw * length(series)),
       cpu_hours: round1(cpu_hours(ctx.dataset))

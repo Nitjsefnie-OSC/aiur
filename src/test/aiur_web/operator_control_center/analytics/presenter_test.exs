@@ -30,9 +30,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
     %{
       actors: %{
         "_daemon" => %{
-          samples:
-            Enum.map(times, &sample("_daemon", "daemon", &1, 30.0, 100_000_000))
-            |> Enum.map(&Map.merge(&1, %{:fleet_capacity_status => "current", "fleet_agents_effective" => 4, "fleet_agents_occupied" => 1})),
+          samples: Enum.map(times, &sample("_daemon", "daemon", &1, 30.0, 100_000_000)),
           profile: profile(30.0, 40.0, 100_000_000, 11)
         },
         "ticket:5" => %{
@@ -146,52 +144,11 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
     end
   end
 
-  test "historical capacity is available even when the current effective cap is unknown" do
-    historical = model(cap_available?: false)
-    assert historical.kpis.wasted_slot_hours > 0
-    assert historical.kpis.wasted_slot_hours_partial
-  end
-
-  test "wasted capacity uses each bucket's observed cap and marks missing observations partial" do
-    dataset = dataset()
-    daemon = Map.fetch!(dataset.actors, "_daemon")
-
-    samples =
-      daemon.samples
-      |> Enum.with_index()
-      |> Enum.map(fn {sample, index} ->
-        Map.put(sample, "fleet_agents_effective", if(index < 5, do: 4, else: 2))
-      end)
-
-    dataset = put_in(dataset, [:actors, "_daemon", :samples], samples)
-    observed = Presenter.model(dataset, cap: 2, cores: 4, host_mem_bytes: 1_000_000_000, buckets: 10)
-
-    assert observed.kpis.wasted_slot_hours > 0
-    refute observed.kpis.wasted_slot_hours_partial
-
-    missing = put_in(dataset, [:actors, "_daemon", :samples], Enum.map(samples, &Map.put(&1, "fleet_agents_effective", nil)))
-    unavailable = Presenter.model(missing, cap: 2, cores: 4, host_mem_bytes: 1_000_000_000, buckets: 10)
-
-    assert unavailable.kpis.wasted_slot_hours == nil
-    assert unavailable.kpis.wasted_slot_hours_partial
-  end
-
-  test "uses the observed cap for its bucket rather than the cap at render time" do
-    daemon = dataset().actors["_daemon"]
-
-    samples =
-      daemon.samples
-      |> Enum.with_index()
-      |> Enum.map(fn {sample, index} ->
-        cap = if index < 5, do: 13, else: 8
-        Map.merge(sample, %{:fleet_capacity_status => "current", "fleet_agents_effective" => cap, "fleet_agents_occupied" => 1})
-      end)
-
-    dataset = put_in(dataset(), [:actors, "_daemon", :samples], samples)
-    earlier = Presenter.model(dataset, cap: 13, cores: 4, host_mem_bytes: 1_000_000_000, buckets: 3)
-    lowered = Presenter.model(dataset, cap: 8, cores: 4, host_mem_bytes: 1_000_000_000, buckets: 3)
-    assert earlier.kpis.wasted_slot_hours == lowered.kpis.wasted_slot_hours
-    assert lowered.kpis.wasted_slot_hours > 0
+  test "reports no wasted-slot-hours figure when no effective cap is known" do
+    # Idle slot-hours are a subtraction from the cap. A figure derived from a
+    # cap the model just called unknown reads as precise and is not.
+    assert model(cap_available?: false).kpis.wasted_slot_hours == nil
+    assert model(cap: 4).kpis.wasted_slot_hours == nil
   end
 
   test "buckets exact fleet pressure independently of process availability" do
@@ -341,7 +298,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
 
   test "wasted capacity accumulates idle slot-hours under the cap" do
     m = model()
-    assert m.kpis.wasted_slot_hours > 0
+    assert m.kpis.wasted_slot_hours == nil
+    assert m.kpis.wasted_slot_hours_partial
     assert is_number(m.kpis.mean_util_pct)
     assert m.kpis.mem_headroom_pct >= 0 and m.kpis.mem_headroom_pct <= 100
   end
@@ -424,9 +382,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
             Enum.map(second, &%{boot_id: "boot-b", timestamp_ms: &1, kind: "resource"}),
         actors: %{
           "_daemon" => %{
-            samples:
-              Enum.map(first ++ second, &sample("_daemon", "daemon", &1, 20.0, 100_000_000))
-              |> Enum.map(&Map.merge(&1, %{:fleet_capacity_status => "current", "fleet_agents_effective" => 4, "fleet_agents_occupied" => 1})),
+            samples: Enum.map(first ++ second, &sample("_daemon", "daemon", &1, 20.0, 100_000_000)),
             profile: profile(20.0, 30.0, 100_000_000, 62)
           },
           "ticket:5" => %{
@@ -479,9 +435,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
       absolute = long_run_model(timeline: :absolute)
       compressed = long_run_model(timeline: :active)
 
-      # The exact historical cap is only available in observed fleet buckets.
-      assert absolute.kpis.wasted_slot_hours > compressed.kpis.wasted_slot_hours
-      assert compressed.kpis.wasted_slot_hours <= 4 * 1.0 + 0.1
+      assert absolute.kpis.wasted_slot_hours == nil
+      assert compressed.kpis.wasted_slot_hours == nil
     end
 
     test "a merge recorded in the second session lands inside the second session on the axis" do
