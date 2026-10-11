@@ -30,6 +30,7 @@ else:
             result = subprocess.run(['python3', str(SCRIPT), 'base-sha'], capture_output=True,
                                     env=dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
                                              SELECTION=selection, CALLS=str(calls), TEST_STATUS=str(status)))
+            self.assertNotIn(b"can't open file", result.stderr)
             return result.returncode, [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
 
     def test_runs_selected_paths_without_shell_evaluation(self):

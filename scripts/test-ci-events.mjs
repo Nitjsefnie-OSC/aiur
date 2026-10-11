@@ -50,6 +50,7 @@ for (const [event, full, required] of [
     for (const result of ['failure', 'skipped', 'cancelled', '']) {
       const run = gate(event, full, job, result);
       assert.notEqual(run.status, 0, `${event} rejects ${job}=${result}`);
+      assert.ok(run.stderr.includes(`CI gate failed: ${job}`), run.stderr);
     }
   }
 }
