@@ -82,7 +82,16 @@ defmodule Aiur.AgentResourceGuard do
   end
 
   @impl true
+  def handle_call(:tick, _from, state) do
+    {:reply, :ok, enforce_and_schedule(state)}
+  end
+
+  @impl true
   def handle_info(:tick, state) do
+    {:noreply, enforce_and_schedule(state)}
+  end
+
+  defp enforce_and_schedule(state) do
     try do
       RunawayGroups.check(state.enforce_opts)
       enforce_once(state.enforce_opts)
@@ -94,7 +103,7 @@ defmodule Aiur.AgentResourceGuard do
       schedule_tick(state.interval_ms)
     end
 
-    {:noreply, state}
+    state
   end
 
   defp schedule_tick(interval_ms) do

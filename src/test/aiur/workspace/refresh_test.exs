@@ -286,7 +286,7 @@ defmodule Aiur.Workspace.RefreshTest do
   } do
     init_repo!(workspace)
     git!(["-C", workspace, "checkout", "--quiet", "-b", "aiur/123-fix-login"])
-    trace = Path.join(test_root, "branch-trace")
+    trace = Path.join(test_root, "branch-trace-#{System.unique_integer([:positive])}")
 
     write_workflow_file!(Workflow.workflow_file_path(),
       workspace_root: test_root,
