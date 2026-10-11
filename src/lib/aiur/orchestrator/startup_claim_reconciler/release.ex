@@ -2,7 +2,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
   @moduledoc false
 
   alias Aiur.{Alerts, Config, Issue, Tracker}
-  alias Aiur.GitHub.{Client, HumanReviewGate}
+  alias Aiur.GitHub.Client
   alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
   alias Aiur.Orchestrator.StartupClaimReconciler.Observation
 
@@ -67,7 +67,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
   end
 
   defp mergeability_target(%{"mergeable" => false, "number" => number} = pr, opts) do
-    fetch = Keyword.get(opts, :mergeability_fetcher, &HumanReviewGate.pull_request_mergeability/1)
+    fetch = Keyword.get(opts, :mergeability_fetcher, &Client.pull_request_mergeability/1)
 
     case fetch.(number) do
       {:ok, "CONFLICTING"} -> {:ok, "rework"}
