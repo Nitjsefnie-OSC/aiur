@@ -580,9 +580,10 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
       peak_active_builds: max_value(series, :build_gate_active),
       peak_queued_builds: max_value(series, :build_gate_queued),
       longest_wait_seconds: max_value(series, :build_queue_oldest_wait_seconds),
-      latest_configured_capacity: latest_value(series, :fleet_agents_configured),
-      latest_max_capacity: latest_value(series, :fleet_agents_max),
-      latest_effective_capacity: latest_value(series, :fleet_agents_effective),
+      latest_configured_capacity: latest_source_value(series, :fleet_capacity_status, ["current"], :fleet_agents_configured),
+      latest_max_capacity: latest_source_value(series, :fleet_capacity_status, ["current"], :fleet_agents_max),
+      latest_effective_capacity: latest_source_value(series, :fleet_capacity_status, ["current"], :fleet_agents_effective),
+      latest_occupied: latest_source_value(series, :fleet_capacity_status, ["current"], :fleet_agents_occupied),
       latest_admission_signal: latest_source_value(series, :fleet_capacity_status, ["current"], :fleet_admission_signal),
       latest_load: latest_value(series, :fleet_load),
       latest_load_threshold: latest_value(series, :fleet_load_threshold),
@@ -608,9 +609,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
     end
   end
 
-  defp latest_value(series, key) do
-    series |> Enum.map(&Map.get(&1, key)) |> Enum.filter(&is_number/1) |> List.last()
-  end
+  defp latest_value(series, key), do: series |> Enum.map(&Map.get(&1, key)) |> Enum.filter(&is_number/1) |> List.last()
 
   defp max_value(series, key) do
     values = series |> Enum.map(&Map.get(&1, key)) |> Enum.filter(&is_number/1)
