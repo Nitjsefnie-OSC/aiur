@@ -113,7 +113,7 @@ defmodule Aiur.Orchestrator.GlobalPause do
       :ok ->
         state =
           next_state
-          |> maybe_refresh_after_global_pause_change(current, on?)
+          |> maybe_refresh_after_global_pause_change(current, on?, opts)
 
         publish_global_pause(state)
         StatusReport.notify_dashboard(state)
@@ -141,15 +141,16 @@ defmodule Aiur.Orchestrator.GlobalPause do
   # An idle fleet may have a substantially widened timer. Unpausing is an
   # explicit admission request, so cancel that timer and reconcile fresh state
   # before any queued ticket can dispatch.
-  defp maybe_refresh_after_global_pause_change(state, false, true),
+  defp maybe_refresh_after_global_pause_change(state, false, true, _opts),
     do: state |> Lifecycle.request_refresh_state() |> elem(0)
 
-  defp maybe_refresh_after_global_pause_change(state, true, false) do
-    ModelAvailability.probe_stale_limits(DispatchPolicy.read_provider_backends(), [])
+  defp maybe_refresh_after_global_pause_change(state, true, false, opts) do
+    backends = Keyword.get(opts, :backends, DispatchPolicy.read_provider_backends())
+    ModelAvailability.probe_stale_limits(backends, Keyword.take(opts, [:path, :now, :probe_fun]))
     state |> Lifecycle.request_refresh_state() |> elem(0)
   end
 
-  defp maybe_refresh_after_global_pause_change(state, _current, _on?), do: state
+  defp maybe_refresh_after_global_pause_change(state, _current, _on?, _opts), do: state
 
   defp publish_global_pause(%State{} = state) do
     SnapshotStore.publish_global_pause(
