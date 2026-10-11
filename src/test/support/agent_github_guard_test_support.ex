@@ -4,6 +4,15 @@ defmodule Aiur.AgentGitHubGuardTestSupport do
 
   import ExUnit.Assertions
 
+  alias Aiur.AgentGitHubGuard.Script
+
+  # The assembled `gh` guard as a file, for tests that run it uninstalled.
+  def write_gh_guard(directory) do
+    path = Path.join(directory, "guard.sh")
+    File.write!(path, Script.gh())
+    path
+  end
+
   def wait_until(predicate, attempts \\ 500) do
     cond do
       predicate.() -> :ok
