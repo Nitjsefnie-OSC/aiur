@@ -104,7 +104,7 @@ This detection makes no GitHub request. Retained CI and merge facts survive labe
 
 `aiur queue add --build-order <root> [--queue NAME]` adopts a root and tracks its open members and native prerequisite edges. A member already owned by another queue stays there; adoption reports a refusal for that member. Up to 32 roots can be adopted.
 
-When a start trigger permits work before a blocker PR merges, dispatch binds the blocker’s events before starting the dependent. A fresh prewarmed ticket branch starts at the evaluated blocker SHA for one unmerged blocker.
+When a start trigger permits work before a blocker PR merges, dispatch binds the blocker’s events before starting the dependent. A fresh prewarmed ticket branch starts at the evaluated blocker SHA for one unmerged blocker. If fetching the head or checking its ancestry fails, checkout uses the base.
 
 Several blockers start from the configured base. An existing remote ticket branch keeps its tip.
 
