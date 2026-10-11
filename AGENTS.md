@@ -67,9 +67,9 @@ The config and CLI rows above are machine-checked. `scripts/check-config-docs.py
 resolves every config key to its full dotted path and fails the required `lint`
 job when one is missing from the configuration reference;
 `scripts/test-check-config-docs.sh` guards that checker. The required `lint` job
-also runs `website/docs-app/scripts/check-cli-reference.sh` and its self-test, so
-a missing or stale CLI command or flag fails the PR. Dashboard pages and the
-remaining rows are enforced by review alone.
+runs `website/docs-app/scripts/check-cli-reference.sh` and its self-test for
+non-docs-only changes; the website guards job runs them for docs-only changes.
+Dashboard pages and the remaining rows are enforced by review alone.
 
 ## Layout
 
