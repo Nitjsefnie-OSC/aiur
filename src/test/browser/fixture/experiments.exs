@@ -1,6 +1,7 @@
 defmodule Aiur.BrowserHarness.ExperimentsFixture do
   @moduledoc false
   import Plug.Conn
+  alias Aiur.Experiments.Spec
 
   @fixtures Path.expand("../../aiur/experiments/fixtures", __DIR__)
   @root Path.join(System.tmp_dir!(), "browser-experiments-#{Base.url_encode64(:crypto.strong_rand_bytes(8), padding: false)}")
@@ -36,10 +37,10 @@ defmodule Aiur.BrowserHarness.ExperimentsFixture do
       |> Map.fetch!("spec")
       |> Map.merge(%{"id" => id, "title" => title, "created_at" => created_at})
 
-    {:ok, validated} = Aiur.Experiments.Spec.new(spec)
+    {:ok, validated} = Spec.new(spec)
     directory = Path.join(root, id)
     File.mkdir_p!(directory)
-    File.write!(Path.join(directory, "spec.json"), Jason.encode!(Aiur.Experiments.Spec.to_map(validated)))
+    File.write!(Path.join(directory, "spec.json"), Jason.encode!(Spec.to_map(validated)))
     File.write!(Path.join(directory, "journal.ndjson"), "")
     File.write!(Path.join(directory, "annotations.ndjson"), "")
   end
