@@ -40,8 +40,29 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
       false ->
         {:defer, :workspace_owned}
 
+      {:error, {:stale_review_base, %{pr_number: number}} = reason} ->
+        if DispatchPolicy.state_slug(target) == "human-review",
+          do: stale_review_base_release(issue, number, reason, opts),
+          else: {:error, reason}
+
       {:error, _reason} = error ->
         error
+    end
+  end
+
+  defp stale_review_base_release(issue, number, reason, opts) do
+    approved_at_head = Keyword.get(opts, :approved_at_head_fetcher, &Client.pull_request_approved_at_head?/1)
+
+    case approved_at_head.(number) do
+      {:ok, true} ->
+        {:defer, reason}
+
+      {:ok, false} ->
+        note = "No review asked for a change: this PR is behind its base and conflicts with or touches files changed there. Integrate the base, push, and hand it back."
+        write_release(issue, lifecycle_state_name("rework", opts), Keyword.put(opts, :release_note, note))
+
+      {:error, _approval_read_failed} ->
+        {:defer, reason}
     end
   end
 
@@ -71,16 +92,13 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
 
     case fetch.(number) do
       {:ok, "CONFLICTING"} -> {:ok, "rework"}
-      {:ok, status} when status in ["MERGEABLE", "UNKNOWN"] -> review_target(pr, opts)
-      {:ok, _unknown} -> {:error, :mergeability_unknown}
+      {:ok, "MERGEABLE"} -> review_target(pr, opts)
+      {:ok, "UNKNOWN"} -> {:error, :mergeability_unknown}
       {:error, _reason} = error -> error
     end
   end
 
   defp mergeability_target(%{"mergeable" => true} = pr, opts), do: review_target(pr, opts)
-  defp mergeability_target(%{"mergeable" => "MERGEABLE"} = pr, opts), do: review_target(pr, opts)
-  defp mergeability_target(%{"mergeable" => "UNKNOWN"} = pr, opts), do: review_target(pr, opts)
-  defp mergeability_target(%{"mergeable" => "CONFLICTING"}, _opts), do: {:ok, "rework"}
   defp mergeability_target(_pr, _opts), do: {:error, :mergeability_unknown}
 
   defp review_target(pr, opts) do

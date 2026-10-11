@@ -715,7 +715,7 @@ mergeability; those observations permit disjoint paths. A matching head's `CONFL
 Mismatched heads or base branches, malformed observations,
 unreadable comparisons or a file list reaching GitHub's 300-file cap also block.
 
-Comparisons are attributed to `human_review_base_ancestry` and always contact GitHub: base movement can change the verdict without changing the PR. These reads add cost; this change claims no quota saving.
+Comparisons are attributed to `human_review_base_ancestry` and always contact GitHub: base movement can change the verdict without changing the PR. Orphan recovery also reads `orphan_claim_mergeability` only after REST reports `mergeable: false`, and reads `orphan_claim_approval_state` when a stale-base state write fails; these reads make no quota-saving claim.
 
 For the next 10 handoffs after rollout, record the tested PR head, observed base SHA and overlap/conflict verdict. Count unsafe handoffs reaching review separately from harmless stale heads; the earlier 3-of-8 stale-base count is context, not an equivalent baseline for this narrower measure.
 

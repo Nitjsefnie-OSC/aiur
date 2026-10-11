@@ -102,6 +102,16 @@ defmodule Aiur.Orchestrator.OrphanClaimRecoveryTest do
     refute_received {:comment, _, _}
   end
 
+  test "GraphQL UNKNOWN mergeability retains the claim rather than routing to review" do
+    pr = %{"number" => 42, "mergeable" => false, "head" => %{"sha" => "head"}}
+    opts = Keyword.put(pr_opts(pr, [], []), :mergeability_fetcher, fn 42 -> {:ok, "UNKNOWN"} end)
+    {waiting, [_]} = StartupClaimReconciler.reconcile(%State{}, [issue()], Keyword.put(opts, :now_ms, 0))
+    {failed, [%Issue{state: "in-progress"}]} = StartupClaimReconciler.reconcile(waiting, [issue()], Keyword.put(opts, :now_ms, 60_000))
+    assert failed.startup_claim_reconciliation_failures["3622"].reason == :mergeability_unknown
+    refute_received {:write, _, _, _}
+    refute_received {:comment, _, _}
+  end
+
   for {name, issue, state} <- [
         {"human pause", %{paused: true, labels: ["agent:in-progress", "agent:paused"]}, %{}},
         {"parked ticket", %{parked: true}, %{}},
