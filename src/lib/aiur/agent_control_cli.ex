@@ -65,7 +65,6 @@ defmodule Aiur.AgentControlCLI do
   # operator got a truncated fleet listing plus exit 124 instead of one honest
   # "agents query timed out after 8s" line (#1684).
   @agents_timeout_ms 6_000
-
   # `{:ok, :resumed}` from the orchestrator means a resume control request was
   # *enqueued* for the agent, not that the agent left the paused state (see
   # `Aiur.Orchestrator.PauseResume.send_resume_control_message/3`). Printing
@@ -74,9 +73,7 @@ defmodule Aiur.AgentControlCLI do
   # the agent's own control status leaving `:paused` before claiming it, and
   # report an unconfirmed request as a failure rather than as success.
   #
-  # One invocation shares a single confirmation budget across every queued
-  # resume, so `resume --all` over a large fleet still fits inside the
-  # launcher's 10s control-RPC timeout.
+  # Share one confirmation budget across resume --all to fit the launcher's 10s RPC timeout.
   @resume_confirm_timeout_ms 4_000
   @resume_confirm_poll_ms 100
 
@@ -178,7 +175,6 @@ defmodule Aiur.AgentControlCLI do
     end
   end
 
-  # Render retained freshness and current age with the same vocabulary.
   defp print_snapshot_freshness(%{status: :stale} = freshness) do
     IO.puts(
       "STALE FLEET VIEW — showing the last-known-good snapshot, #{UnitsPresentation.age_label(Map.get(freshness, :age_seconds))} old" <>
@@ -193,6 +189,11 @@ defmodule Aiur.AgentControlCLI do
   defp stale_snapshot_reason(:orchestrator_unavailable), do: " (the orchestrator is unavailable)"
   defp stale_snapshot_reason(_reason), do: ""
 
+  @spec main_watch_state() :: map()
+  defdelegate main_watch_state(), to: Aiur.MainWatch, as: :state
+  @spec main_watch_inherited?(String.t(), String.t()) :: :inherited | :not_inherited | :unknown
+  defdelegate main_watch_inherited?(check, merge_base), to: Aiur.MainWatch, as: :inherited?
+
   defp print_status_report(statuses, snapshot, opts) do
     print_executor_listener_status()
     print_executor_wake_status()
@@ -201,9 +202,7 @@ defmodule Aiur.AgentControlCLI do
     Aiur.MergePolicyCLI.print()
     tracker_states = tracker_state_sets()
 
-    # Count from the rows that are actually printed. Counting the unfiltered
-    # `statuses` let `RELEASED CLAIMS n` claim releases whose rows were hidden,
-    # so the headline and the table disagreed (#1475).
+    # Count visible rows so RELEASED CLAIMS agrees with the table (#1475).
     visible_statuses = Enum.filter(statuses, &visible_status_row?(&1, tracker_states))
 
     released_claims = Enum.count(visible_statuses, &(&1[:claim_released?] == true))

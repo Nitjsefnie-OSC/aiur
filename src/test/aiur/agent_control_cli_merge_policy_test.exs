@@ -24,7 +24,7 @@ defmodule Aiur.AgentControlCLIMergePolicyTest do
     )
 
     :ok = Aiur.WorkflowStore.force_reload()
-    assert status_output() =~ "MERGE POLICY ci=wait local_tests=partial main_watch=on(dispatch_fixer)\n"
+    assert status_output() =~ "MERGE POLICY ci=wait local_tests=partial main_watch=on(dispatch_fixer) main=unknown\n"
   end
 
   defp status_output do

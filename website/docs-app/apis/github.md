@@ -20,6 +20,7 @@ Label read/create failures stop startup before agents start and explain the requ
 | Ticket branches | Validated refs and commits; subscribed known-ref changes trigger async compare (`per_page=1`, caller `ticket_branch_rewrite`) | `behind`/`diverged` or 404 emits `ticket.N.branch.force-push` (404: `previous_missing`). Errors/holds log and count `[:aiur, :events, :branch_rewrite, :error]`; new/unsubscribed refs skip compare. |
 | Comments and reviews | Trusted issue comments, PR comments, reviews, and unresolved threads | Wakes the correct agent for operator direction or rework. |
 | CI | Terminal checks while a ticket is in `agent:ci-wait` or `agent:human-review` | Returns passed work for human review and failed work for repair. |
+| Base-branch CI (main watch enabled) | Completed watched workflow runs for up to 20 recent base commits | Detects failures through check webhooks, base pushes and polling; retains state across restarts. |
 | Repository events | Default-branch pushes and opened or merged pull requests | Refreshes work whose base or review state changed. |
 
 Once per repository and history query version, the daemon reads every issue for build history (caller `build_order_history_backfill`). It starts after a 60-second boot delay, spaces pages by 10 seconds, holds below 20% remaining GraphQL budget and pauses further reads after 300 reported points in a rolling hour.
@@ -32,14 +33,10 @@ Polling remains the complete fallback because it reads current GitHub state even
 
 The development `scripts/aiurdev --test` and `--test3` harnesses still read GitHub's issue lists, but pass only their pinned sandbox tickets to dispatch authorization, startup workspace cleanup, and tracker reconciliation. Ordinary runs retain full issue discovery.
 
-Each CI poll reads the configured base branch's active rules and classic branch
-protection once for the batch, then requires every required check on the current
-PR head from its configured integration.
+Each CI poll reads the configured base branch's active rules and classic branch protection once for the batch, then requires every required check on the current PR head from its configured integration.
 
-A failed required-check lookup keeps a
-green aggregate pending; missing and skipped required checks cannot pass.
-The two reads are attributed to `ci_required_checks` and bypass the shared read
-cache because they govern a CI verdict.
+A failed required-check lookup keeps a green aggregate pending; missing and skipped required checks cannot pass.
+The two reads are attributed to `ci_required_checks` and bypass the shared read cache because they govern a CI verdict.
 
 Draft PRs remain pending even when
 their fast gate is green. Completed work must be marked ready before CI wait so
@@ -114,7 +111,8 @@ Create a GitHub App under **Settings → Developer settings → GitHub Apps** an
 | Contents | Read and write |
 | Issues | Read and write |
 | Pull requests | Read and write |
-| Administration, Actions, Secrets, Workflows | Never |
+| Actions | Read required for main-watch workflow attribution; write only to permit canary reruns. |
+| Administration, Secrets, Workflows | Never |
 
 GitHub always adds `Metadata: Read-only` implicitly. Generate and download a private key (`.pem`); it can mint installation tokens for every repository the App is installed on, so keep it in a secure store.
 
@@ -765,6 +763,8 @@ Such a write still records the marker of the snapshot it was applied to, rather 
 A label write also corrects the labels on the issue Aiur already holds, and does so as one indivisible step. Reading the issue, changing it, and writing it back as separate steps would let a delivery that landed in between be overwritten by the older copy — including its `open` or `closed` state.
 
 A write that fails records nothing.
+
+Main watch accepts completed check deliveries without a PR only for the configured base branch and GitHub Actions app. It reports failure signatures, annotated tests, known flakes and suspect merges. Canary reruns require a capability probe confirming Actions write permission; without it, a silent window raises Executor attention. Failed or denied reads emit `system.main.ci.unavailable` once until a successful read and retain the last known state. These reads and reruns claim no quota saving.
 
 ## Optional webhook
 

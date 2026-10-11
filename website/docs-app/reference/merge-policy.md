@@ -1,6 +1,6 @@
 # merge_policy
 
-The top-level policy is validated and displayed by `aiur status` and `aiur capabilities`; enforcement, worker test instructions and main watching ship separately.
+The top-level policy is validated and displayed by `aiur status` and `aiur capabilities`; main watching reports base-branch CI when enabled.
 
 | Key | Type | Default | Controls |
 | --- | --- | --- | --- |
@@ -10,11 +10,15 @@ The top-level policy is validated and displayed by `aiur status` and `aiur capab
 | `merge_policy.full_ci_paths` | array | `[]` | Changed-path globs (`*`, `**`, `?`) requiring full CI regardless of `ci`; matches deleted paths too. |
 | `merge_policy.premerge_checks` | array | `[]` | Commands to run on the merge result before merging. |
 | `merge_policy.attribution_scan` | boolean | false | Enables the premerge AI-attribution scan of the PR title and body. |
-| `merge_policy.main_watch.enabled` | boolean | false | Enables watching CI on the configured base branch. |
+| `merge_policy.main_watch.enabled` | boolean | false | Watches completed CI on the configured base branch through webhooks and polling. |
 | `merge_policy.main_watch.workflows` | array | `[]` | Workflow names to watch; empty means every workflow on the base branch. |
 | `merge_policy.main_watch.on_red` | string | `alert` | `alert` reports failed CI; `dispatch_fixer` requests a fixer ticket and priority dispatch. |
 | `merge_policy.main_watch.fixer_label` | string | `main-fix` | Label for fixer tickets and their full-CI requirement. |
-| `merge_policy.main_watch.canary_minutes` | integer | 45 | Minutes without a completed watched run before a canary rerun; `0` disables. |
-| `merge_policy.main_watch.red_fallback_minutes` | integer | 0 | Optional full-CI wait after main stays red this many minutes; absent/`0` disables, `60` enables a one-hour threshold; enforcement ships in MP4. |
+| `merge_policy.main_watch.canary_minutes` | integer | 45 | Minutes without a completed watched run before rerunning the newest cancelled run; requires Actions write permission, otherwise raises attention. `0` disables. |
+| `merge_policy.main_watch.red_fallback_minutes` | integer | 0 | Optional full-CI wait after main stays red this many minutes; absent/`0` disables, `60` enables a one-hour threshold; the merge-policy consumer enforces the threshold using the watcher’s retained state. |
 
 `on_red: dispatch_fixer` requires `fixer_label` in `full_ci_labels`. Lists reject blank entries; canary and red-fallback minutes must be nonnegative integers. Invalid values name the dotted config path.
+
+`aiur status` adds `main=unknown`, `main=green`, or `main=red since HH:MM` (UTC), with a fixer ticket when available. New failure signatures emit `system.main.ci.failed`; known-flake-only failures emit `system.main.ci.flaked`. A later green SHA emits `system.main.ci.failed.resolved`. State and failure history survive daemon restarts.
+
+Actions read permission is required to attribute checks to workflows. Failed or denied reads retain the last known state and emit `system.main.ci.unavailable` once until the next successful observation.
