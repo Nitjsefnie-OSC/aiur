@@ -45,7 +45,7 @@ export async function createArtifactRoot(environment = process.env) {
 
 export async function runBrowserTests(args, environment = process.env) {
   const artifactRoot = await createArtifactRoot(environment)
-  const fixture = await startFixture({ ...environment, AIUR_BROWSER_PORT: String(await allocatePort()) })
+  const fixture = await startFixture({ ...environment, AIUR_BROWSER_PORT: '0' })
   const port = fixture.port
   const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx'
   const childEnvironment = browserChildEnvironment(environment, {

@@ -198,6 +198,8 @@ defmodule Aiur.BrowserHarness.FixtureServer do
       )
 
     {:ok, {_ip, port}} = Bandit.PhoenixAdapter.server_info(FixtureEndpoint, :http)
+    endpoint_config = Application.fetch_env!(:aiur, FixtureEndpoint)
+    Application.put_env(:aiur, FixtureEndpoint, Keyword.update!(endpoint_config, :url, &Keyword.put(&1, :port, port)))
     IO.puts("AIUR_BROWSER_FIXTURE_PORT=#{port}")
     Process.sleep(:infinity)
   end

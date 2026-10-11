@@ -11,7 +11,8 @@ export async function startFixture(environment = process.env) {
   const child = spawn('mise', ['exec', '--', 'mix', 'run', '--no-start', 'test/browser/fixture_server.exs'], {
     cwd: sourceRoot,
     env: fixtureServerEnvironment(environment),
-    stdio: ['ignore', 'pipe', 'inherit']
+    stdio: ['ignore', 'pipe', 'inherit'],
+    detached: process.platform !== 'win32'
   })
   let output = ''
   let resolvePort
@@ -21,7 +22,12 @@ export async function startFixture(environment = process.env) {
   const closed = new Promise((resolve) => child.once('close', resolve))
   const stop = (signal = 'SIGTERM') => {
     clearTimeout(timeout)
-    child.kill(signal)
+    try {
+      if (process.platform !== 'win32' && child.pid) process.kill(-child.pid, signal)
+      else child.kill(signal)
+    } catch (error) {
+      if (error.code !== 'ESRCH') throw error
+    }
     return closed
   }
 
