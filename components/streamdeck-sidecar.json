@@ -1,16 +1,12 @@
 {
-  "id": "streamdeck-sidecar",
-  "name": "`@aiur/streamdeck` (MP-R6)",
-  "layer": 5,
-  "kind": "optional",
-  "paths": [
-    "packages/streamdeck/**"
-  ],
+  "facade_pending": "MP-R1-C1-T02",
   "facades": [
     "*"
   ],
-  "facade_pending": "MP-R1-C1-T02",
-  "requires": [],
+  "id": "streamdeck-sidecar",
+  "kind": "optional",
+  "layer": 5,
+  "name": "`@aiur/streamdeck` (MP-R6)",
   "optional": [],
   "owns": {
     "config": [],
@@ -18,5 +14,9 @@
     "state": [],
     "capabilities": []
   },
-  "prior": []
+  "paths": [
+    "packages/streamdeck/**"
+  ],
+  "prior": [],
+  "requires": []
 }

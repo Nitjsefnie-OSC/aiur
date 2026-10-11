@@ -1,14 +1,12 @@
 {
-  "id": "mobile-app",
-  "name": "Phone app (MP-N1)",
-  "layer": 5,
-  "kind": "optional",
-  "paths": [],
+  "facade_pending": "MP-R1-C1-T02",
   "facades": [
     "*"
   ],
-  "facade_pending": "MP-R1-C1-T02",
-  "requires": [],
+  "id": "mobile-app",
+  "kind": "optional",
+  "layer": 5,
+  "name": "Phone app (MP-N1)",
   "optional": [],
   "owns": {
     "config": [],
@@ -16,5 +14,7 @@
     "state": [],
     "capabilities": []
   },
-  "prior": []
+  "paths": [],
+  "prior": [],
+  "requires": []
 }

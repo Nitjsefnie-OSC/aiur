@@ -1,22 +1,12 @@
 {
-  "id": "init",
-  "name": "Init wizard and upgrade notice",
-  "layer": 4,
-  "kind": "required",
-  "paths": [
-    "src/lib/aiur/init.ex",
-    "src/lib/aiur/init/**",
-    "src/lib/aiur/upgrade.ex",
-    "src/lib/aiur/upgrade/**"
-  ],
+  "facade_pending": "MP-R1-C1-T02",
   "facades": [
     "*"
   ],
-  "facade_pending": "MP-R1-C1-T02",
-  "requires": [
-    "config",
-    "tracker"
-  ],
+  "id": "init",
+  "kind": "required",
+  "layer": 4,
+  "name": "Init wizard and upgrade notice",
   "optional": [],
   "owns": {
     "config": [
@@ -28,7 +18,17 @@
     "state": [],
     "capabilities": []
   },
+  "paths": [
+    "src/lib/aiur/init.ex",
+    "src/lib/aiur/init/**",
+    "src/lib/aiur/upgrade.ex",
+    "src/lib/aiur/upgrade/**"
+  ],
   "prior": [
     "INI"
+  ],
+  "requires": [
+    "config",
+    "tracker"
   ]
 }

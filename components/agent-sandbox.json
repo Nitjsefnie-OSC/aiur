@@ -1,8 +1,23 @@
 {
+  "facade_pending": "MP-R1-C1-T02",
+  "facades": [
+    "*"
+  ],
   "id": "agent-sandbox",
-  "name": "Agent OS-process safety",
-  "layer": 2,
   "kind": "required",
+  "layer": 2,
+  "name": "Agent OS-process safety",
+  "optional": [],
+  "owns": {
+    "config": [],
+    "env": [
+      "AIUR_AGENT_IR_SANDBOX",
+      "AIUR_AGENT_WORKSPACE",
+      "PATH"
+    ],
+    "state": [],
+    "capabilities": []
+  },
   "paths": [
     "src/lib/aiur/agent_build_guard.ex",
     "src/lib/aiur/agent_command_installer.ex",
@@ -21,27 +36,12 @@
     "src/lib/aiur/process_reaper.ex",
     "src/lib/aiur/sandbox/**"
   ],
-  "facades": [
-    "*"
+  "prior": [
+    "RUN"
   ],
-  "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "config",
     "kernel",
     "signal"
-  ],
-  "optional": [],
-  "owns": {
-    "config": [],
-    "env": [
-      "AIUR_AGENT_IR_SANDBOX",
-      "AIUR_AGENT_WORKSPACE",
-      "PATH"
-    ],
-    "state": [],
-    "capabilities": []
-  },
-  "prior": [
-    "RUN"
   ]
 }

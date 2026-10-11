@@ -1,19 +1,12 @@
 {
-  "id": "linear",
-  "name": "Linear adapter",
-  "layer": 2,
-  "kind": "optional",
-  "paths": [
-    "src/lib/aiur/linear/**"
-  ],
+  "facade_pending": "MP-R1-C1-T02",
   "facades": [
     "*"
   ],
-  "facade_pending": "MP-R1-C1-T02",
-  "requires": [
-    "config",
-    "tracker"
-  ],
+  "id": "linear",
+  "kind": "optional",
+  "layer": 2,
+  "name": "Linear adapter",
   "optional": [],
   "owns": {
     "config": [],
@@ -24,7 +17,14 @@
     "state": [],
     "capabilities": []
   },
+  "paths": [
+    "src/lib/aiur/linear/**"
+  ],
   "prior": [
     "LIN"
+  ],
+  "requires": [
+    "config",
+    "tracker"
   ]
 }

@@ -1,8 +1,21 @@
 {
+  "facade_pending": "MP-R1-C1-T02",
+  "facades": [
+    "*"
+  ],
   "id": "tracker",
-  "name": "Tracker contract",
-  "layer": 2,
   "kind": "required",
+  "layer": 2,
+  "name": "Tracker contract",
+  "optional": [],
+  "owns": {
+    "config": [
+      "tracker"
+    ],
+    "env": [],
+    "state": [],
+    "capabilities": []
+  },
   "paths": [
     "src/lib/aiur/code_host.ex",
     "src/lib/aiur/issue.ex",
@@ -13,25 +26,12 @@
     "src/lib/aiur/tracker/**",
     "src/lib/aiur/tracker_config.ex"
   ],
-  "facades": [
-    "*"
+  "prior": [
+    "TRK"
   ],
-  "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "config",
     "identity",
     "kernel"
-  ],
-  "optional": [],
-  "owns": {
-    "config": [
-      "tracker"
-    ],
-    "env": [],
-    "state": [],
-    "capabilities": []
-  },
-  "prior": [
-    "TRK"
   ]
 }

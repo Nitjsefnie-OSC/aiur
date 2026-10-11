@@ -1,8 +1,31 @@
 {
+  "facade_pending": "MP-R1-C1-T02",
+  "facades": [
+    "*"
+  ],
   "id": "accounting",
-  "name": "Provider meters and usage ledger",
-  "layer": 2,
   "kind": "optional",
+  "layer": 2,
+  "name": "Provider meters and usage ledger",
+  "optional": [],
+  "owns": {
+    "config": [],
+    "env": [
+      "DEEPSEEK_API_KEY",
+      "MOONSHOT_API_KEY",
+      "OPENROUTER_API_KEY",
+      "OPENROUTER_MANAGEMENT_KEY"
+    ],
+    "state": [
+      "balance_baseline_state_dir",
+      "usage_aggregate_state_dir",
+      "usage_compaction_state_dir",
+      "usage_ledger_state_dir"
+    ],
+    "capabilities": [
+      "accounting.meters"
+    ]
+  },
   "paths": [
     "src/lib/aiur/accounts.ex",
     "src/lib/aiur/accounts/**",
@@ -26,37 +49,14 @@
     "src/lib/aiur/usage_ledger.ex",
     "src/lib/aiur/usage_ledger/**"
   ],
-  "facades": [
-    "*"
+  "prior": [
+    "PM",
+    "USG"
   ],
-  "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "config",
     "identity",
     "kernel",
     "signal"
-  ],
-  "optional": [],
-  "owns": {
-    "config": [],
-    "env": [
-      "DEEPSEEK_API_KEY",
-      "MOONSHOT_API_KEY",
-      "OPENROUTER_API_KEY",
-      "OPENROUTER_MANAGEMENT_KEY"
-    ],
-    "state": [
-      "balance_baseline_state_dir",
-      "usage_aggregate_state_dir",
-      "usage_compaction_state_dir",
-      "usage_ledger_state_dir"
-    ],
-    "capabilities": [
-      "accounting.meters"
-    ]
-  },
-  "prior": [
-    "PM",
-    "USG"
   ]
 }

@@ -1,23 +1,17 @@
 {
-  "id": "pr-lifecycle",
-  "name": "PR health lifecycle",
-  "layer": 3,
-  "kind": "optional",
-  "paths": [
-    "src/lib/aiur/pr_lifecycle/**"
-  ],
+  "facade_pending": null,
   "facades": [
     "Aiur.PRLifecycle.HealthScanner",
     "Aiur.PRLifecycle.ReworkRequeue"
   ],
-  "facade_pending": null,
-  "requires": [
-    "config",
-    "github",
-    "kernel",
-    "signal",
-    "tracker"
+  "forbid": [
+    "Aiur.Orchestrator",
+    "Aiur.Orchestrator.*"
   ],
+  "id": "pr-lifecycle",
+  "kind": "optional",
+  "layer": 3,
+  "name": "PR health lifecycle",
   "optional": [
     "executor-attention"
   ],
@@ -27,11 +21,17 @@
     "state": [],
     "capabilities": []
   },
+  "paths": [
+    "src/lib/aiur/pr_lifecycle/**"
+  ],
   "prior": [
     "PRL"
   ],
-  "forbid": [
-    "Aiur.Orchestrator",
-    "Aiur.Orchestrator.*"
+  "requires": [
+    "config",
+    "github",
+    "kernel",
+    "signal",
+    "tracker"
   ]
 }

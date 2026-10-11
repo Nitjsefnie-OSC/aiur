@@ -1,8 +1,25 @@
 {
+  "facade_pending": "MP-R1-C1-T02",
+  "facades": [
+    "*"
+  ],
   "id": "github-listeners",
-  "name": "GitHub event ingestion (webhook + pollers)",
-  "layer": 2,
   "kind": "optional",
+  "layer": 2,
+  "name": "GitHub event ingestion (webhook + pollers)",
+  "optional": [],
+  "owns": {
+    "config": [
+      "webhooks"
+    ],
+    "env": [
+      "AIUR_GITHUB_WEBHOOK_SECRET"
+    ],
+    "state": [],
+    "capabilities": [
+      "webhook_ingress"
+    ]
+  },
   "paths": [
     "src/lib/aiur/events/branch_ref_store.ex",
     "src/lib/aiur/events/branch_rewrite_classifier.ex",
@@ -23,10 +40,9 @@
     "src/lib/aiur_web/github_webhook*",
     "src/lib/aiur_web/routes/github_webhook.ex"
   ],
-  "facades": [
-    "*"
+  "prior": [
+    "ING"
   ],
-  "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "config",
     "event-bus",
@@ -34,21 +50,5 @@
     "identity",
     "kernel",
     "web-kit"
-  ],
-  "optional": [],
-  "owns": {
-    "config": [
-      "webhooks"
-    ],
-    "env": [
-      "AIUR_GITHUB_WEBHOOK_SECRET"
-    ],
-    "state": [],
-    "capabilities": [
-      "webhook_ingress"
-    ]
-  },
-  "prior": [
-    "ING"
   ]
 }

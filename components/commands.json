@@ -1,8 +1,34 @@
 {
+  "facade_pending": null,
+  "facades": [
+    "Aiur.Commands",
+    "Aiur.Commands.DeliveryTarget",
+    "Aiur.Decision",
+    "Aiur.DecisionAnswer",
+    "Aiur.DecisionArtifact",
+    "Aiur.DecisionEvent",
+    "Aiur.DecisionRevision",
+    "AiurWeb.DecisionApiController",
+    "AiurWeb.Routes.Decisions"
+  ],
   "id": "commands",
-  "name": "Commands (code: Decisions) and Asks",
-  "layer": 3,
   "kind": "required",
+  "layer": 3,
+  "name": "Commands (code: Decisions) and Asks",
+  "optional": [],
+  "owns": {
+    "config": [
+      "decisions"
+    ],
+    "env": [
+      "AIUR_CI_READINESS_TOKEN",
+      "AIUR_SUPERVISOR_TOKEN"
+    ],
+    "state": [
+      "decision_state_dir"
+    ],
+    "capabilities": []
+  },
   "paths": [
     "src/lib/aiur/asks.ex",
     "src/lib/aiur/asks_store.ex",
@@ -20,18 +46,10 @@
     "src/lib/aiur_web/controllers/decision*.ex",
     "src/lib/aiur_web/routes/decisions.ex"
   ],
-  "facades": [
-    "Aiur.Commands",
-    "Aiur.Commands.DeliveryTarget",
-    "Aiur.Decision",
-    "Aiur.DecisionAnswer",
-    "Aiur.DecisionArtifact",
-    "Aiur.DecisionEvent",
-    "Aiur.DecisionRevision",
-    "AiurWeb.DecisionApiController",
-    "AiurWeb.Routes.Decisions"
+  "prior": [
+    "DEC",
+    "EXE"
   ],
-  "facade_pending": null,
   "requires": [
     "config",
     "event-bus",
@@ -39,23 +57,5 @@
     "kernel",
     "signal",
     "web-kit"
-  ],
-  "optional": [],
-  "owns": {
-    "config": [
-      "decisions"
-    ],
-    "env": [
-      "AIUR_CI_READINESS_TOKEN",
-      "AIUR_SUPERVISOR_TOKEN"
-    ],
-    "state": [
-      "decision_state_dir"
-    ],
-    "capabilities": []
-  },
-  "prior": [
-    "DEC",
-    "EXE"
   ]
 }

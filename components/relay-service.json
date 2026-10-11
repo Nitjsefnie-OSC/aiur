@@ -1,14 +1,12 @@
 {
-  "id": "relay-service",
-  "name": "Push relay service (MP-N4). `status: planned`, `added_by: MP-N4`",
-  "layer": 5,
-  "kind": "optional",
-  "paths": [],
+  "facade_pending": "MP-R1-C1-T02",
   "facades": [
     "*"
   ],
-  "facade_pending": "MP-R1-C1-T02",
-  "requires": [],
+  "id": "relay-service",
+  "kind": "optional",
+  "layer": 5,
+  "name": "Push relay service (MP-N4). `status: planned`, `added_by: MP-N4`",
   "optional": [],
   "owns": {
     "config": [],
@@ -16,5 +14,7 @@
     "state": [],
     "capabilities": []
   },
-  "prior": []
+  "paths": [],
+  "prior": [],
+  "requires": []
 }
