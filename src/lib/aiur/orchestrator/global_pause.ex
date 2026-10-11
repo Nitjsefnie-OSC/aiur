@@ -146,7 +146,7 @@ defmodule Aiur.Orchestrator.GlobalPause do
 
   defp maybe_refresh_after_global_pause_change(state, true, false, opts) do
     backends = Keyword.get(opts, :backends, DispatchPolicy.read_provider_backends())
-    ModelAvailability.probe_stale_limits(backends, Keyword.take(opts, [:path, :now, :probe_fun]))
+    ModelAvailability.probe_stale_limits(backends, opts)
     state |> Lifecycle.request_refresh_state() |> elem(0)
   end
 
