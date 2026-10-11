@@ -30,10 +30,19 @@ config or unknown file types. Use the target repository's test-selection tool
 (Aiur's Elixir core uses `mix aiur.affected_tests`).
 
 `mix pr_body.check --file <body.md>` validates the template and evidence shape.
-CI reads the current PR body and runs the same checker in `workflow security`
-on PR events; rerun that job after correcting a rejected body.
+CI reads the current PR body and head SHA and runs the same checker in
+`workflow security`; stale `Tested head` values fail. Rerun that job after
+correcting a rejected body.
+
+PRs opened at or before rollout are grandfathered out of the CI body gate.
+The cutoff is the first-parent commit that adds `scripts/check-pr-body.py` to
+the PR's base branch, so the feature commit date does not activate enforcement.
+Before that landing, the CI body gate exempts existing PRs.
 
 Optional `--policy all|partial|none` rejects evidence below that mode, and
 `--head <SHA>` rejects stale evidence. Reviewers still compare test selection and
 actual results with the diff; shape validation does not prove commands ran or
 succeeded.
+
+The AGENTS.md revert check for new tests applies in every local-test mode,
+including `none`.

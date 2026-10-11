@@ -53,19 +53,6 @@ If a turn ends in `agent:ci-wait` with completed work still a draft, mark it
 ready as the first step of the resume turn, then wait for the full required
 checks on the current head SHA.
 
-### Local tests evidence
-
-Follow the current `Local tests policy` section rebuilt from config each turn.
-Every PR body must contain `## Local tests`: `Policy`, the full 40-character
-`Tested head` SHA pushed, `Base` ref and SHA, `Selection` rationale, and each
-exact command with its actual `-> result`. Refresh the section after every push.
-Record failures and blockers honestly; do not substitute a checkbox for results.
-For `partial`, use the repository's affected-test tool and check changed tests,
-source mirrors, direct callers, and deleted-name references; unsafe selection
-(shared support, build/dependencies/runtime config or unknown file types) means
-run the full suite. `all` runs the full suite; `none` runs compile and format.
-CI still owns the full required-check gate before human-review handoff.
-
 ### Local pre-handoff checks
 
 For changes in the Aiur repository, before marking the PR ready or handing

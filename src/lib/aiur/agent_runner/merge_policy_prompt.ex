@@ -8,6 +8,7 @@ defmodule Aiur.AgentRunner.MergePolicyPrompt do
 
     `merge_policy.local_tests` is currently `#{policy.local_tests}`. This current policy supersedes older local-test instructions.
     #{instructions(policy.local_tests)}
+    The AGENTS.md revert check for new tests applies in every mode, including `none`.
     Record evidence under `## Local tests` in every PR body: `Policy`, `Tested head` (the full 40-character pushed commit SHA),
     `Base` (ref and SHA), `Selection` (why these tests cover the change), and command bullets: ``- `command` -> result``.
     Record actual results, including failures or blockers. Update the evidence after every push; never claim unrun tests passed.

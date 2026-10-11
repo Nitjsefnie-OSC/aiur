@@ -93,11 +93,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$RUNNER_TEMP/pr-body.md"
-          elixir -r src/lib/aiur/local_test_evidence.ex -r src/lib/mix/tasks/pr_body.check.ex -e 'Mix.start(); Mix.Tasks.PrBody.Check.run(System.argv())' -- --file "$RUNNER_TEMP/pr-body.md"
-      - name: Guard workflow triggers and action pins
-        run: bash scripts/test-workflow-security.sh
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$RUNNER_TEMP/pr-evidence.json"
+          python3 scripts/check-pr-body.py --pr-json "$RUNNER_TEMP/pr-evidence.json" --base "$PR_BASE"
+      - name: Guard workflow triggers, action pins and PR body rollout
+        run: bash scripts/test-workflow-security.sh && python3 scripts/test-check-pr-body.py
       - name: Test legacy Stream Deck nightly cleanup
         run: node scripts/test-cleanup-legacy-streamdeck-nightlies.mjs
       - name: Test human-only merge ruleset verifier
@@ -524,7 +525,6 @@ jobs:
         # cache post-step saves, keeping the stored cache dependency-only (the
         # path the restore step promises).
         run: rm -rf _build/test/lib/aiur
-
   analytics:
     needs: changes
     if: ${{ needs.changes.outputs.draft != 'true' }}

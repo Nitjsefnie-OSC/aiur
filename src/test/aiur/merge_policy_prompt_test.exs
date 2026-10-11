@@ -22,6 +22,7 @@ defmodule Aiur.MergePolicyPromptTest do
       prompt = MergePolicyPrompt.build(%{local_tests: mode, ci: "wait"})
       assert prompt =~ "currently `#{mode}`"
       assert prompt =~ text
+      assert prompt =~ "revert check for new tests applies in every mode, including `none`"
       assert prompt =~ "full 40-character pushed commit SHA"
       refute prompt =~ "may merge before CI"
     end
