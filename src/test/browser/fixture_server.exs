@@ -198,7 +198,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
       )
 
     {:ok, {_ip, port}} = Bandit.PhoenixAdapter.server_info(FixtureEndpoint, :http)
-    IO.puts("Aiur browser harness fixture ready at http://127.0.0.1:#{port}")
+    IO.puts("AIUR_BROWSER_FIXTURE_PORT=#{port}")
     Process.sleep(:infinity)
   end
 
