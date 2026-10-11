@@ -63,13 +63,13 @@ the change falsifies before writing anything new.
 A genuinely new page must also be added to the sidebar in
 `website/docs-app/.vitepress/config.ts`, or nobody can reach it.
 
-Only one row above is machine-checked. `scripts/check-config-docs.py` resolves
-every config key to its full dotted path and fails the required `lint` job when
-one is missing from the configuration reference; `scripts/test-check-config-docs.sh`
-guards that checker. **Every other row is enforced by review alone** — nothing
-will stop a CLI flag or a dashboard page from merging undocumented, so a
-reviewer treating a missing doc as a blocking finding is the only mechanism
-there is.
+The config and CLI rows above are machine-checked. `scripts/check-config-docs.py`
+resolves every config key to its full dotted path and fails the required `lint`
+job when one is missing from the configuration reference;
+`scripts/test-check-config-docs.sh` guards that checker. The required `lint` job
+also runs `website/docs-app/scripts/check-cli-reference.sh` and its self-test, so
+a missing or stale CLI command or flag fails the PR. Dashboard pages and the
+remaining rows are enforced by review alone.
 
 ## Layout
 
