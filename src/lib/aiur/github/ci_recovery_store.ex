@@ -17,10 +17,25 @@ defmodule Aiur.GitHub.CIRecoveryStore do
     end
   end
 
-  defp normalize(%{"pr" => pr, "cycles" => cycles, "heads" => heads} = entry, pr) when is_integer(cycles) and cycles >= 0 and is_map(heads), do: {:ok, entry}
+  defp normalize(%{"pr" => pr, "cycles" => cycles, "heads" => heads} = entry, pr) when is_integer(cycles) and cycles >= 0 and is_map(heads) do
+    if Enum.all?(heads, fn {sha, attempt} -> is_binary(sha) and valid_attempt?(attempt) end) and valid_update?(entry["updated"]) and is_list(Map.get(entry, "attentions", [])),
+      do: {:ok, entry},
+      else: {:error, :invalid_ci_recovery_entry}
+  end
+
   defp normalize(%{"pr" => pr}, pr), do: {:error, :invalid_ci_recovery_entry}
   defp normalize(entry, pr) when is_map(entry), do: {:ok, %{"pr" => pr, "cycles" => 0, "heads" => %{}}}
   defp normalize(_, _), do: {:error, :invalid_ci_recovery_entry}
+
+  defp valid_update?(nil), do: true
+  defp valid_update?(%{"sha" => sha} = attempt), do: is_binary(sha) and valid_time?(attempt)
+  defp valid_update?(_), do: false
+  defp valid_attempt?(%{"runs" => [_ | _] = runs} = attempt), do: valid_time?(attempt) and Enum.all?(runs, &valid_run?/1)
+  defp valid_attempt?(_), do: false
+  defp valid_time?(%{"requested_at" => time} = attempt), do: is_integer(time) and (not Map.has_key?(attempt, "error") or is_binary(attempt["error"]))
+  defp valid_time?(_), do: false
+  defp valid_run?(%{"id" => id, "attempt" => attempt}), do: is_integer(id) and id > 0 and is_integer(attempt) and attempt > 0
+  defp valid_run?(_), do: false
 
   @spec update(String.t(), integer(), (map() -> map()), keyword()) :: {:ok, map()} | {:error, term()}
   def update(target, pr, fun, opts) do

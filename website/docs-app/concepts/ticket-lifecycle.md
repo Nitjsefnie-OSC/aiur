@@ -563,10 +563,9 @@ pushes run only `changes`, `lint`, and `build`. After self-review, the agent
 marks completed work ready to trigger the full suite, then `agent:ci-wait`
 releases the turn and dispatch slot.
 
-A draft's fast gate cannot approve its
-head. Aiur waits for successful required checks from the configured integrations
-on the current head before returning the agent for `agent:human-review`.
-Missing or skipped required checks remain pending. [CI recovery](/apis/github#changes-aiur-makes-itself) reruns eligible failures once and escalates repeated rework. The agent **never self-merges**.
+Aiur requires successful checks on the current head before returning the agent for `agent:human-review`. Draft, missing or skipped checks remain pending.
+
+[CI recovery](/apis/github#changes-aiur-makes-itself) reruns eligible failures once and escalates repeated rework. The agent **never self-merges**.
 
 GitHub mechanics — polling, webhooks, rate budgets, and CI observation — live
 in [GitHub](/apis/github); this page does not duplicate them.

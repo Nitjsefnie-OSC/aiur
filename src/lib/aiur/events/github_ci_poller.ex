@@ -22,9 +22,11 @@ defmodule Aiur.Events.GithubCIPoller do
 
   @spec recover_failure(map(), map(), keyword()) :: map()
   defdelegate recover_failure(issue, result, opts), to: Recovery, as: :recover
+  @spec complete_recovery(map(), map(), term(), keyword()) :: map()
+  defdelegate complete_recovery(issue, result, recovered, opts), to: Recovery, as: :complete
   @spec record_failure(map(), map(), keyword()) :: :ok | {:error, term()}
   defdelegate record_failure(issue, result, opts), to: Recovery
-  @spec record_pass(map(), map(), keyword()) :: :ok
+  @spec record_pass(map(), map(), keyword()) :: :ok | {:error, term()}
   defdelegate record_pass(issue, result, opts), to: Recovery
   @spec attention_hold?(map() | nil) :: boolean()
   defdelegate attention_hold?(result), to: Recovery

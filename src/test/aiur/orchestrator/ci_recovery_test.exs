@@ -8,7 +8,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   alias Aiur.GitHub.CIRecoveryStore, as: CiRecoveryStore
   alias Aiur.GitHub.ResourceStore
   alias Aiur.{Issue, JsonStore}
-  alias Aiur.Orchestrator.CiLifecycle
+  alias Aiur.Orchestrator.{CiLifecycle, StatusReport}
   alias Aiur.Orchestrator.StatusReport.SnapshotPayload
   alias Aiur.OrchestratorDeactivateSupport.CIWatcherGitHubClient
 
@@ -117,11 +117,24 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   end
 
   test "corrupt journal fails closed before GitHub writes", ctx do
-    for content <- ["invalid json", Jason.encode!(%{"3864" => %{"pr" => 42}})] do
+    File.write!(ctx.path, "invalid json")
+    assert %{decision: :pending, recovery: "evidence_unavailable"} = recover(ctx)
+
+    for entry <- [%{"pr" => 42}, %{"pr" => 42, "cycles" => 0, "heads" => %{"head-1" => %{"runs" => []}}}] do
+      content = Jason.encode!(%{"3864" => entry})
       File.write!(ctx.path, content)
       assert %{decision: :pending, recovery: "evidence_unavailable"} = recover(ctx)
       assert writes(ctx) == []
     end
+  end
+
+  test "failed journal writes return errors and raise Executor attention", ctx do
+    File.mkdir_p!(ctx.path)
+    assert {:error, _} = CiRecovery.record_pass(ctx.issue, ctx.result, ctx.opts)
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
+    assert {:error, _} = CiRecovery.record_failure(ctx.issue, ctx.result, ctx.opts)
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.journal_failed", _}
+    assert writes(ctx) == []
   end
 
   test "rerun waiting does not deliver the old failure; ten-minute delay escalates", ctx do
@@ -144,12 +157,25 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     state = poll.(empty_orchestrator_state(), ctx.result)
     refute_received {:ci_watcher_update, "3864", "rework"}
     assert state.ci_lifecycle.poll_cache["3864"].recovery == "rerun_requested"
-    snapshot = SnapshotPayload.snapshot_payload(state)
+    snapshot = state |> StatusReport.snapshot_input() |> SnapshotPayload.snapshot_payload()
     assert capture_io(fn -> CiWait.print(snapshot) end) =~ "CI WAIT 3864 PR #42: rerun_requested"
     assert state.running == %{}
+    assert :ok = CiRecovery.record_failure(ctx.issue, ctx.result, ctx.opts)
     poll.(state, %{ctx.result | decision: :passed, failures: []})
     assert_received {:ci_watcher_update, "3864", "in-progress"}
+    assert {:ok, %{"cycles" => 0, "attentions" => []}} = CiRecoveryStore.read("3864", 42, ctx.opts)
     assert length(writes(ctx)) == 1
+  end
+
+  test "lifecycle retains worker errors without crashing or handing off", ctx do
+    setup_lifecycle(ctx)
+    opts = Keyword.put(ctx.opts, :ci_recovery, fn _, _, _ -> {:error, :tracker_task_timeout} end)
+    state = lifecycle_poll(empty_orchestrator_state(), %{ctx | opts: opts}, ctx.issue)
+    assert state.ci_lifecycle.poll_cache["3864"].recovery == "worker_failed"
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.worker_failed", details}
+    assert details[:message] =~ "tracker_task_timeout"
+    refute_received {:ci_watcher_update, "3864", "rework"}
+    assert CiRecovery.attention_hold?(state.ci_lifecycle.poll_cache["3864"])
   end
 
   test "status lists held CI even without a running agent", ctx do

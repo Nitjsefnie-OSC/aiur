@@ -1238,12 +1238,14 @@ defmodule Aiur.Orchestrator.CiLifecycle do
   end
 
   defp recover_ci_poll_result(state, issue, result, opts) do
+    result = Map.put(result, :ci_recovery_opts, opts)
+
     if ci_wait_state?(effective_ci_state(issue)) and result[:decision] == :failed and
          is_integer(result[:pr_number]) and not Issue.paused?(issue) and not LifecycleFence.handoff_blocked?(state, issue) do
       recovery = Keyword.get(opts, :ci_recovery, &GithubCIPoller.recover_failure/3)
 
       run_ci_effect(state, issue, "ci_recovery", fn -> recovery.(issue, result, opts) end, fn current, recovered ->
-        recovered = Map.merge(recovered, %{ci_recovery_checked: true, ci_recovery_opts: opts})
+        recovered = GithubCIPoller.complete_recovery(issue, result, recovered, opts)
         current |> stash_last_ci_result(issue, recovered) |> apply_ci_poll_result(issue, recovered)
       end)
     else
@@ -1736,7 +1738,7 @@ defmodule Aiur.Orchestrator.CiLifecycle do
         Keyword.put(expected_state_opts(issue), :writer, :ci_lifecycle)
       )
 
-    if response == :ok, do: GithubCIPoller.record_pass(issue, result, [])
+    if response == :ok, do: GithubCIPoller.record_pass(issue, result, result[:ci_recovery_opts] || [])
     response
   end
 

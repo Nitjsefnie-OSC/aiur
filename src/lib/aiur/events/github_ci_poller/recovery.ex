@@ -7,8 +7,14 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
   alias Aiur.GitHub.CIRecoveryStore, as: Store
 
   @spec attention_hold?(map() | nil) :: boolean()
-  def attention_hold?(%{recovery: reason}), do: reason in ~w(loop rerun_failed base_update_failed evidence_unavailable observation_unavailable rerun_unavailable rerun_stuck base_update_stuck)
+  def attention_hold?(%{recovery: reason}),
+    do: reason in ~w(loop worker_failed rerun_failed base_update_failed evidence_unavailable observation_unavailable rerun_unavailable rerun_stuck base_update_stuck)
+
   def attention_hold?(_), do: false
+
+  @spec complete(map(), map(), term(), keyword()) :: map()
+  def complete(_issue, _result, recovered, opts) when is_map(recovered), do: Map.merge(recovered, %{ci_recovery_checked: true, ci_recovery_opts: opts})
+  def complete(issue, result, error, opts), do: attention(issue, result, "worker_failed", error, opts)
 
   @spec recover(map(), map(), keyword()) :: map()
   def recover(issue, %{pr_number: number, head_sha: sha} = result, opts) when is_integer(number) and is_binary(sha) do
@@ -180,14 +186,16 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
       else: held(result, kind <> "_pending")
   end
 
-  @spec record_pass(map(), map(), keyword()) :: :ok
+  @spec record_pass(map(), map(), keyword()) :: :ok | {:error, term()}
   def record_pass(issue, %{pr_number: number} = result, opts) when is_integer(number) do
     case update(issue, result, &(&1 |> Map.put("cycles", 0) |> Map.delete("last_cycle") |> Map.put("attentions", [])), opts) do
-      {:ok, _} -> :ok
-      {:error, error} -> Logger.warning("CI recovery pass journal failed: #{inspect(error)}")
-    end
+      {:ok, _} ->
+        :ok
 
-    :ok
+      {:error, error} ->
+        attention(issue, result, "journal_failed", error, opts)
+        {:error, error}
+    end
   end
 
   def record_pass(_, _, _), do: :ok
@@ -202,7 +210,7 @@ defmodule Aiur.Events.GithubCIPoller.Recovery do
         :ok
 
       {:error, error} ->
-        Logger.warning("CI recovery cycle journal failed: #{inspect(error)}")
+        attention(issue, result, "journal_failed", error, opts)
         {:error, error}
     end
   end

@@ -32,14 +32,11 @@ Polling remains the complete fallback because it reads current GitHub state even
 
 The development `scripts/aiurdev --test` and `--test3` harnesses still read GitHub's issue lists, but pass only their pinned sandbox tickets to dispatch authorization, startup workspace cleanup, and tracker reconciliation. Ordinary runs retain full issue discovery.
 
-Each CI poll reads the configured base branch's active rules and classic branch
-protection once for the batch, then requires every required check on the current
+Each CI poll reads the configured base branch's active rules and classic branch protection once for the batch, then requires every required check on the current
 PR head from its configured integration.
 
-A failed required-check lookup keeps a
-green aggregate pending; missing and skipped required checks cannot pass.
-The two reads are attributed to `ci_required_checks` and bypass the shared read
-cache because they govern a CI verdict.
+A failed required-check lookup keeps a green aggregate pending; missing and skipped required checks cannot pass.
+The two reads are attributed to `ci_required_checks` and bypass the shared read cache because they govern a CI verdict.
 
 Draft PRs remain pending even when
 their fast gate is green. Completed work must be marked ready before CI wait so
@@ -727,10 +724,7 @@ unreadable comparisons or a file list reaching GitHub's 300-file cap also block.
 
 Comparisons are attributed to `human_review_base_ancestry` and always contact GitHub: base movement can change the verdict without changing the PR. These reads add cost; this change claims no quota saving.
 
-For the next 10 handoffs after rollout, record the tested PR head, observed base
-SHA and overlap/conflict verdict. Count unsafe handoffs reaching review,
-separately from harmless stale heads; the earlier 3-of-8 stale-base count is
-context, not an equivalent baseline for this narrower measure.
+For the next 10 handoffs after rollout, record the tested PR head, observed base SHA and overlap/conflict verdict. Count unsafe handoffs reaching review separately from harmless stale heads; the earlier 3-of-8 stale-base count is context, not an equivalent baseline for this narrower measure.
 
 ## Changes Aiur makes itself
 
@@ -746,7 +740,13 @@ Build queue closure reads use caller `build_queue_observe` and the configured ob
 
 Build queue writes are paced by `build_queue.max_writes_per_minute` (default 20). Promotion costs up to three GETs and one label POST; markers and withdrawals cost one request each. Withdrawal removes only `agent:todo` after holding dispatch and proving it unclaimed; `agent:queued` remains. No saving is claimed ([cost](/concepts/build-orders#queue-cost)).
 
-CI-wait recovery uses the [failure digest](/apis/ci-failure-evidence), fresh GraphQL head/queue evidence, PR changed paths and Actions run attempts (`ci_recovery` caller). It requests failed-job reruns once per head only for known flakes or fully annotated tests outside the diff. A conflict-free head behind the configured base gets one expected-head branch update per PR. Attempts are journaled before writes; queued PRs are left alone. Actions: write is required; denial raises attention. After three failed CI/rework handoffs, one attention names failing tests and further rework/fallback wakes are held. A full required-check pass resets the cycle count. Requests not observed within ten minutes also raise attention. No saving is claimed. Orphan-claim recovery reads PR mergeability/reviews before guarded state writes ([Operating Aiur](/concepts/operating-aiur#pause-and-capacity)); successful writes retain GitHub's returned state.
+CI-wait recovery uses the [failure digest](/apis/ci-failure-evidence), fresh GraphQL head/queue evidence, PR changed paths and Actions run attempts (`ci_recovery` caller). Fully annotated tests outside the diff and known flakes get one failed-job rerun per head.
+
+A conflict-free head behind the configured base gets one expected-head branch update per PR. Attempts are journaled before writes; queued PRs are left alone. Actions: write is required; denial raises attention.
+
+Three failed CI/rework handoffs raise one attention naming tests and hold further rework/fallback wakes. A full required-check pass resets the cycle count. Requests not observed within ten minutes also raise attention. No saving is claimed.
+
+Orphan-claim recovery reads mergeability/reviews before guarded add-before-remove state writes. It posts a reason comment and wakes the Executor ([Operating Aiur](/concepts/operating-aiur#pause-and-capacity)). Successful writes retain GitHub's returned state.
 
 The write response supplies this state without another read. Two consequences:
 
