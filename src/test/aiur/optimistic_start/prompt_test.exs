@@ -46,7 +46,7 @@ defmodule Aiur.OptimisticStart.PromptTest do
   end
 
   test "tracker refresh preserves the start record for later turn prompts" do
-    original = %{issue(record([blocker("12")])) | state: "in-progress"}
+    original = %{issue(record([blocker("12")])) | state: "Todo"}
     fetched = %{original | optimistic_start: nil, title: "Updated"}
     assert {:continue, refreshed} = TurnLoop.continue_with_issue?(original, fn ["22"] -> {:ok, [fetched]} end)
     assert refreshed.title == "Updated"
