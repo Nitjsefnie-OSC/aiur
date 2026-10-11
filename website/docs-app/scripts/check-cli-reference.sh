@@ -7,7 +7,8 @@ engine="$repo_root/packaging/npm/aiur-cli/libexec/aiur-engine.sh"
 queue_handler="$repo_root/packaging/npm/aiur-cli/libexec/aiur-queue.sh"
 parser="$repo_root/src/lib/aiur/cli.ex"
 dev_shim="$repo_root/scripts/aiurdev"
-page="$docs_dir/reference/cli.md"
+shopt -s nullglob
+pages=("$docs_dir/reference/cli.md" "$docs_dir/reference"/cli-*.md)
 source_dev_commands="$(sed -n 's/^if \[ "${1:-}" = "\([a-z-]*\)" \]; then$/\1/p' "$dev_shim" | sort -u)"
 
 fail=0
@@ -83,18 +84,18 @@ has_complete_table_row() {
     $2 ~ "(^|[^[:alnum:]-])" token "([^[:alnum:]-]|$)" && NF >= 5 && $2 !~ /^[[:space:]-]*$/ &&
       $3 !~ /^[[:space:]-]*$/ && $4 !~ /^[[:space:]-]*$/ { found = 1 }
     END { exit found ? 0 : 1 }
-  ' "$page"
+  ' "${pages[@]}"
 }
 
-rendered_flags="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | rg -o -- '--[a-z][a-z0-9-]*' | sort -u)"
+rendered_flags="$(awk -F '|' 'NF >= 5 { print $2 }' "${pages[@]}" | rg -o -- '--[a-z][a-z0-9-]*' | sort -u)"
 source_word_commands="$(printf '%s\n' "$source_commands" | rg '^[a-z][a-z-]*$')"
-rendered_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | rg -o -- 'aiur[[:space:]]+[a-z][a-z-]*' | sed 's/^aiur[[:space:]]*//' | sort -u)"
-rendered_dev_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | rg -o -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
+rendered_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "${pages[@]}" | rg -o -- 'aiur[[:space:]]+[a-z][a-z-]*' | sed 's/^aiur[[:space:]]*//' | sort -u)"
+rendered_dev_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "${pages[@]}" | rg -o -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
 source_flag_tokens="$(printf '%s\n%s\n' "$source_flags" "$source_commands" | rg '^--' | sort -u)"
 source_prose_commands="$source_word_commands"
-prose_flags="$(rg -o --no-filename -- '--[a-z][a-z0-9-]*' "$page" | sort -u)"
-prose_commands="$(rg -o --no-filename -- 'aiur[[:space:]]+[a-z][a-z-]*' "$page" | sed 's/^aiur[[:space:]]*//' | sort -u)"
-prose_dev_commands="$(rg -o --no-filename -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' "$page" | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
+prose_flags="$(rg -o --no-filename -- '--[a-z][a-z0-9-]*' "${pages[@]}" | sort -u)"
+prose_commands="$(rg -o --no-filename -- 'aiur[[:space:]]+[a-z][a-z-]*' "${pages[@]}" | sed 's/^aiur[[:space:]]*//' | sort -u)"
+prose_dev_commands="$(rg -o --no-filename -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' "${pages[@]}" | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
 
 compare_source_to_docs() {
   local kind="$1" source="$2" documented="$3" missing stale

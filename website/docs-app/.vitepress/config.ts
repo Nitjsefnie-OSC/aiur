@@ -136,7 +136,12 @@ export default withMermaid(defineConfig({
           text: 'Interfaces',
           items: [
             { text: 'TUI', link: '/guide/tui' },
-            { text: 'CLI', link: '/reference/cli' },
+            { text: 'CLI', link: '/reference/cli', items: [
+              { text: 'Launch and setup', link: '/reference/cli-launch' },
+              { text: 'Operations', link: '/reference/cli-operations' },
+              { text: 'Decisions and Executor events', link: '/reference/cli-decisions' },
+              { text: 'Development commands', link: '/reference/cli-development' }
+            ] },
             { text: 'GUI', link: '/guide/gui' },
             { text: 'Stream Deck', link: '/guide/stream-deck' }
           ]
@@ -168,7 +173,13 @@ export default withMermaid(defineConfig({
         {
           text: 'Reference',
           items: [
-            { text: 'Configuration', link: '/reference/configuration' },
+            { text: 'Configuration', link: '/reference/configuration', items: [
+              { text: 'Daemon', link: '/reference/configuration-daemon' },
+              { text: 'Tracker and polling', link: '/reference/configuration-tracker' },
+              { text: 'Agents', link: '/reference/configuration-agents' },
+              { text: 'Integrations', link: '/reference/configuration-integrations' },
+              { text: 'Build Orders', link: '/reference/configuration-build-orders' }
+            ] },
             { text: 'Merge Policy', link: '/reference/merge-policy' },
             { text: 'Optional Optimizations', link: '/reference/optional-optimizations' }
           ]

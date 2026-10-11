@@ -5,6 +5,9 @@ on:
     paths:
       - "website/**"
       - "scripts/check-docs-prose.mjs"
+      - "scripts/carry-reference-edits.py"
+      - "scripts/test-reference-carry.py"
+      - "scripts/reference-sections.tsv"
       - ".github/workflows/website.yml"
   push:
     # Validate the website/docs build on main itself (PR branches alone let a
@@ -15,6 +18,9 @@ on:
     paths:
       - "website/**"
       - "scripts/check-docs-prose.mjs"
+      - "scripts/carry-reference-edits.py"
+      - "scripts/test-reference-carry.py"
+      - "scripts/reference-sections.tsv"
       - ".github/workflows/website.yml"
 
 # Initial PR runs share a stable group; reruns and every non-PR event get a
@@ -53,7 +59,7 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Build docs
         working-directory: website/docs-app
-        run: bun run build
+        run: bun run check:cli-reference && python3 scripts/test-cli-reference.py && python3 ../../scripts/test-reference-carry.py && bun run build
       - name: Install browser
         run: npx playwright install --with-deps chromium
       - name: Test brand accessibility and theme navigation

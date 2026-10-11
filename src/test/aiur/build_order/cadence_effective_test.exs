@@ -195,7 +195,7 @@ defmodule Aiur.BuildOrder.CadenceEffectiveTest do
   # The reference's idle column has to agree with what the code does, or an
   # operator reads a number that is not the one being spent.
   describe "the configuration reference's idle column" do
-    @doc_path Path.expand("../../../../website/docs-app/reference/configuration.md", __DIR__)
+    @doc_path Path.expand("../../../../website/docs-app/reference/configuration-build-orders.md", __DIR__)
 
     # Both idle columns. The second is the default webhook-backed case, where
     # `webhooks.poll_widen_factor` doubles the interval again to 1200s — the

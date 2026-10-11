@@ -143,7 +143,8 @@ def main() -> int:
     if not keys:
         die("found no config keys; that is a broken matcher, not an empty schema")
 
-    reference = "\n".join(p.read_text(encoding="utf-8") for p in [REFERENCE, *EXTRA_REFERENCES] if p.exists())
+    references = [REFERENCE, *sorted(REFERENCE.parent.glob("configuration-*.md")), *EXTRA_REFERENCES]
+    reference = "\n".join(p.read_text(encoding="utf-8") for p in references if p.exists())
     documented = set(INLINE_CODE_RE.findall(reference))
     missing = sorted(key for key in keys if key not in EXEMPT and key not in documented)
 
@@ -154,7 +155,7 @@ def main() -> int:
         print(
             "\nDocumentation ships in the same PR as the change (AGENTS.md, \"Docs ship\n"
             "with the change\"). Add a row for each key to\n"
-            "website/docs-app/reference/configuration.md under its section, giving the\n"
+            "the topic linked from website/docs-app/reference/configuration.md, giving the\n"
             "type, the default, and what an operator changes it for. Keep it to one\n"
             "line; a wrong entry is worse than a missing one.\n\n"
             "If a key is genuinely internal and no operator would ever set it, add it\n"

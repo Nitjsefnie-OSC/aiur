@@ -54,8 +54,8 @@ the change falsifies before writing anything new.
 
 | Change | Page |
 |--------|------|
-| Config key | `website/docs-app/reference/configuration.md` (one entry per key, defaults included) |
-| CLI command or flag | `website/docs-app/reference/cli.md` |
+| Config key | `website/docs-app/reference/configuration-*.md` (topic pages; index: `configuration.md`) |
+| CLI command or flag | `website/docs-app/reference/cli-*.md` (topic pages; index: `cli.md`) |
 | Dashboard, TUI, Stream Deck, quick start | `website/docs-app/guide/` |
 | Model or behavior explanation | `website/docs-app/concepts/` |
 | Skills | `website/docs-app/skills.md` |
@@ -63,13 +63,13 @@ the change falsifies before writing anything new.
 A genuinely new page must also be added to the sidebar in
 `website/docs-app/.vitepress/config.ts`, or nobody can reach it.
 
-Only one row above is machine-checked. `scripts/check-config-docs.py` resolves
-every config key to its full dotted path and fails the required `lint` job when
-one is missing from the configuration reference; `scripts/test-check-config-docs.sh`
-guards that checker. **Every other row is enforced by review alone** — nothing
-will stop a CLI flag or a dashboard page from merging undocumented, so a
-reviewer treating a missing doc as a blocking finding is the only mechanism
-there is.
+`scripts/check-config-docs.py` resolves each config key to its dotted path
+and checks the index, topic pages and merge-policy reference in required lint.
+`scripts/test-check-config-docs.sh` guards that checker. The CLI reference
+checker (`website/docs-app/scripts/check-cli-reference.sh`) compares every
+command and flag with complete syntax/default/example rows across its topics.
+The docs workflow runs its regression tests. User-facing surfaces and behavior
+changes still need review; missing documentation is a blocking finding.
 
 ## Layout
 

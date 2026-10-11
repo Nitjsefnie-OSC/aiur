@@ -74,7 +74,7 @@ defmodule Aiur.BuildOrder.CadenceTest do
   # reference's derived table has to agree with the derivation itself, at the
   # documented poll interval.
   describe "the configuration reference's derived table" do
-    @doc_path Path.expand("../../../../website/docs-app/reference/configuration.md", __DIR__)
+    @doc_path Path.expand("../../../../website/docs-app/reference/configuration-build-orders.md", __DIR__)
 
     # The reference's "busy fleet" column is the derivation at a 120s effective
     # interval. Its idle column is asserted in `CadenceEffectiveTest`, which can

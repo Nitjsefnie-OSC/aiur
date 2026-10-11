@@ -199,5 +199,22 @@ current-side additions. It refuses removals, scalar edits, and conflicting new
 components for manual reconciliation. Review the resulting diff and run the
 component gates before committing; it neither commits nor pushes.
 
-The docs-stage handoff will supply the exact moved-section map and a carry-over
-command for docs changes. Those are pending work, not delivered by this stage.
+## Carry an existing PR's reference edits
+
+After the separate docs landing, from a clean checkout:
+
+```bash
+python3 scripts/carry-reference-edits.py --pr 4257
+```
+
+The command maps old CLI/config headings to topic pages using
+`scripts/reference-sections.tsv`. It preserves current-side edits when they
+do not overlap the incoming changes, refuses overlapping edits, and writes
+nothing when reconciliation fails. New headings and changed introductions
+require manual migration. It neither commits nor pushes.
+
+Every old section anchor remains at its index and links to its topic. The
+sidebar reaches all nine topics. Indexes and topics stay below 400 lines;
+the largest is the 347-line agents reference. Every original table row
+survives once, and 231 config keys plus the CLI command/flag inventory are
+checked across the topic files. No saving is claimed before measurement.
