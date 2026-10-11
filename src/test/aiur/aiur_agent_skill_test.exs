@@ -10,6 +10,8 @@ defmodule Aiur.AiurAgentSkillTest do
   """
   use ExUnit.Case, async: true
 
+  alias Aiur.AgentGitHubGuard.Script
+
   # test/aiur/ -> test/ -> src/ -> repo root
   @repo_root Path.expand("../../..", __DIR__)
   @claude_skill Path.join(@repo_root, ".claude/skills/aiur-agent")
@@ -847,15 +849,17 @@ defmodule Aiur.AiurAgentSkillTest do
     stub = Path.join(root, "gh")
     File.write!(stub, "#!/bin/sh\nexit 0\n")
     File.chmod!(stub, 0o755)
+    guard = Path.join(root, "guard.sh")
+    File.write!(guard, Script.gh())
 
     try do
       {_output, status} =
         System.cmd(
           "/bin/sh",
-          [Path.join(@repo_root, "src/priv/github_quota_guard.sh"), "issue", "create" | arguments],
+          [guard, "issue", "create" | arguments],
           # This test asserts the dispatch disposition enforcement in
           # isolation. The shared GitHub budget broker lives beside the
-          # installed wrapper, not beside the repo copy this test invokes, so
+          # installed wrapper, not beside the copy this test writes, so
           # disable it explicitly or the admission check exits 75 whenever the
           # broker is absent (CI has no broker in `src/priv`).
           env: [
