@@ -98,11 +98,14 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
   end
 
   for {method, status} <- [{:get, 403}, {:get, 404}, {:post, 403}, {:post, 404}] do
+    key = if method == :get, do: :actions_get_status, else: :actions_post_status
+    reason = if method == :get, do: "rerun_unavailable", else: "rerun_failed"
+    expected_writes = if method == :post, do: [{:post, "/actions/runs/99/rerun-failed-jobs"}], else: []
+
     test "Actions #{method} #{status} falls back to rework once without repeated requests", ctx do
-      method = unquote(method)
       status = unquote(status)
-      key = if method == :get, do: :actions_get_status, else: :actions_post_status
-      reason = if method == :get, do: "rerun_unavailable", else: "rerun_failed"
+      key = unquote(key)
+      reason = unquote(reason)
       Agent.update(ctx.agent, &Map.put(&1, key, status))
       assert %{decision: :failed} = result = recover(ctx)
       refute CiRecovery.attention_hold?(result)
@@ -114,7 +117,7 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
       assert %{decision: :failed} = recover(ctx)
       assert requests(ctx) == first_requests
       refute_received {:attention, _, _}
-      assert writes(ctx) == if(method == :post, do: [{:post, "/actions/runs/99/rerun-failed-jobs"}], else: [])
+      assert writes(ctx) == unquote(expected_writes)
     end
   end
 
@@ -136,9 +139,13 @@ defmodule Aiur.Orchestrator.CiRecoveryTest do
     assert state.ci_lifecycle.poll_cache["3864"].decision == :failed
     refute CiRecovery.attention_hold?(state.ci_lifecycle.poll_cache["3864"])
     first_requests = requests(ctx)
-    lifecycle_poll(state, ctx, %{ctx.issue | updated_at: DateTime.from_unix!(2)})
+    state = lifecycle_poll(state, ctx, %{ctx.issue | updated_at: DateTime.from_unix!(2)})
     assert requests(ctx) == first_requests
     refute_received {:attention, _, _}
+    lifecycle_poll(state, ctx, %{ctx.issue | updated_at: DateTime.from_unix!(3)})
+    assert_received {:attention, "ticket.3864.pr.ci_recovery.loop", details}
+    assert details[:message] =~ "UntouchedTest :: fails"
+    assert requests(ctx) == first_requests
   end
 
   test "unavailable Actions evidence holds without repeating reads or attention", ctx do
