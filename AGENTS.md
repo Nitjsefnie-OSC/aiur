@@ -243,9 +243,8 @@ speaks HTTP directly is metered by GitHub's anonymous limit, not by Aiur's
 guard — the ledger counts governed `gh`/`git` calls, and only those.
 
 **Before changing anything that talks to GitHub — polling, budgets, the read
-cache, webhooks, credentials — read
-[`website/docs-app/apis/github.md`](website/docs-app/apis/github.md) and its
-topic pages under `website/docs-app/apis/github-*.md`.** It is
+cache, webhooks, credentials — read the GitHub API docs index and topic pages
+in `website/docs-app/apis/`.** It is
 the source of truth for how Aiur uses the GitHub API: what it polls and how
 often, how the Core/GraphQL budgets are metered and attributed, how to read
 `aiur github-cost` without misinterpreting it, which reads the cache refuses on
