@@ -4,7 +4,7 @@ defmodule Aiur.BrowserBuildGateTest do
   alias Aiur.AgentBuildGuard
 
   test "installed browser guard serializes workspace runs and shares host admission" do
-    root = Aiur.TestSupport.tmp_root!("browser-gate")
+    root = Path.join(System.tmp_dir!(), "browser-gate-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     assert :ok = AgentBuildGuard.install(root)
