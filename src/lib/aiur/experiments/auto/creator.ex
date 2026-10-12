@@ -15,7 +15,7 @@ defmodule Aiur.Experiments.Auto.Creator do
 
   @impl true
   def init(opts) do
-    path = Keyword.get(opts, :path, Path.join(Paths.root(), "auto/creator.json"))
+    path = Keyword.get(opts, :path, Path.join(Paths.root(), "auto-creator.json"))
 
     with {:ok, receipts} <- Aiur.JsonStore.read(path, %{"completed" => [], "skipped" => []}),
          true <- valid_receipts?(receipts) do

@@ -61,11 +61,14 @@ defmodule Aiur.Experiments.Auto.CreatorTest do
     stop_supervised!(Creator)
     stop_supervised!(Store)
     start_supervised!({Store, catalog_context: ctx})
-    creator = start_supervised!({Creator, opts |> Keyword.put(:config, %AutoConfig{}) |> Keyword.put(:catalog_context, ctx)})
+    creator = start_supervised!({Creator, opts |> Keyword.delete(:path) |> Keyword.put(:config, %AutoConfig{}) |> Keyword.put(:catalog_context, ctx)})
     assert {:ok, spec} = Creator.create(line(), creator)
     assert length(spec.metrics) == 17
     assert Enum.all?(spec.metrics, &String.starts_with?(&1["ref"], "delivery-speed/"))
     assert {:ok, :exists} = Creator.create(line(), creator)
+    assert File.exists?(Path.join(Paths.root(), "auto-creator.json"))
+    assert {:ok, [%{id: id}]} = Experiments.list()
+    assert id == spec.id
     assert {:ok, %{snapshots: [snapshot]}} = Experiments.fetch(spec.id)
     observation = Enum.find(snapshot["metrics"]["delivery-speed/start_to_merge"]["observations"], &(&1["unit_id"] == "ticket:101"))
     assert observation["value"] == 9_000_000

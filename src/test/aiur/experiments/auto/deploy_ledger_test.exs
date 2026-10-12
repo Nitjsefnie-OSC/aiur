@@ -43,6 +43,17 @@ defmodule Aiur.Experiments.Auto.DeployLedgerTest do
     assert List.last(rows)["boot_id"] == "5001"
   end
 
+  test "existing boot retries retention after an interrupted cap", %{dir: dir, opts: opts} do
+    File.mkdir_p!(dir)
+    rows = for n <- 1..5001, do: Jason.encode!(%{"boot_id" => to_string(n), "at" => "2026-10-10T00:00:00Z"}) <> "\n"
+    File.write!(opts[:path], rows)
+    assert {:ok, %{"boot_id" => "5001"}} = DeployLedger.record_boot(Keyword.put(opts, :boot_id, "5001"))
+    assert {:ok, rows} = DeployLedger.list({~U[2026-10-09 00:00:00Z], ~U[2026-10-11 00:00:00Z]}, opts)
+    assert length(rows) == 5000
+    assert hd(rows)["boot_id"] == "2"
+    assert List.last(rows)["boot_id"] == "5001"
+  end
+
   test "interior corruption is reported without discarding evidence", %{dir: dir, opts: opts} do
     File.mkdir_p!(dir)
     File.write!(opts[:path], "garbage\n")
