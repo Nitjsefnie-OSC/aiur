@@ -103,6 +103,7 @@ defmodule Aiur.BuildQueue.OptimisticAttentionTest do
 
     assert {:ok, %{latches: []}} = Store.load()
     refute_received {:attention, _, _}
+    assert :ok = Attention.open(:optimistic_blocker_failed, "11", %{blocker: "10", cause: :not_planned, action: :parked})
   end
 
   test "prerequisite attention names started optimistic dependents" do

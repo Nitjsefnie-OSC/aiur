@@ -56,6 +56,8 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
   end
 
   test "unknown, stale, future and unconfirmed observations fail closed" do
+    assert {:park, "11", "10", :edge_removed} in decide(record(), Map.put(healthy(), :edge_present?, false))
+
     for observation <- [nil, Map.put(closed(), :confirmed?, false), Map.put(closed(), :observed_at_ms, @now - 120_001), Map.put(closed(), :observed_at_ms, @now + 1)] do
       assert decide(record(), observation) == []
     end
@@ -125,6 +127,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
   end
 
   test "closed records are ignored" do
+    assert {:park, "11", "10", :edge_removed} in decide(record(), Map.put(healthy(), :edge_present?, false))
     assert decide(Map.put(record(), "status", "closed"), Map.put(healthy(), :edge_present?, false)) == []
   end
 

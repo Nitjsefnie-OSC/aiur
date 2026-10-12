@@ -5,6 +5,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservationsTest do
   @now 1_000_000
 
   test "empty and closed ledger performs no tracker or code host reads" do
+    assert OptimisticGuardObservations.read([record()], @now, opts([]))["10"].pr_number == 100
     opts = opts(fetch_issues: &unexpected/1, blocked_by: &unexpected/1, closure: &unexpected/2, read_pr: &unexpected/2)
     assert OptimisticGuardObservations.read([], @now, opts) == %{dependents: %{}}
     assert OptimisticGuardObservations.read([Map.put(record(), "status", "closed")], @now, opts) == %{dependents: %{}}
