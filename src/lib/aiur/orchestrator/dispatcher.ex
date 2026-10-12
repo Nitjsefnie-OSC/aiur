@@ -2401,7 +2401,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
   defp dispatch_to_worker(%State{} = state, issue, attempt, preferred_worker_host, opts) do
     recipient = self()
 
-    case select_worker_host(state, issue, preferred_worker_host) do
+    case Slots.select_worker_host_for_issue(state, issue, preferred_worker_host) do
       :no_worker_capacity ->
         Logger.debug("No SSH worker slots available for #{State.issue_context(issue)} preferred_worker_host=#{inspect(preferred_worker_host)}")
 
@@ -2416,18 +2416,10 @@ defmodule Aiur.Orchestrator.Dispatcher do
         ReworkDispatchClaim.dispatch(
           state,
           issue,
-          fn current -> spawn_issue_on_worker_host(current, issue, attempt, recipient, worker_host, opts) end,
-          fn current -> emit_dispatch_attempt_decline(current, issue, :tracker_revalidation_failed, true) end,
+          &spawn_issue_on_worker_host(&1, issue, attempt, recipient, worker_host, opts),
+          &emit_dispatch_attempt_decline(&1, issue, :tracker_revalidation_failed, true),
           &dispatch_input/2
         )
-    end
-  end
-
-  defp select_worker_host(state, issue, preferred_worker_host) do
-    if CodingAgent.remote_worker?(CodingAgent.backend_for(issue)) do
-      Slots.select_worker_host(state, preferred_worker_host)
-    else
-      if is_nil(preferred_worker_host), do: nil, else: :preferred_worker_unavailable
     end
   end
 
