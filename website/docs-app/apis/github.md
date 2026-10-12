@@ -46,7 +46,7 @@ A head whose check runs all finished with at least one cancelled is missing CI, 
 
 The agent `git` guard spends one GraphQL read per push of the current branch and refuses the push when that PR is in the merge queue, unless GitHub reports it `CONFLICTING` or changes are requested. A lookup that cannot answer lets the push through.
 
-Draft PRs remain pending even when their fast gate is green. Completed work must be marked ready before CI wait so `ready_for_review` can start the full suite.
+Draft PRs remain pending even with green checks. Mark completed work ready before CI wait; `ci gate` requires fast checks on PRs and full checks in the merge queue, or on policy-forced PRs. Main has no `ci` push run.
 
 The PR review poll keeps its own per-ticket cursor, seeded from that ticket's first polling cutoff. Issue comments cannot advance it. Aiur retains that cursor while review reads are disabled for a ticket state or a review read fails.
 
@@ -757,9 +757,9 @@ A label write also corrects the labels on the issue Aiur already holds, and does
 
 A write that fails records nothing.
 
-Main watch debounces base Actions deliveries for two seconds. At the default 120-second cadence, an unchanged completed census costs two Core reads: `main_watch_commits` and `main_watch_runs`. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
+Main watch debounces base Actions deliveries for two seconds. At the default 120-second cadence, an unchanged completed census costs three Core reads: commits plus push and merge_group run censuses. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
 
-A cold 20-SHA green census costs 42 reads; one changed SHA costs four; startup adds one permission probe. These are transport-test counts, not live measurements. Each reconciliation caps all transport calls at 64, including evidence, suspects and reruns; exhausted or incomplete reads retain known state and mark it unavailable.
+Main-watch matches push or merge_group runs to the landed SHA and queue base. Cold 20-SHA census: 43 reads; one changed SHA: five; startup: one permission probe (test counts, not live measurements). Reconciliation caps transport calls at 64; incomplete reads retain known state and mark it unavailable.
 
 Failure events carry tests, flake classifications and suspects. Evidence uses existing CI callers; associations use `main_watch_suspects`, permissions `main_watch_permissions`, and reruns `main_watch_canary`. Actions write is cached until daemon restart; permission changes require a restart.
 
