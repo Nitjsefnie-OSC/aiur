@@ -66,6 +66,69 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
     refute_received :runner_started
   end
 
+  test "captures the rework head only after claiming and preserves it on retry" do
+    test_pid = self()
+    issue = issue("rework-first", "rework")
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
+
+    runner = fn dispatched_issue, recipient, opts ->
+      send(test_pid, {:rework_runner_started, dispatched_issue, recipient, opts})
+      :ok
+    end
+
+    fetcher = fn identifier ->
+      send(test_pid, {:rework_head_lookup_started, identifier, self()})
+
+      receive do
+        :finish_lookup -> {:ok, %{"head" => %{"sha" => "captured-head"}}}
+      end
+    end
+
+    next_state =
+      Dispatcher.do_dispatch_issue(
+        %State{max_concurrent_agents: 1, effective_concurrent_agents: 1},
+        issue,
+        1,
+        nil,
+        runner: runner,
+        rework_head_fetcher: fetcher
+      )
+
+    assert next_state.running[issue.id].rework_head_sha == :pending
+    assert_receive {:rework_head_lookup_started, "rework-first", lookup_pid}, 1_000
+    refute_receive {:rework_runner_started, _, _, _}, 20
+    send(lookup_pid, :finish_lookup)
+    assert_receive {:worker_runtime_info, issue_id, %{rework_head_sha: "captured-head"}}, 1_000
+    assert issue_id == issue.id
+    assert_receive {:rework_runner_started, ^issue, _recipient, runner_opts}, 1_000
+    assert Keyword.fetch!(runner_opts, :rework_head_sha) == "captured-head"
+
+    assert {:noreply, captured_state} =
+             State.handle_worker_runtime_info(next_state, issue.id, %{rework_head_sha: "captured-head"})
+
+    assert captured_state.running[issue.id].rework_head_sha == "captured-head"
+
+    retry_issue = issue("rework-retry", "rework")
+    Application.put_env(:aiur, :memory_tracker_issues, [retry_issue])
+
+    retry_state =
+      Dispatcher.do_dispatch_issue(
+        %State{max_concurrent_agents: 1, effective_concurrent_agents: 1},
+        retry_issue,
+        2,
+        nil,
+        runner: fn dispatched_issue, recipient, opts ->
+          send(test_pid, {:rework_retry_runner, dispatched_issue, recipient, opts})
+          :ok
+        end,
+        rework_head_sha: "head-before-first-attempt"
+      )
+
+    assert_receive {:rework_retry_runner, ^retry_issue, _recipient, retry_opts}, 1_000
+    assert Keyword.fetch!(retry_opts, :rework_head_sha) == "head-before-first-attempt"
+    assert retry_state.running[retry_issue.id].rework_head_sha == "head-before-first-attempt"
+  end
+
   test "an orphaned in-progress claim is released to rework and dispatched with rework context" do
     issue = issue("orphaned-rework", "in-progress")
     Application.put_env(:aiur, :memory_tracker_issues, [issue])
