@@ -201,7 +201,7 @@ def report(repo, before, after, documents, ledger):
             splits = [p for p in added if Path(p).stem.startswith(Path(path).stem) and p != target]
             if splits and (path in moves or target not in new_files):
                 status += '; SPLIT? ' + ', '.join(splits)
-            counts[status.split()[0]] += 1
+            counts[status.split()[0].rstrip(';')] += 1
             location = text[:match.start()].count('\n') + 1
             citations.append((ticket, f'{name}:{location}', match[0].strip('`'), status))
         if 'ticket_id' in meta:

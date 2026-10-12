@@ -167,10 +167,13 @@ class PlanRefreshTest(unittest.TestCase):
 
     def test_split_and_unresolved_citation(self):
         self.write('src/a_part.ex', 'new split\n')
+        self.write('src/delete_part.ex', 'deleted split\n')
         self.write('pack/tickets/extra.md', '`src/absent.ex:9`\n')
         self.after = self.commit()
         output = self.run_tool()
         self.assertIn('SPLIT? src/a_part.ex', output)
+        self.assertIn('GONE: 1', output)
+        self.assertNotIn('GONE;:', output)
         self.assertIn('UNRESOLVED (absent at from)', output)
 
     def test_insert_at_start_and_end_boundaries(self):
