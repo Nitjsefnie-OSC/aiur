@@ -1,5 +1,6 @@
 defmodule Aiur.MainWatch.FixerWatchdog do
   @moduledoc false
+  alias Aiur.GitHub.{Config, StatePolicy}
   alias Aiur.MainWatch.Fixer
 
   @spec check([map()], keyword()) :: :ok | {:error, term()}
@@ -17,7 +18,8 @@ defmodule Aiur.MainWatch.FixerWatchdog do
     id = to_string(issue["number"])
     running = if is_map(snapshot), do: Enum.any?(snapshot[:running] || [], &(to_string(&1.issue_id) == id and &1.work_state not in [:paused, :completed, :deactivated])), else: false
 
-    with false <- running,
+    with true <- pending?(issue),
+         false <- running,
          {:ok, created, _} <- DateTime.from_iso8601(issue["created_at"] || ""),
          true <- now - DateTime.to_unix(created, :millisecond) >= 300_000 do
       Fixer.once("stalled:#{id}", opts, fn ->
@@ -26,6 +28,13 @@ defmodule Aiur.MainWatch.FixerWatchdog do
     else
       _ -> :ok
     end
+  end
+
+  defp pending?(issue) do
+    labels = Enum.map(issue["labels"] || [], &String.downcase(&1["name"]))
+    prefix = String.downcase(Config.label_prefix())
+    states = Enum.filter(labels, &String.starts_with?(&1, prefix <> ":"))
+    StatePolicy.state_label(prefix, "todo") in labels or (states == [] and "needs-triage" in labels)
   end
 
   defp reason(_id, snapshot, _issue) when not is_map(snapshot), do: :orchestrator_unavailable

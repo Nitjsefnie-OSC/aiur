@@ -31,7 +31,7 @@ config while `dispatch_fixer` remains enabled. Under PAT auth (or a shared daemo
 and agent identity), tickets instead get `needs-triage` and an Executor attention.
 
 Fixers sort first and may use one slot above the agent cap; host pressure gates,
-explicit state limits and global pause still apply. A fixer waiting five minutes
+explicit state limits and global pause still apply. A fixer awaiting first dispatch for five minutes
 raises `system.main.fixer.stalled` with the observed hold reason, or `unknown`.
 
 Recovery comments on the open ticket without closing it; a missing open PR raises

@@ -135,6 +135,19 @@ defmodule Aiur.MainWatch.FixerTest do
     assert length(Agent.get(store, & &1.comments)) == 2
   end
 
+  test "dispatch watchdog does not call a fixer stalled while its PR awaits CI", %{store: store, opts: opts} do
+    :ok = Fixer.reconcile([observation()], @watch, opts)
+
+    Agent.update(store, fn state ->
+      issues = Enum.map(state.issues, &Map.put(&1, "labels", [%{"name" => "agent:ci-wait"}, %{"name" => "main-fix"}]))
+      %{state | issues: issues}
+    end)
+
+    opts = Keyword.put(opts, :now_fun, fn -> DateTime.to_unix(~U[2026-01-01 00:10:00Z], :millisecond) end)
+    assert :ok = Fixer.reconcile([observation()], @watch, opts)
+    assert Agent.get(store, & &1.alerts) == []
+  end
+
   defp observation do
     %{
       sha: @sha,
