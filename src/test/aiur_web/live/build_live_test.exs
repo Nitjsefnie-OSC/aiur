@@ -14,6 +14,9 @@ defmodule AiurWeb.BuildLiveTest do
     end
 
     @impl true
+    def earlier(_before, _zone, _opts), do: {:error, :not_wired}
+
+    @impl true
     def snapshot(opts) do
       send(opts[:test_pid], {:snapshot, self()})
 
@@ -78,7 +81,7 @@ defmodule AiurWeb.BuildLiveTest do
     assert_receive {:snapshot, _}, 1_000
     assert render_async(view) =~ ~s(data-build-state="ready")
     refute has_element?(view, "#build-root[data-build-reason]")
-    assert :sys.get_state(view.pid).socket.assigns.build_snapshot == %{"meta" => %{"now" => 1_791_408_000_000}}
+    assert :sys.get_state(view.pid).socket.assigns.build_snapshot == %{"meta" => %{"now" => 1_791_408_000_000}, "writable" => true}
     refute_receive {:snapshot, _}, 100
   end
 

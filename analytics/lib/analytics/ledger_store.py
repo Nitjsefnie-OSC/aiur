@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from . import ledger, ledger_schema, reduce as reducer, sources
+from .materialize import _atomic_write
 
 
 def read_json(path: Path, default):
@@ -167,11 +168,11 @@ def _materialize(files, root, since, repo):
             history = target_dir / '.history'
             history.mkdir(exist_ok=True)
             version = history / (ticket + '.' + sources._safe_segment(old['generated_at']) + '.json')
-            reducer._atomic_write(version, json.dumps(old, indent=2) + '\n')
+            _atomic_write(version, json.dumps(old, indent=2) + '\n')
             for stale in sorted(history.glob(ticket + '.*.json'))[:-5]:
                 stale.unlink()
-        reducer._atomic_write(path, json.dumps(record, indent=2) + '\n')
+        _atomic_write(path, json.dumps(record, indent=2) + '\n')
         written.append(str(path))
     if previous_cache != json.dumps(cache, sort_keys=True):
-        reducer._atomic_write(cursor_path, json.dumps(cache, sort_keys=True) + '\n')
+        _atomic_write(cursor_path, json.dumps(cache, sort_keys=True) + '\n')
     return written

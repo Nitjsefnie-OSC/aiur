@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from . import ledger_schema, reduce as reducer
+from .parse import _now_iso
 
 ATTEMPT_KEYS = ('backend', 'model', 'effort', 'complexity', 'epic', 'feature', 'tags', 'start_mode', 'blockers', 'retry_attempt')
 CONTEXT_KEYS = ('aiur_vsn', 'build_sha', 'package_version', 'config_hash', 'config_section_hashes', 'capture_tags', 'repo')
@@ -126,7 +127,7 @@ def build_ticket_record(events: list[dict], run_contexts: list[dict], facts: dic
     cohort['mixed'] = [key for key, value in cohort.items() if value == 'mixed']
     partial = not milestones['first_dispatch']['at'] or not milestones['pr_opened']['at']
     return {'schema_version': 1, 'ticket': ticket, 'repo': cohort.get('repo') or 'unknown',
-            'generated_at': reducer._now_iso({}), 'last_event_at': events[-1]['timestamp'],
+            'generated_at': _now_iso({}), 'last_event_at': events[-1]['timestamp'],
             'sources': [{'record_id': r['record_id'], 'path': r['source_path'], 'line': r['source_line'], 'byte_start': r.get('source_offset'),
                          'byte_end': r.get('source_end'), 'schema_version': r['schema_version']} for r in events],
             'cohort': cohort, 'attempts': attempts, 'milestones': milestones, 'durations_ms': durations,
