@@ -1,8 +1,8 @@
 defmodule Aiur.Orchestrator.Parking do
   @moduledoc false
 
-  alias Aiur.{Alerts, Config, Issue, Tracker}
-  alias Aiur.Orchestrator.{AgentTeardown, ControlLifecycle, PauseResume, State, TrackerTasks}
+  alias Aiur.{Alerts, Config, Issue}
+  alias Aiur.Orchestrator.{AgentTeardown, ControlLifecycle, PauseResume, State, TicketTransition, TrackerTasks}
   require Logger
 
   @spec park_agent_call(State.t(), String.t()) :: term()
@@ -72,7 +72,7 @@ defmodule Aiur.Orchestrator.Parking do
     if TrackerTasks.running?(state, {:park_issue, issue.id}) do
       {{:error, :park_pending}, state}
     else
-      case Tracker.remove_label(issue.identifier, park_label()) do
+      case TicketTransition.write_marker(issue.identifier, :remove, park_label(), writer: :parking) do
         :ok ->
           issue = %{issue | parked: false, labels: List.delete(issue.labels, park_label())}
           entry = Map.put(entry, :issue, issue)
@@ -98,7 +98,7 @@ defmodule Aiur.Orchestrator.Parking do
   end
 
   defp resume_queued_issue(state, issue, true, refresh) do
-    case Tracker.remove_label(issue.identifier, park_label()) do
+    case TicketTransition.write_marker(issue.identifier, :remove, park_label(), writer: :parking) do
       :ok ->
         issue = %{issue | parked: false, labels: List.delete(issue.labels, park_label())}
         refresh.(put_in(state.last_polled_issues[issue.id], issue), issue)
@@ -128,7 +128,7 @@ defmodule Aiur.Orchestrator.Parking do
 
   defp queue_park(state, entry, issue) do
     state =
-      TrackerTasks.run(state, {:park_issue, issue.id}, fn -> Tracker.add_label(issue.id, park_label()) end, fn current, result ->
+      TrackerTasks.run(state, {:park_issue, issue.id}, fn -> TicketTransition.write_marker(issue.id, :add, park_label(), writer: :parking) end, fn current, result ->
         apply_park_result(current, entry, issue, result)
       end)
 

@@ -55,7 +55,7 @@ defmodule Aiur.GitHub.MutationWriteThroughTest do
       end
 
       ResourceStore.reset()
-      File.rm_rf(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     {:ok, store_path: Path.join(dir, "github_resources.json")}
@@ -208,7 +208,7 @@ defmodule Aiur.GitHub.MutationWriteThroughTest do
     end
 
     # Both label deposits must leave a marker behind.
-    # `GithubWebhook.Deposit.regression?/2` decides staleness by comparing an
+    # `ResourceStore.regression?/2` decides staleness by comparing an
     # incoming version against the held `data_version`, and its guard clause
     # needs *both* sides to be binaries — so a deposit that writes `nil` there
     # does not merely omit a marker, it makes every later stale delivery for
@@ -353,18 +353,17 @@ defmodule Aiur.GitHub.MutationWriteThroughTest do
       assert regressions == [],
              "a merge rolled the held issue body back {wrote, found}: #{inspect(Enum.take(regressions, 5))}"
 
-      held = ResourceStore.data(key)
-
       # The last delivery survived the last merge, rather than being overwritten
       # by a snapshot the merge had read before it.
-      assert held["generation"] == generations
+      assert ResourceStore.data(key)["generation"] == generations
 
-      # And the merge still did its job: the label set the mutation returned is
-      # the one on the body, so A4a holds under contention too.
-      assert Enum.map(held["labels"], & &1["name"]) == ["agent:todo", "merge:#{generations}"]
+      # A delivery writes the whole body, so whichever task finished last owns
+      # `"labels"` (#4129). Merge once more after both: labels land, body stays.
+      WriteThrough.issue_labels(77, labels(["agent:todo", "merge:final"]))
+      assert ResourceStore.data(key) == %{issue_at(generations) | "labels" => labels(["agent:todo", "merge:final"])}
 
       # The marker moved with the body. A version-less merge would leave this
-      # `nil`, which is precisely the field `GithubWebhook.Deposit.regression?/2`
+      # `nil`, which is precisely the field `ResourceStore.regression?/2`
       # consults — so losing it switches off the stale-delivery guard.
       assert {:ok, %{version: version}} = ResourceStore.fetch(key)
       assert version == version_at(generations)
