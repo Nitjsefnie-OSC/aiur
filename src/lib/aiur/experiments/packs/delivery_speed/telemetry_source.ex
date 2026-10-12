@@ -2,6 +2,11 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   @moduledoc "The pack's only reader of live telemetry, retained boots and usage accounting."
   alias Aiur.RunTelemetry
   alias Aiur.RunTelemetry.{Dataset, Summaries}
+  alias Aiur.Experiments.Packs.DeliverySpeed.Tokens
+  alias Aiur.Experiments.Sources.Common
+  alias Aiur.UsageEnvelope.RelationshipRegistry
+  alias Aiur.Usage.Headless.Catalog
+  alias Aiur.Claude.Telemetry.UsageAdapter.Relationship
 
   @spec load(map(), map()) :: {:ok, map()} | {:error, term()}
   def load(window, ctx) do
@@ -31,7 +36,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
       {_actors, tickets, _findings} = Dataset.reduce(records)
       contexts = Map.new(Enum.filter(records, &(&1.kind == "run_context")), &{&1.boot_id, &1.attributes})
       tickets = Map.new(tickets, fn {id, ticket} -> {id, ticket_record(ticket, records, contexts)} end)
-      capacity = capacity(records, window)
+      capacity = datasets |> Enum.flat_map(&(get_in(&1, [:actors, "_daemon", :samples]) || [])) |> Enum.uniq_by(& &1.record_id) |> capacity(window)
 
       {:ok,
        %{
@@ -49,17 +54,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     dispatch = Enum.find(ticket.events, &(&1.event == "dispatch"))
     raw = Enum.filter(records, &(&1.kind == "lifecycle" and &1.attributes["ticket"] == ticket.ticket))
     context = if dispatch, do: Map.get(contexts, dispatch.boot_id, %{}), else: %{}
-    attrs = if dispatch, do: Map.take(dispatch, [:backend, :model, :effort, :feature, :epic, :tags, :start_mode]), else: %{}
-    attrs = Map.new(attrs, fn {key, value} -> {Atom.to_string(key), value} end)
-
-    attrs =
-      Map.merge(attrs, %{
-        "complexity" => if(dispatch, do: dispatch.complexity),
-        "aiur_version" => context["aiur_vsn"],
-        "config_hash" => context["config_hash"],
-        "tags" => context["capture_tags"] || %{},
-        "feature_tags" => if(dispatch && dispatch.feature, do: [dispatch.feature], else: nil)
-      })
+    attrs = if dispatch, do: cohort(dispatch, context), else: %{}
 
     Map.merge(ticket, %{
       at: if(dispatch, do: dispatch.timestamp_dt),
@@ -68,6 +63,18 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
       pr_source?: Enum.any?(raw, &true_pr_open?/1),
       pr_opened_at: raw |> Enum.filter(&true_pr_open?/1) |> Enum.map(& &1.timestamp) |> Enum.min(DateTime, fn -> nil end),
       reviews: raw |> Enum.filter(&review?/1) |> Enum.map(& &1.timestamp)
+    })
+  end
+
+  defp cohort(dispatch, context) do
+    attrs = dispatch |> Map.take([:backend, :model, :effort, :feature, :epic, :start_mode]) |> Map.new(fn {key, value} -> {Atom.to_string(key), value} end)
+
+    Map.merge(attrs, %{
+      "complexity" => dispatch.complexity,
+      "aiur_version" => context["aiur_vsn"],
+      "config_hash" => context["config_hash"],
+      "tags" => context["capture_tags"] || %{},
+      "feature_tags" => if(dispatch.feature, do: [dispatch.feature])
     })
   end
 
@@ -93,12 +100,12 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   defp maybe_fact(facts, false, _fact), do: facts
 
   # Samples hold for at most one sampling interval; gaps and downtime never become idle or active hours.
-  defp capacity(records, window) do
-    records
-    |> Enum.filter(&(&1.kind == "resource" and &1.attributes["actor"] == "_daemon"))
+  defp capacity(samples, window) do
+    samples
     |> Enum.group_by(& &1.boot_id)
     |> Enum.flat_map(fn {_boot, samples} ->
       samples
+      |> Enum.sort_by(& &1.timestamp_ms)
       |> Enum.chunk_every(2, 1)
       |> Enum.flat_map(&capacity_sample(&1, window))
     end)
@@ -106,13 +113,13 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   end
 
   defp capacity_sample([sample | next], window) do
-    attrs = sample.attributes
-    finish = min_at(if(next == [], do: window.end, else: hd(next).timestamp), DateTime.add(sample.timestamp, 5, :second))
-    start = max_at(sample.timestamp, window.start)
+    at = Common.timestamp(sample.timestamp)
+    finish = min_at(if(next == [], do: window.end, else: Common.timestamp(hd(next).timestamp)), DateTime.add(at, 5, :second))
+    start = max_at(at, window.start)
     finish = min_at(finish, window.end)
-    running = attrs["fleet_agents_occupied"]
-    cap = attrs["fleet_agents_configured"]
-    valid = attrs["fleet_capacity_status"] == "current" and is_number(running) and running >= 0
+    running = sample["fleet_agents_occupied"]
+    cap = sample["fleet_agents_configured"]
+    valid = sample.fleet_capacity_status == "current" and is_number(running) and running >= 0
     if valid and DateTime.compare(start, finish) == :lt, do: [%{start: start, end: finish, running: running, cap: cap}], else: []
   end
 
@@ -124,13 +131,14 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
       ids =
         tickets
         |> Map.values()
-        |> Enum.filter(&(&1.at && Aiur.Experiments.Sources.Common.in_window?(&1.at, window) && Enum.any?(&1.events, fn e -> e.event == "pr_merged" end)))
+        |> Enum.filter(&(&1.at && Common.in_window?(&1.at, window) && Enum.any?(&1.events, fn e -> e.event == "pr_merged" end)))
         |> Enum.map(& &1.ticket)
 
       case Map.get(ctx, :identity_lookup, &Aiur.Tracker.fetch_issue_states_by_ids/1).(ids) do
         {:ok, issues} ->
           query = Map.get(ctx, :usage_query, &Aiur.UsageAggregate.query/1)
-          {:ok, Map.new(issues, fn issue -> {issue.identifier, usage(issue.tracker_identity, query)} end)}
+          snapshot = Map.get(ctx, :usage_snapshot, &Aiur.UsageAggregate.cells_snapshot/0).()
+          {:ok, Map.new(issues, fn issue -> {issue.identifier, usage(issue.tracker_identity, query, snapshot)} end)}
 
         {:error, reason} ->
           {:error, {:accounting_identity_unavailable, reason}}
@@ -142,10 +150,18 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     :exit, reason -> {:error, {:accounting_unavailable, reason}}
   end
 
-  defp usage(identity, query) do
+  defp usage(identity, query, snapshot) do
     if Aiur.TrackerIdentity.joinable?(identity) do
       result = query.(%{tickets: [identity]})
-      if result.health == :healthy and result.freshness.status == :fresh, do: {:ok, result.totals}, else: {:error, :accounting_incomplete}
+
+      if result.health == :healthy and result.freshness.status == :fresh and result.aggregate_generation == snapshot.metadata.generation and
+           get_in(result, [:coverage, :projection, :partial_records]) == 0 do
+        {:ok, catalog} = RelationshipRegistry.register(Catalog.relationship_catalog(), Relationship.definition())
+        total = Tokens.total(snapshot.cells, Aiur.TrackerIdentity.github_key(identity), catalog)
+        {:ok, Map.put(result.totals, :token_total, total)}
+      else
+        {:error, :accounting_incomplete}
+      end
     else
       {:error, :accounting_identity_missing}
     end

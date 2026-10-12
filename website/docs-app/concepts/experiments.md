@@ -202,11 +202,7 @@ stderr.
 
 ## Delivery-speed metrics
 
-Ticket units are `ticket:<number>`, assigned at their first dispatch, with
-complexity and dispatch-time cohort attributes. Redispatch and daemon restarts
-do not create a second unit. `finished_at` and `censored` are observation
-attributes; open PR/review durations are censored at the window end. Merge,
-review-round and cost metrics exclude tickets without a merge (`filtered`).
+The pack exposes these delivery metrics.
 
 | Group | Metric | Kind | Definition |
 | --- | --- | --- | --- |
@@ -232,21 +228,33 @@ Durations, counts and spend prefer lower values; throughput and utilization
 prefer higher values. `binding_gate` has no preferred direction. Every metric
 reference begins with `delivery-speed/`.
 
-`not_captured` means the source lacks a required capture fact, and returns no
-observations. It never means zero. Legacy data without source PR timestamps,
-dispatch blockers/epic, or review-thread evidence produces this state for the
-corresponding metrics. CI wait, ready-queue depth, gate reason, main-red and
-revert facts remain uncaptured. No lifecycle labels are used as substitutes.
+Ticket units are `ticket:<number>`, assigned at first dispatch, with complexity
+and dispatch-time cohort attributes. Redispatch and restarts create no second
+unit. Merge, review-round and cost metrics exclude unmerged tickets (`filtered`).
 
-Telemetry disabled reports `unavailable/telemetry_disabled`; absent telemetry
-reports `unavailable/telemetry_missing`. Corrupt retained summaries, truncated
-history and fleet sample gaps report `partial`. Fleet samples are held for at
-most five seconds, and only measured hours with active agents produce period
-observations; `observed_ms` records how much of each hour was measured.
+`finished_at` and `censored` are observation attributes. Open PR/review durations
+are censored at window end. Missing PR-open evidence on merged tickets is
+excluded and reports partial capture, never a censored open ticket.
+
+`not_captured` means a required capture fact is absent, with no observations.
+It never means zero. Legacy data may lack source PR times, dispatch blockers/epic
+or review-thread evidence. CI wait, ready-queue depth, gate reason, main-red and
+revert facts remain uncaptured; lifecycle labels are not substitutes.
+
+Disabled telemetry reports `unavailable/telemetry_disabled`; missing telemetry
+reports `unavailable/telemetry_missing`. Corrupt summaries, truncated history
+and fleet sample gaps report `partial`.
+
+Live and retained actor samples hold for at most five seconds. Only measured
+hours with active agents produce period observations; `observed_ms` records
+the measured portion of each hour. Thinned summary samples are not stretched
+over gaps.
 
 Cost evaluation resolves merged-ticket identities through the tracker and
-queries the usage aggregate. Missing accounting, identities or ticket measures
-report `unavailable` (or `partial` when other tickets have observations).
-Absent USD spend is never replaced with a different currency or zero. Stale or
-unhealthy accounting is unavailable. Freezing and statistical analysis are
-separate experiment features.
+queries the usage aggregate. Missing accounting, identities or measures report
+`unavailable`, or `partial` when other tickets have observations.
+
+Token totals use the pinned provider relationship registry to avoid counting
+cache and reasoning subsets twice. Unknown revisions are unavailable. Missing
+USD spend is not replaced with another currency or zero. Stale or unhealthy
+accounting is unavailable; changing aggregate generations cannot be mixed.

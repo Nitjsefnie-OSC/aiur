@@ -9,7 +9,12 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
 
   defp context do
     {:ok, prior} = Dataset.build(Path.join(@fixtures, "boot-a.ndjson"))
-    {:ok, prior} = prior |> Aiur.JSONSafe.normalize() |> Jason.encode!() |> Summaries.decode_summary()
+    path = Path.join(System.tmp_dir!(), "delivery-summary-#{System.unique_integer([:positive])}.json")
+    File.write!(path, Jason.encode!(Aiur.JSONSafe.normalize(prior)))
+    on_exit(fn -> File.rm!(path) end)
+    {:ok, decoded} = Aiur.RunTelemetry.SummaryReader.read(path)
+    assert Enum.count(decoded["records"], &(&1["kind"] == "resource")) == 1
+    {:ok, prior} = decoded |> Jason.encode!() |> Summaries.decode_summary()
 
     %{
       telemetry_enabled: true,
@@ -72,7 +77,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
       ] do
     test "fixture calculates #{id}" do
       output = result(unquote(id))
-      assert output.coverage.state == :captured
+      assert output.coverage.state == if(unquote(id) in ~w(start_to_pr_open pr_open_to_merge pr_ready_to_first_review), do: :partial, else: :captured)
       assert ticket(output.observations, 101).value == unquote(expected)
       assert ticket(output.observations, 101).at == ~U[2026-10-09 10:00:00Z]
     end
@@ -88,10 +93,10 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
 
   test "active hours include zero merges, idle hours are omitted, and utilization uses the configured cap" do
     output = result("merged_per_hour")
-    assert Enum.map(output.observations, & &1.value) == [1, 0]
+    assert Enum.map(output.observations, & &1.value) == [2, 0]
     assert Enum.map(output.observations, & &1.unit_id) == ["hour:2026-10-09T10:00:00Z", "hour:2026-10-09T11:00:00Z"]
     assert Enum.map(result("agents_vs_cap").observations, & &1.value) == [0.75, 0.75]
-    assert output.coverage.filtered == 2
+    assert output.coverage.filtered == 3
   end
 
   for {id, fact} <- [{"ci_wait", "ci_wait"}, {"idle_slot_hours", "ready_queue_depth"}, {"binding_gate", "gate_reason"}, {"main_red_events", "main_red"}, {"reverts", "reverts"}] do
@@ -136,20 +141,26 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
     ctx =
       Map.merge(context(), %{
         identity_lookup: fn ids ->
-          assert Enum.sort(ids) == ~w(100 101 102)
+          assert Enum.sort(ids) == ~w(100 101 102 104)
           {:ok, [%{identifier: "101", tracker_identity: identity}]}
         end,
         usage_query: fn %{tickets: [^identity]} ->
           %{
+            aggregate_generation: 7,
+            coverage: %{projection: %{partial_records: 0}},
             health: :healthy,
             freshness: %{status: :fresh},
-            totals: %{money: %{{:provider_reported_estimate, "USD"} => Decimal.new("1.20")}, tokens: %{input: 100, cached_input: 20, output: 40, reasoning_output: 10, provider_reported_total: 170}}
+            totals: %{
+              money: %{{:provider_reported_estimate, "USD"} => Decimal.new("1.20")},
+              tokens: %{input: 150, cached_input: 30, cache_creation_input: 3, output: 60, reasoning_output: 15, provider_reported_total: 223}
+            }
           }
-        end
+        end,
+        usage_snapshot: fn -> accounting_snapshot(identity) end
       })
 
     assert ticket(result("spend_per_merged_ticket", ctx).observations, 101).value == 1.2
-    assert ticket(result("tokens_per_merged_ticket", ctx).observations, 101).value == 170
+    assert ticket(result("tokens_per_merged_ticket", ctx).observations, 101).value == 223
     assert result("tokens_per_merged_ticket", ctx).coverage.state == :partial
     ctx = Map.put(ctx, :identity_lookup, fn _ -> {:error, :tracker_offline} end)
 
@@ -171,12 +182,19 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
     repo = {"fixture", "repo"}
     {:ok, identity} = Aiur.TrackerIdentity.from_github(%{"number" => 101, "node_id" => "I_fixture"}, repo, repo)
     ctx = Map.put(context(), :identity_lookup, fn _ -> {:ok, [%{identifier: "101", tracker_identity: identity}]} end)
+    ctx = Map.put(ctx, :usage_snapshot, fn -> %{metadata: %{generation: 7}, cells: %{}} end)
 
     for usage <- [
           %{health: :healthy, freshness: %{status: :stale}, totals: %{money: %{}, tokens: %{input: 3, output: 2}}},
-          %{health: :healthy, freshness: %{status: :fresh}, totals: %{money: %{}, tokens: %{provider_reported_total: 5}}}
+          %{health: :healthy, freshness: %{status: :fresh}, totals: %{money: %{}, tokens: %{provider_reported_total: 5}}},
+          %{
+            health: :healthy,
+            freshness: %{status: :fresh},
+            coverage: %{projection: %{partial_records: 1}},
+            totals: %{money: %{{:provider_reported_estimate, "USD"} => Decimal.new("1.2")}, tokens: %{input: 5}}
+          }
         ] do
-      ctx = Map.put(ctx, :usage_query, fn _ -> usage end)
+      ctx = Map.put(ctx, :usage_query, fn _ -> usage |> Map.put(:aggregate_generation, 7) |> Map.put_new(:coverage, %{projection: %{partial_records: 0}}) end)
 
       for id <- ~w(spend_per_merged_ticket tokens_per_merged_ticket) do
         assert result(id, ctx).coverage.state == :unavailable
@@ -191,5 +209,21 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
     assert row.value == 10_800_000
     assert row.attrs["censored"] == true
     assert row.attrs["finished_at"] == nil
+    refute ticket(output.observations, 100)
+    refute ticket(output.observations, 102)
+    assert output.coverage.state == :partial
+    assert output.coverage.reason == :pr_open_capture_missing
+  end
+
+  defp accounting_snapshot(identity) do
+    key = Aiur.TrackerIdentity.github_key(identity)
+
+    groups = [
+      {%{ticket: key, provider: :codex, relationship_revision: "codex-turn-usage-2026-07"}, %{input: 100, cached_input: 20, output: 40, reasoning_output: 10}},
+      {%{ticket: key, provider: :claude, relationship_revision: "claude-remote-control-2026-07"}, %{input: 50, cached_input: 10, cache_creation_input: 3, output: 20, reasoning_output: 5}}
+    ]
+
+    cells = Map.new(for {dims, counts} <- groups, {dimension, count} <- counts, do: {{dims, {:token, dimension}}, count})
+    %{metadata: %{generation: 7}, cells: cells}
   end
 end

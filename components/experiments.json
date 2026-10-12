@@ -29,6 +29,7 @@
   "optional": [
     "accounting",
     "executor-attention",
+    "harness-adapters",
     "telemetry",
     "tracker"
   ],

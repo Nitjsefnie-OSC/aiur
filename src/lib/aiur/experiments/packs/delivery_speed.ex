@@ -74,6 +74,8 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
       Common.result(coverage, [])
     else
       {observations, filtered} = if metric.unit_of_analysis == "ticket", do: Tickets.observations(metric.id, data, window), else: Periods.observations(metric.id, data, window)
+      missing_open = Tickets.missing_open?(data, window)
+      coverage = if "pr_opened_source_time" in metric.requires and missing_open, do: Map.merge(coverage, %{state: :partial, reason: :pr_open_capture_missing}), else: coverage
       covered_ms = Enum.sum(Enum.map(data.capacity, &DateTime.diff(&1.end, &1.start, :millisecond)))
 
       coverage =

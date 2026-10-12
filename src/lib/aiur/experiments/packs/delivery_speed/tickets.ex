@@ -15,8 +15,13 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Tickets do
     {observations, length(rows) - length(observations)}
   end
 
+  @spec missing_open?(map(), map()) :: boolean()
+  def missing_open?(data, window) do
+    Enum.any?(data.tickets, fn {_id, ticket} -> ticket.at && Common.in_window?(ticket.at, window) && event_at(ticket, "pr_merged") && is_nil(ticket.pr_opened_at) end)
+  end
+
   defp value("start_to_pr_open", ticket, _data, window) do
-    duration(ticket.at, ticket.pr_opened_at, window, true)
+    if ticket.pr_opened_at || is_nil(event_at(ticket, "pr_merged")), do: duration(ticket.at, ticket.pr_opened_at, window, true)
   end
 
   defp value("pr_open_to_merge", ticket, _data, window) do
@@ -122,10 +127,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Tickets do
     end
   end
 
-  defp cost_value("tokens_per_merged_ticket", {:ok, %{tokens: tokens}}) when map_size(tokens) > 0 do
-    dimensions = [:input, :cached_input, :cache_creation_input, :output, :reasoning_output]
-    if Enum.any?(dimensions, &Map.has_key?(tokens, &1)), do: Enum.sum(Enum.map(dimensions, &Map.get(tokens, &1, 0)))
-  end
+  defp cost_value("tokens_per_merged_ticket", {:ok, %{token_total: total}}), do: total
 
   defp cost_value(_id, _missing), do: nil
 end
