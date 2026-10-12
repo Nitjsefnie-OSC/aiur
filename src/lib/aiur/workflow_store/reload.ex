@@ -11,8 +11,8 @@ defmodule Aiur.WorkflowStore.Reload do
   alias Aiur.Alerts
   alias Aiur.Workflow
   alias Aiur.WorkflowStore.Cache
-  alias Aiur.WorkflowStore.State
   alias Aiur.WorkflowStore.ReloadRejection
+  alias Aiur.WorkflowStore.State
 
   @reload_attempts 3
   @reload_retry_delay_ms 50
