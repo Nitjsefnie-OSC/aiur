@@ -11,7 +11,14 @@ defmodule Aiur.Config.OptimisticBuildQueueTest do
   end
 
   test "optimistic policy rejects out-of-range values and accepts disabled churn" do
-    for {key, invalid} <- [optimistic_failure_grace_seconds: 59, optimistic_failure_grace_seconds: 86_401, optimistic_churn_attention_threshold: -1, optimistic_churn_attention_threshold: 51] do
+    for {key, invalid} <- [
+          optimistic_failure_grace_seconds: 59,
+          optimistic_failure_grace_seconds: 86_401,
+          optimistic_churn_attention_threshold: -1,
+          optimistic_churn_attention_threshold: 51,
+          optimistic_failure_grace_seconds: nil,
+          optimistic_churn_attention_threshold: nil
+        ] do
       assert {:error, {:invalid_workflow_config, message}} = Schema.parse(%{"build_queue" => %{key => invalid}})
       assert message =~ Atom.to_string(key)
       changeset = BuildQueue.changeset(%BuildQueue{}, %{key => invalid})

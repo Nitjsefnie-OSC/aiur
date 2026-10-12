@@ -35,7 +35,7 @@ defmodule Aiur.Config.Schema.BuildQueue do
       empty_values: []
     )
     |> validate_inclusion(:start_trigger, Enum.map(Aiur.StartTrigger.triggers(), &Atom.to_string/1), message: "must be one of: #{Enum.join(Aiur.StartTrigger.triggers(), ", ")}")
-    |> validate_required([:start_trigger])
+    |> validate_required([:start_trigger, :optimistic_failure_grace_seconds, :optimistic_churn_attention_threshold])
     |> validate_number(:reconcile_interval_seconds, greater_than_or_equal_to: 10, less_than_or_equal_to: 3600)
     |> validate_number(:max_writes_per_minute, greater_than_or_equal_to: 1, less_than_or_equal_to: 60)
     |> validate_number(:observation_max_age_seconds, greater_than_or_equal_to: 10, less_than_or_equal_to: 3600)
