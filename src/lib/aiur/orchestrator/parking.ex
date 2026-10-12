@@ -128,7 +128,7 @@ defmodule Aiur.Orchestrator.Parking do
 
   defp queue_park(state, entry, issue) do
     state =
-      TrackerTasks.run(state, {:park_issue, issue.id}, fn -> TicketTransition.write_marker(issue.id, :add, park_label(), writer: :parking) end, fn current, result ->
+      TrackerTasks.run(state, {:park_issue, issue.id}, fn -> TicketTransition.write_marker(issue.identifier, :add, park_label(), writer: :parking) end, fn current, result ->
         apply_park_result(current, entry, issue, result)
       end)
 
