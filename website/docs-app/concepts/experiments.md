@@ -284,7 +284,9 @@ reports `unavailable/telemetry_missing`. Corrupt summaries and fleet sample gaps
 
 Experiment telemetry uses one streaming reader for JSON summaries and live NDJSON.
 Known boot intervals outside the requested window are skipped before opening.
-Unknown intervals remain eligible. The delivery pack separately caches bounded
+Unknown intervals remain eligible.
+
+The delivery pack separately caches bounded
 lifecycle and fleet history by file size and modification time, preserving first
 dispatch and prerequisite merges without retaining full datasets. Changed files
 invalidate that projection; live telemetry is never cached.
