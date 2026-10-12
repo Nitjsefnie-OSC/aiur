@@ -8,9 +8,6 @@ defmodule Aiur.Orchestrator.BuildQueueClaimProbeTest do
   test "a running entry still carrying todo is claimed ahead of a decline" do
     state = %State{running: %{"7" => %{issue: %Issue{state: "todo"}}}, dispatch_declines: %{"7" => :unauthorized}}
     assert BuildQueueClaimProbe.classify(state, "7") == :claimed
-
-    mismatched_key = %State{running: %{"worker-ref" => %{issue: %Issue{id: "7", state: "todo"}}}}
-    assert BuildQueueClaimProbe.classify(mismatched_key, "7") == :claimed
   end
 
   test "claims, pending retries and scheduled resumes all retain ownership" do

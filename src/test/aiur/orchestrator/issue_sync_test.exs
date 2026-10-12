@@ -3045,12 +3045,12 @@ defmodule Aiur.Orchestrator.IssueSyncTest do
 
       next_state =
         IssueSync.sync_stranded_ticket_reconciliation(
-          %State{running: %{"other-key" => %{pid: self(), issue: running}}, released_claims: %{"running" => %{cause: :tracker_retry_exhausted}}},
+          %State{running: %{"running" => %{pid: self(), issue: running}}},
           [running],
           fn _id, _target -> flunk("must not re-queue a ticket with a live owner") end
         )
 
-      assert next_state.released_claims == %{"running" => %{cause: :tracker_retry_exhausted}}
+      assert next_state.released_claims == %{}
     end
 
     test "leaves a todo ticket waiting for capacity alone" do

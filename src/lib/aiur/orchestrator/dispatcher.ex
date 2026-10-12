@@ -2413,7 +2413,13 @@ defmodule Aiur.Orchestrator.Dispatcher do
         state
 
       worker_host ->
-        spawn_issue_on_worker_host(state, issue, attempt, recipient, worker_host, opts)
+        Aiur.Orchestrator.ReworkDispatchClaim.dispatch(
+          state,
+          issue,
+          fn current -> spawn_issue_on_worker_host(current, issue, attempt, recipient, worker_host, opts) end,
+          fn current -> emit_dispatch_attempt_decline(current, issue, :tracker_revalidation_failed, true) end,
+          &dispatch_input/2
+        )
     end
   end
 
