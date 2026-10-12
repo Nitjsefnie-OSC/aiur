@@ -747,6 +747,28 @@ defmodule Aiur.OrchestratorCILifecycleTest do
       refute_received {:parked_alert, ^ref, ^alert_topic, _opts}
     end
 
+    test "surfaces a draft as skipped checks and alerts after the ci-wait deadline" do
+      identifier = unique_identifier("ci-wait-draft")
+      topic = "ticket.#{identifier}.pr.draft_ci_wait"
+      ref = make_ref()
+      emitter = capture_alert_emitter(self(), ref)
+      issue = issue(identifier, "ci-wait")
+      state = running_state(issue, self(), :working, [])
+      state = CiLifecycle.arm_ci_wait_rewake(state, issue)
+      rewake = state.ci_lifecycle.rewakes[issue.id]
+      overdue = put_in(state.ci_lifecycle.rewakes[issue.id].deadline_ms, System.monotonic_time(:millisecond) - 1)
+
+      waiting = poll_ci(state, issue, %{decision: :pending, pending_reason: :draft_pull_request, pr_number: 943, draft?: true}, alert_emitter: emitter)
+      refute_received {:parked_alert, ^ref, ^topic, _opts}
+
+      alerted = poll_ci(overdue, issue, %{decision: :pending, pending_reason: :draft_pull_request, pr_number: 943, draft?: true}, alert_emitter: emitter)
+      assert_received {:parked_alert, ^ref, ^topic, alert_opts}
+      assert Keyword.get(alert_opts, :needs_attention) == true
+      assert MapSet.member?(alerted.ci_lifecycle.ci_wait_draft_alerts, identifier)
+      assert waiting.ci_lifecycle.poll_cache[identifier].pending_reason == :draft_pull_request
+      assert rewake.deadline_ms > System.monotonic_time(:millisecond)
+    end
+
     test "does not alert for a ready (non-draft) green PR" do
       identifier = unique_identifier("ci-draft-ready")
       alert_topic = "ticket.#{identifier}.pr.draft_approved_green"
