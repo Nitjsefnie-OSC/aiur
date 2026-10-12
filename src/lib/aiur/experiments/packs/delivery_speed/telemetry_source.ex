@@ -3,6 +3,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   alias Aiur.Claude.Telemetry.UsageAdapter.Relationship
   alias Aiur.Experiments.Packs.DeliverySpeed.{BootWindow, Tokens}
   alias Aiur.Experiments.Sources.Common
+  alias Aiur.Experiments.{TelemetryHistory, TelemetryReader}
   alias Aiur.RunTelemetry
   alias Aiur.RunTelemetry.{Dataset, Summaries}
   alias Aiur.Usage.Headless.Catalog
@@ -19,38 +20,58 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
 
   defp load_enabled(window, ctx) do
     boot = Map.get_lazy(ctx, :boot_id, &RunTelemetry.boot_id/0)
-    {prior, unreadable?} = prior_datasets(boot, window, ctx)
-    live = Dataset.build(Map.get_lazy(ctx, :telemetry_path, &RunTelemetry.telemetry_file/0))
+    {prior, unreadable?} = prior_projection(boot, window, ctx)
+    sources = Map.get_lazy(ctx, :telemetry_path, &RunTelemetry.telemetry_file/0) |> List.wrap() |> Aiur.RunTelemetry.Dataset.Source.discover_files() |> Enum.map(&%{path: &1, format: :ndjson})
+    live = TelemetryReader.read(window, sources, history: true)
 
-    datasets =
-      case live do
-        {:ok, dataset} -> [dataset | prior]
-        {:error, _reason} -> prior
+    with {:ok, live} <- live do
+      cond do
+        prior.state == :truncated or live.state == :truncated -> {:error, :truncated}
+        prior.records == [] and live.records == [] -> {:error, :telemetry_missing}
+        true -> build_data(prior, live, unreadable?, window, ctx)
       end
-
-    if datasets == [] do
-      {:error, :telemetry_missing}
-    else
-      dataset = Dataset.merge(datasets)
-      records = Enum.filter(dataset.records, &(DateTime.compare(&1.timestamp, window.end) == :lt))
-      {_actors, tickets, _findings} = Dataset.reduce(records)
-      contexts = Map.new(Enum.filter(records, &(&1.kind == "run_context")), &{&1.boot_id, &1.attributes})
-      by_ticket = records |> Enum.filter(&(&1.kind == "lifecycle")) |> Enum.group_by(& &1.attributes["ticket"])
-      tickets = Map.new(tickets, fn {id, ticket} -> {id, ticket_record(ticket, Map.get(by_ticket, id, []), contexts)} end)
-      capacity = datasets |> Enum.flat_map(&(get_in(&1, [:actors, "_daemon", :samples]) || [])) |> Enum.uniq_by(& &1.record_id) |> capacity(window)
-
-      {:ok,
-       %{
-         tickets: tickets,
-         capacity: capacity,
-         facts: facts(records, capacity),
-         earliest_at: dataset.records |> Enum.map(& &1.timestamp) |> Enum.min(DateTime, fn -> nil end),
-         partial?: unreadable? or match?({:error, _}, live) or dataset.warnings != [],
-         accounting: if(Map.get(ctx, :include_accounting, false), do: accounting(tickets, window, ctx), else: {:error, :accounting_absent})
-       }}
     end
   end
 
+  defp build_data(prior, live, unreadable?, window, ctx) do
+    records =
+      (prior.records ++ live.records) |> Enum.uniq_by(& &1.record_id) |> Enum.filter(&(DateTime.compare(&1.timestamp, window.end) == :lt)) |> Enum.sort_by(&{&1.timestamp_ms, &1.boot_id, &1.sequence})
+
+    {_actors, tickets, _findings} = Dataset.reduce(records)
+    contexts = Map.new(Enum.filter(records, &(&1.kind == "run_context")), &{&1.boot_id, &1.attributes})
+    by_ticket = records |> Enum.filter(&(&1.kind == "lifecycle")) |> Enum.group_by(& &1.attributes["ticket"])
+    tickets = Map.new(tickets, fn {id, ticket} -> {id, ticket_record(ticket, Map.get(by_ticket, id, []), contexts)} end)
+    capacity = (prior.samples ++ live.samples) |> Enum.uniq_by(& &1.record_id) |> capacity(window)
+
+    {:ok,
+     %{
+       tickets: tickets,
+       capacity: capacity,
+       facts: facts(records, capacity),
+       earliest_at: records |> Enum.map(& &1.timestamp) |> Enum.min(DateTime, fn -> nil end),
+       partial?: unreadable? or prior.state != :complete or live.state != :complete,
+       accounting: if(Map.get(ctx, :include_accounting, false), do: accounting(tickets, window, ctx), else: {:error, :accounting_absent})
+     }}
+  end
+
+  defp prior_projection(boot, window, ctx) do
+    if Map.has_key?(ctx, :prior_loader) or Map.has_key?(ctx, :summary_reader) do
+      {datasets, unreadable?} = prior_datasets(boot, window, ctx)
+
+      {%{
+         records: Enum.flat_map(datasets, & &1.records),
+         samples: Enum.flat_map(datasets, &(get_in(&1, [:actors, "_daemon", :samples]) || [])),
+         state: if(Enum.any?(datasets, &(&1.warnings != [])), do: :partial, else: :complete)
+       }, unreadable?}
+    else
+      case TelemetryHistory.read(boot, ctx) do
+        {:ok, projection} -> {projection, false}
+        {:error, _reason} -> {%{records: [], samples: [], state: :partial}, true}
+      end
+    end
+  end
+
+  # Fixture loaders can supply reduced datasets; production uses only the shared bounded reader.
   defp prior_datasets(boot, window, ctx) do
     case Map.fetch(ctx, :prior_loader) do
       {:ok, loader} -> loader.(boot)
@@ -58,10 +79,9 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     end
   end
 
-  # Keep earlier boots: first dispatch and prerequisite merges can precede the window.
   defp load_prior(current, window, ctx) do
     path = Map.get(ctx, :summary_path, &Summaries.run_summary_path/1)
-    reader = Map.get(ctx, :summary_reader, &Summaries.load_dataset/1)
+    reader = ctx.summary_reader
 
     Map.get(ctx, :summary_boot_ids, &Summaries.summary_boot_ids/0).()
     |> Enum.reject(&(&1 == current))

@@ -280,13 +280,20 @@ or review-thread evidence. CI wait, ready-queue depth, gate reason, main-red and
 revert facts remain uncaptured; lifecycle labels are not substitutes.
 
 Disabled telemetry reports `unavailable/telemetry_disabled`; missing telemetry
-reports `unavailable/telemetry_missing`. Corrupt summaries, truncated history
-and fleet sample gaps report `partial`.
+reports `unavailable/telemetry_missing`. Corrupt summaries and fleet sample gaps report `partial`.
 
-Retained summaries get a bounded 64 KiB prefix inspection. Summaries whose first
-known event is at or after the window end are skipped. Earlier and unknown
-bounds stay included: first dispatch and prerequisite merges can precede the
-window, and historical GitHub anchors can belong to a later boot.
+Experiment telemetry uses one streaming reader for JSON summaries and live NDJSON.
+Known boot intervals outside the requested window are skipped before opening.
+Unknown intervals remain eligible. The delivery pack separately caches bounded
+lifecycle and fleet history by file size and modification time, preserving first
+dispatch and prerequisite merges without retaining full datasets. Changed files
+invalidate that projection; live telemetry is never cached.
+
+Defaults bound each reader call to 10,000 record envelopes, 32 MiB of input
+and a 4 MiB retained projection (plus 1 MiB tokens and 16 nesting levels).
+Record, input-byte and retained-byte limits stop a read with the cause-neutral
+`truncated` state. Delivery metrics then report `unavailable/truncated` with no
+observations, rather than treating an incomplete population as a measured result.
 
 Live and retained actor samples hold for at most five seconds. Only measured
 hours with active agents produce period observations; `observed_ms` records
