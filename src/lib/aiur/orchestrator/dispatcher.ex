@@ -1612,7 +1612,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
   defp redispatch_worker_slot(state, issue, preferred_worker_host) do
     capacity_state = %{state | running: Map.delete(state.running, issue.id)}
 
-    case select_worker_host(capacity_state, issue, preferred_worker_host) do
+    case Slots.select_worker_host_for_issue(capacity_state, issue, preferred_worker_host) do
       ^preferred_worker_host -> :ok
       :no_worker_capacity -> {:error, :no_worker_capacity}
       _other_host -> {:error, :preferred_worker_unavailable}
