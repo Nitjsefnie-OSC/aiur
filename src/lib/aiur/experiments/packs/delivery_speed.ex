@@ -53,10 +53,13 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
 
   @impl true
   def observations(ids, window, ctx) do
-    case TelemetrySource.load(window, Map.put(ctx, :include_accounting, Enum.any?(ids, &(&1 in ["spend_per_merged_ticket", "tokens_per_merged_ticket"])))) do
-      {:error, reason} -> Map.new(ids, &{&1, Common.unavailable(reason)})
-      {:ok, data} -> Map.new(Enum.filter(metrics(), &(&1.id in ids)), &{&1.id, evaluate(&1, data, window)})
-    end
+    rows =
+      case TelemetrySource.load(window, Map.put(ctx, :include_accounting, Enum.any?(ids, &(&1 in ["spend_per_merged_ticket", "tokens_per_merged_ticket"])))) do
+        {:error, reason} -> Map.new(ids, &{&1, Common.unavailable(reason)})
+        {:ok, data} -> Map.new(Enum.filter(metrics(), &(&1.id in ids)), &{&1.id, evaluate(&1, data, window)})
+      end
+
+    Map.new(rows, fn {id, result} -> {id, {result.coverage, result.observations}} end)
   end
 
   defp evaluate(%{requires: ["accounting"]} = metric, data, window) do

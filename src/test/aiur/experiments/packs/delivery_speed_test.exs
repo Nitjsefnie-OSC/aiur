@@ -24,7 +24,11 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
     }
   end
 
-  defp result(id, ctx \\ context(), window \\ @window), do: DeliverySpeed.observations([id], window, ctx)[id]
+  defp result(id, ctx \\ context(), window \\ @window) do
+    {coverage, observations} = DeliverySpeed.observations([id], window, ctx)[id]
+    %{coverage: coverage, observations: observations}
+  end
+
   defp ticket(rows, number), do: Enum.find(rows, &(&1.unit_id == "ticket:#{number}"))
 
   test "default catalog exposes exactly 17 delivery metrics, with kinds and four groups, and disabling removes them" do
