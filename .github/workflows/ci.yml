@@ -103,16 +103,14 @@ jobs:
         run: bash scripts/test-classify-ci-changes.sh
       - name: Test CI concurrency
         run: node scripts/test-ci-concurrency.mjs && node scripts/test-workflow-check-names.mjs && node scripts/test-ci-events.mjs && python3 scripts/test-run-ci-affected-tests.py
-      - name: Test plan refresh
-        run: python3 -I scripts/test_plan_refresh.py
       - name: Verify live merge rulesets
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/verify-human-only-merge-ruleset-live.sh
       - name: Structural guards
         run: python3 scripts/check-bare-assert-receive.py && python3 scripts/check-on-exit-rm-rf.py && python3 scripts/check-config-docs.py && node scripts/check-docs-prose.mjs
-      - name: Test rename preflight
-        run: make test-rename-preflight
+      - name: Test rename preflight and plan refresh
+        run: make test-rename-preflight && python3 -I scripts/test_plan_refresh.py
       - name: Test config documentation and design extract guards
         run: bash scripts/test-check-config-docs.sh && bash scripts/test-check-design-extract.sh
       - name: Test component manifest guard

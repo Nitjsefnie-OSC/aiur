@@ -70,17 +70,37 @@ def matches(path, pattern):
 
 
 def manifest(repo, ref, files):
-    paths = ['components.json'] if 'components.json' in files else sorted(
-        p for p in files if p.startswith('components/') and p.endswith('.json'))
+    def read(path):
+        return json.loads(git(repo, 'show', f'{ref}:{path}'))
+
+    if 'components.json' in files:
+        root = read('components.json')
+        if 'component_files' in root:
+            paths = root['component_files']
+            if 'components' in root or not isinstance(paths, list) or not paths or any(
+                    not isinstance(p, str) or not re.fullmatch(r'components/[^/\\]+\.json', p)
+                    for p in paths) or len(set(paths)) != len(paths):
+                raise ValueError('invalid component_files index')
+            entries = []
+            for path in paths:
+                component = read(path)
+                if not isinstance(component, dict) or component.get('id') != Path(path).stem:
+                    raise ValueError(f'component id must match filename: {path}')
+                entries.append(component)
+        else:
+            entries = root['components']
+    else:
+        entries = []
+        for path in sorted(p for p in files if p.startswith('components/') and p.endswith('.json')):
+            data = read(path)
+            entries.extend(data['components'] if 'components' in data else [data])
     components = {}
-    for path in paths:
-        data = json.loads(git(repo, 'show', f'{ref}:{path}'))
-        for component in data['components']:
-            identifier, globs = component['id'], component['paths']
-            if not isinstance(identifier, str) or not isinstance(globs, list) or not all(
-                    isinstance(p, str) for p in globs) or identifier in components:
-                raise ValueError(f'invalid/duplicate component in {path}')
-            components[identifier] = globs
+    for component in entries:
+        identifier, globs = component['id'], component['paths']
+        if not isinstance(identifier, str) or not isinstance(globs, list) or not all(
+                isinstance(p, str) for p in globs) or identifier in components:
+            raise ValueError('invalid/duplicate component')
+        components[identifier] = globs
     return components
 
 

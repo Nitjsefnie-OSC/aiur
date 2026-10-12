@@ -146,6 +146,25 @@ class PlanRefreshTest(unittest.TestCase):
         self.after = self.commit()
         self.assertIn('src/b.ex (split)', self.run_tool())
 
+    def test_indexed_component_files(self):
+        self.write('components.json', json.dumps({'component_files': ['components/kernel.json']}))
+        self.write('components/kernel.json', json.dumps({'id': 'kernel', 'paths': ['src/**']}))
+        self.write('components/unlisted.json', json.dumps({'id': 'unlisted', 'paths': ['src/**']}))
+        self.after = self.commit()
+        output = self.run_tool()
+        self.assertIn('src/b.ex (kernel)', output)
+        self.assertNotIn('unlisted', output)
+
+    def test_invalid_component_file_index_exits_2(self):
+        for paths in (['../outside.json'], ['components/k.json', 'components/k.json']):
+            self.write('components.json', json.dumps({'component_files': paths}))
+            self.after = self.commit()
+            self.assertIn('invalid component_files index', self.run_tool(expected=2))
+        self.write('components.json', json.dumps({'component_files': ['components/k.json']}))
+        self.write('components/k.json', json.dumps({'id': 'wrong', 'paths': ['src/**']}))
+        self.after = self.commit()
+        self.assertIn('component id must match filename', self.run_tool(expected=2))
+
     def test_split_and_unresolved_citation(self):
         self.write('src/a_part.ex', 'new split\n')
         self.write('pack/tickets/extra.md', '`src/absent.ex:9`\n')
