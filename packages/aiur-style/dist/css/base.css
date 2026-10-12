@@ -1,4 +1,9 @@
-@layer aiur {
+@layer aiur.base {
+  :where(a, button, [tabindex]):focus-visible {
+    outline: 2px solid var(--aiur-color-focus);
+    outline-offset: 3px;
+  }
+
   /* Box sizing reset */
   *,
   *::before,
@@ -26,7 +31,7 @@
     *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
+      transition-duration: 0s !important;
       scroll-behavior: auto !important;
     }
   }
