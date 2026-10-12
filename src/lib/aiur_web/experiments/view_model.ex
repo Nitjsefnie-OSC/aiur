@@ -18,8 +18,8 @@ defmodule AiurWeb.Experiments.ViewModel do
     }
   end
 
-  @spec detail(map()) :: map()
-  def detail(detail) do
+  @spec detail(map(), map()) :: map()
+  def detail(detail, catalog \\ %{}) do
     spec = Map.get(detail, :spec, %{})
     summary = Map.new(~w(id title status created_at)a, &{&1, Map.get(spec, Atom.to_string(&1))})
 
@@ -29,12 +29,19 @@ defmodule AiurWeb.Experiments.ViewModel do
       windows: Map.get(spec, "windows", %{}),
       window_labels: window_labels(Map.get(spec, "windows", %{})),
       design_summary: design_summary(Map.get(spec, "design")),
-      metric_specs: Map.get(spec, "metrics", []),
+      metric_specs: Enum.map(Map.get(spec, "metrics", []), &metric_spec(&1, catalog)),
       min_samples: Map.get(spec, "min_samples"),
       frozen_baseline: :unknown,
       annotations: Map.get(detail, :annotations, []),
       read_only?: Map.get(detail, :read_only?, false)
     })
+  end
+
+  defp metric_spec(metric, catalog) do
+    case Map.get(catalog, metric["ref"]) do
+      nil -> metric
+      definition -> Map.merge(metric, %{"label" => definition.label, "unit" => definition.unit, "direction" => metric["direction"] || definition.default_direction})
+    end
   end
 
   @spec order([map()]) :: [map()]

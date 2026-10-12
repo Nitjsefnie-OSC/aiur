@@ -6,6 +6,7 @@ defmodule AiurWeb.ExperimentsLiveTest do
   @endpoint Endpoint
 
   defmodule Facade do
+    def metric_catalog, do: %{metrics: %{}}
     def status, do: Application.fetch_env!(:aiur, :experiment_live_fixture).status
     def list, do: Application.fetch_env!(:aiur, :experiment_live_fixture).list
     def fetch(id), do: Map.get(Application.fetch_env!(:aiur, :experiment_live_fixture).details, id, {:error, :not_found})

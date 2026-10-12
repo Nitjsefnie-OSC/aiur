@@ -29,7 +29,7 @@ defmodule AiurWeb.Experiments.ViewModelTest do
     assert ViewModel.detail(%{spec: spec}).kind_label == "A/B"
     assert ViewModel.detail(%{spec: spec}).design_summary == "Control · Test"
 
-    for {count, label} <- [{3, "A/B/C"}, {5, "5 cohorts"}] do
+    for {count, label} <- [{3, "A/B/C"}, {4, "A/B/C/D"}, {5, "5 cohorts"}] do
       spec = put_in(spec, ["design", "cohorts"], List.duplicate(%{"label" => "Cohort"}, count))
       assert ViewModel.detail(%{spec: spec}).kind_label == label
     end

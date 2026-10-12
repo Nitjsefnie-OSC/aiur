@@ -21,7 +21,7 @@ defmodule AiurWeb.Experiments.Source do
   @spec detail(String.t()) :: {:ok, map()} | {:error, :not_found | :store_unreadable}
   def detail(id) do
     case facade().fetch(id) do
-      {:ok, detail} -> {:ok, detail |> ViewModel.detail() |> Map.put(:id, id)}
+      {:ok, detail} -> {:ok, detail |> ViewModel.detail(facade().metric_catalog().metrics) |> Map.put(:id, id)}
       {:error, :not_found} -> {:error, :not_found}
       {:error, _reason} -> {:error, :store_unreadable}
     end

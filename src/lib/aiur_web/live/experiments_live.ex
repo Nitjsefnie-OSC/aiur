@@ -84,8 +84,8 @@ defmodule AiurWeb.ExperimentsLive do
               <p class="exp-notice" data-empty-reason="evidence_pending">Analysis evidence is not available yet.</p>
               <table :if={@detail.metric_specs != []} class="exp-table">
                 <caption>Registered metrics</caption>
-                <thead><tr><th scope="col">Metric reference</th><th scope="col">Expected direction</th><th scope="col">Evidence</th></tr></thead>
-                <tbody><tr :for={metric <- @detail.metric_specs}><td data-label="Metric reference">{metric["ref"]}</td><td data-label="Expected direction">{metric["direction"]}</td><td data-label="Evidence">Unavailable</td></tr></tbody>
+                <thead><tr><th scope="col">Metric</th><th scope="col">Unit</th><th scope="col">Expected direction</th><th scope="col">Evidence</th></tr></thead>
+                <tbody><tr :for={metric <- @detail.metric_specs}><td data-label="Metric">{metric["label"] || metric["ref"]}</td><td data-label="Unit">{metric["unit"] || "Unknown unit"}</td><td data-label="Expected direction">{metric["direction"]}</td><td data-label="Evidence">Unavailable</td></tr></tbody>
               </table>
               <div id="exp-charts"></div>
               <div id="exp-report"></div>
