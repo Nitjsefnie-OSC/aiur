@@ -177,4 +177,14 @@ defmodule Aiur.Experiments.Auto.CreatorTest do
     File.write!(opts[:path], Jason.encode!(%{completed: [42], skipped: []}))
     assert {:error, {:invalid_auto_receipts, _child_spec}} = start_supervised({Creator, Keyword.put(opts, :name, nil)})
   end
+
+  test "newer window shapes return read-only without crashing Creator", %{creator: creator, root: root} do
+    assert {:ok, _spec} = Experiments.create(other("future-window", "active", "2026-10-20T00:00:00Z"))
+    path = Paths.file("future-window", "spec.json")
+    raw = path |> File.read!() |> Jason.decode!() |> Map.put("schema_version", 2) |> Map.put("windows", %{"future" => %{"bounds" => ["2026-10-01T00:00:00Z", "2026-10-20T00:00:00Z"]}})
+    File.write!(path, Jason.encode!(raw))
+    assert Creator.create(line(), creator) == {:error, :experiment_read_only}
+    refute File.exists?(Path.join(root, "creator.json"))
+    assert {:ok, %{annotations: [], read_only?: true}} = Experiments.fetch("future-window")
+  end
 end
