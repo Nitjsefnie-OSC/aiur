@@ -34,10 +34,6 @@ defmodule Aiur.DecisionStore.StartOptionsTest do
     first_dir = Path.join(dir, "first")
     second_dir = Path.join(dir, "second")
 
-    if Process.whereis(IdGenerator) == nil do
-      start_supervised!({IdGenerator, path: Path.join(dir, "event_id")}, id: :decision_store_test_id_generator)
-    end
-
     {:ok, first} =
       start_supervised(
         {
@@ -82,10 +78,6 @@ defmodule Aiur.DecisionStore.StartOptionsTest do
     second_dir = Path.join(dir, "named-second")
     first_name = Module.concat(__MODULE__, FirstCustomStore)
     second_name = Module.concat(__MODULE__, SecondCustomStore)
-
-    if Process.whereis(IdGenerator) == nil do
-      start_supervised!({IdGenerator, path: Path.join(dir, "event_id")}, id: :custom_decision_store_test_id_generator)
-    end
 
     {:ok, first} =
       start_supervised(

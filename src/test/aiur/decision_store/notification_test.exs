@@ -63,10 +63,6 @@ defmodule Aiur.DecisionStore.NotificationTest do
     end
 
     test "retries a failed requested notification from the canonical Decision", %{dir: dir} do
-      unless Process.whereis(IdGenerator) do
-        start_supervised!({IdGenerator, name: IdGenerator, path: Path.join(dir, "executor-request-retry-event-id.json"), batch_size: 50})
-      end
-
       parent = self()
 
       publisher = fn decision ->

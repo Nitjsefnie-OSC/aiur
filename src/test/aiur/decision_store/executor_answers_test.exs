@@ -344,10 +344,6 @@ defmodule Aiur.DecisionStore.ExecutorAnswersTest do
   end
 
   test "answering an escalated Command clears its operator attention", %{dir: dir} do
-    unless Process.whereis(IdGenerator) do
-      start_supervised!({IdGenerator, name: IdGenerator, path: Path.join(dir, "executor-escalation-event-id.json"), batch_size: 50})
-    end
-
     previous_log_file = Application.get_env(:aiur, :log_file)
     log_root = Path.join(dir, "executor-escalation-log")
     Application.put_env(:aiur, :log_file, Path.join(log_root, "aiur.log"))
@@ -390,10 +386,6 @@ defmodule Aiur.DecisionStore.ExecutorAnswersTest do
   end
 
   test "serializes Executor escalation before a concurrent answer", %{dir: dir} do
-    unless Process.whereis(IdGenerator) do
-      start_supervised!({IdGenerator, name: IdGenerator, path: Path.join(dir, "executor-serialize-event-id.json"), batch_size: 50})
-    end
-
     parent = self()
 
     opener = fn _decision, _executor_id, _reason ->

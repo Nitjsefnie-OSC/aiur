@@ -76,6 +76,7 @@ defmodule Aiur.DecisionStoreCase do
   end
 
   setup do
+    :ok = Aiur.TestSupport.ensure_id_generator_running()
     original_override = Application.get_env(:aiur, :decision_state_dir)
     dir = Aiur.TestSupport.tmp_root!("aiur-decision-store")
     Application.put_env(:aiur, :decision_state_dir, dir)
@@ -86,7 +87,7 @@ defmodule Aiur.DecisionStoreCase do
         value -> Application.put_env(:aiur, :decision_state_dir, value)
       end
 
-      File.rm_rf!(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     %{dir: dir}
