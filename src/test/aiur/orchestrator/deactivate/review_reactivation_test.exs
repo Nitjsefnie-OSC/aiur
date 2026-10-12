@@ -66,10 +66,9 @@ defmodule Aiur.Orchestrator.Deactivate.ReviewReactivationTest do
         entry = Map.fetch!(next.running, issue_id)
         refute get_in(entry, [:control, :status]) == :deactivated
 
-        # No label write happens on this path — that is what keeps #2422's
-        # rework loop closed. The memory tracker reports every state update to
-        # `self()`, so a stray write would be observable here.
-        refute_receive {:memory_tracker_state_update, ^issue_id, _state}, 200
+        # Reactivation starts a fresh task, so its rework state must claim the
+        # ticket before dispatch can proceed.
+        assert_receive {:memory_tracker_state_update, ^issue_id, "in-progress"}, 1_000
 
         # The comment travels with the wake. Without this the agent respawns
         # into an unchanged ticket with no idea what it was woken for, and the
