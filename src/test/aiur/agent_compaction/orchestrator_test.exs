@@ -45,4 +45,22 @@ defmodule Aiur.AgentCompaction.OrchestratorTest do
     refute Orchestrator.already_attempted_for_thread?(%{"thread_id" => "thread-1", "status" => "completed"}, "thread-2")
     assert Orchestrator.already_attempted_for_thread?(%{"thread_id" => "thread-1", "status" => "pending"}, "thread-1")
   end
+
+  test "a pending attempt found after restart becomes a durable failure without retrying" do
+    pending = %{"thread_id" => "thread-1", "status" => "pending"}
+    recovered = Orchestrator.interrupted_pending_attempt(pending, "thread-1")
+
+    assert recovered == %{
+             "thread_id" => "thread-1",
+             "status" => "failed",
+             "reason" => "interrupted before completion; not retried"
+           }
+
+    assert Orchestrator.already_attempted_for_thread?(recovered, "thread-1")
+  end
+
+  test "a pending attempt for a different thread is left unchanged" do
+    pending = %{"thread_id" => "thread-1", "status" => "pending"}
+    assert Orchestrator.interrupted_pending_attempt(pending, "thread-2") == pending
+  end
 end

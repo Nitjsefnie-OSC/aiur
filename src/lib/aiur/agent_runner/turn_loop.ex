@@ -356,7 +356,14 @@ defmodule Aiur.AgentRunner.TurnLoop do
       prior =
         case Aiur.AgentCompaction.Store.load(issue.identifier) do
           {:ok, state} ->
-            state
+            recovered = Aiur.AgentCompaction.Orchestrator.interrupted_pending_attempt(state, app_session.thread_id)
+
+            if recovered != state do
+              _ = Aiur.AgentCompaction.Store.save(issue.identifier, recovered)
+              compaction_status_callback(turn_context, app_session, issue).(:failed, app_session.thread_id, recovered["reason"])
+            end
+
+            recovered
 
           {:error, reason} ->
             Logger.warning("Could not read prior Codex compaction state for #{issue.identifier}; skipping compaction: #{inspect(reason)}")

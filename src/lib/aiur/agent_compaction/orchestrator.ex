@@ -58,6 +58,13 @@ defmodule Aiur.AgentCompaction.Orchestrator do
 
   def already_attempted_for_thread?(_, _thread_id), do: false
 
+  @doc false
+  def interrupted_pending_attempt(%{"thread_id" => thread_id, "status" => "pending"} = state, thread_id) do
+    Map.merge(state, %{"status" => "failed", "reason" => "interrupted before completion; not retried"})
+  end
+
+  def interrupted_pending_attempt(state, _thread_id), do: state
+
   @doc """
   Check if a session has unchanged state (no new messages since last compaction).
   """
