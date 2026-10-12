@@ -2,8 +2,20 @@ defmodule Aiur.ExperimentsCLI do
   @moduledoc "Experiments commands for the local control RPC."
   alias Aiur.{Experiments, JSONSafe}
 
-  @switches [status: :string, kind: :string, json: :boolean, spec_json: :string, draft: :boolean, no_freeze: :boolean, title: :string, line: :string, metric: :keep, hypothesis: :string]
-  @allowed %{metrics: [:json], list: [:status, :kind, :json], show: [:json], create: [:spec_json, :draft, :no_freeze, :json, :title, :line, :metric, :hypothesis]}
+  @switches [
+    status: :string,
+    kind: :string,
+    json: :boolean,
+    refresh: :boolean,
+    spec_json: :string,
+    draft: :boolean,
+    no_freeze: :boolean,
+    title: :string,
+    line: :string,
+    metric: :keep,
+    hypothesis: :string
+  ]
+  @allowed %{events: [:json, :refresh], metrics: [:json], list: [:status, :kind, :json], show: [:json], create: [:spec_json, :draft, :no_freeze, :json, :title, :line, :metric, :hypothesis]}
 
   @spec run(keyword()) :: 0 | 1 | 64
   def run(opts \\ []) do
@@ -23,6 +35,17 @@ defmodule Aiur.ExperimentsCLI do
   end
 
   defp dispatch(:metrics, flags, []), do: result({:ok, Experiments.metric_catalog()}, flags, :metrics)
+
+  defp dispatch(:events, flags, [id]) do
+    case Experiments.events(id, Keyword.take(flags, [:refresh])) do
+      {:ok, snapshot} ->
+        if snapshot["incomplete_sources"] != [], do: flags[:error_fun].("warning: incomplete event sources: " <> Enum.join(snapshot["incomplete_sources"], ", "))
+        result({:ok, snapshot}, flags, :events)
+
+      error ->
+        result(error, flags, {:show, id})
+    end
+  end
 
   defp dispatch(:show, flags, [id]) do
     case Experiments.fetch(id) do
@@ -125,7 +148,7 @@ defmodule Aiur.ExperimentsCLI do
     error_fun = Keyword.get(opts, :error_fun, &IO.puts(:stderr, &1))
 
     error_fun.(
-      "aiur: experiments expects list [--status s] [--kind before_after|ab], show <id>, metrics [--json], or create --from <file|-> | --title <title> --line type:ref[@time] --metric pack/metric[:direction]"
+      "aiur: experiments expects list [--status s] [--kind before_after|ab], show <id>, events <id> [--json] [--refresh], metrics [--json], or create --from <file|-> | --title <title> --line type:ref[@time] --metric pack/metric[:direction]"
     )
 
     64

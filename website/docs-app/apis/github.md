@@ -238,8 +238,7 @@ refresh it lands on a later page.
 Only trust a `304` for a paginated read when the read was single-page (then
 page 1 *is* the list), or when the validator kept is the last page's rather
 than the first's. If neither is practical, do not make the read conditional:
-an unconditional read that is correct beats a conditional one that is quietly
-wrong.
+an unconditional read that is correct beats a conditional one that is quietly wrong.
 
 Issue comments and PR changed files drain every page; single-list readers refuse
 a next page with `pagination_unexpected` rather than return a partial list.
@@ -350,8 +349,7 @@ Sustained broker retry pressure still appears as
 Anonymous reads — a public `CODEOWNERS` fetch when no token is configured, for
 instance — bill GitHub's 60/hour unauthenticated per-IP allowance rather than
 the authenticated core budget, so they are metered in their own window. An
-exhausted anonymous allowance holds further anonymous reads but never gates
-agent dispatch.
+exhausted anonymous allowance holds further anonymous reads but never gates agent dispatch.
 
 ### Where the budget went
 
@@ -387,12 +385,10 @@ that looks like a leak and is not.
 **A daemon restart invalidates reconciliation for the rest of the window.**
 
 The daemon's attribution window restarts with the process; GitHub's does not.
-Points spent before the restart stay in `limit - remaining` and appear in no row
-of the ranking.
+Points spent before the restart stay in `limit - remaining` and appear in no row of the ranking.
 
 So the unattributed figure is inflated by exactly that much until the GitHub
-window rolls. Wait for the reset before comparing attribution against the
-credential's window.
+window rolls. Wait for the reset before comparing attribution against the credential's window.
 
 **The unattributed figure is not a leak.**
 
@@ -438,15 +434,13 @@ tracker:
         token_env: OPERATOR_TOKEN
 ```
 
-An empty list — the default — is the single-credential setup and is unchanged
-by any of this.
+An empty list — the default — is the single-credential setup and is unchanged by any of this.
 
 For each request the daemon picks the eligible credential with the most
 remaining budget for that request's resource.
 
 Core and GraphQL are chosen separately. They are separate budgets on separate
-windows, so REST core sitting near-idle is not headroom a GraphQL query can
-spend.
+windows, so REST core sitting near-idle is not headroom a GraphQL query can spend.
 
 Headroom comes from the `x-ratelimit-*` headers of calls the daemon was already
 making, so selection costs no budget of its own.
@@ -472,15 +466,13 @@ merges and pull request creation where they belong.
 
 #### What pooling is worth
 
-Each credential carries its own hourly budget, so three credentials raise the
-ceiling roughly threefold.
+Each credential carries its own hourly budget, so three credentials raise the ceiling roughly threefold.
 
 That is headroom, not a fix. A fleet burning more than its combined ceiling
 still exhausts it, just later.
 
 The pool total is also a ceiling rather than a balance, because the credentials'
-windows reset at different moments. Pooling buys margin while the burn itself is
-reduced.
+windows reset at different moments. Pooling buys margin while the burn itself is reduced.
 
 ## Comments arriving twice
 
@@ -608,8 +600,7 @@ workspace's host; they do not include remote SSH workers in a local census.
 
 The cache key intentionally includes the exact requested output shape. Two
 reads of one pull request that request different JSON fields, templates, or
-queries cannot share an answer without changing `gh`'s output, so each shape
-misses independently.
+queries cannot share an answer without changing `gh`'s output, so each shape misses independently.
 
 Likewise, a write or daemon delivery retires every shape of the changed
 resource to protect correctness.
@@ -623,8 +614,7 @@ The wrapper now records a reason with every miss (`absent`, `expired`,
 
 That lets a later regression distinguish expected correctness misses from
 entries expiring before reuse, and can tell a cold cache from a
-store-integrity failure — a present stamp whose body has vanished is `torn`,
-never `absent`.
+store-integrity failure — a present stamp whose body has vanished is `torn`, never `absent`.
 
 Editing a ticket or a pull request discards the kept answers for it at once, so
 an agent never reads back what it just replaced.
@@ -824,3 +814,13 @@ The path scope and webhook signature are independent locks:
 | HMAC-SHA256 signature | Requests from anyone who does not know the shared webhook secret. |
 
 Do not remove the catch-all `404`: the same origin serves the operator dashboard, and a host-wide tunnel would expose it to anyone who learned the hostname.
+
+## Experiment window evidence
+
+`aiur experiments events` reads merged PRs, releases, tags, incident-labelled
+issues and base-branch Actions runs on demand through telemetry's facade and
+`Aiur.GitHub.Transport`, attributed to `experiment_window_events`.
+
+GraphQL connections and Actions pages are capped at ten pages; source errors and page
+limits retain usable rows and mark GitHub incomplete. A frozen snapshot requires
+no GitHub reads until `--refresh` or a window/source-setting change.
