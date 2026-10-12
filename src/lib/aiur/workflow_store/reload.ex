@@ -12,6 +12,7 @@ defmodule Aiur.WorkflowStore.Reload do
   alias Aiur.Workflow
   alias Aiur.WorkflowStore.Cache
   alias Aiur.WorkflowStore.State
+  alias Aiur.WorkflowStore.ReloadRejection
 
   @reload_attempts 3
   @reload_retry_delay_ms 50
@@ -82,19 +83,20 @@ defmodule Aiur.WorkflowStore.Reload do
   end
 
   defp reload_changed_stamp(path, stamp, state) do
-    case load_state(path) do
-      {:ok, new_state} ->
-        new_state = advance_generation(new_state, state)
-        commit(state, new_state)
-        {:ok, new_state}
-
+    # Schema validation runs before `commit/2`: a published config that
+    # `Config.settings!/0` raises on crashes every consumer (#3961).
+    with {:ok, new_state} <- load_state(path),
+         :ok <- ReloadRejection.validate(new_state.workflow) do
+      ReloadRejection.clear()
+      new_state = advance_generation(new_state, state)
+      commit(state, new_state)
+      {:ok, new_state}
+    else
       {:error, reason} ->
-        # Keep the prior stamp so the next poll retries: a transient load
-        # error must not mark the new content as current, or a later good
-        # reload gets skipped and stale config is served. Track the failing
-        # stamp separately so a persistently-broken config still logs once
-        # per change instead of every poll.
-        if stamp != state.failed_stamp, do: log_reload_error(path, reason)
+        # Keep the prior stamp so the next poll retries: a transient load error must not mark the new content as
+        # current, or a later good reload gets skipped and stale config is served. Track the failing stamp
+        # separately so a persistently-broken config logs and alerts once per change instead of every poll.
+        if stamp != state.failed_stamp, do: ReloadRejection.reject(path, reason)
         {:error, reason, %{state | failed_stamp: stamp}}
     end
   end

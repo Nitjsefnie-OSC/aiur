@@ -26,8 +26,7 @@ defmodule Aiur.WorkflowStore do
   require Logger
 
   alias Aiur.Workflow
-  alias Aiur.WorkflowStore.Cache
-  alias Aiur.WorkflowStore.Reload
+  alias Aiur.WorkflowStore.{Cache, Reload}
 
   @poll_interval_ms 1_000
   @call_timeout_ms 5_000
@@ -149,8 +148,7 @@ defmodule Aiur.WorkflowStore do
       with {:ok, workflow} <- Workflow.load(), do: {:ok, workflow, :unknown}
   end
 
-  # Overridable so the saturation repro can stall the store without a real
-  # five-second wait.
+  # Overridable so the saturation repro can stall the store without a real five-second wait.
   defp call_timeout, do: Application.get_env(:aiur, :workflow_store_call_timeout_ms, @call_timeout_ms)
 
   @spec force_reload() :: :ok | {:error, term()}
