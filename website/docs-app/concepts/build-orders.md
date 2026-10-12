@@ -219,7 +219,7 @@ A prerequisite failure names the prerequisite and lists direct dependents before
 transitive dependents. Changing that set does not re-fire; changing the failure
 cause does. Durable latches survive restarts.
 
-For optimistic dependents, terminal blocker failure pauses running work, parks the dependent, and marks its PR draft while keeping its branch and PR.
+For optimistic dependents, terminal blocker failure pauses running work, parks the dependent, and marks its PR draft while keeping its branch and PR. Parked dependents release their fleet slot and their place in the optimistic share.
 
 A closed-unmerged blocker PR has a replacement grace of `build_queue.optimistic_failure_grace_seconds` (600 seconds by default); not-planned/duplicate closure or removal of the dependency edge parks immediately.
 
