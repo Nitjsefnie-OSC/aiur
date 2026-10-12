@@ -53,6 +53,23 @@ defmodule Aiur.Experiments.Auto.CreatorTest do
     assert Enum.count(detail.journal, &(&1["kind"] == "frozen")) == 1
   end
 
+  test "default delivery alias creates and freezes the registered built-in metrics", %{opts: opts, ctx: ctx} do
+    fixtures = Path.expand("../../../fixtures/experiments/telemetry", __DIR__)
+    assert {:ok, prior} = Aiur.RunTelemetry.Dataset.build(Path.join(fixtures, "boot-a.ndjson"))
+    ctx = Map.merge(ctx, %{telemetry_enabled: true, boot_id: "boot-b", telemetry_path: Path.join(fixtures, "boot-b.ndjson"), prior_loader: fn "boot-b" -> {[prior], false} end})
+    stop_supervised!(Creator)
+    stop_supervised!(Store)
+    start_supervised!({Store, catalog_context: ctx})
+    creator = start_supervised!({Creator, opts |> Keyword.put(:config, %AutoConfig{}) |> Keyword.put(:catalog_context, ctx)})
+    assert {:ok, spec} = Creator.create(line(), creator)
+    assert length(spec.metrics) == 17
+    assert Enum.all?(spec.metrics, &String.starts_with?(&1["ref"], "delivery-speed/"))
+    assert {:ok, :exists} = Creator.create(line(), creator)
+    assert {:ok, %{snapshots: [snapshot]}} = Experiments.fetch(spec.id)
+    observation = Enum.find(snapshot["metrics"]["delivery-speed/start_to_merge"]["observations"], &(&1["unit_id"] == "ticket:101"))
+    assert observation["value"] == 9_000_000
+  end
+
   test "disabled telemetry creates nothing and logs once per key even after restart", %{opts: opts} do
     stop_supervised!(Creator)
     write_workflow_file!(Workflow.workflow_file_path())
