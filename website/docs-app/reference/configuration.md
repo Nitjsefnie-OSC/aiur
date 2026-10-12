@@ -463,14 +463,8 @@ Discovery **extends** the curated list without replacing registry-owned effort v
 | `deepseek` | `GET https://api.deepseek.com/models` | `DEEPSEEK_API_KEY` | identifiers only |
 | `kimi` | `GET https://api.moonshot.ai/v1/models` | `MOONSHOT_API_KEY` | identifiers only |
 
-<<<<<<< HEAD
 `codex` and `claude` are not listed: they answer `model/list` over their own CLI transport, which `aiur init` already asks. Anthropic's `GET /v1/models` (`x-api-key`
-plus `anthropic-version`) has an adapter for operators who point an OpenAI-compatible
-=======
-`codex` and `claude` are not listed: they answer `model/list` over their own CLI
-transport, which `aiur init` already asks. Anthropic's `GET /v1/models` (`x-api-key` plus `anthropic-version`) has an adapter for operators who point an OpenAI-compatible
->>>>>>> ae7422b15 (Add automatic config and deploy ledger)
-backend straight at it; it returns identifiers and display names, no pricing.
+plus `anthropic-version`) has an adapter for operators who point an OpenAI-compatible backend straight at it; it returns identifiers and display names, no pricing.
 
 ### Cache, TTL, and cold start
 
@@ -734,8 +728,6 @@ The daemon owns [experiment](../concepts/experiments) writes through control RPC
 | `experiments.script_timeout_ms` | integer | 60000 | Script metric timeout in milliseconds; positive, reserved for metric packs. |
 | `experiments.checkpoint_interval_ms` | integer | 3600000 | Observation checkpoint interval in milliseconds; positive, reserved for snapshot capture. |
 | `experiments.max_snapshot_observations` | integer | 50000 | Maximum observations in a snapshot; positive, reserved for snapshot capture. |
-<<<<<<< HEAD
-=======
 
 ### experiments.auto
 
@@ -757,7 +749,6 @@ The daemon owns [experiment](../concepts/experiments) writes through control RPC
 | `experiments.auto.after_max_days` | integer | 42 | Maximum after window days; at least after_days. |
 | `experiments.auto.metric_packs` | string list | ["delivery"] | Metric packs used for automatic experiments. |
 
->>>>>>> ae7422b15 (Add automatic config and deploy ledger)
 ## build_queue
 Build queue configuration for GitHub workflows (Linear is unsupported); the daemon reconciles stored queue membership after tracker signals or on the configured interval, with a two-second debounce.
 
@@ -822,8 +813,7 @@ selected cadence repeated for as long as the page stayed open.
 No value makes that correct, because it makes API cost track how many people are looking rather than what has changed. They were removed rather than retuned.
 
 A selected root is now read by the daemon's own catalog reconciliation, and by nothing else. Each catalog update carries a per-root change marker — the root's
-identity, member count and update time, plus a digest of its members' states — and
-a watched root whose marker moved is re-read once, as is a watched root that has
+identity, member count and update time, plus a digest of its members' states — and a watched root whose marker moved is re-read once, as is a watched root that has
 never been read.
 
 Selecting a root and holding it open consume zero GitHub reads.
