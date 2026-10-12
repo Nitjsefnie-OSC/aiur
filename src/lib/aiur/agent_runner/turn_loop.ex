@@ -2,7 +2,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
   @moduledoc false
 
   require Logger
-  alias Aiur.AgentRunner.{MessageHandler, NoopWait, QueueDrain, SessionLifecycle, TurnCallbacks}
+  alias Aiur.AgentRunner.{MessageHandler, NoopWait, QueueDrain, ReworkHandoff, SessionLifecycle, TurnCallbacks}
   alias Aiur.AgentRunner.{SessionResume, ToolExecutor, TurnAlerts, TurnProgress, TurnPrompt, TurnStreams}
   alias Aiur.Codex.DynamicTool
   alias Aiur.CodingAgent
@@ -322,7 +322,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
 
     case continue_with_issue?(issue, issue_state_fetcher) do
       {:continue, refreshed_issue} when is_nil(max_turns) or turn_number < max_turns ->
-        continue_unless_noop_bound(turn_context, app_session, refreshed_issue, message_handler)
+        ReworkHandoff.after_turn(refreshed_issue, turn_context, fn -> continue_unless_noop_bound(turn_context, app_session, refreshed_issue, message_handler) end)
 
       {:continue, refreshed_issue} ->
         Logger.info("aiur_autonomous_loop phase=max_turns_reached elapsed_ms=#{Aiur.Boot.elapsed_ms()} identifier=#{refreshed_issue.identifier} turn=#{turn_number}/#{max_turns}")
