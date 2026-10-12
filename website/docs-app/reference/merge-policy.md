@@ -21,16 +21,19 @@ The top-level policy is validated and displayed by `aiur status` and `aiur capab
 
 With `on_red: dispatch_fixer`, a real failure files a `priority:1`, `complexity:1`
 ticket with the fixer label. The body includes run links, classified failures,
-red/last-green commits, suspect merges and local reproduction commands. Repeated
-signatures and overlapping test failures update the existing ticket; a separate
+red/last-green commits, suspect merges and local reproduction commands.
+
+Repeated signatures and overlapping test failures update the existing ticket; a separate
 ticket requires proven disjoint tests. Known flakes alone file no fixer.
 
 App-authored fixer tickets carrying the main-watch marker are authorized by this
 config while `dispatch_fixer` remains enabled. Under PAT auth (or a shared daemon
 and agent identity), tickets instead get `needs-triage` and an Executor attention.
+
 Fixers sort first and may use one slot above the agent cap; host pressure gates,
 explicit state limits and global pause still apply. A fixer waiting five minutes
 raises `system.main.fixer.stalled` with the observed hold reason, or `unknown`.
+
 Recovery comments on the open ticket without closing it; a missing open PR raises
 attention. Fixer PRs require full CI.
 
