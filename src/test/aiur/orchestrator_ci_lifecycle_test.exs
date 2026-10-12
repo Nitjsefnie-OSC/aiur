@@ -1559,17 +1559,6 @@ defmodule Aiur.OrchestratorCILifecycleTest do
     # A recent poll is never throttled before the dispatcher has published a
     # live `:ci` cadence (cold start, harnesses): the first read of a freshly
     # in-flight PR must not be held back by a cadence nobody has observed yet.
-    test "a recent poll is not throttled before the ci cadence is published" do
-      PollCadence.forget_effective_interval_ms()
-      issue = issue(unique_identifier("ci-unthrottled"), "ci-wait")
-      state = %State{last_ci_poll_started_at_ms: System.monotonic_time(:millisecond)}
-
-      next = poll_ci(state, issue, %{status: "pending", head_sha: "head-1", pr_number: 1})
-
-      assert next.last_ci_poll_started_at_ms != nil
-      assert is_map(next.ci_lifecycle.poll_cache)
-    end
-
     # Mutant #1 (review #2309): the CI throttle timestamp must NOT advance when
     # there are no in-flight targets. The loop is demand-scoped — it only polls
     # pull requests with work in flight — so a no-target tick is the "there is

@@ -151,3 +151,7 @@ Code.require_file("support/deposit_case.ex", __DIR__)
 Code.require_file("support/live_conversation_support.ex", __DIR__)
 Code.require_file("support/live_e2e/linear_api.ex", __DIR__)
 Code.require_file("support/live_e2e/worker_setup.ex", __DIR__)
+
+# Keep plain ExUnit.Case modules and between-case application timers from
+# publishing Orchestrator poll state or alerts into the suite-wide ledger.
+Aiur.TestSupport.quiesce_live_orchestrator()
