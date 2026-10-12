@@ -148,6 +148,12 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
     assert Slots.used_slots(dispatched) == 2
   end
 
+  test "reserved slot honors a pressure-reduced effective cap" do
+    normal = %{issue("normal-pressure") | labels: []}
+    state = %State{max_concurrent_agents: 3, effective_concurrent_agents: 1, running: %{normal.id => %{issue: normal, control: %{status: :working}}}}
+    assert DispatchPolicy.dispatch_decision(issue("pressure-fixer"), state) == {:skip, :fleet_capacity}
+  end
+
   defp enable_fixer_policy do
     content = File.read!(Workflow.workflow_file_path())
     write_workflow_file_atomic!(Workflow.workflow_file_path(), content <> "\nmerge_policy:\n  main_watch:\n    on_red: dispatch_fixer\n")

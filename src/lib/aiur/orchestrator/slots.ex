@@ -281,6 +281,7 @@ defmodule Aiur.Orchestrator.Slots do
   def fleet_slot_available?(issue, state) do
     reserved =
       MergePolicy.fixer_ticket?(issue) and not state.globally_paused and
+        effective_concurrent_agent_limit(state) == max_concurrent_agent_limit(state) and
         used_slots(state) < max_concurrent_agent_limit(state) + 1 and
         not running_fixer?(state.running)
 
