@@ -11,6 +11,7 @@ defmodule Aiur.DurableRuntimeStateTest do
   alias Aiur.Config.Paths
   alias Aiur.Events.{IdGenerator, SubscriptionStore}
   alias Aiur.JsonStore
+  alias Aiur.LaunchStateAdoption
 
   @host "durable-state-host"
 
@@ -227,24 +228,31 @@ defmodule Aiur.DurableRuntimeStateTest do
   describe "AlertLedger across a restart" do
     test "the alert feed keeps alerts from before a restart", %{logs_parent: logs_parent, state_dir: state_dir} do
       launch(logs_parent, "20260101T000000Z-100")
+      ledger = Path.join(state_dir, Paths.project_name() <> ".alerts.ndjson")
 
       :ok =
-        AlertLedger.append(%{
-          "topic" => "system.durable.check",
-          "timestamp" => "2026-01-01T00:00:00Z",
-          "needs_attention" => true
-        })
+        AlertLedger.append(
+          %{
+            "topic" => "system.durable.check",
+            "timestamp" => "2026-01-01T00:00:00Z",
+            "needs_attention" => true
+          },
+          ledger_path: ledger
+        )
 
-      assert String.starts_with?(AlertLedger.path(), state_dir)
+      assert String.starts_with?(ledger, state_dir)
 
       launch(logs_parent, "20260101T010000Z-200")
 
-      assert Enum.any?(AlertFeed.list(roots: []), &(&1["topic"] == "system.durable.check"))
-      assert AlertFeed.condition_state("system.durable.check", roots: []) == :firing
+      opts = [ledger_paths: [ledger], roots: [], log_roots: []]
+      assert Enum.any?(AlertFeed.list(opts), &(&1["topic"] == "system.durable.check"))
+      assert AlertFeed.condition_state("system.durable.check", opts) == :firing
     end
 
-    test "adopts the newest legacy ledger and its backfill marker once", %{logs_parent: logs_parent} do
+    test "adopts the newest legacy ledger and its backfill marker once", %{logs_parent: logs_parent, state_dir: state_dir} do
       name = Paths.project_name() <> ".alerts.ndjson"
+      ledger = Path.join(state_dir, name)
+      opts = [ledger_paths: [ledger], roots: []]
       line = fn topic -> Jason.encode!(%{"event" => "alert", "topic" => topic, "timestamp" => "2026-01-01T00:00:00Z"}) <> "\n" end
 
       older = launch(logs_parent, "20260101T000000Z-100")
@@ -255,15 +263,17 @@ defmodule Aiur.DurableRuntimeStateTest do
       write_legacy!(newer, name <> ".alerts.backfill", "complete\n", 2_000)
 
       launch(logs_parent, "20260101T020000Z-300")
-      topics = Enum.map(AlertFeed.list(roots: []), & &1["topic"])
+      :ok = LaunchStateAdoption.adopt_file_once(ledger, name, companions: [".alerts.backfill"], empty: "")
+      topics = Enum.map(AlertFeed.list(opts), & &1["topic"])
 
       assert topics == ["system.newest"]
-      assert AlertLedger.backfilled?()
+      assert AlertLedger.backfilled?(ledger_path: ledger)
 
       # Once: a newer legacy ledger that appears later is not adopted.
       write_legacy!(newer, name, line.("system.after"), 3_000)
       launch(logs_parent, "20260101T030000Z-400")
-      assert Enum.map(AlertFeed.list(roots: []), & &1["topic"]) == ["system.newest"]
+      :ok = LaunchStateAdoption.adopt_file_once(ledger, name, companions: [".alerts.backfill"], empty: "")
+      assert Enum.map(AlertFeed.list(opts), & &1["topic"]) == ["system.newest"]
     end
   end
 
