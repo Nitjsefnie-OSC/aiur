@@ -147,6 +147,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
   alias Aiur.BrowserHarness.{FixtureEndpoint, VoiceSTT}
   alias Aiur.BrowserHarness.FixtureEndpointStart
   alias Aiur.IssueLog
+  alias Aiur.TestSupport.BuildHome.FixtureSource
 
   def run do
     {:ok, _} = Application.ensure_all_started(:bandit)
@@ -155,9 +156,9 @@ defmodule Aiur.BrowserHarness.FixtureServer do
     System.put_env("AIUR_DASHBOARD_USERNAME", "browser_fixture")
     System.put_env("AIUR_DASHBOARD_PASSWORD", "browser_fixture_password")
     Application.put_env(:aiur, :workflow_file_path, Path.expand("../fixtures/test.yaml", __DIR__))
-    Application.put_env(:aiur, :build_data_source, Aiur.TestSupport.BuildHome.FixtureSource)
+    Application.put_env(:aiur, :build_data_source, FixtureSource)
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
-    configure_forwarded_dashboard()
+    configure_forwarded_dashboard() |> FixtureSource.configure_usage()
 
     {:ok, _} =
       Supervisor.start_link(
