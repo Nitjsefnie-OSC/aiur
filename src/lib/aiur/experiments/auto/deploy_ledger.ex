@@ -25,7 +25,7 @@ defmodule Aiur.Experiments.Auto.DeployLedger do
          {:ok, rows} <- read(path, true) do
       case Enum.find(rows, &(&1["boot_id"] == row["boot_id"])) do
         nil -> append(path, row, rows)
-        existing -> {:ok, existing}
+        existing -> with :ok <- cap(path, rows), do: {:ok, existing}
       end
     end
   end
