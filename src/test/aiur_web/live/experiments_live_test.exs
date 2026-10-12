@@ -56,6 +56,26 @@ defmodule AiurWeb.ExperimentsLiveTest do
     assert has_element?(view, "#exp-report")
   end
 
+  test "frozen baseline provenance renders and updates only on facade notifications" do
+    populated()
+    frozen = %{"window_name" => "before", "revision" => 2, "computed_at" => "2026-10-10T00:00:00Z", "aiur_version" => "0.0.9", "sha256" => "baseline-hash"}
+    state = Application.fetch_env!(:aiur, :experiment_live_fixture)
+    state = update_in(state, [:details, "first"], fn {:ok, detail} -> {:ok, Map.merge(detail, %{snapshots: [frozen], pack_changed_since_freeze: true})} end)
+    Application.put_env(:aiur, :experiment_live_fixture, state)
+    {:ok, view, _html} = live(build_conn(), "/experiments/first")
+    assert has_element?(view, "#exp-baseline", "Revision 2")
+    assert has_element?(view, "#exp-baseline", "2026-10-10T00:00:00Z")
+    assert has_element?(view, "#exp-baseline", "Aiur 0.0.9")
+    assert has_element?(view, "#exp-baseline", "baseline-hash")
+    assert render(view) =~ "Metric pack definitions changed"
+    populated()
+    send(view.pid, :irrelevant)
+    assert has_element?(view, "#exp-baseline")
+    send(view.pid, {:experiments_changed, "first"})
+    refute has_element?(view, "#exp-baseline")
+    assert render(view) =~ "Evidence unavailable"
+  end
+
   test "index chooses first detail without changing the mobile index URL" do
     populated()
     {:ok, view, _html} = live(build_conn(), "/experiments")

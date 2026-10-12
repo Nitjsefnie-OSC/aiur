@@ -24,6 +24,15 @@ defmodule AiurWeb.Experiments.ViewModelTest do
     assert model.frozen_baseline == :unknown
   end
 
+  test "frozen baseline uses the latest before revision and exposes its provenance" do
+    baseline = %{"window_name" => "before", "revision" => 2, "computed_at" => "2026-10-10T00:00:00Z", "aiur_version" => "0.0.9", "sha256" => "frozen-hash"}
+    snapshots = [%{"window_name" => "after", "revision" => 9}, Map.put(baseline, "revision", 1), baseline]
+    model = ViewModel.detail(%{spec: fixture("valid_line"), snapshots: snapshots, pack_changed_since_freeze: true})
+    assert model.frozen_baseline == %{revision: 2, computed_at: "2026-10-10T00:00:00Z", aiur_version: "0.0.9", sha256: "frozen-hash"}
+    assert model.pack_changed_since_freeze?
+    assert ViewModel.detail(%{spec: fixture("valid_ab"), snapshots: snapshots}).frozen_baseline == :unknown
+  end
+
   test "cohort chip reflects the actual design count" do
     spec = fixture("valid_ab")
     assert ViewModel.detail(%{spec: spec}).kind_label == "A/B"
