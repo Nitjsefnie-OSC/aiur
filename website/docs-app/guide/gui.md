@@ -203,3 +203,6 @@ Open **Experiments** below Analytics and select an experiment. The shareable
 metrics. On a phone, **All experiments** returns to the index. Existing
 experiments remain visible when capture is off; unavailable evidence and store
 errors are shown explicitly.
+
+Frozen baseline details include the revision, capture time, Aiur version and
+SHA-256 hash. A warning identifies metric packs that changed since the freeze.
