@@ -4,6 +4,7 @@ defmodule Aiur.Experiments.Auto.CreatorTest do
   alias Aiur.Experiments
   alias Aiur.Experiments.Auto.{Creator, Line}
   alias Aiur.Experiments.{Paths, Store}
+  alias Aiur.RunTelemetry.Dataset
 
   setup do
     root = Path.join(System.tmp_dir!(), "auto-creator-#{System.unique_integer([:positive])}")
@@ -55,7 +56,7 @@ defmodule Aiur.Experiments.Auto.CreatorTest do
 
   test "default delivery alias creates and freezes the registered built-in metrics", %{opts: opts, ctx: ctx} do
     fixtures = Path.expand("../../../fixtures/experiments/telemetry", __DIR__)
-    assert {:ok, prior} = Aiur.RunTelemetry.Dataset.build(Path.join(fixtures, "boot-a.ndjson"))
+    assert {:ok, prior} = Dataset.build(Path.join(fixtures, "boot-a.ndjson"))
     ctx = Map.merge(ctx, %{telemetry_enabled: true, boot_id: "boot-b", telemetry_path: Path.join(fixtures, "boot-b.ndjson"), prior_loader: fn "boot-b" -> {[prior], false} end})
     stop_supervised!(Creator)
     stop_supervised!(Store)
