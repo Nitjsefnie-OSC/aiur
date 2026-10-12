@@ -21,6 +21,13 @@ def _warn(warning):
     print('analytics ledger: ' + json.dumps(warning), file=sys.stderr)
 
 
+def _mark_partial(cache, path, touched):
+    if path not in cache['partial_files']:
+        cache['partial_files'].append(path)
+        touched.update(row['attributes']['ticket'] for row in cache['records'].values()
+                       if row.get('source_path') == path and row['attributes'].get('ticket'))
+
+
 def _ingest(files, cache, repo=None):
     touched = set()
     for path in files:
@@ -49,12 +56,12 @@ def _ingest(files, cache, repo=None):
                         record, warning = None, {'type': 'invalid_encoding', 'path': key, 'line': line}
                     if warning:
                         _warn(warning)
-                        if key not in cache['partial_files']:
-                            cache['partial_files'].append(key)
+                        _mark_partial(cache, key, touched)
                     try:
                         projected = ledger.project(record) if record else None
                     except ValueError as error:
                         _warn({'type': 'invalid_ledger_input', 'path': key, 'line': line, 'reason': str(error)})
+                        _mark_partial(cache, key, touched)
                         projected = None
                     if projected:
                         if projected['kind'] == 'run_context' and projected['attributes'].get('repo') not in (None, 'unknown'):

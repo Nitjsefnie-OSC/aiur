@@ -157,11 +157,12 @@ class LedgerTests(unittest.TestCase):
             root = Path(directory)
             path = root / 'telemetry.ndjson'
             bad = event('dispatch', '10:00', backend={'body': 'private'})
-            path.write_text(json.dumps(bad) + '\n' + json.dumps(event('pr_merged', '11:00')) + '\n')
+            path.write_text(''.join(json.dumps(row) + '\n' for row in [event('dispatch', '09:00'), event('pr_opened', '09:30'), bad, event('pr_merged', '11:00')]))
             with contextlib.redirect_stderr(io.StringIO()) as warnings:
                 ledger_store.materialize([path], root)
             self.assertIn('invalid_ledger_input', warnings.getvalue())
             self.assertTrue((root / 'analytics/tickets/42.json').exists())
+            self.assertTrue(json.loads((root / 'analytics/tickets/42.json').read_text())['quality']['capture_partial'])
             self.assertNotIn('private', (root / 'analytics/ledger-cursor.json').read_text())
 
 
