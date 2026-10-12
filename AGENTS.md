@@ -63,15 +63,12 @@ the change falsifies before writing anything new.
 A genuinely new page must also be added to the sidebar in
 `website/docs-app/.vitepress/config.ts`, or nobody can reach it.
 
-The config and CLI rows above are machine-checked. `scripts/check-config-docs.py`
-resolves every config key to its full dotted path and fails the required `lint`
-job when one is missing from the configuration reference;
-`scripts/test-check-config-docs.sh` guards that checker. The required `lint` job
-runs `website/docs-app/scripts/check-cli-reference.sh` and its self-test for
-non-docs-only changes; the website guards job runs them for docs-only changes.
-Keep `reference/cli.md` at 500 lines or fewer; adding a row requires an equal
-cut or consolidation in the same change.
-Dashboard pages and the remaining rows are enforced by review alone.
+The config and CLI rows are machine-checked: `scripts/check-config-docs.py` resolves
+config keys; missing entries fail `lint`. `scripts/test-check-config-docs.sh` guards
+that checker. The `lint` job runs `website/docs-app/scripts/check-cli-reference.sh`
+and its self-test, as does website guards for docs-only changes. Keep
+`reference/cli.md` at 500 lines or fewer; consolidate added rows in the same change.
+Other rows remain enforced by review alone.
 
 ## Layout
 
