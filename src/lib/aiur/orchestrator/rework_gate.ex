@@ -27,7 +27,16 @@ defmodule Aiur.Orchestrator.ReworkGate do
   alias Aiur.Alerts
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.GitHub.ReviewThreads
-  alias Aiur.Orchestrator.{ReviewFindings, State}
+  alias Aiur.Orchestrator.{OperatorMessages, ReviewFindings, State}
+
+  @doc false
+  @spec operator_queue_empty?(GenServer.server(), String.t()) :: boolean()
+  def operator_queue_empty?(orchestrator, issue_identifier) do
+    case OperatorMessages.control_capabilities(orchestrator, issue_identifier) do
+      {:ok, %{queue_depth: 0}} -> true
+      _queued_or_unavailable -> false
+    end
+  end
 
   @doc """
   Returns the open pull request for the rework target.

@@ -4,7 +4,7 @@ defmodule Aiur.AgentRunner.ReworkHandoff do
   alias Aiur.AgentRunner.{TurnAlerts, TurnLoop}
   alias Aiur.CodeHost
   alias Aiur.GitHub.Client, as: GitHubClient
-  alias Aiur.Orchestrator.{DispatchPolicy, OperatorMessages, ReworkGate, TicketTransition}
+  alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
 
   @spec after_turn(Aiur.Issue.t(), map(), (-> term())) :: term()
   def after_turn(issue, turn_context, continue) do
@@ -14,10 +14,9 @@ defmodule Aiur.AgentRunner.ReworkHandoff do
   end
 
   defp handoff_if_ready(issue, turn_context, continue) do
-    case OperatorMessages.control_capabilities(turn_context.orchestrator, issue.identifier) do
-      {:ok, %{queue_depth: 0}} -> handoff_completed_turn(issue, turn_context, continue)
-      _queued_or_unavailable -> continue.()
-    end
+    if ReworkGate.operator_queue_empty?(turn_context.orchestrator, issue.identifier),
+      do: handoff_completed_turn(issue, turn_context, continue),
+      else: continue.()
   end
 
   defp handoff_completed_turn(issue, turn_context, continue) do
