@@ -16,10 +16,12 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
     stale_ids = MapSet.new(stale, & &1["id"])
     {edges, edge_cache} = edge_evidence(records, blockers, now, max_age, opts)
     dependents = for row <- records, row["status"] == "parked", do: row["ticket"]
+    grace_refresh = for row <- records, blocker <- row["blockers"], grace_crossed?(blocker["suspect_since_ms"], get_in(blocker, ["guard_observation", "observed_at_ms"]), now, grace), do: blocker["id"]
+    confirm = dependents ++ grace_refresh
     issues = Keyword.get(opts, :issues, %{})
     missing = Enum.map(stale, & &1["id"]) |> Enum.reject(&Map.has_key?(issues, &1))
-    fetched = fetch_issues(Enum.uniq(missing ++ dependents), fetch)
-    issues = Map.merge(fetched, Map.drop(issues, dependents))
+    fetched = fetch_issues(Enum.uniq(missing ++ confirm), fetch)
+    issues = Map.merge(fetched, Map.drop(issues, confirm))
 
     observations =
       Map.new(blockers, fn blocker ->

@@ -113,10 +113,11 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservationsTest do
     refute Enum.any?(OptimisticGuard.decide([row], observations, now, grace_ms: 600_000), &match?({:park, _, _, _}, &1))
   end
 
-  test "grace crossing refreshes trouble labels missing from current poll" do
+  test "grace crossing confirms recovered labels despite a stale poll snapshot" do
     observation = Map.merge(cached(), %{"observed_at_ms" => 600_000, "labels" => ["agent:error"]})
     row = record(observation) |> put_in(["blockers", Access.at(0), "suspect_since_ms"], 10_000) |> put_in(["blockers", Access.at(0), "suspect_cause"], "agent_error")
-    observations = OptimisticGuardObservations.read([row], 630_000, opts(grace_ms: 600_000, issues: %{}))
+    old_issue = %Issue{identifier: "10", labels: ["agent:error"]}
+    observations = OptimisticGuardObservations.read([row], 630_000, opts(grace_ms: 600_000, issues: %{"10" => old_issue}))
     assert observations["10"].labels == []
     refute Enum.any?(OptimisticGuard.decide([row], observations, 630_000, grace_ms: 600_000), &match?({:attention, _, _, _}, &1))
   end

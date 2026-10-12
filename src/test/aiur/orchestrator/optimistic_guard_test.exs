@@ -23,6 +23,12 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
     assert facts.suspect_cause == nil
   end
 
+  test "a missed reopen still gives a later closure its own grace" do
+    row = record(%{"suspect_since_ms" => @now - 900_000, "suspect_cause" => "pr_closed_unmerged"})
+    closed_at = @now - 1_000
+    assert [{:update_blocker, "11", "10", %{suspect_since_ms: ^closed_at}}] = decide(row, Map.put(closed(), :pr_closed_at_ms, closed_at))
+  end
+
   test "cancelled issue and removed edge park immediately; completed issue stays healthy" do
     for reason <- ["not_planned", "duplicate"] do
       assert park?(decide(record(), Map.merge(closed(), %{issue_open?: false, state_reason: reason})))

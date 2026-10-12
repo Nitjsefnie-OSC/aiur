@@ -95,7 +95,7 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
 
   defp suspect_since(blocker, observation, cause, now) do
     if blocker["suspect_cause"] == cause and is_integer(blocker["suspect_since_ms"]) do
-      blocker["suspect_since_ms"]
+      if cause == "pr_closed_unmerged", do: max(blocker["suspect_since_ms"], observation[:pr_closed_at_ms] || blocker["suspect_since_ms"]), else: blocker["suspect_since_ms"]
     else
       if cause == "pr_closed_unmerged", do: Map.get(observation, :pr_closed_at_ms) || now, else: now
     end

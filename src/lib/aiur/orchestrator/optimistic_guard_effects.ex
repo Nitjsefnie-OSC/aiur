@@ -220,19 +220,21 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffects do
   defp release_records(state, records, observations, opts) do
     ledger = Keyword.get(opts, :ledger, OptimisticLedger)
 
-    for row <- records,
-        row["status"] == "parked",
-        Enum.any?(row["blockers"], &(&1["park_complete"] == true)),
-        issue = get_in(observations, [:dependents, row["ticket"]]),
-        is_map(issue),
-        (Keyword.fetch!(opts, :label_prefix) <> ":parked") not in issue.labels do
-      case ledger.resume_park(row["ticket"], now(opts)) do
-        :ok -> attention(:resolve, row["ticket"], %{}, opts)
-        error -> report(state, row["ticket"], error)
-      end
-    end
+    eligible =
+      for row <- records,
+          row["status"] == "parked",
+          Enum.any?(row["blockers"], &(&1["park_complete"] == true)),
+          issue = get_in(observations, [:dependents, row["ticket"]]),
+          is_map(issue),
+          (Keyword.fetch!(opts, :label_prefix) <> ":parked") not in issue.labels,
+          do: row
 
-    state
+    Enum.reduce(eligible, state, fn row, current ->
+      case ledger.resume_park(row["ticket"], now(opts)) do
+        :ok -> execute(current, {:resolve, :optimistic_blocker_failed, row["ticket"]}, opts)
+        error -> report(current, row["ticket"], error)
+      end
+    end)
   end
 
   defp cause_atom(cause) when is_atom(cause), do: cause

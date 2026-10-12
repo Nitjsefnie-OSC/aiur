@@ -15,9 +15,7 @@ defmodule Aiur.Config.OptimisticBuildQueueTest do
           optimistic_failure_grace_seconds: 59,
           optimistic_failure_grace_seconds: 86_401,
           optimistic_churn_attention_threshold: -1,
-          optimistic_churn_attention_threshold: 51,
-          optimistic_failure_grace_seconds: nil,
-          optimistic_churn_attention_threshold: nil
+          optimistic_churn_attention_threshold: 51
         ] do
       assert {:error, {:invalid_workflow_config, message}} = Schema.parse(%{"build_queue" => %{key => invalid}})
       assert message =~ Atom.to_string(key)

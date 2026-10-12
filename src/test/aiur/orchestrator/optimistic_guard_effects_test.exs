@@ -4,7 +4,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
   alias Aiur.BuildQueue.{Attention, Store}
   alias Aiur.{Config, Issue, TrackerIdentity}
   alias Aiur.Events.Exchange
-  alias Aiur.Orchestrator.{OptimisticGuardEffects, OptimisticLedger, PauseResume, State}
+  alias Aiur.Orchestrator.{OptimisticGuardEffects, OptimisticLedger, PauseResume, State, TrackerTasks}
 
   @topic "ticket.11.queue.attention.optimistic_blocker_failed"
   @park {:park, "11", "10", :pr_closed_unmerged}
@@ -213,6 +213,32 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
     refute_received {:event, %{topic: @topic}}
     refute_received {:effect, :pause}
     refute_received {:effect, :comment}
+  end
+
+  test "explicit unpark schedules attention cleanup outside the orchestrator", %{opts: opts} do
+    state = OptimisticGuardEffects.execute(running(), @park, opts)
+    assert_received {:event, %{topic: @topic}}
+    owner = self()
+
+    opts =
+      remote_options(opts, [])
+      |> Keyword.put(:attention, fn _, _, _ ->
+        send(owner, {:cleanup_owner, self()})
+        :ok
+      end)
+
+    state = OptimisticGuardEffects.reconcile(%{state | snapshot_key: owner}, opts)
+    [ref] = Map.keys(state.tracker_tasks)
+    assert_receive {^ref, observations}, 1_000
+    assert {:handled, state} = TrackerTasks.result(state, ref, observations)
+    assert [%{key: {:optimistic_attention, "11"}}] = Map.values(state.tracker_tasks)
+    assert_receive {:cleanup_owner, task}, 1_000
+    refute task == owner
+    [cleanup_ref] = Map.keys(state.tracker_tasks)
+    assert_receive {^cleanup_ref, :ok}, 1_000
+    assert {:handled, _state} = TrackerTasks.result(state, cleanup_ref, :ok)
+    assert {:ok, row} = OptimisticLedger.get("11")
+    assert row["status"] == "running"
   end
 
   test "closing a parked attempt clears its attention without remote reads", %{opts: opts} do
