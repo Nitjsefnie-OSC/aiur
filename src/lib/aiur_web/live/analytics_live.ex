@@ -499,8 +499,9 @@ defmodule AiurWeb.AnalyticsLive do
     ]
   end
 
-  defp concurrency_subtitle(%{pressure: %{latest_occupied: occupied, latest_effective_capacity: cap}}, true) when is_integer(occupied) and is_integer(cap), do: "#{occupied} now / #{cap} cap (fleet)"
-  defp concurrency_subtitle(model, present?), do: "#{model.kpis.conc_now} #{if(present?, do: "now", else: "at run end")} / #{Presenter.cap_label(model)}"
+  defp concurrency_subtitle(model, present?),
+    do:
+      "#{if(is_integer(model.pressure.latest_occupied), do: "#{model.pressure.latest_occupied} now", else: if(present?, do: "occupancy unavailable", else: "#{model.kpis.conc_now} at run end"))} / #{Presenter.cap_label(model)}"
 
   defp provider_spend_item(%{state: :available, amount: amount, source: source}),
     do: %{label: "Provider spend", val: amount, sub: source, tone: nil}

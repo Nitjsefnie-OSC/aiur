@@ -275,14 +275,14 @@ defmodule AiurWeb.AnalyticsLiveTest do
     refute html =~ "No run telemetry to analyze yet"
   end
 
+  @tag analytics_capacity: %{effective: 16, max: 20, configured: 16, occupied: 15, available: 1, queued_demand?: true}
   test "renders exact source-gated values in the keyboard-reachable pressure table" do
-    Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture!(RunTelemetry.boot_id(), {17, 20, 20}))
-
+    Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture!(RunTelemetry.boot_id(), {15, 20, 16}))
     {:ok, _view, html} = loaded_live(build_conn(), "/analytics")
-
     assert html =~ ~s(<table id="analytics-pressure-table">)
-    assert html =~ "17 now / 20 cap (fleet)"
-    assert html =~ "16 / 20 / 20"
+    assert html =~ ~r/15 now \/ 16 cap \(.*session 20\)/
+    refute html =~ "(fleet)"
+    assert html =~ "16 / 20 / 16"
     assert html =~ ">2<"
     assert html =~ "2 / 8"
     assert html =~ "189s"
@@ -300,11 +300,11 @@ defmodule AiurWeb.AnalyticsLiveTest do
 
     # The gap row's degraded build must render its missing wait as "—", and a
     # missing fleet figure must never be coerced into a confident "0".
-    assert html =~ "—"
+    assert html =~ "—" and html =~ "occupancy unavailable"
     assert html =~ ">degraded<"
     refute html =~ ">0s<"
     # The measured row still carries its exact values (not blurred by the gap).
-    assert html =~ "13"
+    assert html =~ "13" and not (html =~ "13 now /")
     assert html =~ "189s"
   end
 
