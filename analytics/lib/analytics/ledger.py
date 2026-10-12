@@ -24,7 +24,10 @@ def project(record: dict) -> dict | None:
         return None
     if not isinstance(record['record_id'], str) or not isinstance(record['boot_id'], str) or type(record['sequence']) is not int:
         raise ValueError('invalid_record_identity')
-    attrs = record['attributes']
+    attrs = dict(record['attributes'])
+    for source, target in (('changed_files', 'files'), ('commit_count', 'commits'), ('review_count', 'reviews_count')):
+        if source in attrs:
+            attrs[target] = attrs[source]
     if record['kind'] == 'lifecycle' and (not isinstance(attrs.get('ticket'), str) or not isinstance(attrs.get('event'), str)):
         raise ValueError('invalid_lifecycle_identity')
     if record['kind'] == 'lifecycle' and attrs['event'] not in LEDGER_EVENTS:
@@ -34,13 +37,17 @@ def project(record: dict) -> dict | None:
              **ledger_schema.SCHEMA['properties']['facts']['properties'],
              **ledger_schema.SCHEMA['properties']['usage']['properties']}
     for key, value in attrs.items():
-        if key in rules:
+        if key == 'attempt_id':
+            ledger_schema.validate(value, {'type': ['string', 'null']}, key)
+        elif key == 'coverage' and attrs.get('event') == 'pr_facts':
+            ledger_schema.validate(value, {'type': 'string', 'enum': ['available', 'unavailable']}, key)
+        elif key in rules:
             ledger_schema.validate(value, rules[key], key)
         elif key in EVENT_KEYS and not isinstance(value, (str, int, bool, type(None))):
             raise ValueError('invalid_lifecycle_attribute')
     keys = CONTEXT_KEYS if record['kind'] == 'run_context' else EVENT_KEYS
     return {key: value for key, value in record.items() if key != 'attributes'} | {
-        'attributes': {key: record['attributes'][key] for key in keys if key in record['attributes']}}
+        'attributes': {key: attrs[key] for key in keys if key in attrs}}
 
 
 def observed(at: str | None, source: str = 'telemetry') -> dict:

@@ -21,7 +21,7 @@ def event(name, at, boot='A', ticket='42', **attrs):
 class LedgerTests(unittest.TestCase):
     def test_cross_launch_cohort_and_mixed_retry(self):
         dispatch = event('dispatch', '10:00', backend='claude', attempt_id='try1')
-        merged = event('pr_merged', '11:00', boot='B')
+        merged = event('pr_merged', '11:00', boot='B', attempt_id=None)
         record = ledger.build_ticket_record([dispatch, merged], [])
         self.assertEqual(record['cohort']['backend'], 'claude')
         self.assertEqual(record['milestones']['merged'], {'at': '2026-10-09T11:00:00Z', 'status': 'observed', 'source': 'telemetry'})
@@ -91,7 +91,7 @@ class LedgerTests(unittest.TestCase):
             a, b = root / 'a.ndjson', root / 'b.ndjson'
             dispatch = event('dispatch', '10:00', backend='claude', body='PRIVATE')
             opened = event('pr_opened', '10:10')
-            merged = event('pr_merged', '11:00', boot='B')
+            merged = event('pr_merged', '11:00', boot='B', attempt_id=None)
             def write(path, records):
                 path.write_text(''.join(json.dumps(row) + '\n' for row in records))
             write(a, [dispatch, opened])
@@ -174,5 +174,5 @@ class LedgerTests(unittest.TestCase):
             record = json.loads((root / 'analytics/tickets/42.json').read_text())
             self.assertEqual(record['counts']['ci_failures'], 1)
             with contextlib.redirect_stdout(io.StringIO()) as output:
-                backfill(['--telemetry', str(a), '--state-node', str(root), '--since', '2026-10-09'])
+                backfill(['--no-facts', '--telemetry', str(a), '--state-node', str(root), '--since', '2026-10-09'])
             self.assertEqual(json.loads(output.getvalue())['written'], 0)

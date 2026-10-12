@@ -105,6 +105,8 @@ def _materialize(files, root, since, repo):
     cache = read_json(cursor_path, {'files': {}, 'records': {}, 'timeline_hash': None, 'partial_files': []})
     previous_cache = json.dumps(cache, sort_keys=True)
     cache.setdefault('partial_files', [])
+    if since:
+        cache['files'] = {}
     touched = _ingest(files, cache)
     records = _dedupe(list(cache['records'].values()))
     contexts = [r for r in records if r['kind'] == 'run_context']

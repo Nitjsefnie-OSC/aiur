@@ -77,6 +77,11 @@ Aiur separates the repository's tracked code from daemon-owned state under `~/.a
 | `analytics/` | Run summaries, durable `tickets/<ticket>.json`, and `repo-timeline.ndjson` facts when captured. |
 | `meta/` | Executor findings at `findings.ndjson` and narrative retrospectives at `retros/<boot-id>.md`. |
 
+From a checkout, `analytics/ledger-backfill --since 2026-09-15 --repo owner/name`
+rebuilds durable ticket records from retained launches and fetches missing PR facts.
+Use `--no-facts` for offline replay. Missing milestones stay unavailable; records
+already materialized survive raw-log retention.
+
 These paths are machine-local. Do not commit them, and do not expect copying a repository to copy its run state.
 
 `aiur init` and the first run create this state as needed. Aiur does not create `executor/handoff.md`: the durable narrative is `meta/retros/<boot-id>.md`, and the shareable artifact is the generated `docs/executor/open-findings.md` digest.

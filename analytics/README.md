@@ -73,7 +73,8 @@ The Python tools are dependency-free (Python 3 stdlib only) and can be run from
 any host with a checkout of this repository. `cost-report` is the exception: it
 delegates to an offline Elixir mix task over `UsageAggregate` + `PriceTable`,
 so it needs the Elixir toolchain (`mise`/`mix`) and a checkout of `src/` — not
-just the `analytics/` directory. It still needs no new recording: it reads the
+just the `analytics/` directory. `ledger-backfill` also needs this toolchain for
+GitHub facts; `--no-facts` keeps its replay dependency-free. Cost reporting still needs no new recording: it reads the
 usage-aggregate checkpoint and price table that the daemon already maintains.
 
 | Tool | Purpose |
@@ -166,7 +167,11 @@ R warns and reduces coverage when a requested small-sample interval is impossibl
 `analytics/reduce --ledger` also writes `analytics/tickets/<ticket>.json` in
 the state node. The daemon requests this on segment materialization, shutdown,
 and PR-facts appends. `--telemetry-glob 'PATH/**/telemetry.ndjson*'` adds retained
-launches to the ledger without changing the run-summary input scope.
+launches to the ledger without changing the run-summary input scope. Backfill
+fetches missing PR facts through `ledger-facts` and the canonical governed
+`GitHubFacts` query (`analytics_facts` caller); `--no-facts` makes no requests.
+The capture switches also gate that query. Failed reads are reported and
+return a nonzero exit code; already captured facts are reused on rerun.
 
 ```sh
 analytics/ledger-backfill --since 2026-09-15 --repo owner/name \
