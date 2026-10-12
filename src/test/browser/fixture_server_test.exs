@@ -6,29 +6,41 @@ defmodule Aiur.BrowserHarness.FixtureServerTest do
   alias Aiur.BrowserHarness.FixtureEndpointStart
 
   test "an occupied fixture port is retried with an OS-assigned port" do
-    caller = self()
-    occupied = {:shutdown, {:failed_to_start_child, Aiur.BrowserHarness.FixtureEndpoint, {:shutdown, {:failed_to_start_child, :listener, :eaddrinuse}}}}
+    {:ok, socket} = :gen_tcp.listen(0, [:binary, active: false, ip: {127, 0, 0, 1}])
+    {:ok, {{127, 0, 0, 1}, occupied_port}} = :inet.sockname(socket)
+    on_exit(fn -> :gen_tcp.close(socket) end)
 
-    assert {:ok, ^caller} =
+    assert {:ok, {listener, assigned_port}} =
              FixtureEndpointStart.start(
                fn port ->
-                 send(caller, {:attempted_port, port})
+                 case :gen_tcp.listen(port, [:binary, active: false, ip: {127, 0, 0, 1}]) do
+                   {:ok, listener} ->
+                     {:ok, {{127, 0, 0, 1}, assigned_port}} = :inet.sockname(listener)
+                     {:ok, {listener, assigned_port}}
 
-                 if port == 43_105,
-                   do: linked_start_failure(occupied),
-                   else: {:ok, caller}
+                   {:error, :eaddrinuse} ->
+                     linked_start_failure({
+                       :shutdown,
+                       {:failed_to_start_child, FixtureEndpoint, {:shutdown, {:failed_to_start_child, :listener, :eaddrinuse}}}
+                     })
+
+                   {:error, reason} ->
+                     {:error, reason}
+                 end
                end,
-               43_105
+               occupied_port
              )
 
-    assert_received {:attempted_port, 43_105}
-    assert_received {:attempted_port, 0}
+    on_exit(fn -> :gen_tcp.close(listener) end)
+
+    assert assigned_port > 0
+    refute assigned_port == occupied_port
   end
 
   defp linked_start_failure(reason) do
     pid = spawn_link(fn -> exit(reason) end)
     monitor = Process.monitor(pid)
     assert_receive {:DOWN, ^monitor, :process, ^pid, ^reason}, 1_000
-    {:ok, self()}
+    {:ok, :collision}
   end
 end
