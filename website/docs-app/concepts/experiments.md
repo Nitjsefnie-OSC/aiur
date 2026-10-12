@@ -61,8 +61,10 @@ to disable the writer. The capability report exposes `experiments` and
 `experiments.metric_packs`. Invalid pack files report `degraded/pack_invalid`;
 other packs remain usable. Disabling experiments reports `unavailable/disabled`.
 
-Storage failures leave the daemon running and report the experiments store as
+Store failures leave the daemon running and report the experiments store as
 unavailable; writes return the storage failure while disk reads remain usable.
+An automatic-worker startup failure is logged; automatic creation remains
+unavailable while the daemon continues.
 
 
 ## Baselines and retention
