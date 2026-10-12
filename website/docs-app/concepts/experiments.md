@@ -250,7 +250,10 @@ Missing build evidence stays null. Deploys alone never create experiments.
 Automatic line creation uses the experiment store's baseline-freezing transaction.
 Repeated keys create neither another experiment nor another baseline; completion
 receipts survive restarts. Concurrent lines annotate other open windows once.
+
 With telemetry disabled, a line creates nothing and logs its skip once per key.
+If automatic experiment storage cannot start, Aiur logs its unavailability and
+continues running.
 
 The default auto pack name `delivery` refers to the built-in `delivery-speed`
 pack. Other names select consumer packs. Missing or disabled packs return an
