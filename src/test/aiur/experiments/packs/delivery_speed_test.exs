@@ -2,7 +2,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
   use ExUnit.Case, async: true
   alias Aiur.Experiments.{Catalog, Evaluator}
   alias Aiur.Experiments.Packs.DeliverySpeed
-  alias Aiur.RunTelemetry.{Dataset, Summaries}
+  alias Aiur.RunTelemetry.{Dataset, Summaries, SummaryReader}
 
   @fixtures Path.expand("../../../fixtures/experiments/telemetry", __DIR__)
   @window %{start: ~U[2026-10-09 09:00:00Z], end: ~U[2026-10-09 14:00:00Z]}
@@ -12,7 +12,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
     path = Path.join(System.tmp_dir!(), "delivery-summary-#{System.unique_integer([:positive])}.json")
     File.write!(path, Jason.encode!(Aiur.JSONSafe.normalize(prior)))
     on_exit(fn -> File.rm!(path) end)
-    {:ok, decoded} = Aiur.RunTelemetry.SummaryReader.read(path)
+    {:ok, decoded} = SummaryReader.read(path)
     assert Enum.count(decoded["records"], &(&1["kind"] == "resource")) == 1
     {:ok, prior} = decoded |> Jason.encode!() |> Summaries.decode_summary()
 

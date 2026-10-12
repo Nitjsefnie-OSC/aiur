@@ -1,12 +1,12 @@
 defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   @moduledoc "The pack's only reader of live telemetry, retained boots and usage accounting."
-  alias Aiur.RunTelemetry
-  alias Aiur.RunTelemetry.{Dataset, Summaries}
+  alias Aiur.Claude.Telemetry.UsageAdapter.Relationship
   alias Aiur.Experiments.Packs.DeliverySpeed.Tokens
   alias Aiur.Experiments.Sources.Common
-  alias Aiur.UsageEnvelope.RelationshipRegistry
+  alias Aiur.RunTelemetry
+  alias Aiur.RunTelemetry.{Dataset, Summaries}
   alias Aiur.Usage.Headless.Catalog
-  alias Aiur.Claude.Telemetry.UsageAdapter.Relationship
+  alias Aiur.UsageEnvelope.RelationshipRegistry
 
   @spec load(map(), map()) :: {:ok, map()} | {:error, term()}
   def load(window, ctx) do
