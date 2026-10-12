@@ -4,7 +4,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
   alias Aiur.BuildQueue.{Attention, Store}
   alias Aiur.{Config, Issue, TrackerIdentity}
   alias Aiur.Events.Exchange
-  alias Aiur.Orchestrator.{OptimisticGuardEffects, OptimisticLedger, PauseResume, State, TrackerTasks}
+  alias Aiur.Orchestrator.{OptimisticGuardEffects, OptimisticLedger, OptimisticSlots, PauseResume, Slots, State, TrackerTasks}
 
   @topic "ticket.11.queue.attention.optimistic_blocker_failed"
   @park {:park, "11", "10", :pr_closed_unmerged}
@@ -71,7 +71,10 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
   end
 
   test "real pause control waits for worker evidence and retries a rejected request", %{opts: opts} do
-    state = confirmed_running()
+    state = %{confirmed_running() | effective_concurrent_agents: 1}
+    state = put_in(state.running["11"], Map.put(state.running["11"], :start_mode, :optimistic))
+    assert Slots.available_slots(state) == 0
+    assert OptimisticSlots.status(state).running == 1
     opts = Keyword.delete(opts, :pause)
     pending = OptimisticGuardEffects.execute(state, @park, opts)
     assert_receive {:pause_agent, first_id, 101}, 1_000
@@ -99,6 +102,8 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
     assert {:noreply, applied} = PauseResume.handle_worker_control_state(retried, "11", :paused, %{request_id: second_id, generation: 101, kind: :optimistic_blocker_failed})
     assert applied.running["11"].control.status == :paused
     assert applied.running["11"].paused_reason == :optimistic_blocker_failed
+    assert Slots.available_slots(applied) == 1
+    assert OptimisticSlots.status(applied).running == 0
     assert applied.control_lifecycle.records[second_id].status == :applied
     OptimisticGuardEffects.execute(applied, @park, opts)
     assert_complete()
