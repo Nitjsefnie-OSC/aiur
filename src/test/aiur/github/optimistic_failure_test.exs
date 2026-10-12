@@ -72,6 +72,7 @@ defmodule Aiur.GitHub.OptimisticFailureTest do
 
     request_fun = fn %{method: :get, url: url, caller: "optimistic_guard_comment"} ->
       send(test_pid, {:comment_page, url})
+
       if url == next,
         do: {:ok, %{status: 200, body: [%{"body" => "parked\n<!-- optimistic-park:42:7 -->"}]}},
         else: {:ok, %{status: 200, body: [%{"body" => "unrelated"}], headers: [{"link", "<#{next}>; rel=\"next\""}]}}
