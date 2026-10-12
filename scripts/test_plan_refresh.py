@@ -172,7 +172,7 @@ class PlanRefreshTest(unittest.TestCase):
         self.after = self.commit()
         output = self.run_tool()
         self.assertIn('SPLIT? src/a_part.ex', output)
-        self.assertIn('GONE: 1', output)
+        self.assertIn('GONE: 2', output)
         self.assertNotIn('GONE;:', output)
         self.assertIn('UNRESOLVED (absent at from)', output)
 
