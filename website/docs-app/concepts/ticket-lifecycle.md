@@ -177,7 +177,9 @@ Item states are projections, not tracker labels:
 | `cancelled` | Tracker closure is confirmed as not planned. |
 | `removed` | The membership marker was removed. |
 
-If a promoted item becomes unready, Aiur holds dispatch and checks claims. It withdraws only `agent:todo` from unclaimed items with fresh, known readiness evidence. Unknown evidence retains the hold; claimed work keeps its labels and raises `dependency_changed_after_start` when it becomes unready.
+If a promoted item becomes unready, Aiur holds dispatch and checks claims. It withdraws only `agent:todo` from unclaimed items with fresh, known readiness evidence. Unknown evidence retains the hold; claimed non-optimistic work keeps its labels and raises `dependency_changed_after_start` when it becomes unready.
+
+When an optimistic blocker fails terminally, Aiur pauses running dependents, adds `agent:parked`, makes their open PRs drafts, and keeps branches and PRs. A closed-unmerged blocker PR gets a replacement grace (default 600 seconds). Persistent agent trouble and integration churn raise info only; dependents keep running. `optimistic_blocker_failed` asks the Executor to wait for a replacement, re-base on the default branch and resume, or close the dependent. A recovered blocker does not auto-resume parked work.
 
 Manual `todo` sets an override. List adds record pre-existing `todo`; fresh unmet prerequisites
 withdraw it only after dispatch is held and unclaimed status is confirmed. A later manual `todo`
@@ -187,11 +189,11 @@ and overrides. Removing `agent:queued` dequeues; writes re-observe races.
 Unauthorized detection needs a free dispatch slot; until dispatch can check, the item remains `promoted`. An allowed human must apply the marker or `todo`, or hold the ticket. An unavailable claim probe preserves a recorded decline.
 
 [Queue attentions](/concepts/build-orders#queue-attentions) cover `prerequisite_failed`, `dependency_changed_after_start`, `promoted_unauthorized`,
-`write_failed`, `merged_issue_open`, `inputs_unavailable` and `store_unavailable`.
+`optimistic_blocker_failed`, `write_failed`, `merged_issue_open`, `inputs_unavailable` and `store_unavailable`.
 
 See [Queueing a Build Order](/concepts/build-orders#queueing-a-build-order) and [Downgrading](/concepts/build-orders#downgrading).
-Closed-unmerged prerequisite PR detection is [webhook-only](/concepts/build-orders#closed-prerequisite-pull-requests);
-polling alone leaves the prerequisite pending.
+Ordinary queue closed-unmerged prerequisite PR detection uses [webhook evidence](/concepts/build-orders#closed-prerequisite-pull-requests);
+the optimistic guard also confirms blocker PR state on poll ticks.
 
 ## The state diagram
 

@@ -202,7 +202,8 @@ Queue faults emit once per cause and subject, then emit `.resolved` when cleared
 | Cause | Opens | Clears |
 | --- | --- | --- |
 | `prerequisite_failed` | Agent error, closed-unmerged PR, not-planned or duplicate closure | No dependent edge still has that cause; unknown evidence retains the latch |
-| `dependency_changed_after_start` | A promoted, claimed ticket becomes unready | Readiness returns or the ticket completes |
+| `dependency_changed_after_start` | A promoted, claimed non-optimistic ticket becomes unready | Readiness returns or the ticket completes |
+| `optimistic_blocker_failed` | An optimistic blocker fails terminally; persistent trouble or integration churn emits info only | Executor unparks/closes the dependent, its ledger record closes, or non-terminal trouble recovers |
 | `promoted_unauthorized` | Dispatch declines authorization (requires a free slot) | Decline clears or ticket is claimed; an unavailable probe retains it |
 | `write_failed` | Five consecutive queue-label write failures | Next successful write |
 | `merged_issue_open` | An `issue_closed` prerequisite PR merged and its issue remains open past grace | Issue closes or no dependent requires `issue_closed` |
@@ -212,6 +213,10 @@ Queue faults emit once per cause and subject, then emit `.resolved` when cleared
 A prerequisite failure names the prerequisite and lists direct dependents before
 transitive dependents. Changing that set does not re-fire; changing the failure
 cause does. Durable latches survive restarts.
+
+For optimistic dependents, terminal blocker failure pauses running work, parks the dependent, and marks its PR draft while keeping its branch and PR. A closed-unmerged blocker PR has a replacement grace of `build_queue.optimistic_failure_grace_seconds` (600 seconds by default); not-planned/duplicate closure or removal of the dependency edge parks immediately. This works without an adopted queue. Reopening or replacing the blocker within the grace updates the ledger without parking. Recovery after parking never auto-resumes work: the Executor chooses to wait for a replacement, re-base on the default branch and resume, or close the dependent.
+
+Agent error, pause, parking, or a reset to todo keeps optimistic dependents running; persistent trouble past the grace raises an informational attention. `build_queue.optimistic_churn_attention_threshold` (default 3, 0 disables) raises info after repeated conflicting integrations. `prerequisite_failed` lists ledgered dependents as already started (parked); `dependency_changed_after_start` is suppressed for ledgered optimistic starts. The guard owns the new attention, so queue readiness alone cannot clear a terminal park.
 
 Ticket topics use `ticket.<id>.queue.attention.<cause>`; input and store faults
 use `system.queue.attention.<cause>`. The store fault uses an in-memory latch:

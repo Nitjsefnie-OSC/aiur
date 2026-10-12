@@ -10,6 +10,9 @@ defmodule Aiur.Orchestrator.BuildQueueClaimProbe do
   @impl true
   def status(ids), do: status(Orchestrator, ids)
 
+  @impl true
+  def optimistic_records, do: Aiur.Orchestrator.OptimisticLedger.open_records()
+
   @doc false
   @spec status(GenServer.server(), [String.t()]) :: ClaimProbe.result()
   def status(server, ids) when is_list(ids) do

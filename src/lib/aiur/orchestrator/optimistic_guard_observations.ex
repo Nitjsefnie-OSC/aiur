@@ -1,0 +1,118 @@
+defmodule Aiur.Orchestrator.OptimisticGuardObservations do
+  @moduledoc "Bounded confirming reads for optimistic blockers; failed reads never authorize parking."
+  alias Aiur.{CodeHost, Issue, Tracker}
+
+  @spec read([map()], integer(), keyword()) :: map()
+  def read(records, now, opts) do
+    records = Enum.reject(records, &(&1["status"] == "closed"))
+    blockers = records |> Enum.flat_map(& &1["blockers"]) |> Enum.uniq_by(& &1["id"])
+    max_age = Keyword.fetch!(opts, :observation_max_age_ms)
+    force = Keyword.get(opts, :force_blocker)
+    read_pr = Keyword.get(opts, :read_pr, &CodeHost.optimistic_blocker/2)
+    closure = Keyword.get(opts, :closure, &Tracker.issue_closure/2)
+    fetch = Keyword.get(opts, :fetch_issues, &Tracker.fetch_issue_states_by_ids/1)
+    stale = Enum.reject(blockers, &(&1["id"] != force and fresh?(decode(&1["guard_observation"]), now, max_age)))
+    {edges, edge_cache} = edge_evidence(records, blockers, now, max_age, opts)
+    dependents = for row <- records, row["status"] == "parked", do: row["ticket"]
+    issues = Keyword.get(opts, :issues, %{})
+    missing = (Enum.map(stale, & &1["id"]) ++ dependents) |> Enum.uniq() |> Enum.reject(&Map.has_key?(issues, &1))
+    issues = Map.merge(fetch_issues(missing, fetch), issues)
+
+    observations =
+      Map.new(blockers, fn blocker ->
+        id = blocker["id"]
+        cached = decode(blocker["guard_observation"])
+        observation = if id != force and fresh?(cached, now, max_age), do: cached, else: observe(id, blocker, issues[id], now, max_age, read_pr, closure, opts)
+        observation = refresh_labels(observation, issues[id], opts)
+        {id, observation |> Map.put(:edges, edges) |> Map.put(:edge_cache, edge_cache)}
+      end)
+
+    Map.put(observations, :dependents, Map.take(issues, dependents))
+  end
+
+  defp refresh_labels(%{issue_open?: true} = observation, %Issue{} = issue, opts), do: Map.put(observation, :labels, labels(issue, opts))
+  defp refresh_labels(observation, _issue, _opts), do: observation
+
+  defp labels(%Issue{} = issue, opts) do
+    prefix = Keyword.get(opts, :label_prefix, "agent")
+    Enum.map(Issue.label_names(issue), &String.replace_prefix(&1, prefix <> ":", "agent:"))
+  end
+
+  defp fetch_issues([], _fetch), do: %{}
+
+  defp fetch_issues(ids, fetch) do
+    case fetch.(ids) do
+      {:ok, rows} -> Map.new(rows, &{to_string(&1.identifier), &1})
+      _ -> %{}
+    end
+  end
+
+  defp edge_evidence(records, blockers, now, max_age, opts) do
+    read = Keyword.get(opts, :blocked_by, &Tracker.blocked_by/1)
+
+    cached =
+      Enum.reduce(blockers, %{}, fn blocker, acc ->
+        Map.merge(acc, get_in(blocker, ["guard_observation", "edge_cache"]) || %{})
+      end)
+
+    Enum.reduce(records, {%{}, %{}}, fn row, {edges, cache} ->
+      dep = row["ticket"]
+      entry = cached[dep]
+      result = if edge_fresh?(entry, now, max_age), do: {:ok, entry["ids"]}, else: read.(dep)
+
+      case result do
+        {:ok, ids} ->
+          at = if edge_fresh?(entry, now, max_age), do: entry["observed_at_ms"], else: now
+          {Map.put(edges, dep, MapSet.new(ids)), Map.put(cache, dep, %{"ids" => ids, "observed_at_ms" => at})}
+
+        _ ->
+          {Map.put(edges, dep, :unknown), cache}
+      end
+    end)
+  end
+
+  defp edge_fresh?(%{"observed_at_ms" => at, "ids" => ids}, now, max_age) when is_integer(at) and is_list(ids),
+    do: at <= now and now - at < max_age
+
+  defp edge_fresh?(_, _, _), do: false
+
+  defp observe(id, blocker, issue, now, max_age, read_pr, closure, opts) do
+    with {:ok, %{open?: open?, state_reason: reason}} <- closure.(id, max_age),
+         true <- not open? or match?(%Issue{}, issue),
+         {:ok, pr} <- read_pr.(id, blocker["pr_number"]) do
+      labels = if issue, do: labels(issue, opts), else: []
+
+      %{
+        confirmed?: true,
+        observed_at_ms: now,
+        issue_open?: open?,
+        state_reason: reason,
+        labels: labels,
+        pr_state: if(pr, do: pr["state"]),
+        pr_merged: if(pr, do: pr["merged"]),
+        any_open_pr?: is_map(pr) and pr["state"] == "open",
+        pr_number: if(pr, do: pr["number"]),
+        pr_head_ref: if(pr, do: get_in(pr, ["head", "ref"])),
+        pr_head_sha: if(pr, do: get_in(pr, ["head", "sha"])),
+        pr_closed_at_ms: if(pr, do: timestamp(pr["closed_at"]))
+      }
+    else
+      _ -> %{confirmed?: false}
+    end
+  end
+
+  defp timestamp(value) when is_binary(value) do
+    case DateTime.from_iso8601(value) do
+      {:ok, at, _} -> DateTime.to_unix(at, :millisecond)
+      _ -> nil
+    end
+  end
+
+  defp timestamp(_), do: nil
+
+  @keys ~w(confirmed? observed_at_ms issue_open? state_reason labels pr_state pr_merged any_open_pr? pr_number pr_head_ref pr_head_sha pr_closed_at_ms edge_cache)a
+  defp decode(map) when is_map(map), do: Map.new(@keys, &{&1, map[to_string(&1)]})
+  defp decode(_), do: %{}
+  defp fresh?(%{confirmed?: true, observed_at_ms: at}, now, max_age) when is_integer(at), do: at <= now and now - at < max_age
+  defp fresh?(_, _, _), do: false
+end

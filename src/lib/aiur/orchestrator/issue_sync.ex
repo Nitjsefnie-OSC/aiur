@@ -864,7 +864,7 @@ defmodule Aiur.Orchestrator.IssueSync do
       | last_polled_issues: retained_issues,
         released_claims: purge_resolved_released_claims(state.released_claims, retained_issues, terminal_states)
     }
-    |> StatusObservation.observe_tickets(issues, retained_issues)
+    |> StatusObservation.observe_tickets(issues, retained_issues) |> Aiur.Orchestrator.OptimisticGuardEffects.reconcile()
   end
 
   # A `released_claims` entry exists only to tell the operator that a claim was

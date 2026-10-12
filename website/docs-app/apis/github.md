@@ -20,7 +20,7 @@ Label read/create failures stop startup before agents start and explain the requ
 | Ticket branches | Validated refs and commits; subscribed known-ref changes trigger async compare (`per_page=1`, caller `ticket_branch_rewrite`) | `behind`/`diverged` or 404 emits `ticket.N.branch.force-push` (404: `previous_missing`). Errors/holds log and count `[:aiur, :events, :branch_rewrite, :error]`; new/unsubscribed refs skip compare. |
 | Comments and reviews | Trusted issue comments, PR comments, reviews, and unresolved threads | Wakes the correct agent for operator direction or rework. |
 | CI | Terminal checks while a ticket is in `agent:ci-wait` or `agent:human-review` | Returns passed work for human review and failed work for repair. |
-| Repository events | Default-branch pushes and opened or merged pull requests | Refreshes work whose base or review state changed. |
+| Repository events | Default-branch pushes and opened, reopened, merged or closed-unmerged pull requests | Refreshes work whose base or review state changed. |
 
 Once per repository and history query version, the daemon reads every issue for build history (caller `build_order_history_backfill`). It starts after a 60-second boot delay, spaces pages by 10 seconds, holds below 20% remaining GraphQL budget and pauses further reads after 300 reported points in a rolling hour.
 
@@ -731,7 +731,7 @@ Stacked-base checks use held dependency edges without the dispatch-age cutoff an
 
 Queue progress retains existing CI and merge facts; boot CI heads bind to local PR identity. Watched approval blockers use conditional review reads once per half observation age. Closure uses delivered PR evidence, leaving poll-only mode pending. Missing identity waits for held PR evidence. No new CI polling or saving is claimed.
 
-Build queue closure reads use caller `build_queue_observe` and the configured observation age. Closed reasons stay in memory until reopen appears in the open listing; errors retry next reconcile. Completed prerequisites release dependents; not-planned closes hold them; duplicate closes stay unknown and request an attention.
+Build queue closure reads use `build_queue_observe` and the observation age; failed reads retry. Optimistic blocker confirmation uses `optimistic_guard_read` after that age or a closure/reopen event, only for ledgered blockers. Parking uses `optimistic_guard_draft` and `optimistic_guard_comment`; failed writes retry from the journal. No saving is claimed.
 
 Build queue writes use `build_queue_label_post` / `build_queue_label_delete`; guard GETs use `build_queue_write_observe`. Writes are paced by `build_queue.max_writes_per_minute` (default 20). Retries schedule reconciliation without blocking the queue.
 

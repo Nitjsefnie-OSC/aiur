@@ -35,6 +35,8 @@ defmodule Aiur.Orchestrator.Lifecycle do
     "ticket.*.pr.review_comment",
     "ticket.*.issue.commented",
     "ticket.*.pr.merged",
+    "ticket.*.pr.closed_unmerged",
+    "ticket.*.pr.reopened",
     "ticket.*.ci.failed",
     "ticket.*.ci.passed",
     "ticket.*.agent.pause.request",

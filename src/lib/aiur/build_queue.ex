@@ -29,6 +29,14 @@ defmodule Aiur.BuildQueue do
     :exit, {:noproc, _} -> {:error, :disabled}
   end
 
+  @doc "Serializes guard-owned attentions with queue reconciliation."
+  @spec optimistic_attention(:open | :resolve, String.t(), map()) :: :ok | {:error, term()}
+  def optimistic_attention(action, id, payload) do
+    GenServer.call(Server, {:optimistic_attention, action, id, payload})
+  catch
+    :exit, {:noproc, _} -> {:error, :disabled}
+  end
+
   @spec add([String.t()], String.t(), keyword()) :: :ok | {:error, term()}
   def add(ids, queue, opts \\ []), do: mutate({:add, ids, Keyword.put(opts, :queue, queue)})
 
