@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from analytics import ledger_store
 from analytics.ledger_backfill import main
-from test_ledger import event
+from .test_ledger import event
 
 
 class EnrichmentTests(unittest.TestCase):
