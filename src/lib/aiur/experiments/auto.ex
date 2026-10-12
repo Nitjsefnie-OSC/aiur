@@ -1,6 +1,7 @@
 defmodule Aiur.Experiments.Auto do
   @moduledoc "Automatic experiment line sources and deploy evidence."
   use Supervisor
+  require Logger
 
   alias Aiur.Experiments.Auto.{Creator, DeployLedger, Line}
 
@@ -11,7 +12,16 @@ defmodule Aiur.Experiments.Auto do
   end
 
   @spec start_link(keyword()) :: Supervisor.on_start()
-  def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+  def start_link(opts) do
+    case Supervisor.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__)) do
+      {:error, reason} ->
+        Logger.warning("automatic experiments unavailable: #{inspect(reason)}")
+        :ignore
+
+      result ->
+        result
+    end
+  end
 
   @impl true
   def init(opts), do: Supervisor.init([{DeployLedger, Keyword.get(opts, :ledger_opts, [])}, {Creator, Keyword.get(opts, :creator_opts, [])}], strategy: :one_for_one)
@@ -20,7 +30,7 @@ defmodule Aiur.Experiments.Auto do
   def create(line) do
     Creator.create(line)
   catch
-    :exit, {:noproc, _call} -> {:error, :disabled}
+    :exit, {:noproc, _call} -> {:error, :unavailable}
     :exit, {:timeout, _call} -> {:error, :outcome_unknown}
   end
 
@@ -28,7 +38,7 @@ defmodule Aiur.Experiments.Auto do
   def status do
     config = settings()
     sources = if config.enabled, do: configured_sources(config), else: []
-    %{enabled: config.enabled, sources: sources, deploy_ledger: not is_nil(Process.whereis(DeployLedger))}
+    %{enabled: config.enabled, sources: sources, deploy_ledger: not is_nil(Process.whereis(DeployLedger)), creator: not is_nil(Process.whereis(Creator))}
   end
 
   @spec previous_deploy(keyword()) :: {:ok, map() | nil} | {:error, term()}
