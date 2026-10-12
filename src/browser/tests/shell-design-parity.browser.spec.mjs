@@ -151,6 +151,8 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
 
       await pair.design.evaluate(() => window.AiurHost.switchTab('fleet'))
       await openVisualRoute(pair.product, { theme, palette, route: '/palette-probe?paused=false&writable=true', mode: 'writable' })
+      // Paused fixture cards glow through the translucent header; compare the header without them.
+      for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: 'section.dashboard-shell { visibility: hidden !important; }' })
       for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: '.brand-logo, .wm, #ax-cog, #ax-title, #ax-paused { visibility: visible !important; }' })
       for (const page of [pair.design, pair.product]) await page.locator('#ax-cog').click()
       for (const page of [pair.design, pair.product]) await page.locator('#ax-pause').click()
