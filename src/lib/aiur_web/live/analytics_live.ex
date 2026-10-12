@@ -22,7 +22,7 @@ defmodule AiurWeb.AnalyticsLive do
     UsageSummaryPresenter
   }
 
-  alias AiurWeb.OperatorControlCenter.Analytics.{Charts, Presenter, Runtime, ScopeResolver, Styles}
+  alias AiurWeb.OperatorControlCenter.Analytics.{Charts, Loading, Presenter, Runtime, ScopeResolver, Styles}
 
   @usage_summary_max_age_ms 30_000
   # Matches the CLI: telemetry within this window is "just now", older telemetry shows elapsed age.
@@ -52,14 +52,10 @@ defmodule AiurWeb.AnalyticsLive do
   end
 
   @impl true
-  def handle_info({:decision_changed, _decision_id, _version}, socket),
-    do: {:noreply, AwaitingCommands.refresh(socket)}
-
-  def handle_info(:awaiting_commands_tick, socket), do: {:noreply, AwaitingCommands.tick(socket)}
-  def handle_info(_message, socket), do: {:noreply, socket}
+  defdelegate handle_info(message, socket), to: Runtime
 
   @impl true
-  def handle_async(:analytics_model, {:ok, {result, rtk}}, socket) do
+  def handle_async(:analytics_model, {:ok, {result, rtk}}, %{assigns: %{unavailable: :loading}} = socket) do
     now = DateTime.utc_now()
     socket = assign(socket, :rtk, rtk)
 
@@ -95,17 +91,18 @@ defmodule AiurWeb.AnalyticsLive do
     {:noreply, socket}
   end
 
-  def handle_async(:analytics_model, {:exit, reason}, socket) do
+  def handle_async(:analytics_model, {:exit, reason}, %{assigns: %{unavailable: :loading}} = socket) do
     Logger.warning("Analytics loading failed: #{inspect(reason)}")
     handle_async(:analytics_model, {:ok, {{:unavailable, :error}, %{state: :absent, title: "Compression unavailable", message: "Analytics loading failed."}}}, socket)
   end
+
+  def handle_async(:analytics_model, _result, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("toggle-nav", _params, socket), do: {:noreply, NavState.toggle(socket)}
 
   @impl true
-  def handle_event("restore-nav", %{"collapsed" => collapsed}, socket),
-    do: {:noreply, NavState.restore(socket, collapsed)}
+  def handle_event("restore-nav", %{"collapsed" => collapsed}, socket), do: {:noreply, NavState.restore(socket, collapsed)}
 
   @impl true
   def handle_event("toggle_unit", %{"key" => key}, socket) do
@@ -165,7 +162,11 @@ defmodule AiurWeb.AnalyticsLive do
         <p :if={!@capture_enabled?} id="analytics-capture-off" role="status" class="an-empty">
           Analytics capture is off (observability.telemetry_enabled: false). Experiments will have no data for this period.
         </p>
-        <p :if={@unavailable == :loading} role="status" class="an-empty">Loading run analytics…</p>
+        <Loading.state
+          state={@unavailable}
+          elapsed_seconds={@analytics_load_elapsed_seconds}
+          timeout_seconds={@analytics_load_timeout_seconds}
+        />
         <div :if={@unavailable && @unavailable != :loading} class="an-empty" data-empty-reason={@unavailable}>
           <div :if={@unavailable == :no_telemetry}>
             <p><b>No run telemetry to analyze yet.</b></p>
@@ -386,8 +387,7 @@ defmodule AiurWeb.AnalyticsLive do
     """
   end
 
-  defp load_model(socket),
-    do: Runtime.load(socket, ScopeResolver.telemetry_opts(socket.assigns.analytics_scope), &rtk_panel/0)
+  defp load_model(socket), do: Runtime.load(socket, ScopeResolver.telemetry_opts(socket.assigns.analytics_scope), &rtk_panel/0)
 
   # The rtk panel reports a measurement rtk itself took, so every way that
   # measurement can be missing is spelled out in words. A percentage is
