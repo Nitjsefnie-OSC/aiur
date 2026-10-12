@@ -28,6 +28,12 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.OptimisticTest do
     assert render(model) =~ "unknown head start"
   end
 
+  test "an open optimistic start reports unknown head start until a merged outcome exists" do
+    model = model([event("1", "optimistic_start", 0)])
+    assert model.kpis.optimistic == %{starts: 1, redone: 0, discarded: 0, head_start_ms: nil}
+    assert render(model) =~ "unknown head start"
+  end
+
   test "a parked member remains parked until its optimistic resume" do
     records = [event("1", "optimistic_start", 0), event("1", "optimistic_park", 1)]
     parked = model(records)

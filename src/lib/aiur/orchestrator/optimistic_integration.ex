@@ -14,7 +14,7 @@ defmodule Aiur.Orchestrator.OptimisticIntegration do
   defp add(row, key, evidence, counters) do
     previous = Map.get(row, key, [])
 
-    if valid?(row, evidence) and not Enum.any?(previous, &(&1["blocker"] == evidence["blocker"] and &1["sha"] == evidence["sha"])) do
+    if valid?(row, evidence) and evidence not in previous do
       row = Map.put(row, key, previous ++ [evidence])
       Enum.reduce(counters, row, fn counter, current -> update_in(current, ["counters", counter], &(&1 + 1)) end)
     else

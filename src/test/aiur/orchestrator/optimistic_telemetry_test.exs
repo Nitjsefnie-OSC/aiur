@@ -42,6 +42,20 @@ defmodule Aiur.Orchestrator.OptimisticTelemetryTest do
     refute_received {:point, _, _}
   end
 
+  test "a clean retry of a conflicting head retains both outcomes" do
+    sha = String.duplicate("b", 40)
+    assert :ok = OptimisticLedger.record_integration("10", "12", sha, true, false)
+    assert :ok = OptimisticLedger.record_integration("10", "12", sha, false, false)
+    assert :ok = OptimisticLedger.record_integration("10", "12", sha, false, false)
+    assert {:ok, row} = OptimisticLedger.get("10")
+    assert row["counters"]["integrations_conflict"] == 1
+    assert row["counters"]["integrations_clean"] == 1
+    assert_received {:point, %{outcome: "conflict", event_key: conflict_key}, _}
+    assert_received {:point, %{outcome: "clean", event_key: clean_key}, _}
+    assert conflict_key != clean_key
+    refute_received {:point, _, _}
+  end
+
   test "park resume and merged outcome carry the persisted attempt and head start" do
     assert :ok = OptimisticLedger.update_blocker("10", "12", %{merged_at_ms: 10_800_100, failed_cause: "pr_closed_unmerged"})
     assert :ok = OptimisticLedger.bump("10", :parks, 1)

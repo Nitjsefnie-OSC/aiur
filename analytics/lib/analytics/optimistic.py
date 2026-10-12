@@ -1,17 +1,23 @@
 """Optimistic lifecycle evidence and trigger rollups (head start is not time saved)."""
 
 
+import re
+
+
 def ticket_optimistic(events: list[dict], intervals: list[dict]) -> dict:
     starts = [event for event in events if event["event"] == "optimistic_start"]
     if not starts:
         return {}
     reports = [event for event in events if event["event"] == "blocker_integrate"]
-    pushes = sum(event["event"] == "blocker_push" for event in events)
+    push_events = [event for event in events if event["event"] == "blocker_push"]
+    pushes = len(push_events)
     outcomes = [event for event in events if event["event"] == "optimistic_outcome"]
     outcome = outcomes[-1] if outcomes else {}
     parks = [event for event in events if event["event"] == "optimistic_park"]
     status = outcome.get("outcome") or "open"
-    unknown = max(pushes - len(reports), 0) + sum(report.get("outcome") not in ("clean", "conflict") for report in reports)
+    reported = {_evidence_key(report, "integration") for report in reports} - {None}
+    unknown = sum(_evidence_key(push, "push") not in reported for push in push_events)
+    unknown += sum(report.get("outcome") not in ("clean", "conflict") for report in reports)
     return {"optimistic": {
         "start_trigger": starts[0].get("start_trigger") or "unknown",
         "blockers": starts[0].get("blockers") or [],
@@ -26,6 +32,16 @@ def ticket_optimistic(events: list[dict], intervals: list[dict]) -> dict:
         "head_start_ms": _head_start(outcome) if status in ("merged", "merged_after_redo") else None,
         "waste_ms": _waste(intervals, starts, parks) if status == "discarded" else None,
     }}
+
+
+def _evidence_key(event: dict, prefix: str):
+    source = event.get("source_id")
+    if not isinstance(source, str) or not source.startswith(prefix + ":"):
+        return None
+    blocker, separator, sha = source[len(prefix) + 1:].rpartition(":")
+    if separator and blocker == str(event.get("blocker")) and re.fullmatch(r"[0-9a-fA-F]{40}", sha):
+        return event.get("attempt_id"), blocker, sha.lower()
+    return None
 
 
 def _head_start(outcome: dict):

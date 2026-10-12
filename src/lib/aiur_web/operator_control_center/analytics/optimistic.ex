@@ -16,7 +16,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Optimistic do
       starts: length(started),
       redone: Enum.count(outcomes, &(outcome(&1) == "merged_after_redo")),
       discarded: Enum.count(outcomes, &(outcome(&1) == "discarded")),
-      head_start_ms: if(Enum.all?(head_starts, &(is_integer(&1) and &1 >= 0)), do: Enum.sum(head_starts))
+      head_start_ms: if(head_starts != [] and Enum.all?(head_starts, &(is_integer(&1) and &1 >= 0)), do: Enum.sum(head_starts))
     }
   end
 

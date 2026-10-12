@@ -91,6 +91,23 @@ class OptimisticTest(unittest.TestCase):
         ticket["events"][-2]["head_start_ms"] = -10
         self.assertEqual(ticket_optimistic(ticket["events"], ticket["intervals"])["optimistic"]["head_start_ms"], 0)
 
+    def test_unreported_pushes_are_correlated_by_blocker_and_sha_not_counts(self):
+        ticket = copy.deepcopy(self.dataset["tickets"]["1"])
+        report = next(event for event in ticket["events"] if event["event"] == "blocker_integrate")
+        original_source = report["source_id"]
+        for blocker, source in [("other", "integration:other:" + "a" * 40),
+                                ("9", "integration:9:" + "b" * 40), ("9", None)]:
+            report.update(blocker=blocker, source_id=source)
+            evidence = ticket_optimistic(ticket["events"], ticket["intervals"])["optimistic"]
+            self.assertEqual(evidence["integrations"], {"clean": 1, "conflict": 0, "unknown": 1})
+            self.assertIsNone(evidence["non_ff"])
+        report.update(blocker="9", source_id=original_source, attempt_id="another-attempt")
+        self.assertEqual(ticket_optimistic(ticket["events"], ticket["intervals"])["optimistic"]["integrations"]["unknown"], 1)
+        report["attempt_id"] = "a1"
+        push = next(event for event in ticket["events"] if event["event"] == "blocker_push")
+        push["source_id"] = None
+        self.assertEqual(ticket_optimistic(ticket["events"], ticket["intervals"])["optimistic"]["integrations"]["unknown"], 1)
+
     def test_discarded_waste_clips_each_attempt_and_preserves_missing_evidence(self):
         events = [
             {"event": "optimistic_start", "attempt_id": "a", "timestamp_ms": 10, "start_trigger": "pr_opened"},
