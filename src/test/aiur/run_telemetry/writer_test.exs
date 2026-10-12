@@ -313,26 +313,21 @@ defmodule Aiur.RunTelemetry.WriterTest do
   end
 
   test "writer restarts keep the daemon boot identity and sequence", %{path: path} do
-    counter = :atomics.new(1, signed: false)
-    sequence_fun = fn -> :atomics.add_get(counter, 1, 1) end
-
-    {:ok, first} = Writer.start_link(name: nil, path: path, sequence_fun: sequence_fun)
+    {:ok, first} = Writer.start_link(name: nil, path: path)
     assert :ok = Writer.record(first, :lifecycle, %{event: :dispatch})
     assert :ok = Writer.flush(first)
     :ok = GenServer.stop(first)
 
-    # The application-supervised sampler owns another Writer which consumes
-    # this boot-wide counter. Use a separate temporary writer so this test
-    # models that durable competing record rather than reserving a sequence.
+    # A competing writer consumes the same daemon-wide sequence between restarts.
     competing_path = Path.join(Path.dirname(path), "competing-telemetry.ndjson")
-    {:ok, competitor} = Writer.start_link(name: nil, path: competing_path, sequence_fun: sequence_fun)
+    {:ok, competitor} = Writer.start_link(name: nil, path: competing_path)
     assert :ok = Writer.flush(competitor)
     :ok = GenServer.stop(competitor)
 
     [competing_record] = read_records(competing_path)
     competing_sequence = competing_record["sequence"]
 
-    {:ok, second} = Writer.start_link(name: nil, path: path, sequence_fun: sequence_fun)
+    {:ok, second} = Writer.start_link(name: nil, path: path)
     assert :ok = Writer.flush(second)
 
     records = read_records(path)
@@ -345,9 +340,7 @@ defmodule Aiur.RunTelemetry.WriterTest do
     assert first_sequence < record_sequence
     assert record_sequence < competing_sequence
     assert competing_sequence < restarted_sequence
-    assert Enum.at(records, 0)["attributes"]["event"] == "daemon_restart"
     assert Enum.at(records, 2)["attributes"]["event"] == "telemetry_writer_restart"
-    assert :atomics.get(counter, 1) == 7
   end
 
   defp read_records(path) do

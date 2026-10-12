@@ -115,7 +115,6 @@ defmodule Aiur.RunTelemetry.Writer do
       path: path,
       boot_id: boot_id,
       sequence: 0,
-      sequence_fun: Keyword.get(opts, :sequence_fun),
       shared_sequence?: not Keyword.has_key?(opts, :boot_id),
       clock: clock,
       write_fun: Keyword.get(opts, :write_fun, &write_file/2),
