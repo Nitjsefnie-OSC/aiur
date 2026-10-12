@@ -3,7 +3,7 @@ defmodule Aiur.Orchestrator.Slots do
   Computes orchestrator worker-host and global dispatch slot capacity.
   """
 
-  alias Aiur.{Config, Issue}
+  alias Aiur.{Config, Issue, MergePolicy}
   alias Aiur.Orchestrator.{DispatchPolicy, EnvelopeResume, Lifecycle, PressureAdmission, State, StatusReport}
 
   @spec max_concurrent_agents() :: map() | :unavailable
@@ -277,6 +277,25 @@ defmodule Aiur.Orchestrator.Slots do
     max(effective_concurrent_agent_limit(state) - used_slots(state), 0)
   end
 
+  @spec fleet_slot_available?(Issue.t(), State.t()) :: boolean()
+  def fleet_slot_available?(issue, state) do
+    reserved =
+      MergePolicy.fixer_ticket?(issue) and not state.globally_paused and
+        used_slots(state) < max_concurrent_agent_limit(state) + 1 and
+        not running_fixer?(state.running)
+
+    available_slots(state) > 0 or reserved
+  end
+
+  defp running_fixer?(running) do
+    Enum.any?(running, fn {id, entry} ->
+      MergePolicy.fixer_ticket?(entry[:issue]) and (State.active_running_entry?(entry) or State.reserved_paused_running_count(%{id => entry}) > 0)
+    end)
+  end
+
+  @spec batch_slot_available?(State.t(), [Issue.t()]) :: boolean()
+  def batch_slot_available?(state, issues), do: available_slots(state) > 0 or Enum.any?(issues, &fleet_slot_available?(&1, state))
+
   @spec resume_worker_slot_available?(State.t(), term()) :: boolean()
   def resume_worker_slot_available?(%State{} = state, worker_host) when is_binary(worker_host) do
     worker_host_slots_available?(state, worker_host)
@@ -286,6 +305,6 @@ defmodule Aiur.Orchestrator.Slots do
 
   @spec dispatch_slots_available?(Issue.t(), State.t()) :: boolean()
   def dispatch_slots_available?(%Issue{} = issue, %State{} = state) do
-    available_slots(state) > 0 and DispatchPolicy.state_slots_available?(issue, state)
+    fleet_slot_available?(issue, state) and DispatchPolicy.state_slots_available?(issue, state)
   end
 end

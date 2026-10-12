@@ -2298,7 +2298,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
   defp maybe_choose(state, issues), do: maybe_choose(state, issues, [])
 
   defp maybe_choose(state, issues, opts) do
-    if Slots.available_slots(state) > 0, do: choose_issues(state, issues, opts), else: DispatchBatch.finish(state, opts, nil)
+    if Slots.batch_slot_available?(state, issues), do: choose_issues(state, issues, opts), else: DispatchBatch.finish(state, opts, nil)
   end
 
   # Records the load envelope as a capacity constraint only when it is a genuine

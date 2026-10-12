@@ -6,7 +6,7 @@ defmodule Aiur.Orchestrator.DispatchPolicy.Eligibility do
   import Aiur.Orchestrator.DispatchPolicy.IssueStates
 
   alias Aiur.BuildQueue.Hints
-  alias Aiur.{Config, Issue}
+  alias Aiur.{Config, Issue, MergePolicy}
   alias Aiur.Orchestrator.{DependencyGate, Slots, State}
 
   # Kept as the pre-#2751 phrasing for the shapes that carry no nameable
@@ -14,10 +14,11 @@ defmodule Aiur.Orchestrator.DispatchPolicy.Eligibility do
   @unknown_dependency_hold "blocked by a non-terminal dependency"
 
   @spec state_slots_available?(term(), term()) :: boolean()
-  def state_slots_available?(%Issue{state: issue_state}, %State{} = state) do
+  def state_slots_available?(%Issue{state: issue_state} = issue, %State{} = state) do
     limit = effective_state_limit(issue_state, state)
     used = running_issue_count_for_state(state.running, issue_state)
-    limit > used
+    explicit = Map.has_key?(Config.settings!().agent.max_concurrent_agents_by_state, normalize_issue_state(issue_state))
+    limit > used or (not explicit and MergePolicy.fixer_ticket?(issue) and Slots.fleet_slot_available?(issue, state))
   end
 
   def state_slots_available?(_issue, _state), do: false

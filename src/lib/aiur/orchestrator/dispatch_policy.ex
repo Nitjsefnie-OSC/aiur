@@ -6,7 +6,7 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
   require Logger
 
   alias Aiur.BuildQueue.Hints
-  alias Aiur.{Issue, SystemCpu, SystemFileDescriptors}
+  alias Aiur.{Issue, MergePolicy, SystemCpu, SystemFileDescriptors}
   alias Aiur.Orchestrator.DispatchPolicy.{Eligibility, Gates, IssueStates}
   alias Aiur.Orchestrator.{Slots, State}
 
@@ -128,10 +128,10 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
     Enum.sort_by(issues, fn
       %Issue{} = issue ->
         {downstream_rank, position} = Hints.sort_key(issue.id)
-        {downstream_rank, priority_rank(issue.priority), position, issue_created_at_sort_key(issue), issue.identifier || issue.id || ""}
+        {if(MergePolicy.fixer_ticket?(issue), do: 0, else: 1), downstream_rank, priority_rank(issue.priority), position, issue_created_at_sort_key(issue), issue.identifier || issue.id || ""}
 
       _ ->
-        {0, priority_rank(nil), 0, issue_created_at_sort_key(nil), ""}
+        {1, 0, priority_rank(nil), 0, issue_created_at_sort_key(nil), ""}
     end)
   end
 
@@ -237,7 +237,7 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
           :dispatch | {:skip, dispatch_decline_reason()}
   def dispatch_decision(issue, %State{} = state, active_states, terminal_states, blocked_ticket_ids) do
     case dispatch_candidate_decision(issue, state, active_states, terminal_states, blocked_ticket_ids) do
-      :dispatch -> if(Slots.available_slots(state) > 0, do: :dispatch, else: {:skip, :fleet_capacity})
+      :dispatch -> if(Slots.fleet_slot_available?(issue, state), do: :dispatch, else: {:skip, :fleet_capacity})
       {:skip, _reason} = declined -> declined
     end
   end
