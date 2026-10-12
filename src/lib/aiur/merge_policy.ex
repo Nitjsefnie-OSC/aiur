@@ -8,7 +8,7 @@ defmodule Aiur.MergePolicy do
     policy |> Map.from_struct() |> Map.put(:main_watch, Map.from_struct(policy.main_watch))
   end
 
-  @doc "Whether the configured main-watch policy gives a ticket fixer priority."
+  @doc "Whether the configured base-CI policy gives a ticket fixer priority."
   @spec fixer_ticket?(term(), map()) :: boolean()
   def fixer_ticket?(issue, watch \\ current().main_watch)
   def fixer_ticket?(%{labels: labels}, watch) when is_list(labels), do: watch.on_red == "dispatch_fixer" and Enum.any?(labels, &(String.downcase(&1) == String.downcase(watch.fixer_label)))

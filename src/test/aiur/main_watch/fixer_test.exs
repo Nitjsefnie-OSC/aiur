@@ -36,7 +36,7 @@ defmodule Aiur.MainWatch.FixerTest do
     %{store: store, opts: opts}
   end
 
-  test "first red files the labelled ticket and repeat runs comment once", %{store: store, opts: opts} do
+  test "confirmed red files the labelled ticket and repeat runs comment once", %{store: store, opts: opts} do
     red = observation()
     assert :ok = Fixer.reconcile([red], @watch, opts)
     assert_received :refresh_requested
@@ -45,7 +45,7 @@ defmodule Aiur.MainWatch.FixerTest do
     assert MainFixer.marker(issue["body"]) == {@signature, @sha}
     assert issue["body"] =~ "new_failure"
     assert issue["body"] =~ "mix test test/example_test.exs"
-    assert issue["body"] =~ "early: true"
+    assert issue["body"] =~ "PR #42 (early merge)"
     assert issue["body"] =~ "Last green: green"
     assert issue["body"] =~ "This PR waits for full CI"
     assert :ok = Fixer.reconcile([red], @watch, opts)
@@ -148,14 +148,61 @@ defmodule Aiur.MainWatch.FixerTest do
     assert Agent.get(store, & &1.alerts) == []
   end
 
+  test "closed fixer does not create duplicates over three polls", %{store: store, opts: opts} do
+    red = observation()
+    assert :ok = Fixer.reconcile([red], @watch, opts)
+    Agent.update(store, &%{&1 | issues: []})
+    create = Keyword.put(opts, :fixer_create, fn _, _ -> flunk("closed ticket must retain its creation receipt") end)
+    for _ <- 1..3, do: assert(:ok == Fixer.reconcile([red], @watch, create))
+    assert Agent.get(store, & &1.issues) == []
+  end
+
+  test "single failure alerts only and failed rerun confirms filing", %{store: store, opts: opts} do
+    red = %{observation() | run_fingerprint: [{"ci", 1, 1, 1, "completed", "failure", 1}]}
+    assert :ok = Fixer.reconcile([red], @watch, opts)
+    assert :ok = Fixer.reconcile([red], @watch, opts)
+    assert Agent.get(store, & &1.issues) == []
+    passing_rerun = %{observation() | checks: [%{name: "test", conclusion: "success"}]}
+    assert :ok = Fixer.reconcile([passing_rerun], @watch, opts)
+    assert Agent.get(store, & &1.issues) == []
+    assert :ok = Fixer.reconcile([observation()], @watch, opts)
+    assert length(Agent.get(store, & &1.issues)) == 1
+  end
+
+  test "next commit needs the same failing job and green breaks confirmation", %{store: store, opts: opts} do
+    first = %{observation() | run_fingerprint: []}
+    next = %{first | sha: String.duplicate("c", 40), completed_at: 2}
+    other = %{first | checks: [%{name: "lint", conclusion: "failure"}]}
+    assert :ok = Fixer.reconcile([other, next], @watch, opts)
+    assert Agent.get(store, & &1.issues) == []
+    green = %{first | checks: [%{name: "test", conclusion: "success"}]}
+    assert :ok = Fixer.reconcile([first, green, next], @watch, opts)
+    assert Agent.get(store, & &1.issues) == []
+    assert :ok = Fixer.reconcile([first, next], @watch, opts)
+    assert length(Agent.get(store, & &1.issues)) == 1
+  end
+
+  test "incomplete observations never file or claim recovery", %{store: store, opts: opts} do
+    unknown = %{observation() | checks: [%{name: "test", conclusion: "unknown"}]}
+    assert :ok = Fixer.reconcile([unknown], @watch, opts)
+    assert Agent.get(store, & &1.issues) == []
+    assert Agent.get(store, & &1.comments) == []
+  end
+
+  test "empty fixer list skips the orchestrator snapshot", %{opts: opts} do
+    assert :ok = Fixer.reconcile([observation()], @watch, Keyword.put(opts, :fixer_snapshot, fn -> flunk("empty list takes no snapshot") end))
+  end
+
   defp observation do
     %{
       sha: @sha,
+      completed_at: 1,
+      run_fingerprint: [{"ci", 1, 2, 1, "completed", "failure", 1}],
       last_green_sha: "green",
       run_urls: ["https://github.com/run/1"],
       checks: [%{name: "test", conclusion: "failure"}],
       digest: %FailureDigest{signature: @signature, tests: [%{identity: "Example :: failure", classification: :new_failure, path: "test/example_test.exs"}]},
-      suspect_merges: [%{number: 42, early: true}]
+      suspect_merges: %{pull_requests: [%{number: 42, early: true}], complete: true}
     }
   end
 end

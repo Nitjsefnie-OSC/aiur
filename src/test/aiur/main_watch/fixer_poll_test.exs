@@ -12,6 +12,7 @@ defmodule Aiur.MainWatch.FixerPollTest do
     red = %{
       sha: String.duplicate("a", 40),
       completed_at: 1,
+      run_fingerprint: [{"ci", 1, 2, 1, "completed", "failure", 1}],
       run_urls: ["run"],
       checks: [%{name: "test", conclusion: "failure"}],
       digest: %FailureDigest{signature: String.duplicate("b", 64), tests: :unknown}
@@ -80,6 +81,38 @@ defmodule Aiur.MainWatch.FixerPollTest do
     assert_received {:emitted, "system.main.ci.failed", %{sha: sha}}
     assert sha == red.sha
     assert Agent.get(calls, & &1) == 2
+  end
+
+  test "compatibility guard: unavailable poll files nothing" do
+    parent = self()
+    unless Process.whereis(Aiur.TaskSupervisor), do: start_supervised!({Task.Supervisor, name: Aiur.TaskSupervisor})
+
+    server =
+      start_supervised!(
+        {MainWatch,
+         [
+           name: nil,
+           subscribe: false,
+           config: %{on_red: "dispatch_fixer", fixer_label: "main-fix", workflows: [], canary_minutes: 0},
+           repo: "owner/repo",
+           branch: "main",
+           actions_write: false,
+           debounce_ms: 0,
+           interval_ms: 60_000,
+           load_fun: fn _, _ -> Persistence.empty() end,
+           poll_fun: fn _, _, _ -> {:error, :github_unavailable} end,
+           save_fun: fn _, _, data ->
+             send(parent, {:saved_unavailable, data})
+             :ok
+           end,
+           emit_fun: fn _, _ -> :ok end,
+           fixer_open: fn _, _ -> flunk("unavailable poll must not reconcile fixers") end
+         ]}
+      )
+
+    receive_barrier({:saved_unavailable, data})
+    assert data.unavailable == true
+    assert MainWatch.state(server).status == :unknown
   end
 
   defp flush_saved do

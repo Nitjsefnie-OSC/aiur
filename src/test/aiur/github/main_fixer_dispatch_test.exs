@@ -40,7 +40,7 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
     refute DispatchAuthorization.authorize(fixer, "owner", "repo", "agent", Keyword.put(opts, :main_watch, %{on_red: "alert", fixer_label: "main-fix"})).dispatch_authorized?
   end
 
-  test "fixer beats downstream rank and uses only one extra slot" do
+  test "fixer beats downstream rank but cannot exceed a full fleet" do
     :ets.new(Hints.table_name(), [:named_table, :set])
     :ets.insert(Hints.table_name(), {"normal", {-100, 0}, false})
     fixer = issue("fixer")
@@ -48,20 +48,17 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
     assert DispatchPolicy.sort_issues_for_dispatch([normal, fixer]) == [fixer, normal]
     state = %State{max_concurrent_agents: 1, running: %{"normal" => %{issue: normal, control: %{status: :working}}}}
     assert Slots.available_slots(state) == 0
-    assert Slots.batch_slot_available?(state, [normal, fixer])
-    assert DispatchPolicy.dispatch_decision(fixer, state) == :dispatch
-    assert DispatchPolicy.dispatch_decision(%{fixer | id: "ordinary", labels: []}, state) == {:skip, :state_capacity}
-    full = put_in(state.running["fixer"], %{issue: fixer, control: %{status: :working}})
-    refute Slots.batch_slot_available?(full, [issue("second")])
-    assert DispatchPolicy.dispatch_decision(issue("second"), full) == {:skip, :state_capacity}
-    refute Slots.fleet_slot_available?(fixer, %{state | globally_paused: true})
+    refute Slots.dispatch_slots_available?(fixer, state)
+    assert DispatchPolicy.dispatch_decision(fixer, state) == {:skip, :state_capacity}
+    assert DispatchPolicy.dispatch_decision(fixer, %{state | running: %{}}) == :dispatch
+    refute Slots.dispatch_slots_available?(fixer, %{state | running: %{}, globally_paused: true})
   end
 
-  test "CI-wait fixers release the reserved slot and explicit state caps remain authoritative" do
+  test "CI-wait releases ordinary capacity and explicit state caps remain authoritative" do
     normal = %{issue("normal") | labels: []}
 
     state = %State{
-      max_concurrent_agents: 1,
+      max_concurrent_agents: 2,
       running: %{
         "normal" => %{issue: normal, control: %{status: :working}},
         "old" => %{issue: issue("old"), control: %{status: :paused}, paused_reason: :ci_wait}
@@ -75,8 +72,8 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
   end
 
   # Compatibility guard: host admission already applies before candidate selection.
-  test "reserved capacity does not bypass the host admission gate" do
-    assert Slots.fleet_slot_available?(issue("fixer"), %State{max_concurrent_agents: 1})
+  test "fixer priority does not bypass the host admission gate" do
+    assert Slots.dispatch_slots_available?(issue("fixer"), %State{max_concurrent_agents: 1})
 
     probes = %{
       load: 100.0,
@@ -107,7 +104,7 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
     assert state.capacity_hold.signal == :load
   end
 
-  test "the polling batch launches a fixer with normal slots full" do
+  test "the polling batch gives the next free slot to the fixer first" do
     parent = self()
     fixer = issue("fixer-launch")
     normal = %{issue("normal-launch") | labels: []}
@@ -129,35 +126,36 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
       github_quota: :available
     }
 
-    pending =
-      Dispatcher.dispatch_or_hold(state, [fixer], fn -> :ready end,
-        admission_probes_fun: fn -> probes end,
-        issue_fetcher: fn _ -> {:ok, [fixer]} end,
-        blocked_by_hydrator: fn issue -> {:ok, issue} end,
-        runner: fn dispatched, _, _ ->
-          send(parent, {:started, dispatched.id})
-          :ok
-        end
-      )
+    opts = [
+      admission_probes_fun: fn -> probes end,
+      issue_fetcher: fn ids -> {:ok, Enum.filter([normal, fixer], &(&1.id in ids))} end,
+      blocked_by_hydrator: fn issue -> {:ok, issue} end,
+      runner: fn dispatched, _, _ ->
+        send(parent, {:started, dispatched.id})
+        :ok
+      end
+    ]
+
+    full = Dispatcher.dispatch_or_hold(state, [normal, fixer], fn -> :ready end, opts)
+    refute TrackerTasks.running?(full, {:dispatch, fixer.id})
+    refute_receive {:started, _}, 100
+    assert Slots.used_slots(full) == 1
+
+    pending = Dispatcher.dispatch_or_hold(%{full | running: %{}}, [normal, fixer], fn -> :ready end, opts)
 
     assert TrackerTasks.running?(pending, {:dispatch, fixer.id})
     receive_barrier({ref, result})
     assert {:handled, dispatched} = TrackerTasks.result(pending, ref, result)
     receive_barrier({:started, "fixer-launch"})
     assert Map.has_key?(dispatched.running, fixer.id)
-    assert Slots.used_slots(dispatched) == 2
+    refute Map.has_key?(dispatched.running, normal.id)
+    assert Slots.used_slots(dispatched) == 1
   end
 
-  test "reserved slot honors a pressure-reduced effective cap" do
+  test "fixer honors a pressure-reduced effective cap" do
     normal = %{issue("normal-pressure") | labels: []}
     state = %State{max_concurrent_agents: 3, effective_concurrent_agents: 1, running: %{normal.id => %{issue: normal, control: %{status: :working}}}}
     assert DispatchPolicy.dispatch_decision(issue("pressure-fixer"), state) == {:skip, :fleet_capacity}
-  end
-
-  test "a fixer already inside the ordinary cap does not consume the extra slot" do
-    first = issue("first-fixer")
-    state = %State{max_concurrent_agents: 1, running: %{first.id => %{issue: first, control: %{status: :working}}}}
-    assert DispatchPolicy.dispatch_decision(issue("second-fixer"), state) == :dispatch
   end
 
   defp enable_fixer_policy do

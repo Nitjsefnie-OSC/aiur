@@ -153,7 +153,7 @@ defmodule Aiur.MainWatch do
 
     fixer_latest = Enum.map(latest, &Map.put(&1, :last_green_sha, state.last_green_sha))
     # Filing errors raise their own attention and retry next poll; CI observations still advance.
-    Fixer.reconcile(fixer_latest, server.config, server.opts)
+    Fixer.reconcile(older ++ fixer_latest, server.config, server.opts)
 
     completed = completed_at(result, server.data)
 

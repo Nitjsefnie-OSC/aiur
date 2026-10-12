@@ -4,6 +4,8 @@ defmodule Aiur.MainWatch.FixerWatchdog do
   alias Aiur.MainWatch.Fixer
 
   @spec check([map()], keyword()) :: :ok | {:error, term()}
+  def check([], _opts), do: :ok
+
   def check(issues, opts) do
     now = Keyword.get(opts, :now_fun, fn -> System.system_time(:millisecond) end).()
     snapshot = Keyword.get(opts, :fixer_snapshot, fn -> Aiur.Orchestrator.snapshot() end).()
