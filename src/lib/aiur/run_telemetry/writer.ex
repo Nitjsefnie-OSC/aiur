@@ -26,7 +26,7 @@ defmodule Aiur.RunTelemetry.Writer do
 
   alias Aiur.Events.Exchange
   alias Aiur.RunTelemetry
-  alias Aiur.RunTelemetry.{FactsCapture, Lifecycle, Retention, RunContext, Summaries}
+  alias Aiur.RunTelemetry.{FactsCapture, LedgerRetention, Lifecycle, RunContext, Summaries}
   alias Aiur.RunTelemetry.Writer.Encoding
   alias Aiur.RunTelemetry.Writer.Retention, as: WriterRetention
 
@@ -105,7 +105,7 @@ defmodule Aiur.RunTelemetry.Writer do
     boot_id = Keyword.get_lazy(opts, :boot_id, &RunTelemetry.boot_id/0)
     retention = Keyword.get_lazy(opts, :retention, &RunTelemetry.telemetry_retention/0)
 
-    case Retention.prune(path, retention |> Keyword.put(:now, clock.()) |> Keyword.put(:protected_boot_id, boot_id)) do
+    case LedgerRetention.prune(path, retention |> Keyword.put(:now, clock.()) |> Keyword.put(:protected_boot_id, boot_id)) do
       :ok -> :ok
       {:error, reason} -> Logger.warning("run_telemetry retention_failed path=#{path} reason=#{inspect(reason)}")
     end

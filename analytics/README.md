@@ -166,7 +166,8 @@ R warns and reduces coverage when a requested small-sample interval is impossibl
 
 `analytics/reduce --ledger` also writes `analytics/tickets/<ticket>.json` in
 the state node. The daemon requests this on segment materialization, shutdown,
-and PR-facts appends. `--telemetry-glob 'PATH/**/telemetry.ndjson*'` adds retained
+and PR-facts appends. The canonical stream is checkpointed before retention
+prunes it; a failed checkpoint preserves the raw evidence for a later retry. `--telemetry-glob 'PATH/**/telemetry.ndjson*'` adds retained
 launches to the ledger without changing the run-summary input scope. Backfill
 fetches missing PR facts through `ledger-facts` and the canonical governed
 `GitHubFacts` query (`analytics_facts` caller); `--no-facts` makes no requests.
