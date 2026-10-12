@@ -8,6 +8,7 @@ async function openExperiments(page, scenario = 'mixed') {
   await page.goto(`/experiments-control/${scenario}`)
   await expect(page.locator('#experiments-page')).toBeVisible()
   await expect.poll(() => page.evaluate(() => window.liveSocket?.isConnected() === true)).toBe(true)
+  await expect(page.locator("[data-phx-main].phx-connected")).toHaveCount(1)
 }
 
 function indexLinks(page) {
