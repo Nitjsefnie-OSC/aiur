@@ -282,16 +282,9 @@ defmodule Aiur.Orchestrator.Slots do
     reserved =
       MergePolicy.fixer_ticket?(issue) and not state.globally_paused and
         effective_concurrent_agent_limit(state) == max_concurrent_agent_limit(state) and
-        used_slots(state) < max_concurrent_agent_limit(state) + 1 and
-        not running_fixer?(state.running)
+        used_slots(state) < max_concurrent_agent_limit(state) + 1
 
     available_slots(state) > 0 or reserved
-  end
-
-  defp running_fixer?(running) do
-    Enum.any?(running, fn {id, entry} ->
-      MergePolicy.fixer_ticket?(entry[:issue]) and (State.active_running_entry?(entry) or State.reserved_paused_running_count(%{id => entry}) > 0)
-    end)
   end
 
   @spec batch_slot_available?(State.t(), [Issue.t()]) :: boolean()

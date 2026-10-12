@@ -154,6 +154,12 @@ defmodule Aiur.GitHub.MainFixerDispatchTest do
     assert DispatchPolicy.dispatch_decision(issue("pressure-fixer"), state) == {:skip, :fleet_capacity}
   end
 
+  test "a fixer already inside the ordinary cap does not consume the extra slot" do
+    first = issue("first-fixer")
+    state = %State{max_concurrent_agents: 1, running: %{first.id => %{issue: first, control: %{status: :working}}}}
+    assert DispatchPolicy.dispatch_decision(issue("second-fixer"), state) == :dispatch
+  end
+
   defp enable_fixer_policy do
     content = File.read!(Workflow.workflow_file_path())
     write_workflow_file_atomic!(Workflow.workflow_file_path(), content <> "\nmerge_policy:\n  main_watch:\n    on_red: dispatch_fixer\n")
