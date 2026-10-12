@@ -652,7 +652,7 @@ Configuring the key also adds an ElevenLabs meter to the Dashboard Units page, b
 
 ## compaction
 
-Optional synchronous Codex-native thread compaction immediately before the runner hands a `human-review` ticket back to the orchestrator. Codex uses its live app-server `thread/compact/start` method. The original rollout and thread resume handle are retained. Other providers are unsupported. Threshold mode uses Aiur's measured cumulative agent token usage at handoff; Codex does not receive a threshold parameter.
+Optional Codex thread compaction runs synchronously at the `human-review` handoff via `thread/compact/start`; other providers are unsupported, and token thresholds use cumulative usage measured by Aiur at handoff.
 
 | Key | Type | Default | Controls |
 | --- | --- | --- | --- |

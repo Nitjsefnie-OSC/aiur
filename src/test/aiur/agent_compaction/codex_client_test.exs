@@ -53,7 +53,7 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
     {port, dir} = server_port("notification-first")
 
     on_exit(fn ->
-      File.rm_rf(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
       if Port.info(port), do: Port.close(port)
     end)
 
@@ -68,7 +68,7 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
     {port, dir} = server_port("response-first")
 
     on_exit(fn ->
-      File.rm_rf(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
       if Port.info(port), do: Port.close(port)
     end)
 
@@ -80,7 +80,7 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
     {failure_port, failure_dir} = server_port("failure")
 
     on_exit(fn ->
-      File.rm_rf(failure_dir)
+      Aiur.TestCleanup.rm_rf!(failure_dir)
       if Port.info(failure_port), do: Port.close(failure_port)
     end)
 
@@ -90,7 +90,7 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
     {timeout_port, timeout_dir} = server_port("no-completion")
 
     on_exit(fn ->
-      File.rm_rf(timeout_dir)
+      Aiur.TestCleanup.rm_rf!(timeout_dir)
       if Port.info(timeout_port), do: Port.close(timeout_port)
     end)
 
