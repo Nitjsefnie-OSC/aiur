@@ -36,11 +36,15 @@ defmodule Aiur.GitHub.OptimisticFailure do
       if Enum.any?(comments, &String.contains?(Map.get(&1, "body") || "", marker)) do
         :ok
       else
-        with :ok <- Comments.create_comment(to_string(dependent), body, opts),
-             {:ok, comments} <- comments(dependent, opts) do
-          if Enum.any?(comments, &(Map.get(&1, "body") == body)), do: :ok, else: {:error, :optimistic_park_comment_unverified}
-        end
+        create_park_comment(dependent, body, opts)
       end
+    end
+  end
+
+  defp create_park_comment(dependent, body, opts) do
+    with :ok <- Comments.create_comment(to_string(dependent), body, opts),
+         {:ok, comments} <- comments(dependent, opts) do
+      if Enum.any?(comments, &(Map.get(&1, "body") == body)), do: :ok, else: {:error, :optimistic_park_comment_unverified}
     end
   end
 

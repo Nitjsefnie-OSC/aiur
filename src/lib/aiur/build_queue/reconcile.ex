@@ -1,7 +1,7 @@
 defmodule Aiur.BuildQueue.Reconcile do
   @moduledoc false
 
-  alias Aiur.BuildQueue.{Hints, Model.Observation, NativeObserver, Observer, Planner, PRObserver, Settings, Withdrawal}
+  alias Aiur.BuildQueue.{ClaimProbe, Hints, Model.Observation, NativeObserver, Observer, Planner, PRObserver, Settings, Withdrawal}
 
   alias Aiur.StartTrigger.ProgressStore
 
@@ -51,7 +51,7 @@ defmodule Aiur.BuildQueue.Reconcile do
   end
 
   defp optimistic_dependents(probe) do
-    case Aiur.BuildQueue.ClaimProbe.optimistic_records(probe) do
+    case ClaimProbe.optimistic_records(probe) do
       {:ok, records} -> MapSet.new(records, & &1["ticket"])
       {:error, _} -> MapSet.new()
     end

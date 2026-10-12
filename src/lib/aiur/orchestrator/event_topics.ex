@@ -189,7 +189,7 @@ defmodule Aiur.Orchestrator.EventTopics do
 
   @spec parse_optimistic_blocker_topic(String.t()) :: {:ok, String.t()} | :nomatch
   def parse_optimistic_blocker_topic(topic) do
-    case Regex.run(~r{\Aticket\.([^.]+)\.pr\.(?:closed_unmerged|reopened)\z}, topic) do
+    case Regex.run(~r{\Aticket\.([^.]+)\.pr\.(?:closed_unmerged|reopened|opened)\z}, topic) do
       [_, identifier] -> {:ok, identifier}
       _ -> :nomatch
     end

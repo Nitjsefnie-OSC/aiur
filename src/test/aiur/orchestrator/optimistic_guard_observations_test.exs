@@ -90,6 +90,36 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservationsTest do
     assert_receive {:read_pr, "10"}, 500
   end
 
+  test "grace crossing confirms replacement opened after the cached closure" do
+    now = 630_000
+    observation = Map.merge(cached(), %{"observed_at_ms" => 600_000, "pr_state" => "closed", "any_open_pr?" => false})
+    row = record(observation) |> put_in(["blockers", Access.at(0), "suspect_since_ms"], 10_000) |> put_in(["blockers", Access.at(0), "suspect_cause"], "pr_closed_unmerged")
+    pid = self()
+
+    opts =
+      opts(
+        grace_ms: 600_000,
+        read_pr: fn _, _ ->
+          send(pid, :confirmed_replacement)
+          {:ok, Map.put(pr(200), "created_at", "1970-01-01T00:10:05Z")}
+        end
+      )
+
+    observations = OptimisticGuardObservations.read([row], now, opts)
+    assert_receive :confirmed_replacement, 500
+    assert observations["10"].pr_number == 200
+    assert observations["10"].observed_at_ms == now
+    refute Enum.any?(OptimisticGuard.decide([row], observations, now, grace_ms: 600_000), &match?({:park, _, _, _}, &1))
+  end
+
+  test "grace crossing refreshes trouble labels missing from current poll" do
+    observation = Map.merge(cached(), %{"observed_at_ms" => 600_000, "labels" => ["agent:error"]})
+    row = record(observation) |> put_in(["blockers", Access.at(0), "suspect_since_ms"], 10_000) |> put_in(["blockers", Access.at(0), "suspect_cause"], "agent_error")
+    observations = OptimisticGuardObservations.read([row], 630_000, opts(grace_ms: 600_000, issues: %{}))
+    assert observations["10"].labels == []
+    refute Enum.any?(OptimisticGuard.decide([row], observations, 630_000, grace_ms: 600_000), &match?({:attention, _, _, _}, &1))
+  end
+
   test "merged confirming PR cannot park from an apparent closed unmerged event" do
     opts = opts(read_pr: fn _, _ -> {:ok, Map.merge(pr(100), %{"state" => "closed", "merged" => true})} end)
     observations = OptimisticGuardObservations.read([record()], @now, opts)
@@ -138,7 +168,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservationsTest do
     assert observations.dependents["11"].labels == ["agent:parked"]
   end
 
-  defp opts(extra \\ []) do
+  defp opts(extra) do
     Keyword.merge(
       [
         observation_max_age_ms: 120_000,

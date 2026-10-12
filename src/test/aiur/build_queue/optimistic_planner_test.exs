@@ -2,8 +2,8 @@ Code.require_file("../../support/build_queue_planner_fixture.exs", __DIR__)
 
 defmodule Aiur.BuildQueue.OptimisticPlannerTest do
   use ExUnit.Case, async: true
-  alias Aiur.BuildQueue.{Planner, PlannerFixture}
   alias Aiur.BuildQueue.Model.Latch
+  alias Aiur.BuildQueue.{Planner, PlannerFixture}
 
   test "optimistic claimed starts suppress new and retained dependency-change attentions" do
     input = PlannerFixture.input() |> PlannerFixture.waiting() |> PlannerFixture.promoted()

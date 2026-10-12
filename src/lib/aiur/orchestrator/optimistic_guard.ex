@@ -133,12 +133,12 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
     failure = Enum.find(outcomes, &match?({:failed, _, _}, &1))
     trouble = Enum.find(outcomes, &match?({:trouble, _, _}, &1))
     threshold = Keyword.get(opts, :churn_threshold, 3)
-    churn? = threshold > 0 and (get_in(record, ["counters", "integrations_conflict"]) || 0) >= threshold
+    churn? = record["blockers"] != [] and threshold > 0 and (get_in(record, ["counters", "integrations_conflict"]) || 0) >= threshold
 
     cond do
       failure -> failure_actions(record, failure, opts)
       trouble -> info_attention(record["ticket"], trouble)
-      churn? -> info_attention(record["ticket"], {:trouble, nil, :churn})
+      churn? -> info_attention(record["ticket"], {:trouble, hd(record["blockers"])["id"], :churn})
       Enum.all?(outcomes, &(&1 == :healthy)) -> [{:resolve, @cause, record["ticket"]}]
       true -> []
     end

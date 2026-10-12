@@ -85,7 +85,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
   test "churn informs at threshold without parking, zero disables" do
     row = put_in(record(), ["counters", "integrations_conflict"], 3)
     actions = decide(row, healthy())
-    assert {:attention, :optimistic_blocker_failed, "11", %{blocker: nil, cause: :churn, action: :none, severity: "info"}} in actions
+    assert {:attention, :optimistic_blocker_failed, "11", %{blocker: "10", cause: :churn, action: :none, severity: "info"}} in actions
     refute park?(actions)
     refute attention?(decide(row, healthy(), churn_threshold: 0))
     refute attention?(decide(row, healthy(), churn_threshold: 4))

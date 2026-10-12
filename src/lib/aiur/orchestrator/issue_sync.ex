@@ -7,10 +7,10 @@ defmodule Aiur.Orchestrator.IssueSync do
   require Logger
 
   alias Aiur.{AgentQueue, AgentQueueStore, AlertFeed, Alerts, CodingAgent, Config, CurrentRunMembership, DispatchBudgetStore, Issue, Tracker, TrackerIdentity}
-  alias Aiur.GitHub.ResourceStore
-  alias Aiur.GitHub.StatePolicy
+  alias Aiur.GitHub.{ResourceStore, StatePolicy}
+
   alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, Lifecycle, MembershipLifecycle, OperatorMessages, PushRouting, Reconciler, Slots, State, TicketTransition, TrackerTasks}
-  alias Aiur.Orchestrator.PressureAdmission
+  alias Aiur.Orchestrator.{OptimisticGuardEffects, PressureAdmission}
   alias Aiur.Orchestrator.StatusObservation
   alias Aiur.PollCadence
 
@@ -864,7 +864,8 @@ defmodule Aiur.Orchestrator.IssueSync do
       | last_polled_issues: retained_issues,
         released_claims: purge_resolved_released_claims(state.released_claims, retained_issues, terminal_states)
     }
-    |> StatusObservation.observe_tickets(issues, retained_issues) |> Aiur.Orchestrator.OptimisticGuardEffects.reconcile()
+    |> StatusObservation.observe_tickets(issues, retained_issues)
+    |> OptimisticGuardEffects.reconcile()
   end
 
   # A `released_claims` entry exists only to tell the operator that a claim was

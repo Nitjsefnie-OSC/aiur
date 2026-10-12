@@ -37,6 +37,7 @@ defmodule Aiur.Orchestrator.Lifecycle do
     "ticket.*.pr.merged",
     "ticket.*.pr.closed_unmerged",
     "ticket.*.pr.reopened",
+    "ticket.*.pr.opened",
     "ticket.*.ci.failed",
     "ticket.*.ci.passed",
     "ticket.*.agent.pause.request",

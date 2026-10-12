@@ -11,7 +11,9 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
     read_pr = Keyword.get(opts, :read_pr, &CodeHost.optimistic_blocker/2)
     closure = Keyword.get(opts, :closure, &Tracker.issue_closure/2)
     fetch = Keyword.get(opts, :fetch_issues, &Tracker.fetch_issue_states_by_ids/1)
-    stale = Enum.reject(blockers, &(&1["id"] != force and fresh?(decode(&1["guard_observation"]), now, max_age)))
+    grace = Keyword.get(opts, :grace_ms, 600_000)
+    stale = records |> Enum.flat_map(& &1["blockers"]) |> Enum.reject(&cache_usable?(&1, now, max_age, grace, force)) |> Enum.uniq_by(& &1["id"])
+    stale_ids = MapSet.new(stale, & &1["id"])
     {edges, edge_cache} = edge_evidence(records, blockers, now, max_age, opts)
     dependents = for row <- records, row["status"] == "parked", do: row["ticket"]
     issues = Keyword.get(opts, :issues, %{})
@@ -22,13 +24,23 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
       Map.new(blockers, fn blocker ->
         id = blocker["id"]
         cached = decode(blocker["guard_observation"])
-        observation = if id != force and fresh?(cached, now, max_age), do: cached, else: observe(id, blocker, issues[id], now, max_age, read_pr, closure, opts)
+        observation = if MapSet.member?(stale_ids, id), do: observe(id, blocker, issues[id], now, max_age, read_pr, closure, opts), else: cached
         observation = refresh_labels(observation, issues[id], opts)
         {id, observation |> Map.put(:edges, edges) |> Map.put(:edge_cache, edge_cache)}
       end)
 
     Map.put(observations, :dependents, Map.take(issues, dependents))
   end
+
+  defp cache_usable?(blocker, now, max_age, grace, force) do
+    cached = decode(blocker["guard_observation"])
+    blocker["id"] != force and fresh?(cached, now, max_age) and not grace_crossed?(blocker["suspect_since_ms"], cached[:observed_at_ms], now, grace)
+  end
+
+  defp grace_crossed?(since, observed_at, now, grace) when is_integer(since) and is_integer(observed_at),
+    do: now >= since + grace and observed_at < since + grace
+
+  defp grace_crossed?(_since, _observed_at, _now, _grace), do: false
 
   defp refresh_labels(%{issue_open?: true} = observation, %Issue{} = issue, opts), do: Map.put(observation, :labels, labels(issue, opts))
   defp refresh_labels(observation, _issue, _opts), do: observation
@@ -55,20 +67,23 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
         Map.merge(acc, get_in(blocker, ["guard_observation", "edge_cache"]) || %{})
       end)
 
-    Enum.reduce(records, {%{}, %{}}, fn row, {edges, cache} ->
-      dep = row["ticket"]
-      entry = cached[dep]
-      result = if edge_fresh?(entry, now, max_age), do: {:ok, entry["ids"]}, else: read.(dep)
-
-      case result do
-        {:ok, ids} ->
-          at = if edge_fresh?(entry, now, max_age), do: entry["observed_at_ms"], else: now
-          {Map.put(edges, dep, MapSet.new(ids)), Map.put(cache, dep, %{"ids" => ids, "observed_at_ms" => at})}
-
-        _ ->
-          {Map.put(edges, dep, :unknown), cache}
-      end
+    Enum.reduce(records, {%{}, %{}}, fn row, acc ->
+      read_edge(row["ticket"], cached[row["ticket"]], now, max_age, read, acc)
     end)
+  end
+
+  defp read_edge(dep, entry, now, max_age, read, {edges, cache}) do
+    fresh = edge_fresh?(entry, now, max_age)
+    result = if fresh, do: {:ok, entry["ids"]}, else: read.(dep)
+
+    case result do
+      {:ok, ids} ->
+        at = if fresh, do: entry["observed_at_ms"], else: now
+        {Map.put(edges, dep, MapSet.new(ids)), Map.put(cache, dep, %{"ids" => ids, "observed_at_ms" => at})}
+
+      _ ->
+        {Map.put(edges, dep, :unknown), cache}
+    end
   end
 
   defp edge_fresh?(%{"observed_at_ms" => at, "ids" => ids}, now, max_age) when is_integer(at) and is_list(ids),
@@ -82,23 +97,22 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
          {:ok, pr} <- read_pr.(id, blocker["pr_number"]) do
       labels = if issue, do: labels(issue, opts), else: []
 
-      %{
-        confirmed?: true,
-        observed_at_ms: now,
-        issue_open?: open?,
-        state_reason: reason,
-        labels: labels,
-        pr_state: if(pr, do: pr["state"]),
-        pr_merged: if(pr, do: pr["merged"]),
-        any_open_pr?: is_map(pr) and pr["state"] == "open",
-        pr_number: if(pr, do: pr["number"]),
-        pr_head_ref: if(pr, do: get_in(pr, ["head", "ref"])),
-        pr_head_sha: if(pr, do: get_in(pr, ["head", "sha"])),
-        pr_closed_at_ms: if(pr, do: timestamp(pr["closed_at"]))
-      }
+      Map.merge(%{confirmed?: true, observed_at_ms: now, issue_open?: open?, state_reason: reason, labels: labels}, pr_facts(pr || %{}))
     else
       _ -> %{confirmed?: false}
     end
+  end
+
+  defp pr_facts(pr) do
+    %{
+      pr_state: pr["state"],
+      pr_merged: pr["merged"],
+      any_open_pr?: pr["state"] == "open",
+      pr_number: pr["number"],
+      pr_head_ref: get_in(pr, ["head", "ref"]),
+      pr_head_sha: get_in(pr, ["head", "sha"]),
+      pr_closed_at_ms: timestamp(pr["closed_at"])
+    }
   end
 
   defp timestamp(value) when is_binary(value) do

@@ -83,6 +83,16 @@ defmodule Aiur.BuildQueue.OptimisticAttentionTest do
     assert opts[:message] =~ "#11 already started (parked)"
   end
 
+  test "churn attention names its recorded blocker and keeps work running" do
+    payload = %{blocker: "10", cause: :churn, action: :none, severity: "info"}
+    assert :ok = Attention.open({:optimistic_blocker_failed, :churn}, "11", payload)
+    assert_received {:attention, "ticket.11.queue.attention.optimistic_blocker_failed", opts}
+    assert opts[:exchange_payload] == payload
+    assert opts[:severity] == "info"
+    assert opts[:message] =~ "#10 has repeated conflicting integrations"
+    assert opts[:message] =~ "#11 keeps running"
+  end
+
   test "invalid action and missing failure facts cannot publish" do
     for payload <- [%{blocker: "10", cause: :not_planned, action: :bogus}, %{blocker: "10", action: :parked}, %{}] do
       assert {:error, :invalid_attention} = Attention.open(:optimistic_blocker_failed, "11", payload)

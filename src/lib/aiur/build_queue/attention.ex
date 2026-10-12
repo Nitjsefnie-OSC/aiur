@@ -156,18 +156,21 @@ defmodule Aiur.BuildQueue.Attention do
 
   defp message(:optimistic_blocker_failed, subject, payload) do
     cause =
-      case payload[:cause] do
-        :pr_closed_unmerged -> "has a PR closed unmerged"
-        :not_planned -> "closed as not planned"
-        :duplicate -> "closed as duplicate"
-        :edge_removed -> "was removed from the dependency graph"
-        :agent_error -> "is in agent:error"
-        :paused -> "is paused"
-        :parked -> "is parked"
-        :todo -> "was reset to todo"
-        :churn -> "has repeated conflicting integrations"
-        _ -> "failed"
-      end
+      Map.get(
+        %{
+          pr_closed_unmerged: "has a PR closed unmerged",
+          not_planned: "closed as not planned",
+          duplicate: "closed as duplicate",
+          edge_removed: "was removed from the dependency graph",
+          agent_error: "is in agent:error",
+          paused: "is paused",
+          parked: "is parked",
+          todo: "was reset to todo",
+          churn: "has repeated conflicting integrations"
+        },
+        payload[:cause],
+        "failed"
+      )
 
     action =
       case payload[:action] do

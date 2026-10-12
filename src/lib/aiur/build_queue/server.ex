@@ -4,6 +4,7 @@ defmodule Aiur.BuildQueue.Server do
   require Logger
 
   alias Aiur.BuildQueue.{
+    Attention,
     AttentionActions,
     AttentionHealth,
     Bookkeeping,
@@ -92,15 +93,10 @@ defmodule Aiur.BuildQueue.Server do
     result =
       case action do
         :open ->
-          Aiur.BuildQueue.Attention.open(cause, id, payload, store: state.store)
+          Attention.open(cause, id, payload, store: state.store)
 
         :resolve ->
-          Enum.reduce_while([:optimistic_blocker_failed, {:optimistic_blocker_failed, :trouble}, {:optimistic_blocker_failed, :churn}], :ok, fn key, _ ->
-            case Aiur.BuildQueue.Attention.resolve(key, id, state.store) do
-              :ok -> {:cont, :ok}
-              error -> {:halt, error}
-            end
-          end)
+          resolve_optimistic_attention(id, state.store)
       end
 
     case state.store.load() do
@@ -221,6 +217,15 @@ defmodule Aiur.BuildQueue.Server do
   end
 
   def handle_call({:release, _target}, _from, state), do: {:reply, {:error, state.status}, state}
+
+  defp resolve_optimistic_attention(id, store) do
+    Enum.reduce_while([:optimistic_blocker_failed, {:optimistic_blocker_failed, :trouble}, {:optimistic_blocker_failed, :churn}], :ok, fn key, _ ->
+      case Attention.resolve(key, id, store) do
+        :ok -> {:cont, :ok}
+        error -> {:halt, error}
+      end
+    end)
+  end
 
   @impl true
   def handle_info({:open_issues_recorded, _}, state), do: {:noreply, state |> BuildOrderCommands.hint() |> request()}
