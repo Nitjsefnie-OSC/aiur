@@ -43,12 +43,9 @@ Aiur watches nonterminal tickets in the run scope and, once a ticket's **converg
 **Convergence age** is `now − min(first_observed_active_work_at, open_pr_created_at)`:
 
 - `first_observed_active_work_at` is persisted durably per ticket in daemon
-  state, set once the first time the monitor observes the ticket as nonterminal
-  and in scope. A worker restart, redispatch, `max_turns` recycle, or daemon
-  restart never resets it.
+  state, set once the first time the monitor observes the ticket as nonterminal and in scope. A worker restart, redispatch, `max_turns` recycle, or daemon restart never resets it.
 - `open_pr_created_at` is the creation time of the ticket's open PR (a floor,
-  so an already-open PR is never hidden by a freshly installed or restarted
-  monitor).
+  so an already-open PR is never hidden by a freshly installed or restarted monitor).
 
 The alert carries actionable evidence.
 
@@ -243,6 +240,9 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 | `agent.stall_timeout_ms` | integer | 3600000 | Silent-agent watchdog; 0 disables it. |
 | `agent.max_agent_duration_minutes` | integer | 60 | Active-runtime pause checkpoint; 0 disables it. |
 | `agent.ci_wait_rewake_minutes` | positive integer | 5 | Re-wakes a CI-wait-paused agent for one recovery check when no terminal event arrives. |
+| `agent.ci_recovery_enabled` | boolean | true | Enables automatic CI recovery reruns; set `false` to disable them. |
+| `agent.ci_recovery_max_per_poll` | positive integer | 5 | Maximum recovery reruns admitted by one CI poll. |
+| `agent.ci_recovery_max_per_hour` | positive integer | 20 | Maximum recovery reruns admitted in a rolling hour. |
 | `agent.max_cpu_pressure` | float or nil | 20.0 | Linux CPU PSI `some avg60` ceiling in percent (greater than 0, at most 100). Holds new dispatch above the ceiling; null disables it. Independent of scheduler count; avg10 is diagnostic and does not gate dispatch. |
 | `agent.target_cpu_pressure` | float or nil | 10.0 | AIMD target for Linux CPU PSI `some avg60`, in percent (greater than 0, at most 100); null disables it. Halves capacity after 3 fresh above-target samples, subject to the decrease cooldown; ramps only below 80% of target. Unavailable samples reset the streak and never count as zero. |
 | `agent.max_load_average` | float or nil | 1.5 | Per-scheduler load ceiling used only when CPU PSI is unavailable. Uses CPU corroboration when available, otherwise raw load; null disables it. |
@@ -750,12 +750,12 @@ The daemon owns [experiment](../concepts/experiments) writes through control RPC
 | `experiments.max_snapshot_observations` | integer | 50000 | Maximum observations in a snapshot; positive, reserved for snapshot capture. |
 
 ## build_queue
-
 Build queue configuration for GitHub workflows (Linear is unsupported); the daemon reconciles stored queue membership after tracker signals or on the configured interval, with a two-second debounce.
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
 | `build_queue.start_trigger` | string | `pr_merged` | Prerequisite stage needed for queue promotion: `issue_closed`, `pr_merged`, `pr_approved`, `pr_ci_green`, or `pr_opened`. Also governs native dependency dispatch. Override with `queue add --start-on` or `queue set NAME --start-on`; `default` follows config. Missing or stale evidence never releases dependents. Optimistic stages combine lifecycle labels with retained per-PR progress. `pr_approved` adds one conditional review read per watched blocker. Linear dependency dispatch supports only `issue_closed` and `pr_merged`. See [Start trigger](/concepts/build-orders#start-trigger). |
+| `build_queue.optimistic_slot_share` | float | 0.5 | Fleet-wide optimistic share, 0..1. Zero disables optimistic dispatch; otherwise the cap is max(1, floor(share × effective agent limit)). Ready work starts first; merged blockers free share on the next cycle. Running agents are never preempted. |
 | `build_queue.enabled` | boolean | true | Enable build queue reconciliation. The server maintains dispatch hints, promotes ready items, and withdraws todo from unclaimed items whose prerequisites change. Disabling the queue removes its server and hints table on the next run. |
 | `build_queue.reconcile_interval_seconds` | integer | 60 | Reconciliation interval in seconds; 10..3600. |
 | `build_queue.max_writes_per_minute` | integer | 20 | Queue write budget per minute; 1..60. |

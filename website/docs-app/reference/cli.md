@@ -3,9 +3,7 @@ pageClass: cli-reference
 ---
 # CLI
 
-Without local config, `aiur` and `aiurdev` use `~/.aiur/config`. Global launches announce the config and `origin` target, then ensure workflow/marker and complexity labels, without model labels. `aiur init` provisions `flake` for [CI failure evidence](/apis/github#ci-failure-evidence).
-
-Keep shared credentials in `~/.aiur/.env`; exported values win. If required labels are missing and credentials lack Issues write access, startup fails before agents start. Omit `tracker.github.repo` for portable global settings; a conflicting explicit repo fails safely. Local config takes precedence.
+Without local config, `aiur` and `aiurdev` use `~/.aiur/config`. Global launches announce the config and `origin` target, then ensure workflow/marker and complexity labels, without model labels. `aiur init` provisions `flake` for [CI failure evidence](/apis/github#ci-failure-evidence). Local config takes precedence.
 
 `aiur` exists so an **agent can run Aiur on your behalf**; humans can type the commands or watch the TUI and dashboard while their Executor agent drives.
 
@@ -14,6 +12,7 @@ Keep shared credentials in `~/.aiur/.env`; exported values win. If required labe
 | Executor access | An agent can operate a run from a terminal without asking a human to type commands. |
 | Surface parity | The CLI targets feature parity with the [GUI](/guide/gui) and [TUI](/guide/tui). |
 
+Global launches require Issues write access; conflicting repos fail. Omit `tracker.github.repo` for portable settings; exported credentials override `.env`.
 Run the command from the repository that owns the run. An instance is keyed to that project, so control commands address that repository's daemon.
 
 ## What the CLI does
@@ -22,7 +21,7 @@ Run the command from the repository that owns the run. An instance is keyed to t
 | --- | --- | --- |
 | Start or attach | `aiur`, `aiur run` | Bare `aiur` attaches to this repository's live session when one exists; otherwise foreground gives the TUI board and chat panes. Background is headless unless launched with `--interactive`. |
 | Inspect live state | `status`, `agents`, `watch`, `alerts`, `usage`, `github-cost`, `github-usage` | Read-only reports from the running daemon. |
-| Operate the fleet | `set max-agents`, `pause`, `resume`, `message`, `reset-budget`, `workspace-recover`, `stop`, `restart` | Steers a live run and recovers an exactly identified workspace hold after the daemon proves provider exit. |
+| Operate the fleet | `set max-agents`, `pause`, `resume`, `park`, `message`, `reset-budget`, `workspace-recover`, `stop`, `restart` | Steers a live run and recovers an exactly identified workspace hold after the daemon proves provider exit. `park <ids>` releases a paused reservation; explicit resume clears its marker under capacity checks. |
 | Mirror a dashboard page | `units`, `commands`, `build-orders`, `queue show`, `analytics` | Read-only terminal forms of the dashboard pages. |
 | Act on durable records | `ask`, `asks`, `executor-answer`, `executor-escalate`, `executor-moot`, `executor-emit`, `listen`, `findings` | Decision inbox, Executor events, and findings ledger. |
 
@@ -59,7 +58,9 @@ Background mode is the shape that matters for an agent Executor. `aiur --bg` sta
 
 Background runs persist daemon Logger messages at `<logs-root>/log/aiur.log` without `--debug`. `--debug` additionally enables debug-level messages. The default background root is `~/.aiur/logs/<launch-id>/`; `log/boot.out.log` captures release stdout and stderr.
 
-`aiur status` prints `MERGE POLICY` configuration; `aiur capabilities` reports `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)). Status also lists `CI WAIT` tickets with PR, recovery state and failing checks, including tickets without workers.
+`aiur status` shows `optimistic n/cap` and prints `MERGE POLICY`, watcher state (`running`, `unavailable`, `not_running`), CI SHA/age and red start date. Unavailable retains last-known CI.
+
+`CI WAIT` lists tickets, PRs, recovery and failing checks, including tickets without workers. `aiur capabilities` shows `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)).
 
 `aiur status` shows degraded CODEOWNERS trust with cause and age ([GitHub trust](/apis/github#who-aiur-trusts)). With ready work and free slots, it names preflight holds, stale polling, `awaiting dispatch`, or empty-cycle reasons and age. Prewarm holds keep their cause; unexplained empty cycles report `unknown`.
 
@@ -126,6 +127,7 @@ If writing fails, the lease stays held and status names `aiur workspace-recover 
 | `aiur resume` | Turns off that global switch. Lifting the pause schedules a prompt poll, so dispatch resumes within one base interval rather than waiting out the idle poll backoff. | `aiur resume` |
 | `aiur pause 142 143` | Requests a safe-boundary pause for named tickets. | `aiur pause 142,143` |
 | `aiur pause --all` | Requests a pause for every active ticket. | `aiur pause --all` |
+| `aiur park 142` | Releases a paused ticket's fleet reservation and keeps it fenced until explicit `resume`. | `aiur park 142` |
 | `aiur resume 142` | Resumes a paused ticket, including one whose pause is still pending, or starts an idle eligible ticket. It also reactivates a deactivated agent and starts a new worker for a completed one, as the dashboard and API do, and names the prior state (`was: deactivated`, `was: completed`). It reports `already running` only when a live worker is working the ticket, and `already running (sleeping ...)` for an idle agent whose stream closed. A queue-held idle ticket reports `build_queue_hold`; use `aiur queue release` first. It refuses by name an agent whose worker failed to start (the retry schedule owns that restart), an agent whose worker is gone, and an idle ticket held by an open blocking decision, which it names by id; answer the decision, then resume. | `aiur resume 142` |
 | `aiur resume --all` | Resumes every individually paused ticket. | `aiur resume --all` |
 | `aiur reset-budget 142` | Clears a named ticket's dispatch-budget latch. It does not accept `--all`; `resume` cannot clear this latch. | `aiur reset-budget 142` |
@@ -286,15 +288,14 @@ Fleet-capacity and build-gate evidence have independent source states: stale fle
 | Command | What it does | Example |
 | --- | --- | --- |
 | `aiur experiments list [--status <status>] [--kind before_after\|ab] [--json]` | Lists experiment summaries; corrupt specs appear as unreadable rows. | `aiur experiments list --status active --json` |
-| `aiur experiments show <id> [--json]` | Shows spec, phase, journal tail, annotations, snapshot references and read-only state. | `aiur experiments show delivery-change --json` |
+| `aiur experiments metrics [--json]` | Lists metric definitions and rejected pack files from the base checkout. | `aiur experiments metrics --json` |
+| `aiur experiments show <id> [--json]` | Shows spec, phase, journal tail, annotations, snapshots, read-only state and pack problems. | `aiur experiments show delivery-change --json` |
 | `aiur experiments create --from <file\|-> [--draft] [--no-freeze] [--json]` | Imports a JSON spec from a caller file or stdin. Repeating a spec key returns the existing experiment. | `cat spec.json \| aiur experiments create --from -` |
-| `aiur experiments create --title <title> --line <type>:<ref>[@time] --metric <pack>/<metric>[:direction]` | Creates a before/after experiment; repeat `--metric` to add metrics. Direction defaults to decrease. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric delivery-speed/start_to_merge:decrease --draft` |
-| `aiur experiments create --draft` | Creates a draft rather than the default active status. | `aiur experiments create --from spec.json --draft` |
+| `aiur experiments create --title <title> --line <type>:<ref>[@time] --metric <pack>/<metric>[:direction]` | Creates a before/after experiment; repeat `--metric` to add metrics. Direction defaults to decrease. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric app/deploy_latency:decrease --draft` |
 | `aiur experiments create --no-freeze` | Suppresses the default baseline-freeze request and its unavailable warning. | `aiur experiments create --from spec.json --no-freeze` |
-| `aiur experiments create --hypothesis <text>` | Sets the quick-form hypothesis; default is empty. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric delivery-speed/start_to_merge --hypothesis faster` |
+| `aiur experiments create --hypothesis <text>` | Sets the quick-form hypothesis; default is empty. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric app/deploy_latency --hypothesis faster` |
 
-Quick creation also accepts `--hypothesis`, `--draft`, `--no-freeze` and `--json`; manual lines need a UTC timestamp, while tag/commit times can resolve from base history.
-JSON stdout contains the facade result; stderr carries errors and unavailable-freeze warnings. Exit codes: 0 success, 1 refused, 64 invalid usage. Newer specs refuse writes.
+Quick creation also accepts `--hypothesis`, `--draft`, `--no-freeze` and `--json`; manual lines need a UTC timestamp, while tag/commit times can resolve from base history. JSON stdout contains the facade result; stderr carries errors and unavailable-freeze warnings. Exit codes: 0 success, 1 refused, 64 invalid usage. Newer specs refuse writes.
 
 ## Decisions, Executor events, and findings
 
@@ -419,8 +420,7 @@ Within that node, wake files are prefixed by the sanitized final segment of the 
 
 A notification monitor must use that `<repo>` prefix (for example, `khala.executor.wakes.ndjson`), check that the wake file exists before declaring itself armed, and never substitute the `aiur` prefix in a consumer repository.
 
-A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor.
-Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at arm time. The `aiur-run` monitor command does this.
+A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor. Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at arm time. The `aiur-run` monitor command does this.
 
 `executor-wait` is the normal discovery and consumption path. Use `executor-fast-forward` only after independently verifying the exact prefix already covered. The 10,000-record bound remains an emergency disk bound, not evidence of consumption.
 Exceeding it trims the journal to the newest 8,000 records, consumed first: one rewrite per 2,000 wakes.
