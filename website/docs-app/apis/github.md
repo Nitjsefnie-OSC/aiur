@@ -20,6 +20,7 @@ Label read/create failures stop startup before agents start and explain the requ
 | Ticket branches | Validated refs and commits; subscribed known-ref changes trigger async compare (`per_page=1`, caller `ticket_branch_rewrite`) | `behind`/`diverged` or 404 emits `ticket.N.branch.force-push` (404: `previous_missing`). Errors/holds log and count `[:aiur, :events, :branch_rewrite, :error]`; new/unsubscribed refs skip compare. |
 | Comments and reviews | Trusted issue comments, PR comments, reviews, and unresolved threads | Wakes the correct agent for operator direction or rework. |
 | CI | Terminal checks while a ticket is in `agent:ci-wait` or `agent:human-review` | Returns passed work for human review and failed work for repair. |
+| Base-branch CI (main watch enabled) | Completed watched workflow runs for up to 20 recent base commits | Detects failures through check webhooks, base pushes and polling; retains state across restarts. |
 | Repository events | Default-branch pushes and opened or merged pull requests | Refreshes work whose base or review state changed. |
 
 Once per repository and history query version, the daemon reads every issue for build history (caller `build_order_history_backfill`). It starts after a 60-second boot delay, spaces pages by 10 seconds, holds below 20% remaining GraphQL budget and pauses further reads after 300 reported points in a rolling hour.
@@ -107,7 +108,7 @@ Create a GitHub App under **Settings → Developer settings → GitHub Apps** an
 | Issues | Read and write |
 | Pull requests | Read and write |
 | Checks | Read (CI failure annotations) |
-| Actions | Read and write when using automatic reruns (cancelled runs and failed jobs) |
+| Actions | Read for main-watch workflow attribution; write for canary and automatic reruns (cancelled runs and failed jobs). |
 | Administration, Secrets, Workflows | Never |
 
 GitHub always adds `Metadata: Read-only` implicitly. Generate and download a private key (`.pem`); it can mint installation tokens for every repository the App is installed on, so keep it in a secure store.
@@ -204,8 +205,7 @@ Poll spend still scales inversely with a class's interval, so `polling.interval_
 
 The GitHub auth check runs once per credential, not once per sweep. It is re-run when the token or repository changes, and when a GitHub call answers `401` with the credential it proved — so a revoked token still produces the usual auth diagnostic rather than a raw failure downstream.
 
-Comments, review submissions, and watch-target discovery are read over conditional REST with `If-None-Match`. An unchanged answer returns `304`, which does not count against GitHub's primary REST limit, so repeatedly sweeping quiet tickets is free rather than merely cheap. Validators are kept on
-disk, so a restart does not force a full-price re-read.
+Comments, review submissions, and watch-target discovery are read over conditional REST with `If-None-Match`. An unchanged answer returns `304`, which does not count against GitHub's primary REST limit, so repeatedly sweeping quiet tickets is free rather than merely cheap. Validators are kept on disk, so a restart does not force a full-price re-read.
 
 When a worker starts or restarts, its bootstrap digest also re-reads the open PR's formal review submissions. This strict read revalidates the held review list with `If-None-Match`; a missing body or changed list is fetched from GitHub.
 
@@ -213,23 +213,15 @@ The digest includes body-only `CHANGES_REQUESTED` reviews and substantive `COMME
 
 ### What a validator may answer
 
-The savings above depend on the validator being the right one for the question
-asked. Two rules keep a `304` honest.
+The savings above depend on the validator being the right one for the question asked. Two rules keep a `304` honest.
 
 **A page-1 ETag cannot answer a multi-page question.**
 
-GitHub orders issue timelines oldest-first and issue/PR listings by `created` desc.
-Changes can land beyond page 1, so a page-1 `304` means "page 1 is unchanged",
-never "the whole list is unchanged".
+GitHub orders issue timelines oldest-first and issue/PR listings by `created` desc. Changes can land beyond page 1, so a page-1 `304` means "page 1 is unchanged", never "the whole list is unchanged".
 
-A page-1 `304` on a churned ticket cannot self-heal: the change that would
-refresh it lands on a later page.
+A page-1 `304` on a churned ticket cannot self-heal: the change that would refresh it lands on a later page.
 
-Only trust a `304` for a paginated read when the read was single-page (then
-page 1 *is* the list), or when the validator kept is the last page's rather
-than the first's. If neither is practical, do not make the read conditional:
-an unconditional read that is correct beats a conditional one that is quietly
-wrong.
+Only trust a `304` for a paginated read when the read was single-page (then page 1 *is* the list), or when the validator kept is the last page's rather than the first's. If neither is practical, do not make the read conditional: an unconditional read that is correct beats a conditional one that is quietly wrong.
 
 Issue comments and PR changed files drain every page; single-list readers refuse
 a next page with `pagination_unexpected` rather than return a partial list.
@@ -746,6 +738,14 @@ Such a write still records the marker of the snapshot it was applied to, rather 
 A label write also corrects the labels on the issue Aiur already holds, and does so as one indivisible step. Reading the issue, changing it, and writing it back as separate steps would let a delivery that landed in between be overwritten by the older copy — including its `open` or `closed` state.
 
 A write that fails records nothing.
+
+Main watch debounces base Actions deliveries for two seconds. At the default 120-second cadence, an unchanged completed census costs two Core reads: `main_watch_commits` and `main_watch_runs`. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
+
+A cold 20-SHA green census costs 42 reads; one changed SHA costs four; startup adds one permission probe. These are transport-test counts, not live measurements. Each reconciliation caps all transport calls at 64, including evidence, suspects and reruns; exhausted or incomplete reads retain known state and mark it unavailable.
+
+Failure events carry tests, flake classifications and suspects. Evidence uses existing CI callers; associations use `main_watch_suspects`, permissions `main_watch_permissions`, and reruns `main_watch_canary`. Actions write is cached until daemon restart; permission changes require a restart.
+
+An idle completed head or any active watched run suppresses canaries; an eligible cancellation without write permission raises one persisted attention. Status distinguishes a running, unavailable or absent watcher and shows retained SHA and completed-run age after errors or poll crashes.
 
 ## Optional webhook
 
