@@ -149,7 +149,7 @@
     "kind": "pixel-mask",
     "selector": ".sidenav-nav .snav:nth-child(n+5)",
     "cells": {},
-    "reason": "#3789 Experiments below Analytics adds a nav row and shifts Streamdeck; awaiting design sign-off.",
+    "reason": "#3789 Experiments below Analytics adds a nav row, shifts Streamdeck and redistributes phone flex widths; awaiting design sign-off.",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
