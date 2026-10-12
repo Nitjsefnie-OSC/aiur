@@ -49,6 +49,7 @@ defmodule AiurWeb.ExperimentsLiveTest do
     assert has_element?(view, ".exp-index a[aria-current=page]", "First")
     assert html =~ "A registered hypothesis"
     assert html =~ "Evidence unavailable"
+    assert html =~ "Unknown unit"
     refute html =~ "Frozen baseline</dt><dd>0"
     assert html =~ "delivery-speed/start_to_merge"
     assert has_element?(view, "#exp-charts")
@@ -66,6 +67,12 @@ defmodule AiurWeb.ExperimentsLiveTest do
     assert has_element?(view, "#experiments-page[data-selection=detail]")
     render_click(element(view, ".exp-back"))
     assert_patch(view, "/experiments")
+  end
+
+  test "unknown id has its own state when the store has no experiments" do
+    {:ok, view, _html} = live(build_conn(), "/experiments/missing")
+    assert has_element?(view, "[data-empty-reason=not_found]", "Experiment not found")
+    refute has_element?(view, "[data-empty-reason=no_experiments]")
   end
 
   test "unknown id has a shell state and link back" do
@@ -87,7 +94,8 @@ defmodule AiurWeb.ExperimentsLiveTest do
     assert render(view) =~ "Changed hypothesis"
     fixture()
     send(view.pid, {:experiments_changed, :all})
-    assert has_element?(view, "[data-empty-reason=no_experiments]")
+    assert has_element?(view, "[data-empty-reason=not_found]")
+    refute has_element?(view, ".exp-index a")
     refute has_element?(view, "#exp-detail")
   end
 

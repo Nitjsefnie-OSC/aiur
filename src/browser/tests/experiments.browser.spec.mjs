@@ -124,3 +124,10 @@ test('consumer metric pack supplies labels and units through the real facade', a
   await expect(metric.getByRole('cell', { name: 'decrease', exact: true })).toBeVisible()
   await expect(metric).not.toContainText('delivery-speed')
 })
+
+test('unknown experiment URL stays distinct from an empty index', async ({ page }) => {
+  await openExperiments(page, 'empty')
+  await page.goto('/experiments/missing')
+  await expect(page.locator('[data-empty-reason="not_found"]')).toContainText('Experiment not found')
+  await expect(page.locator('[data-empty-reason="no_experiments"]')).toHaveCount(0)
+})
