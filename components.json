@@ -43,7 +43,7 @@
     },
     {
       "id": "web-kit", "name": "Phoenix helper library for component route, socket and controller modules (RC-39)", "layer": 1, "kind": "required",
-      "paths": ["src/lib/aiur_web/kit.ex", "src/lib/aiur_web/capability_error.ex", "src/lib/aiur_web/refresh_relay.ex"],
+      "paths": ["src/lib/aiur_web/kit.ex", "src/lib/aiur_web/capability_error.ex", "src/lib/aiur_web/provider_meter_windows.ex", "src/lib/aiur_web/refresh_relay.ex"],
       "facades": ["*"], "facade_pending": "MP-R1-C1-T02",
       "requires": ["kernel", "config", "identity"], "optional": [],
       "owns": {"config": [], "env": [], "state": [], "capabilities": []},
@@ -151,7 +151,7 @@
       "id": "experiments", "name": "Experiment specifications and evidence", "layer": 3, "kind": "optional",
       "paths": ["src/lib/aiur/experiments.ex", "src/lib/aiur/experiments/**", "src/lib/aiur/experiments_cli.ex"],
       "facades": ["Aiur.Experiments", "Aiur.Experiments.Spec", "Aiur.Experiments.Predicate", "Aiur.Experiments.Observation", "Aiur.Experiments.MetricPack", "Aiur.ExperimentsCLI", "Aiur.Experiments.CapabilityProvider"], "facade_pending": null,
-      "requires": ["kernel", "config", "event-bus", "identity", "workspace"], "optional": ["telemetry", "accounting", "tracker"],
+      "requires": ["kernel", "config", "event-bus", "identity", "workspace", "agent-sandbox"], "optional": ["telemetry", "accounting", "tracker", "executor-attention"],
       "owns": {"config": ["experiments"], "env": [], "state": ["experiments_path"], "capabilities": ["experiments", "experiments.metric_packs"]},
       "prior": [],
       "forbid": ["Aiur.Orchestrator", "Aiur.Orchestrator.*", "Aiur.GitHub", "Aiur.GitHub.*"]
@@ -183,7 +183,7 @@
     },
     {
       "id": "executor-attention", "name": "Wake inbox, claims, roster, principal, alerts ledger, progress check-in", "layer": 3, "kind": "optional",
-      "paths": ["src/lib/aiur/alert_*.ex", "src/lib/aiur/alert_feed/**", "src/lib/aiur/alert_ledger/**", "src/lib/aiur/alerts.ex", "src/lib/aiur/alerts/**", "src/lib/aiur/executor/**", "src/lib/aiur/executor_*.ex", "src/lib/aiur/executor_wake_inbox/**", "src/lib/aiur/operator_wait_log.ex", "src/lib/aiur/progress_checkin/**"],
+      "paths": ["src/lib/aiur/alert_*.ex", "src/lib/aiur/alert_feed/**", "src/lib/aiur/alert_ledger/**", "src/lib/aiur/alerts.ex", "src/lib/aiur/alerts/**", "src/lib/aiur/executor/**", "src/lib/aiur/executor_attention/**", "src/lib/aiur/executor_*.ex", "src/lib/aiur/executor_wake_inbox/**", "src/lib/aiur/operator_wait_log.ex", "src/lib/aiur/progress_checkin/**"],
       "facades": ["*"], "facade_pending": "MP-R1-C1-T02",
       "requires": ["event-bus", "signal", "kernel", "config", "identity", "commands"], "optional": ["conversations"],
       "owns": {"config": ["alerts", "executor_takeover_continuous_alert_hours", "executor_takeover_first_alert_hours"], "env": [], "state": ["takeover_alert_state_dir"], "capabilities": []},
