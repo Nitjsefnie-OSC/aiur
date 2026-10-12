@@ -19,7 +19,8 @@ defmodule Aiur.Experiments.Auto.ConcurrentChanges do
   defp continue(error), do: {:halt, error}
 
   defp annotate_one(id, line) do
-    with {:ok, experiment} <- Experiments.fetch(id) do
+    with {:ok, experiment} <- Experiments.fetch(id),
+         :ok <- writable(experiment) do
       seen? = Enum.any?(experiment.annotations, &(&1["auto_line_key"] == line.key))
       inside? = Enum.any?(experiment.spec["windows"], fn {_name, window} -> contains?(window, line.at) end)
 
@@ -30,6 +31,9 @@ defmodule Aiur.Experiments.Auto.ConcurrentChanges do
       end
     end
   end
+
+  defp writable(%{read_only?: true}), do: {:error, :experiment_read_only}
+  defp writable(%{read_only?: false}), do: :ok
 
   defp contains?(%{"start" => from, "end" => until}, at) do
     {:ok, from, _offset} = DateTime.from_iso8601(from)
