@@ -33,9 +33,9 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
         end
       )
 
-    assert_receive {:memory_tracker_state_update, "rework-claim", "in-progress"}
-    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "rework-claim", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: :ok}}
-    assert_receive {:runner_issue, %Issue{state: "rework"}}
+    assert_receive {:memory_tracker_state_update, "rework-claim", "in-progress"}, 1_000
+    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "rework-claim", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: :ok}}, 1_000
+    assert_receive {:runner_issue, %Issue{state: "rework"}}, 1_000
     assert Map.has_key?(state.running, issue.id)
     assert {:ok, [%Issue{state: "in-progress"}]} = Tracker.fetch_issue_states_by_ids([issue.id])
     refute_received {:memory_tracker_state_update, _, _}
@@ -56,7 +56,8 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
     assert state.dispatch_declines[candidate.id] == :tracker_revalidation_failed
 
     assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{},
-                    %{issue_id: "rework-write-failure", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: {:error, {:stale_issue_state, "rework", "todo"}}}}
+                    %{issue_id: "rework-write-failure", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: {:error, {:stale_issue_state, "rework", "todo"}}}},
+                   1_000
 
     refute Map.has_key?(state.running, candidate.id)
     refute MapSet.member?(state.claimed, candidate.id)
@@ -92,8 +93,8 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
       )
 
     assert rework_issue.state == "rework"
-    assert_receive {:memory_tracker_state_update, "orphaned-rework", "rework"}
-    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "orphaned-rework", expected: "in-progress", to: "rework", writer: :startup_claim_reconciler, outcome: :ok}}
+    assert_receive {:memory_tracker_state_update, "orphaned-rework", "rework"}, 1_000
+    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "orphaned-rework", expected: "in-progress", to: "rework", writer: :startup_claim_reconciler, outcome: :ok}}, 1_000
 
     state =
       Dispatcher.dispatch_issue(%{state | max_concurrent_agents: 4, effective_concurrent_agents: 4}, rework_issue, nil, nil,
@@ -104,9 +105,9 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
         end
       )
 
-    assert_receive {:memory_tracker_state_update, "orphaned-rework", "in-progress"}
-    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "orphaned-rework", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: :ok}}
-    assert_receive {:runner_issue, %Issue{state: "rework"}}
+    assert_receive {:memory_tracker_state_update, "orphaned-rework", "in-progress"}, 1_000
+    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "orphaned-rework", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: :ok}}, 1_000
+    assert_receive {:runner_issue, %Issue{state: "rework"}}, 1_000
     assert Map.has_key?(state.running, issue.id)
     assert {:ok, [%Issue{state: "in-progress"}]} = Tracker.fetch_issue_states_by_ids([issue.id])
   end

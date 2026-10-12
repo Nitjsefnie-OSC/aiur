@@ -31,20 +31,21 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaim do
           identifier: issue.identifier
         )
       end,
-      fn current, result ->
-        if input_fun.(current, issue.id) != expected_input do
-          current
-        else
-          case result do
-            :ok ->
-              dispatch_fun.(current)
-
-            {:error, reason} ->
-              Logger.warning("Rework dispatch claim failed for #{State.issue_context(issue)}: #{inspect(reason)}")
-              current |> Map.update!(:claimed, &MapSet.delete(&1, issue.id)) |> decline_fun.()
-          end
-        end
-      end
+      &apply_result(&1, &2, issue, expected_input, dispatch_fun, decline_fun, input_fun)
     )
+  end
+
+  defp apply_result(current, result, issue, expected_input, dispatch_fun, decline_fun, input_fun) do
+    cond do
+      input_fun.(current, issue.id) != expected_input ->
+        current
+
+      result == :ok ->
+        dispatch_fun.(current)
+
+      true ->
+        Logger.warning("Rework dispatch claim failed for #{State.issue_context(issue)}: #{inspect(result)}")
+        current |> Map.update!(:claimed, &MapSet.delete(&1, issue.id)) |> decline_fun.()
+    end
   end
 end

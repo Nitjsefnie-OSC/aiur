@@ -11,7 +11,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
   alias Aiur.GitHub.{AuthPreflight, CiReadiness, CycleFetchCache, Errors, LocalHold}
   alias Aiur.GitHub.Tracker, as: GitHubTracker
   alias Aiur.{Orchestrator, Orchestrator.TicketTransition}
-  alias Aiur.Orchestrator.{OptimisticDispatch, OptimisticSlots, PausedCandidatePoll, ReworkGate, TelemetryCohort, TrackerTasks}
+  alias Aiur.Orchestrator.{OptimisticDispatch, OptimisticSlots, PausedCandidatePoll, ReworkDispatchClaim, ReworkGate, TelemetryCohort, TrackerTasks}
 
   alias Aiur.Orchestrator.{
     AutoResume,
@@ -2413,7 +2413,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
         state
 
       worker_host ->
-        Aiur.Orchestrator.ReworkDispatchClaim.dispatch(
+        ReworkDispatchClaim.dispatch(
           state,
           issue,
           fn current -> spawn_issue_on_worker_host(current, issue, attempt, recipient, worker_host, opts) end,
