@@ -14,6 +14,7 @@ defmodule Aiur.RunTelemetry.Writer.Encoding do
     pr_facts
   )
 
+  defp next_sequence(%{sequence_fun: fun}) when is_function(fun, 0), do: fun.()
   defp next_sequence(%{shared_sequence?: true}), do: RunTelemetry.next_sequence()
   defp next_sequence(state), do: state.sequence + 1
 
