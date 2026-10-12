@@ -1,6 +1,7 @@
 defmodule Aiur.Experiments.Packs.DeliverySpeed.BootWindow do
   @moduledoc "Bounded inspection of ordered summary records; unknown bounds remain eligible."
   alias Aiur.Experiments.Sources.Common
+  # ponytail: keep unknown 64 KiB prefixes; add range metadata if these conservative loads dominate.
   @prefix_bytes 65_536
 
   @spec before_end?(Path.t(), String.t(), DateTime.t()) :: boolean()

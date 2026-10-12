@@ -29,13 +29,29 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedWindowTest do
       File.write!(Path.join(root, boot), Jason.encode!(body))
     end
 
+    at = "2026-10-09T10:30:00Z"
+
+    anchor = %{
+      kind: "lifecycle",
+      boot_id: "github",
+      timestamp: at,
+      timestamp_iso: at,
+      timestamp_ms: DateTime.to_unix(DateTime.from_iso8601(at) |> elem(1), :millisecond),
+      schema_version: 3,
+      sequence: 1,
+      record_id: "anchor:1",
+      attributes: %{event: "pr_merged", ticket: "100", boundary: "point"}
+    }
+
+    future = Jason.decode!(File.read!(Path.join(root, "future")))["records"] |> Enum.map(&Map.merge(&1, %{"boot_id" => "anchored", "record_id" => "anchored:1"}))
+    File.write!(Path.join(root, "anchored"), Jason.encode!(%{records: [anchor | future]}))
     path = &Path.join(root, &1)
 
     ctx = %{
       telemetry_enabled: true,
       boot_id: "current",
       telemetry_path: Path.join(root, "missing"),
-      summary_boot_ids: fn -> ["old", "inside", "future", "current"] end,
+      summary_boot_ids: fn -> ["old", "inside", "future", "anchored", "current"] end,
       summary_path: path,
       summary_reader: fn boot ->
         send(self(), {:summary_loaded, boot})
@@ -48,6 +64,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedWindowTest do
     assert data.earliest_at == ~U[2026-10-08 10:00:00Z]
     assert_received {:summary_loaded, "old"}
     assert_received {:summary_loaded, "inside"}
+    assert_received {:summary_loaded, "anchored"}
     refute_received {:summary_loaded, _boot}
   end
 
