@@ -65,12 +65,12 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
       Application.put_env(:aiur, :log_file, run_one_log)
 
       on_exit(fn ->
-        File.rm_rf(state_dir)
-        File.rm_rf(run_one_root)
-        File.rm_rf(run_two_root)
         restore_application_env(:global_pause_store_path, previous_store)
         restore_application_env(:decision_state_dir, previous_decision_dir)
         restore_application_env(:log_file, previous_log_file)
+        Aiur.TestCleanup.rm_rf!(state_dir)
+        Aiur.TestCleanup.rm_rf!(run_one_root)
+        Aiur.TestCleanup.rm_rf!(run_two_root)
       end)
 
       first_path = GlobalPauseStore.path_for()
@@ -124,6 +124,37 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
   end
 
   describe "set_global_pause_call/2 unpause" do
+    test "refreshes stale provider limits when globally resuming an idle fleet" do
+      path = Aiur.TestSupport.tmp_root!("global-resume-provider-refresh") <> ".json"
+      on_exit(fn -> File.rm(path) end)
+      now = DateTime.utc_now()
+      stale_at = DateTime.add(now, -301, :second)
+      reset_at = DateTime.add(now, 3_600, :second) |> DateTime.to_iso8601()
+
+      assert :ok =
+               Aiur.ModelAvailability.observe(
+                 "codex",
+                 %{hourly: %{used: 100, limit: 100, reset_at: reset_at}},
+                 path: path,
+                 now: stale_at
+               )
+
+      state = base_state(globally_paused: true, running: %{})
+
+      assert {:reply, {:ok, %{globally_paused: false}}, resumed} =
+               GlobalPause.set_global_pause_call(state, false, "test",
+                 path: path,
+                 now: now,
+                 backends: ["codex"],
+                 probe_fun: fn backend, opts -> send(self(), {:provider_probe_scheduled, backend, opts}) end
+               )
+
+      refute resumed.globally_paused
+      assert_receive {:provider_probe_scheduled, "codex", opts}, 1_000
+      assert Keyword.fetch!(opts, :path) == path
+      assert Keyword.fetch!(opts, :now) == now
+    end
+
     test "resumes only globally held agents and leaves individually paused agents paused" do
       individual = unique_id("gp-keep")
       held = unique_id("gp-held")
@@ -236,7 +267,7 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
       state = base_state(globally_paused: true, running: %{id => paused_entry(id, :global_pause)})
 
       assert {:reply, {:error, :globally_paused}, ^state} =
-               PauseResume.resume_issue_call(state, id)
+               PauseResume.tracker_control_call(state, :resume, id)
 
       assert {:reply, {:error, :globally_paused}, ^state} =
                PauseResume.request_control_call(state, id, :resume, 7)

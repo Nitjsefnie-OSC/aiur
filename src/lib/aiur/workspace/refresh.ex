@@ -1,9 +1,9 @@
 defmodule Aiur.Workspace.Refresh do
-  @moduledoc "Before-run hook dispatch: run the hook, then finalize (git metadata + bootstrap seed). Holds unpreserved dirty leftovers and skips in-flight WIP refreshes."
+  @moduledoc "Before-run hook dispatch: run the hook, then finalize (git metadata + bootstrap seed). Handles dirty-leftover preservation before recreation and skips in-flight WIP refreshes."
 
   require Logger
   alias Aiur.{AgentBuildGuard, Config}
-  alias Aiur.Workspace.{BootstrapImage, Context, GitMetadata, Hooks, Ownership, Provisioner, Reconstruction}
+  alias Aiur.Workspace.{BootstrapImage, Context, GitMetadata, Hooks, Ownership, PendingRestack, Provisioner, Reconstruction}
 
   @spec run(Path.t(), map() | String.t() | nil, String.t() | nil) :: :ok | {:error, term()}
   def run(workspace, issue_or_identifier, worker_host \\ nil) when is_binary(workspace) do
@@ -68,20 +68,18 @@ defmodule Aiur.Workspace.Refresh do
 
         {:error, {:workspace_owned, Ownership.current(issue_context.issue_identifier)}}
 
-      # A todo dispatch may land on a dirty leftover. Provisioner.recreate/4
-      # checks it before removal and refuses until the work is preserved.
+      # A fresh todo dispatch that lands on a dirty *leftover* workspace
+      # (#577): recreate the workspace clean off the configured base and re-run
+      # before_run. The dirty content can still be an agent's unsaved work (a
+      # restart mid-turn, #2743), so it is saved outside the workspace first.
+      # If it cannot be saved, the workspace is not touched and the ticket is
+      # held on the named reason.
       Context.todo_dispatch?(issue_context) ->
         Logger.warning(
           "Recreating stale leftover workspace after before_run dirty-refresh refusal #{Context.log_context(issue_context)} workspace=#{workspace} worker_host=#{Context.worker_host_for_log(worker_host)}"
         )
 
-        with :ok <-
-               Provisioner.recreate(
-                 workspace,
-                 worker_host,
-                 issue_context.pr_head_ref,
-                 issue_context.branch_name
-               ),
+        with :ok <- preserve_then_recreate(workspace, issue_context, worker_host),
              :ok <- run_before_run_command(before_run, workspace, issue_context, worker_host),
              :ok <- finalize_before_run_workspace(workspace, issue_context, worker_host) do
           # Recreation deleted the support tree `create_for_issue/3` installed
@@ -108,11 +106,25 @@ defmodule Aiur.Workspace.Refresh do
     end
   end
 
+  # `Provisioner.recreate/5` saves the uncommitted work first, and keeps the
+  # workspace when it cannot (a failed save, or a remote worker).
+  defp preserve_then_recreate(workspace, issue_context, worker_host) do
+    Provisioner.recreate(workspace, worker_host, issue_context.pr_head_ref, issue_context.branch_name, issue_context.issue_identifier)
+  end
+
   defp finalize_before_run_workspace(workspace, issue_context, worker_host) do
-    with :ok <- GitMetadata.ensure_git_metadata_writable(workspace, worker_host) do
+    with :ok <- GitMetadata.ensure_git_metadata_writable(workspace, worker_host),
+         :ok <- repair_ready_workspace_guard(workspace, worker_host) do
       BootstrapImage.maybe_seed(workspace, issue_context, worker_host)
     end
   end
+
+  # Local dispatch repairs and reports incomplete support after refresh. Do not
+  # return early here or that final gate cannot emit its actionable alert.
+  defp repair_ready_workspace_guard(_workspace, nil), do: :ok
+
+  defp repair_ready_workspace_guard(workspace, worker_host),
+    do: Provisioner.repair_agent_github_guard(workspace, worker_host)
 
   defp refresh_workspace_readiness(workspace, worker_host) do
     case Provisioner.workspace_readiness(workspace) do
@@ -127,6 +139,13 @@ defmodule Aiur.Workspace.Refresh do
     end
   end
 
+  defp run_before_run_command(nil, workspace, _issue_context, nil) do
+    case PendingRestack.apply(workspace) do
+      :skip_hook -> :ok
+      result -> result
+    end
+  end
+
   defp run_before_run_command(nil, _workspace, _issue_context, _worker_host), do: :ok
 
   defp run_before_run_command(command, workspace, issue_context, nil) do
@@ -135,7 +154,11 @@ defmodule Aiur.Workspace.Refresh do
         reconstruct_before_run_workspace(command, workspace, issue_context)
 
       :ready ->
-        Hooks.run_hook(command, workspace, issue_context, "before_run", nil)
+        case PendingRestack.apply(workspace) do
+          :ok -> Hooks.run_hook(command, workspace, issue_context, "before_run", nil)
+          :skip_hook -> :ok
+          error -> error
+        end
 
       {:error, _reason} = error ->
         error

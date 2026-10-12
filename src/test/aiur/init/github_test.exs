@@ -162,19 +162,51 @@ defmodule Aiur.Init.GitHubTest do
       System.put_env("AIUR_CI_READINESS_TOKEN", "operator-token")
 
       on_exit(fn ->
-        File.rm_rf!(root)
-
         if original_token do
           System.put_env("AIUR_CI_READINESS_TOKEN", original_token)
         else
           System.delete_env("AIUR_CI_READINESS_TOKEN")
         end
+
+        Aiur.TestCleanup.rm_rf!(root)
       end)
 
       assert :ok = GitHub.ensure_ci_readiness(io, deps, tracker)
       assert_received {:io_puts, msg}
       assert msg =~ "CI readiness: ready for main"
       assert File.exists?(Path.join([root, "aiur", "ci-readiness.json"]))
+    end
+
+    test "stops on a missing configured base branch before offering a workflow scaffold" do
+      parent = self()
+      io = %{puts: fn msg -> send(parent, {:io_puts, msg}) end, confirm: fn _, _ -> flunk("fixing the base branch must come first") end}
+
+      readiness = %{
+        ready?: false,
+        base_branch: "release",
+        workflow_paths: [],
+        workflow_check_names: [],
+        required_checks: [],
+        required_check_identities: [],
+        issues: [:base_branch_missing]
+      }
+
+      deps = %{check_ci_readiness: fn _ -> {:ok, readiness} end, detect_repo: fn -> "o/r" end}
+      tracker = %{kind: "github", repo: "o/r", base_branch: "release"}
+
+      assert {:error, message} = GitHub.ensure_ci_readiness(io, deps, tracker)
+      assert message =~ "tracker.base_branch"
+      assert message =~ "release"
+      assert message =~ ".aiur/config"
+
+      assert_received {:io_puts, output}
+
+      assert output =~
+               "Aiur waits for required CI checks before merging agent work, so this setup checks whether the repository provides those checks."
+
+      assert output =~ message
+      refute output =~ "CI readiness setup error"
+      refute output =~ "scaffold .github/workflows/ci.yml?"
     end
 
     test "offers to scaffold a CI workflow when the repository has none" do
@@ -201,14 +233,16 @@ defmodule Aiur.Init.GitHubTest do
 
       tracker = %{kind: "github", repo: "o/r", base_branch: "main", config_path: config_path}
 
-      on_exit(fn -> File.rm_rf!(root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
       assert {:error, message} = GitHub.ensure_ci_readiness(io, deps, tracker)
       assert message =~ "Repository CI readiness is incomplete"
       assert File.exists?(Path.join([root, ".github", "workflows", "ci.yml"]))
 
       assert_received {:io_puts, setup_msg}
-      assert setup_msg =~ "CI readiness setup error"
+      assert setup_msg =~ "Aiur waits for required CI checks before merging agent work"
+      refute setup_msg =~ "CI readiness setup error"
+      assert setup_msg =~ "CI readiness: not ready for main"
 
       assert_received {:io_puts, created_msg}
       assert created_msg =~ "Created"
@@ -250,12 +284,14 @@ defmodule Aiur.Init.GitHubTest do
 
       tracker = %{kind: "github", repo: "o/r", base_branch: "main", config_path: config_path}
 
-      on_exit(fn -> File.rm_rf!(root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
       assert {:error, _message} = GitHub.ensure_ci_readiness(io, deps, tracker)
 
       assert_received {:io_puts, setup_msg}
-      assert setup_msg =~ "CI readiness setup error"
+      assert setup_msg =~ "Aiur waits for required CI checks before merging agent work"
+      refute setup_msg =~ "CI readiness setup error"
+      assert setup_msg =~ "CI readiness: not ready for main"
 
       assert_received {:io_puts, skipped_msg}
       assert skipped_msg =~ "CI scaffold skipped"
@@ -289,12 +325,14 @@ defmodule Aiur.Init.GitHubTest do
 
       tracker = %{kind: "github", repo: "o/r", base_branch: "main", config_path: config_path}
 
-      on_exit(fn -> File.rm_rf!(root) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
       assert {:error, _message} = GitHub.ensure_ci_readiness(io, deps, tracker)
 
       assert_received {:io_puts, setup_msg}
-      assert setup_msg =~ "CI readiness setup error"
+      assert setup_msg =~ "Aiur waits for required CI checks before merging agent work"
+      refute setup_msg =~ "CI readiness setup error"
+      assert setup_msg =~ "CI readiness: not ready for main"
 
       assert_received {:io_puts, error_msg}
       assert error_msg =~ "CI scaffold could not be written"
@@ -392,7 +430,7 @@ defmodule Aiur.Init.GitHubTest do
     test "returns owner/name from git remote" do
       dir = Aiur.TestSupport.tmp_root!("detect-repo")
       File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf!(dir) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
 
       System.cmd("git", ["init"], cd: dir)
       System.cmd("git", ["remote", "add", "origin", "git@github.com:o/r.git"], cd: dir)
@@ -404,7 +442,7 @@ defmodule Aiur.Init.GitHubTest do
     test "returns nil when no origin remote" do
       dir = Aiur.TestSupport.tmp_root!("detect-repo-noremote")
       File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf!(dir) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
 
       System.cmd("git", ["init"], cd: dir)
 

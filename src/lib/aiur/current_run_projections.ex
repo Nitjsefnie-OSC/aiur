@@ -143,6 +143,7 @@ defmodule Aiur.CurrentRunProjections do
     do: {:noreply, Refresh.schedule(state)}
 
   def handle_info(:observability_updated, state), do: {:noreply, Refresh.schedule(state)}
+  def handle_info({:observability_updated, _event_id}, state), do: {:noreply, Refresh.schedule(state)}
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl true
@@ -160,7 +161,7 @@ defmodule Aiur.CurrentRunProjections do
       &Aiur.TicketActivity.subscribe/0,
       &Aiur.AgentPubSub.subscribe_running/0,
       &Aiur.AgentPubSub.subscribe_status/0,
-      &AiurWeb.ObservabilityPubSub.subscribe/0
+      &Aiur.Signal.subscribe_refresh/0
     ])
     |> Enum.each(&safe_subscribe/1)
   end

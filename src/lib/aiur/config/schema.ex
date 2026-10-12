@@ -12,6 +12,7 @@ defmodule Aiur.Config.Schema do
     Alerts,
     Attrs,
     BuildOrder,
+    BuildQueue,
     Codex,
     Compaction,
     Decisions,
@@ -19,7 +20,10 @@ defmodule Aiur.Config.Schema do
     EnvResolver,
     Errors,
     Events,
+    Experiments,
     Hooks,
+    MergePolicy,
+    Monitoring,
     Observability,
     Opencode,
     Polling,
@@ -33,6 +37,11 @@ defmodule Aiur.Config.Schema do
     Worker,
     Workspace
   }
+
+  # Embedded struct defaults must rebuild when the agent schema changes.
+  require Agent
+  require Tracker
+  require BuildQueue
 
   @primary_key false
 
@@ -57,14 +66,18 @@ defmodule Aiur.Config.Schema do
     embeds_one(:compaction, Compaction, on_replace: :update, defaults_to_struct: true)
     embeds_one(:decisions, Decisions, on_replace: :update, defaults_to_struct: true)
     embeds_one(:hooks, Hooks, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:merge_policy, MergePolicy, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:monitoring, Monitoring, on_replace: :update, defaults_to_struct: true)
     embeds_one(:observability, Observability, on_replace: :update, defaults_to_struct: true)
     embeds_one(:server, Server, on_replace: :update, defaults_to_struct: true)
     embeds_one(:opencode, Opencode, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:experiments, Experiments, on_replace: :update, defaults_to_struct: true)
     embeds_one(:events, Events, on_replace: :update, defaults_to_struct: true)
     embeds_one(:prewarm, Prewarm, on_replace: :update, defaults_to_struct: true)
     embeds_one(:alerts, Alerts, on_replace: :update, defaults_to_struct: true)
     embeds_one(:pr_health, PrHealth, on_replace: :update, defaults_to_struct: true)
     embeds_one(:pr_watch, PrWatch, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:build_queue, BuildQueue, on_replace: :update, defaults_to_struct: true)
     embeds_one(:build_order, BuildOrder, on_replace: :update, defaults_to_struct: true)
     embeds_one(:webhooks, Webhooks, on_replace: :update, defaults_to_struct: true)
     embeds_one(:elevenlabs, ElevenLabs, on_replace: :update, defaults_to_struct: true)
@@ -122,6 +135,21 @@ defmodule Aiur.Config.Schema do
   end
 
   @doc false
+  @spec workspace_write_policy?(map()) :: boolean()
+  def workspace_write_policy?(policy) do
+    (Map.get(policy, "type") || Map.get(policy, :type)) == "workspaceWrite"
+  end
+
+  @doc false
+  @spec policy_writable_roots(map()) :: {:ok, list()} | {:error, term()}
+  def policy_writable_roots(policy) do
+    case Map.get(policy, "writableRoots") || Map.get(policy, :writableRoots) || [] do
+      roots when is_list(roots) -> {:ok, roots}
+      roots -> {:error, {:unsafe_turn_sandbox_policy, {:invalid_writable_roots, roots}}}
+    end
+  end
+
+  @doc false
   @spec validate_turn_sandbox_policy(%__MODULE__{}) :: :ok | {:error, term()}
   def validate_turn_sandbox_policy(settings) do
     settings.agent.codex
@@ -140,6 +168,9 @@ defmodule Aiur.Config.Schema do
   defp effective_turn_sandbox_policy(%Codex{turn_sandbox_policy: policy}), do: policy
 
   defp changeset(attrs) do
+    # Run the section changeset even when absent, so epic defaults are applied.
+    attrs = Map.put_new(attrs, "build_order", %{})
+
     %__MODULE__{}
     |> cast(
       attrs,
@@ -169,14 +200,18 @@ defmodule Aiur.Config.Schema do
     |> cast_embed(:compaction, with: &Compaction.changeset/2)
     |> cast_embed(:decisions, with: &Decisions.changeset/2)
     |> cast_embed(:hooks, with: &Hooks.changeset/2)
+    |> cast_embed(:merge_policy, with: &MergePolicy.changeset/2)
+    |> cast_embed(:monitoring, with: &Monitoring.changeset/2)
     |> cast_embed(:observability, with: &Observability.changeset/2)
     |> cast_embed(:server, with: &Server.changeset/2)
     |> cast_embed(:opencode, with: &Opencode.changeset/2)
+    |> cast_embed(:experiments, with: &Experiments.changeset/2)
     |> cast_embed(:events, with: &Events.changeset/2)
     |> cast_embed(:prewarm, with: &Prewarm.changeset/2)
     |> cast_embed(:alerts, with: &Alerts.changeset/2)
     |> cast_embed(:pr_health, with: &PrHealth.changeset/2)
     |> cast_embed(:pr_watch, with: &PrWatch.changeset/2)
+    |> cast_embed(:build_queue, with: &BuildQueue.changeset/2)
     |> cast_embed(:build_order, with: &BuildOrder.changeset/2)
     |> cast_embed(:webhooks, with: &Webhooks.changeset/2)
     |> cast_embed(:elevenlabs, with: &ElevenLabs.changeset/2)
@@ -229,15 +264,22 @@ defmodule Aiur.Config.Schema do
 
     agent = %{settings.agent | codex: codex, mix_scheduler_cap: settings.agent.mix_scheduler_cap || 4}
 
-    elevenlabs = %{
-      settings.elevenlabs
+    elevenlabs = resolve_elevenlabs(settings.elevenlabs)
+
+    %{settings | tracker: tracker, workspace: workspace, agent: agent, elevenlabs: elevenlabs}
+  end
+
+  defp resolve_elevenlabs(%ElevenLabs{enabled: false} = elevenlabs),
+    do: %{elevenlabs | api_key: nil}
+
+  defp resolve_elevenlabs(elevenlabs) do
+    %{
+      elevenlabs
       | api_key:
           EnvResolver.resolve_secret_setting(
-            settings.elevenlabs.api_key,
+            elevenlabs.api_key,
             System.get_env("ELEVENLABS_API_KEY")
           )
     }
-
-    %{settings | tracker: tracker, workspace: workspace, agent: agent, elevenlabs: elevenlabs}
   end
 end
