@@ -3,6 +3,7 @@ defmodule Aiur.AgentRunner.ReworkHandoffTest do
 
   alias Aiur.AgentRunner.ReworkHandoff
   alias Aiur.AgentRunner.TurnLoop
+  alias Aiur.Codex.CodingAgent, as: CodexAgent
   alias Aiur.Workspace.Provisioner
 
   defmodule FakeOrchestrator do
@@ -100,5 +101,83 @@ defmodule Aiur.AgentRunner.ReworkHandoffTest do
 
     assert Agent.get(turns, & &1) == 1
     assert_receive {:memory_tracker_state_update, ^identifier, "human-review"}, 1000
+  end
+
+  test "a rework turn ending with final message and idle releases the runner after one turn" do
+    root = Aiur.TestSupport.tmp_root!("rework-idle-handoff")
+    workspace = Path.join(root, "ws")
+    trace = Path.join(root, "codex.trace")
+    binary = Path.join(root, "fake-codex")
+    File.mkdir_p!(workspace)
+    File.write!(binary, codex_idle_script(trace))
+    File.chmod!(binary, 0o755)
+
+    write_workflow_file!(Aiur.Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      tracker_active_states: ["todo", "in-progress", "rework"],
+      workspace_root: root,
+      agent_kind: "codex",
+      command: "#{binary} app-server",
+      agent_turn_timeout_ms: 1_000
+    )
+
+    Aiur.WorkflowStore.force_reload()
+    Application.put_env(:aiur, :memory_tracker_recipient, self())
+    assert :ok = Provisioner.maybe_install_agent_support(workspace, nil)
+    {:ok, orchestrator} = FakeOrchestrator.start_link()
+    issue = %Aiur.Issue{identifier: "rework-idle", state: "rework", labels: ["agent:rework"]}
+    {:ok, session} = CodexAgent.start_session(workspace)
+    session = Map.put(session, :backend, "codex")
+
+    on_exit(fn ->
+      CodexAgent.stop_session(session)
+      Aiur.TestCleanup.rm_rf!(root)
+    end)
+
+    assert {:ok, _turn_session} = CodexAgent.run_turn(session, "final fix prompt", issue)
+
+    assert {:completed, %{state: "human-review"}} =
+             ReworkHandoff.after_turn(
+               issue,
+               %{
+                 workspace: workspace,
+                 worker_host: nil,
+                 orchestrator: orchestrator,
+                 opts: [
+                   rework_head_sha: "old-head",
+                   open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "new-head"}}} end,
+                   commit_ci_status_fetcher: fn _ -> {:ok, %{check_runs: [], commit_status: %{"state" => "success"}}} end
+                 ]
+               },
+               fn -> :continued end
+             )
+
+    assert_receive {:memory_tracker_state_update, "rework-idle", "human-review"}, 1000
+    trace_text = File.read!(trace)
+    assert trace_text =~ "FINAL_MESSAGE\nIDLE\n"
+    assert length(String.split(trace_text, "FINAL_MESSAGE")) == 2
+  end
+
+  defp codex_idle_script(trace) do
+    """
+    #!/bin/sh
+    trace_file="#{trace}"
+    while IFS= read -r line; do
+      case "$line" in
+        *'"method":"initialize"'*) printf '%s\\n' '{"id":1,"result":{}}' ;;
+        *'"method":"initialized"'*) ;;
+        *'"method":"thread/start"'*) printf '%s\\n' '{"id":2,"result":{"thread":{"id":"rework-idle-thread"}}}' ;;
+        *'"method":"turn/start"'*)
+          request_id=$(printf '%s' "$line" | sed -n 's/.*"id":\\([0-9][0-9]*\\).*/\\1/p')
+          printf '{"id":%s,"result":{"turn":{"id":"rework-idle-turn"}}}\\n' "$request_id"
+          printf '%s\\n' '{"method":"turn/started","params":{"turn":{"id":"rework-idle-turn","status":"inProgress"}}}'
+          printf '%s\\n' '{"method":"item/completed","params":{"item":{"type":"agentMessage","text":"finished fix"}}}'
+          printf 'FINAL_MESSAGE\\n' >> "$trace_file"
+          printf '%s\\n' '{"method":"thread/status/changed","params":{"status":{"type":"idle"}}}'
+          printf 'IDLE\\n' >> "$trace_file"
+          ;;
+      esac
+    done
+    """
   end
 end
