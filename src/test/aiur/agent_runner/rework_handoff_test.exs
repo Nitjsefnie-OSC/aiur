@@ -2,6 +2,7 @@ defmodule Aiur.AgentRunner.ReworkHandoffTest do
   use Aiur.TestSupport
 
   alias Aiur.AgentRunner.TurnLoop
+  alias Aiur.AgentRunner.ReworkHandoff
   alias Aiur.Workspace.Provisioner
 
   defmodule FakeOrchestrator do
@@ -62,5 +63,25 @@ defmodule Aiur.AgentRunner.ReworkHandoffTest do
 
     assert Agent.get(turns, & &1) == 1
     assert_receive {:memory_tracker_state_update, ^identifier, "human-review"}, 1000
+  end
+
+  test "a transient PR lookup failure does not stop a productive rework session" do
+    identifier = "614310"
+    issue = %Aiur.Issue{id: "gid-#{identifier}", identifier: identifier, state: "rework", labels: ["agent:rework"]}
+    turns = Agent.start_link(fn -> 0 end) |> elem(1)
+
+    turn_context = %{
+      opts: [open_pr_fetcher: fn _ -> {:error, :unavailable} end],
+      workspace: "/tmp",
+      worker_host: nil
+    }
+
+    assert :continued =
+             ReworkHandoff.after_turn(issue, turn_context, fn ->
+               Agent.update(turns, &(&1 + 1))
+               :continued
+             end)
+
+    assert Agent.get(turns, & &1) == 1
   end
 end
