@@ -2,7 +2,7 @@ defmodule Aiur.Experiments.Auto do
   @moduledoc "Automatic experiment line sources and deploy evidence."
   use Supervisor
 
-  alias Aiur.Experiments.Auto.DeployLedger
+  alias Aiur.Experiments.Auto.{Creator, DeployLedger, Line}
 
   @spec child_specs(keyword()) :: [Supervisor.child_spec() | {module(), keyword()}]
   def child_specs(opts \\ []) do
@@ -14,7 +14,15 @@ defmodule Aiur.Experiments.Auto do
   def start_link(opts), do: Supervisor.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
 
   @impl true
-  def init(opts), do: Supervisor.init([{DeployLedger, Keyword.get(opts, :ledger_opts, [])}], strategy: :one_for_one)
+  def init(opts), do: Supervisor.init([{DeployLedger, Keyword.get(opts, :ledger_opts, [])}, {Creator, Keyword.get(opts, :creator_opts, [])}], strategy: :one_for_one)
+
+  @spec create(Line.t()) :: {:ok, term()} | {:error, term()}
+  def create(line) do
+    Creator.create(line)
+  catch
+    :exit, {:noproc, _call} -> {:error, :disabled}
+    :exit, {:timeout, _call} -> {:error, :outcome_unknown}
+  end
 
   @spec status() :: map()
   def status do

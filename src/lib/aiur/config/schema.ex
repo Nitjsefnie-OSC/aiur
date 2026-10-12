@@ -41,11 +41,8 @@ defmodule Aiur.Config.Schema do
   # Embedded struct defaults must rebuild when the agent schema changes.
   require Agent
   require Tracker
-<<<<<<< HEAD
   require BuildQueue
-=======
   require Experiments
->>>>>>> ae7422b15 (Add automatic config and deploy ledger)
 
   @primary_key false
 

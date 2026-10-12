@@ -318,7 +318,7 @@ cache and reasoning subsets twice. Unknown revisions are unavailable. Missing
 USD spend is not replaced with another currency or zero. Stale or unhealthy
 accounting is unavailable; changing aggregate generations cannot be mixed.
 
-## Automatic experiment foundation
+## Automatic experiments
 
 `experiments.auto` configures version, release and feature lines. The deploy
 ledger records each recording daemon boot at `experiments/deploys.ndjson` under
@@ -326,4 +326,15 @@ the repository state node. It retains the latest 5,000 boots, including version,
 base semver, boot time and build-stamp SHA and dirty flag when available.
 
 Missing build evidence stays null. Deploys alone never create experiments.
-Line detection and baseline capture are delivered by the source and snapshot workers.
+Automatic line creation uses the experiment store's baseline-freezing transaction.
+Repeated keys create neither another experiment nor another baseline; completion
+receipts survive restarts. Concurrent lines annotate other open windows once.
+With telemetry disabled, a line creates nothing and logs its skip once per key.
+
+The default auto pack name `delivery` refers to the built-in `delivery-speed`
+pack. Other names select consumer packs. Missing or disabled packs return an
+availability error rather than creating an experiment without metrics.
+
+Feature lines can supply a baseline ending at the first member merge. The gap
+until go-live is excluded from both windows and carried in change evidence.
+Line detection belongs to the version, release and feature workers.
