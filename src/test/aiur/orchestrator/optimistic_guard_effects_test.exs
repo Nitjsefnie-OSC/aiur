@@ -70,6 +70,28 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
     assert latch.emitted?
   end
 
+  test "default park label uses the transition owner and records its writer", %{opts: opts} do
+    write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
+    previous = Application.fetch_env(:aiur, :memory_tracker_recipient)
+    Application.put_env(:aiur, :memory_tracker_recipient, self())
+
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:aiur, :memory_tracker_recipient, value)
+        :error -> Application.delete_env(:aiur, :memory_tracker_recipient)
+      end
+    end)
+
+    handler = "optimistic-park-writer-#{System.unique_integer([:positive])}"
+    :telemetry.attach(handler, [:aiur, :ticket_transition], fn _, _, meta, pid -> send(pid, {:transition, meta}) end, self())
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    OptimisticGuardEffects.execute(running(), @park, Keyword.delete(opts, :label))
+    assert_received {:memory_tracker_add_label, "11", "agent:parked"}
+    assert_received {:transition, %{issue_id: "11", action: :add, to: "agent:parked", writer: :optimistic_guard, outcome: :ok}}
+    assert_complete()
+  end
+
   test "real pause control waits for worker evidence and retries a rejected request", %{opts: opts} do
     state = %{confirmed_running() | effective_concurrent_agents: 1}
     state = put_in(state.running["11"], Map.put(state.running["11"], :start_mode, :optimistic))

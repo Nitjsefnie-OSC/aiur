@@ -1,8 +1,8 @@
 defmodule Aiur.Orchestrator.OptimisticGuardEffects do
   @moduledoc "Reconciles optimistic failure policy and journals resumable park effects."
   require Logger
-  alias Aiur.{BuildQueue, CodeHost, Config, Tracker}
-  alias Aiur.Orchestrator.{OptimisticGuard, OptimisticGuardObservations, OptimisticLedger, PauseResume, State, TrackerTasks}
+  alias Aiur.{BuildQueue, CodeHost, Config}
+  alias Aiur.Orchestrator.{OptimisticGuard, OptimisticGuardObservations, OptimisticLedger, PauseResume, State, TicketTransition, TrackerTasks}
 
   @spec reconcile(State.t(), keyword()) :: State.t()
   def reconcile(state, opts \\ []) do
@@ -140,7 +140,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffects do
 
   defp finish_park(dep, blocker, cause, paused?, opts) do
     ledger = Keyword.get(opts, :ledger, OptimisticLedger)
-    label = Keyword.get(opts, :label, &Tracker.add_label/2)
+    label = Keyword.get(opts, :label, &TicketTransition.write_marker(&1, :add, &2, writer: :optimistic_guard))
     draft = Keyword.get(opts, :draft, &CodeHost.park_pull_request/1)
     comment = Keyword.get(opts, :comment, &CodeHost.comment_optimistic_park/3)
 
