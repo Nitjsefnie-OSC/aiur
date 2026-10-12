@@ -2,7 +2,7 @@
 import argparse
 import glob
 import json
-from datetime import datetime
+from datetime import date
 from pathlib import Path
 
 from . import cli, ledger_enrich, ledger_store, sources
@@ -11,10 +11,12 @@ from . import cli, ledger_enrich, ledger_store, sources
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     cli.add_discovery_args(parser)
-    parser.add_argument('--since', required=True, type=lambda value: datetime.fromisoformat(value).isoformat())
+    parser.add_argument('--since', required=True, type=lambda value: date.fromisoformat(value).isoformat())
     parser.add_argument('--no-facts', action='store_true', help='Offline replay only; make no GitHub fact reads.')
     parser.add_argument('--telemetry-glob', action='append', default=[])
     args = parser.parse_args(argv)
+    if not args.no_facts and not args.repo:
+        parser.error('--repo is required unless --no-facts is selected')
     files = sources.discover_telemetry_files(args.telemetry or [])
     files = sorted(set(files) | {Path(p) for pattern in args.telemetry_glob for p in glob.glob(pattern, recursive=True)})
     state = cli.resolve_state_node(args)
@@ -25,8 +27,6 @@ def main(argv=None):
     failures = 0
     if not args.no_facts:
         repo = args.repo
-        if not repo:
-            parser.error('--repo is required unless --no-facts is selected')
         facts_path, failures = ledger_enrich.enrich(state, args.since, repo)
         if facts_path.exists():
             written += ledger_store.materialize(files + [facts_path], state, args.since, repo)

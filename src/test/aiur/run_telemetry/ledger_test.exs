@@ -29,16 +29,17 @@ defmodule Aiur.RunTelemetry.LedgerTest do
   end
 
   test "reads canonical records and filters by window and cohort" do
-    File.mkdir_p!(Summaries.ledger_dir())
+    directory = Path.join(Summaries.state_node(), "analytics/tickets")
+    File.mkdir_p!(directory)
     record = %{"schema_version" => 1, "ticket" => "42", "milestones" => %{}, "last_event_at" => "2026-10-09T10:00:00Z", "cohort" => %{"backend" => "claude"}}
-    File.write!(Path.join(Summaries.ledger_dir(), "42.json"), Jason.encode!(record))
+    File.write!(Path.join(directory, "42.json"), Jason.encode!(record))
     assert {:ok, ^record} = Ledger.get("42")
     assert {:error, :invalid_ticket} = Ledger.get("../42")
     assert {:error, :missing} = Ledger.get("43")
     assert {:ok, [^record]} = Ledger.list(window: {"2026-10-09T09:00:00Z", "2026-10-09T11:00:00Z"}, cohort: %{backend: "claude"})
     assert {:ok, []} = Ledger.list(cohort: %{backend: "codex"})
     assert {:ok, []} = Ledger.list(window: {"2026-10-10T09:00:00Z", "2026-10-10T11:00:00Z"})
-    File.write!(Path.join(Summaries.ledger_dir(), "43.json"), "{broken")
+    File.write!(Path.join(directory, "43.json"), "{broken")
     assert capture_log(fn -> assert {:ok, [^record]} = Ledger.list() end) =~ "ticket_ledger unreadable"
   end
 

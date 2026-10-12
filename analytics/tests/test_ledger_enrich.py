@@ -42,6 +42,9 @@ class EnrichmentTests(unittest.TestCase):
             stream = root / 'telemetry.ndjson'
             stream.write_text(json.dumps(event('pr_merged', '11:00')) + '\n')
             args = ['--telemetry', str(stream), '--state-node', str(root), '--repo', 'owner/repo', '--since', '2026-10-09']
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                main(['--telemetry', str(stream), '--state-node', str(root), '--since', '2026-10-09'])
+            self.assertFalse((root / 'analytics').exists())
             with patch('analytics.ledger_enrich.subprocess.run', return_value=SimpleNamespace(returncode=1)) as fetch:
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as errors:
                     self.assertEqual(main(args), 1)
