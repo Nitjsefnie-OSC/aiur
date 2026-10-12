@@ -10,8 +10,7 @@ defmodule Aiur.Orchestrator.IssueSync do
   alias Aiur.GitHub.{ResourceStore, StatePolicy}
 
   alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, Lifecycle, MembershipLifecycle, OperatorMessages, PushRouting, Reconciler, Slots, State, TicketTransition, TrackerTasks}
-  alias Aiur.Orchestrator.{OptimisticGuardEffects, PressureAdmission}
-  alias Aiur.Orchestrator.StatusObservation
+  alias Aiur.Orchestrator.{OptimisticGuardEffects, PressureAdmission, StatusObservation}
   alias Aiur.PollCadence
 
   @idle_terminal_verification_batch_size 25

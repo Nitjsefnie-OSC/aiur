@@ -17,8 +17,9 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
     {edges, edge_cache} = edge_evidence(records, blockers, now, max_age, opts)
     dependents = for row <- records, row["status"] == "parked", do: row["ticket"]
     issues = Keyword.get(opts, :issues, %{})
-    missing = (Enum.map(stale, & &1["id"]) ++ dependents) |> Enum.uniq() |> Enum.reject(&Map.has_key?(issues, &1))
-    issues = Map.merge(fetch_issues(missing, fetch), issues)
+    missing = Enum.map(stale, & &1["id"]) |> Enum.reject(&Map.has_key?(issues, &1))
+    fetched = fetch_issues(Enum.uniq(missing ++ dependents), fetch)
+    issues = Map.merge(fetched, Map.drop(issues, dependents))
 
     observations =
       Map.new(blockers, fn blocker ->

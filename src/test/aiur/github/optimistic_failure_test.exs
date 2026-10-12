@@ -68,14 +68,18 @@ defmodule Aiur.GitHub.OptimisticFailureTest do
 
   test "a later-page park marker prevents a duplicate comment after restart" do
     next = "https://api.github.com/repos/owner/repo/issues/42/comments?page=2"
+    test_pid = self()
 
     request_fun = fn %{method: :get, url: url, caller: "optimistic_guard_comment"} ->
+      send(test_pid, {:comment_page, url})
       if url == next,
         do: {:ok, %{status: 200, body: [%{"body" => "parked\n<!-- optimistic-park:42:7 -->"}]}},
         else: {:ok, %{status: 200, body: [%{"body" => "unrelated"}], headers: [{"link", "<#{next}>; rel=\"next\""}]}}
     end
 
     assert :ok = OptimisticFailure.comment_optimistic_park("42", "7", :pr_closed_unmerged, request_fun: request_fun)
+    assert_received {:comment_page, "https://api.github.com/repos/owner/repo/issues/42/comments?per_page=100"}
+    assert_received {:comment_page, ^next}
   end
 
   test "posts once and reads back the exact comment body" do

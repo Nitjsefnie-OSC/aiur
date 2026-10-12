@@ -179,7 +179,7 @@ Item states are projections, not tracker labels:
 
 If a promoted item becomes unready, Aiur holds dispatch and checks claims. It withdraws only `agent:todo` from unclaimed items with fresh, known readiness evidence. Unknown evidence retains the hold; claimed non-optimistic work keeps its labels and raises `dependency_changed_after_start` when it becomes unready.
 
-When an optimistic blocker fails terminally, Aiur pauses running dependents, adds `agent:parked`, makes their open PRs drafts, and keeps branches and PRs. A closed-unmerged blocker PR gets a replacement grace (default 600 seconds). Persistent agent trouble and integration churn raise info only; dependents keep running. `optimistic_blocker_failed` asks the Executor to wait for a replacement, re-base on the default branch and resume, or close the dependent. A recovered blocker does not auto-resume parked work.
+Terminal optimistic blocker failure pauses running dependents, parks them and drafts their PRs; their work is kept. Closed-unmerged PRs get a 600-second replacement grace. Trouble and churn raise info only. The Executor chooses to wait, re-base and resume, or close. Recovery never auto-resumes parked work.
 
 Manual `todo` sets an override. List adds record pre-existing `todo`; fresh unmet prerequisites
 withdraw it only after dispatch is held and unclaimed status is confirmed. A later manual `todo`
@@ -190,11 +190,9 @@ Unauthorized detection needs a free dispatch slot; until dispatch can check, the
 
 [Queue attentions](/concepts/build-orders#queue-attentions) cover `prerequisite_failed`, `dependency_changed_after_start`, `promoted_unauthorized`,
 `optimistic_blocker_failed`, `write_failed`, `merged_issue_open`, `inputs_unavailable` and `store_unavailable`.
-
 See [Queueing a Build Order](/concepts/build-orders#queueing-a-build-order) and [Downgrading](/concepts/build-orders#downgrading).
 Ordinary queue closed-unmerged prerequisite PR detection uses [webhook evidence](/concepts/build-orders#closed-prerequisite-pull-requests);
 the optimistic guard also confirms blocker PR state on poll ticks.
-
 ## The state diagram
 
 ```mermaid

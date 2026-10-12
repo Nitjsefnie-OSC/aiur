@@ -143,7 +143,7 @@ defmodule Aiur.BuildQueue.Attention do
     started =
       case Map.get(payload, :started, []) do
         [] -> ""
-        ids -> "; #{Enum.map_join(ids, ", ", &"##{&1}")} already started (parked)"
+        ids -> "; #{Enum.map_join(ids, ", ", &"##{&1}")} already started"
       end
 
     "##{subject} #{reason}; #{blocked} wait on it#{started}. Re-plan or remove the dependents; ask before reopening the prerequisite."

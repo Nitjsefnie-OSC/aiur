@@ -68,7 +68,7 @@ defmodule Aiur.BuildQueue.OptimisticAttentionTest do
     refute resolved[:needs_attention]
   end
 
-  test "prerequisite action populates started dependents from the ledger" do
+  test "agent-error prerequisite names running starts without claiming they are parked" do
     :ok = Supervisor.terminate_child(Aiur.Supervisor, OptimisticLedger)
     on_exit(fn -> Supervisor.restart_child(Aiur.Supervisor, OptimisticLedger) end)
     path = Path.join(System.tmp_dir!(), "optimistic-attention-ledger-#{System.unique_integer([:positive])}.json")
@@ -77,10 +77,13 @@ defmodule Aiur.BuildQueue.OptimisticAttentionTest do
     assert :ok = OptimisticLedger.record_start("11", %{attempt_id: "attention-start", start_trigger: :pr_opened, started_at_ms: 100, blockers: [%{"id" => "10"}]})
     assert {:ok, document} = Store.load()
     context = %{document: document, store: Store, clock: fn -> 100 end, observations: %{}, marker: "agent:queued"}
-    AttentionActions.execute(context, {:attention_open, {{:prerequisite_failed, :not_planned}, "10"}})
+    AttentionActions.execute(context, {:attention_open, {{:prerequisite_failed, :agent_error}, "10"}})
     assert_received {:attention, "ticket.10.queue.attention.prerequisite_failed", opts}
     assert opts[:exchange_payload][:started] == ["11"]
-    assert opts[:message] =~ "#11 already started (parked)"
+    assert opts[:message] =~ "#11 already started"
+    refute opts[:message] =~ "(parked)"
+    assert {:ok, row} = OptimisticLedger.get("11")
+    assert row["status"] == "running"
   end
 
   test "churn attention names its recorded blocker and keeps work running" do
@@ -106,6 +109,6 @@ defmodule Aiur.BuildQueue.OptimisticAttentionTest do
     assert :ok = Attention.open(:prerequisite_failed, "10", %{cause: :not_planned, started: ["11"], blocked: ["12"]})
     assert_received {:attention, _, opts}
     assert opts[:exchange_payload][:started] == ["11"]
-    assert opts[:message] =~ "#11 already started (parked)"
+    assert opts[:message] =~ "#11 already started"
   end
 end

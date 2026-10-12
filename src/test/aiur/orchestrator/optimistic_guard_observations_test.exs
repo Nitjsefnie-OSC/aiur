@@ -145,11 +145,10 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservationsTest do
     assert {:park, "11", "10", :edge_removed} in OptimisticGuard.decide([row], observations, @now)
   end
 
-  test "parked dependent labels reuse the current poll or fetch only missing dependent" do
+  test "parked dependent labels are confirmed despite a pre-park poll snapshot" do
     row = Map.put(record(cached()), "status", "parked")
-    issue = %Issue{identifier: "11", labels: ["agent:parked"]}
-    observations = OptimisticGuardObservations.read([row], @now, opts(issues: %{"11" => issue}, fetch_issues: &unexpected/1))
-    assert observations.dependents == %{"11" => issue}
+    old = %Issue{identifier: "11", labels: []}
+    current = %Issue{identifier: "11", labels: ["agent:parked"]}
     pid = self()
 
     observations =
@@ -157,15 +156,23 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservationsTest do
         [row],
         @now,
         opts(
+          issues: %{"11" => old},
           fetch_issues: fn ids ->
             send(pid, {:fetched, ids})
-            {:ok, [issue]}
+            {:ok, [current]}
           end
         )
       )
 
     assert_receive {:fetched, ["11"]}, 500
-    assert observations.dependents["11"].labels == ["agent:parked"]
+    assert observations.dependents == %{"11" => current}
+  end
+
+  test "failed dependent confirmation cannot turn stale poll labels into an unpark" do
+    row = Map.put(record(cached()), "status", "parked")
+    old = %Issue{identifier: "11", labels: []}
+    observations = OptimisticGuardObservations.read([row], @now, opts(issues: %{"11" => old}, fetch_issues: fn ["11"] -> {:error, :offline} end))
+    assert observations.dependents == %{}
   end
 
   defp opts(extra) do

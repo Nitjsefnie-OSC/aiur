@@ -2,7 +2,6 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffects do
   @moduledoc "Reconciles optimistic failure policy and journals resumable park effects."
   require Logger
   alias Aiur.{BuildQueue, CodeHost, Config, Tracker}
-  alias Aiur.BuildQueue.Attention
   alias Aiur.Orchestrator.{OptimisticGuard, OptimisticGuardObservations, OptimisticLedger, PauseResume, State, TrackerTasks}
 
   @spec reconcile(State.t(), keyword()) :: State.t()
@@ -195,11 +194,11 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffects do
   defp emit_transient(action, dep, payload, facts, row, ledger) do
     cond do
       action == :open and facts[attention_key(payload)] != true ->
-        with :ok <- Attention.transient(:optimistic_blocker_failed, dep, payload),
+        with :ok <- BuildQueue.transient_optimistic_attention(dep, payload, false),
              do: ledger.update_blocker(dep, facts["id"], %{attention_key(payload) => true})
 
       action == :resolve and row["guard_attention_open"] == true ->
-        Attention.transient(:optimistic_blocker_failed, dep, %{}, true)
+        BuildQueue.transient_optimistic_attention(dep, %{}, true)
 
       true ->
         :ok
