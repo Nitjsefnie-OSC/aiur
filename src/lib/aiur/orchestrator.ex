@@ -23,6 +23,10 @@ defmodule Aiur.Orchestrator do
   @impl true
   def init(opts), do: Lifecycle.init(opts, &issue_tracked?/1)
 
+  @doc false
+  @spec has_live_owner?(String.t()) :: boolean() | :unknown
+  def has_live_owner?(identifier), do: StatusReport.has_live_owner_api(__MODULE__, identifier, 1_000)
+
   @impl true
   def terminate(reason, state), do: Lifecycle.terminate(reason, state)
 
@@ -123,16 +127,14 @@ defmodule Aiur.Orchestrator do
     {:noreply, Lifecycle.wake_tick(state)}
   end
 
-  # A waiter that observed the registry empty has no guardian generation to
-  # bind. Its observation is safe only as a fresh availability probe; any
-  # subsequent owner will make the redispatch contend and subscribe again.
+  # A waiter without a guardian retries availability; any new owner makes
+  # redispatch contend and subscribe again.
   def handle_info({:workspace_ownership_available, identifier, :none, nil}, state) when is_binary(identifier) do
     state = RetryEngine.release_workspace_wait(state, identifier)
     {:noreply, Lifecycle.wake_tick(state)}
   end
 
-  # Never let a pre-generation waiter from an older process release a current
-  # wait row. A guardian-bound waiter emits the four-element message above.
+  # A pre-generation waiter cannot release a current guardian-bound wait row.
   def handle_info({:workspace_ownership_available, _identifier}, state), do: {:noreply, state}
 
   def handle_info({:repl_session_runtime, issue_id, info}, state)
@@ -261,10 +263,8 @@ defmodule Aiur.Orchestrator do
     end
   end
 
-  # A wake that collapsed a widened timer changes the countdown `aiur status`
-  # reads from the snapshot store, so republish it: otherwise the status line
-  # keeps showing the old 600s countdown after `aiur --todo` until the woken
-  # tick itself renders (#2640). A coalesced request changed nothing.
+  # Republish a collapsed timer wake so status shows its new countdown (#2640).
+  # Coalesced requests do not change the countdown.
   defp publish_collapsed_poll({:reply, %{coalesced: false} = result, state}) do
     StatusReport.notify_dashboard(state)
     {:reply, result, state}

@@ -2,22 +2,23 @@ defmodule Aiur.DecisionAttentionResolution do
   @moduledoc false
 
   alias Aiur.DecisionStore
-  alias Aiur.Orchestrator
-  alias Aiur.Orchestrator.StatusReport
 
   @spec resolve?(map(), map()) :: boolean()
   def resolve?(attention, state) do
-    stale_condition?(attention, state) or answered_operator_decision?(attention, state) or stranded_owner?(attention, state)
+    stale_condition?(attention, state) or answered_operator_decision?(attention, state) or owner_status(attention, state) == :owner
   end
 
-  @spec live_owner?(String.t()) :: boolean()
-  def live_owner?(identifier), do: StatusReport.has_live_owner_api(Orchestrator, identifier, 1_000)
+  @spec owner_status(map(), map()) :: :owner | :none | :unknown | :not_applicable
+  def owner_status(%{slug: "stranded-requeued", issue: %{identifier: identifier}}, %{owner_lookup: lookup})
+      when is_function(lookup, 1) do
+    case lookup.(identifier) do
+      true -> :owner
+      false -> :none
+      _unknown -> :unknown
+    end
+  end
 
-  defp stranded_owner?(%{slug: "stranded-requeued", issue: %{identifier: identifier}}, %{owner_lookup: lookup})
-       when is_function(lookup, 1),
-       do: lookup.(identifier) == true
-
-  defp stranded_owner?(_attention, _state), do: false
+  def owner_status(_attention, _state), do: :not_applicable
 
   defp stale_condition?(%{slug: slug, opened_at: %DateTime{} = opened_at}, state) do
     condition_attention?(slug) and

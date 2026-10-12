@@ -1436,7 +1436,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
 
   defp maybe_resolve_dispatch_decline(%State{} = state, %Issue{} = issue) do
     case Map.get(state.dispatch_declines, issue.id) do
-      reason when reason in [:claimed_without_runtime, :tracker_revalidation_failed, :dependency_hydration_failed] ->
+      reason when reason in [:claimed_without_runtime, :tracker_revalidation_failed, :rework_claim_failed, :dependency_hydration_failed] ->
         Alerts.emit_custom(
           dispatch_decline_topic(issue, true) <> ".resolved",
           "Dispatch decline cleared for #{issue.identifier}.",
@@ -2417,7 +2417,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
           state,
           issue,
           &spawn_issue_on_worker_host(&1, issue, attempt, recipient, worker_host, opts),
-          &emit_dispatch_attempt_decline(&1, issue, :tracker_revalidation_failed, true),
+          &emit_dispatch_attempt_decline(&1, issue, &2, true),
           &dispatch_input/2
         )
     end

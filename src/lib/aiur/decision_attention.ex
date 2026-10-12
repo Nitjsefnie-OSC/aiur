@@ -11,7 +11,8 @@ defmodule Aiur.DecisionAttention do
 
   require Logger
 
-  alias Aiur.{AlertFeed, Alerts, DecisionAttentionResolution, DecisionStore, Issue}
+  alias Aiur.{AlertFeed, Alerts, DecisionStore, Issue}
+  alias Aiur.DecisionAttentionResolution
   alias Aiur.Events.SubscriptionStore
 
   @default_reask_interval_ms :timer.minutes(15)
@@ -120,16 +121,6 @@ defmodule Aiur.DecisionAttention do
     GenServer.call(server, {:resolve, issue, slug}, @open_timeout)
   end
 
-  @spec resolve_if_open(Issue.t(), String.t()) :: :ok
-  def resolve_if_open(%Issue{} = issue, slug), do: resolve_if_open(__MODULE__, issue, slug)
-
-  @spec resolve_if_open(GenServer.server(), Issue.t(), String.t()) :: :ok
-  def resolve_if_open(server, %Issue{} = issue, slug) when is_binary(slug) do
-    GenServer.call(server, {:resolve_if_open, issue, slug}, @open_timeout)
-  catch
-    :exit, _ -> :ok
-  end
-
   @impl true
   def init(opts) do
     state = %{
@@ -142,7 +133,7 @@ defmodule Aiur.DecisionAttention do
       attention_loader: Keyword.get(opts, :attention_loader, &AlertFeed.list_decision_attentions/0),
       decision_projector: Keyword.get(opts, :decision_projector, &DecisionStore.project_attention/2),
       decision_store: Keyword.get(opts, :decision_store, DecisionStore),
-      owner_lookup: Keyword.get(opts, :owner_lookup, &DecisionAttentionResolution.live_owner?/1),
+      owner_lookup: Keyword.get(opts, :owner_lookup, fn _identifier -> :unknown end),
       import_limit: import_limit(opts),
       importing?: true,
       resolved_during_import: MapSet.new()
@@ -204,16 +195,6 @@ defmodule Aiur.DecisionAttention do
     {:reply, :ok, resolve_attention(state, issue, slug)}
   end
 
-  def handle_call({:resolve_if_open, issue, slug}, _from, state) do
-    identifier = issue_identifier!(issue)
-
-    if Map.has_key?(state.attentions, {identifier, slug}) or open_attention?(identifier, slug) do
-      {:reply, :ok, resolve_attention(state, issue, slug)}
-    else
-      {:reply, :ok, state}
-    end
-  end
-
   @impl true
   def handle_info({:reask, key}, state) do
     case Map.get(state.attentions, key) do
@@ -224,7 +205,7 @@ defmodule Aiur.DecisionAttention do
         if DecisionAttentionResolution.resolve?(attention, state) do
           {:noreply, resolve_attention(state, attention.issue, attention.slug)}
         else
-          emit(state.alert_emitter, attention)
+          emit(state.alert_emitter, unknown_owner_attention(attention, state))
           next_attention = schedule_reask(attention, state.reask_interval_ms)
           {:noreply, %{state | attentions: Map.put(state.attentions, key, next_attention)}}
         end
@@ -255,6 +236,16 @@ defmodule Aiur.DecisionAttention do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp unknown_owner_attention(%{slug: "stranded-requeued"} = attention, state) do
+    if DecisionAttentionResolution.owner_status(attention, state) == :unknown do
+      %{attention | question: "Ticket #{issue_identifier!(attention.issue)} has a stranded reminder, but its live-owner status could not be checked."}
+    else
+      attention
+    end
+  end
+
+  defp unknown_owner_attention(attention, _state), do: attention
 
   defp schedule_reask(attention, interval_ms) when is_integer(interval_ms) and interval_ms > 0 do
     timer_ref = Process.send_after(self(), {:reask, attention_key(attention)}, interval_ms)
@@ -510,13 +501,6 @@ defmodule Aiur.DecisionAttention do
   defp attention_topic(attention), do: "ticket.#{issue_identifier!(attention.issue)}.agent.attention.#{attention.slug}"
   defp resolution_topic(attention), do: attention_topic(attention) <> ".resolved"
   defp attention_key(attention), do: {issue_identifier!(attention.issue), attention.slug}
-
-  defp open_attention?(identifier, slug) do
-    case SubscriptionStore.snapshot(identifier) do
-      %{open_attentions: open} -> slug in open
-      _missing -> false
-    end
-  end
 
   defp issue_identifier!(%Issue{id: id}) when is_binary(id) and id != "", do: id
   defp issue_identifier!(%Issue{identifier: identifier}) when is_binary(identifier) and identifier != "", do: identifier

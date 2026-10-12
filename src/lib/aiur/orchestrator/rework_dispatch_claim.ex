@@ -3,10 +3,10 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaim do
 
   require Logger
 
-  alias Aiur.{DecisionAttention, Issue, Orchestrator.State}
+  alias Aiur.{Issue, Orchestrator.State}
   alias Aiur.Orchestrator.{DispatchPolicy, TicketTransition, TrackerTasks}
 
-  @spec dispatch(State.t(), Issue.t(), (State.t() -> State.t()), (State.t() -> State.t()), (State.t(), String.t() -> term())) ::
+  @spec dispatch(State.t(), Issue.t(), (State.t() -> State.t()), (State.t(), atom() -> State.t()), (State.t(), String.t() -> term())) ::
           State.t()
   def dispatch(%State{} = state, %Issue{} = issue, dispatch_fun, decline_fun, input_fun) do
     if DispatchPolicy.normalize_issue_state(issue.state) == "rework" do
@@ -41,12 +41,11 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaim do
         current
 
       result == :ok ->
-        :ok = DecisionAttention.resolve_if_open(issue, "stranded-requeued")
         dispatch_fun.(current)
 
       true ->
         Logger.warning("Rework dispatch claim failed for #{State.issue_context(issue)}: #{inspect(result)}")
-        current |> Map.update!(:claimed, &MapSet.delete(&1, issue.id)) |> decline_fun.()
+        current |> Map.update!(:claimed, &MapSet.delete(&1, issue.id)) |> then(&decline_fun.(&1, :rework_claim_failed))
     end
   end
 end

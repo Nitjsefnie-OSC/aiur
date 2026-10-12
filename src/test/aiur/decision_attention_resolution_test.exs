@@ -16,6 +16,11 @@ defmodule Aiur.DecisionAttentionResolutionTest do
     assert {:reply, false, _} = StatusReport.has_live_owner(base, "OWNER-1")
   end
 
+  test "an unavailable owner lookup reports unknown" do
+    server = Module.concat(__MODULE__, "Missing#{System.unique_integer([:positive])}")
+    assert :unknown == StatusReport.has_live_owner_api(server, "OWNER-UNKNOWN", 1)
+  end
+
   test "a live owner resolves a stranded reminder instead of re-asking it" do
     identifier = "STRANDED-OWNER-#{System.unique_integer([:positive])}"
     test_pid = self()
@@ -76,6 +81,26 @@ defmodule Aiur.DecisionAttentionResolutionTest do
     assert_receive {:alert, %{slug: "stranded-requeued"}}, 1_000
     send(pid, {:reask, {identifier, "stranded-requeued"}})
     assert_receive {:alert, %{slug: "stranded-requeued"}}, 1_000
+    assert map_size(:sys.get_state(pid).attentions) == 1
+    refute_received {:resolved, _}
+  end
+
+  test "an unknown owner status keeps the reminder and avoids claiming there is no owner" do
+    identifier = "STRANDED-UNKNOWN-#{System.unique_integer([:positive])}"
+    test_pid = self()
+
+    {pid, name} =
+      start_attention(
+        owner_lookup: fn _ -> :unknown end,
+        alert_emitter: fn attention -> send(test_pid, {:alert, attention}) end,
+        resolution_emitter: fn attention -> send(test_pid, {:resolved, attention}) end
+      )
+
+    assert :ok = DecisionAttention.open(name, %Issue{identifier: identifier}, nil, nil, "stranded-requeued", "No live owner")
+    assert_receive {:alert, %{question: "No live owner"}}, 1_000
+    send(pid, {:reask, {identifier, "stranded-requeued"}})
+    assert_receive {:alert, %{question: question}}, 1_000
+    assert question =~ "live-owner status could not be checked"
     assert map_size(:sys.get_state(pid).attentions) == 1
     refute_received {:resolved, _}
   end

@@ -124,16 +124,16 @@ defmodule Aiur.Orchestrator.StatusReport do
     end
   end
 
-  @spec has_live_owner_api(GenServer.server(), String.t(), timeout()) :: boolean()
+  @spec has_live_owner_api(GenServer.server(), String.t(), timeout()) :: boolean() | :unknown
   def has_live_owner_api(server, identifier, timeout) do
     if State.alive?(server) do
       try do
         GenServer.call(server, {:has_live_owner, identifier}, timeout)
       catch
-        :exit, _ -> false
+        :exit, _ -> :unknown
       end
     else
-      false
+      :unknown
     end
   end
 

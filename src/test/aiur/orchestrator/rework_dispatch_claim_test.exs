@@ -42,7 +42,7 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
     refute_received {:memory_tracker_state_update, _, _}
   end
 
-  test "a failed guarded rework claim keeps the existing decline and starts no worker" do
+  test "a failed guarded rework claim has a distinct decline and starts no worker" do
     candidate = issue("rework-write-failure", "rework")
     Application.put_env(:aiur, :memory_tracker_issues, [%{candidate | state: "todo"}])
     parent = self()
@@ -54,7 +54,7 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
         runner: fn _dispatched, _recipient, _opts -> send(parent, :runner_started) end
       )
 
-    assert state.dispatch_declines[candidate.id] == :tracker_revalidation_failed
+    assert state.dispatch_declines[candidate.id] == :rework_claim_failed
 
     assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{},
                     %{issue_id: "rework-write-failure", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: {:error, {:stale_issue_state, "rework", "todo"}}}},
@@ -65,6 +65,35 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
     assert {:ok, [%Issue{state: "todo"}]} = Tracker.fetch_issue_states_by_ids([candidate.id])
     refute_received {:memory_tracker_state_update, _, _}
     refute_received :runner_started
+  end
+
+  test "a poll after the guarded claim does not re-enter rework or dispatch twice (#2422)" do
+    issue = issue("rework-next-poll", "rework")
+    issue_id = issue.id
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
+    parent = self()
+
+    state =
+      Dispatcher.dispatch_issue(dispatch_state(), issue, nil, nil,
+        blocked_by_hydrator: &{:ok, &1},
+        runner: fn dispatched, _recipient, _opts -> send(parent, {:runner_issue, dispatched}) end
+      )
+
+    assert_receive {:memory_tracker_state_update, "rework-next-poll", "in-progress"}, 1_000
+    assert_receive {:ticket_transition, [:aiur, :ticket_transition], %{}, %{issue_id: "rework-next-poll", expected: "rework", to: "in-progress", writer: :dispatcher, outcome: :ok}}, 1_000
+    assert_receive {:runner_issue, %Issue{state: "rework"}}, 1_000
+
+    poll_issue = %{issue | state: "in-progress", state_labels: ["in-progress"], labels: ["agent:in-progress"]}
+
+    next =
+      Dispatcher.choose_issues(state, [poll_issue], runner: fn dispatched, _recipient, _opts -> send(parent, {:runner_issue, dispatched}) end)
+
+    assert Map.has_key?(next.running, issue.id)
+    assert MapSet.member?(next.claimed, issue.id)
+    assert {:ok, [%Issue{state: "in-progress"}]} = Tracker.fetch_issue_states_by_ids([issue.id])
+    refute_received {:memory_tracker_state_update, ^issue_id, _}
+    refute_received {:ticket_transition, [:aiur, :ticket_transition], _, _}
+    refute_received {:runner_issue, _}
   end
 
   test "captures the rework head only after claiming and preserves it on retry" do
