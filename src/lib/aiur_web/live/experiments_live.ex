@@ -115,6 +115,9 @@ defmodule AiurWeb.ExperimentsLive do
     end
   end
 
+  defp load_detail(%{assigns: %{index_error: :no_experiments}} = socket, id) when is_binary(id),
+    do: socket |> assign(:index_error, nil) |> load_detail(id)
+
   defp load_detail(%{assigns: %{index_error: error}} = socket, _id) when not is_nil(error), do: assign(socket, detail: nil, detail_error: nil)
   defp load_detail(%{assigns: %{items: [first | _rest]}} = socket, nil), do: load_detail(socket, first.id)
 
