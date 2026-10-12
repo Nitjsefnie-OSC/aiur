@@ -4,6 +4,7 @@ defmodule AiurWeb.Experiments.SourceTest do
   alias AiurWeb.Experiments.Source
 
   defmodule Facade do
+    def metric_catalog, do: Process.get(:experiments_catalog, %{metrics: %{}})
     def list, do: Process.get(:experiments_list, {:ok, []})
     def fetch(id), do: Process.get({:experiments_detail, id}, {:error, :not_found})
     def status, do: Process.get(:experiments_status, %{available?: true, store: :ok, capture: :off})
@@ -38,6 +39,13 @@ defmodule AiurWeb.Experiments.SourceTest do
     assert active.kind_label == "A/B/C"
     assert active.evidence_state == :pending
     assert {:ok, %{id: "active", metrics: [], frozen_baseline: :unknown}} = Source.detail("active")
+  end
+
+  test "detail uses custom pack labels and units from the facade catalog" do
+    Process.put(:experiments_catalog, %{metrics: %{"custom/checkout_latency_ms" => %{label: "Checkout latency", unit: "ms", default_direction: "decrease"}}})
+    Process.put({:experiments_detail, "checkout"}, {:ok, %{spec: %{"id" => "checkout", "metrics" => [%{"ref" => "custom/checkout_latency_ms"}]}}})
+    assert {:ok, model} = Source.detail("checkout")
+    assert [%{"label" => "Checkout latency", "unit" => "ms", "direction" => "decrease"}] = model.metric_specs
   end
 
   test "empty index stays empty" do

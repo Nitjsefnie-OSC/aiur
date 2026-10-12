@@ -114,3 +114,13 @@ test('empty experiment store loads without HTTP or console errors', async ({ pag
   await assertNoDocumentOverflow(page)
   expect(failures).toEqual([])
 })
+
+test('consumer metric pack supplies labels and units through the real facade', async ({ page }) => {
+  await openExperiments(page, 'custom-pack')
+  await expect(page.locator('#exp-detail')).toContainText('Application latency')
+  const metric = page.getByRole('row').filter({ hasText: 'Request latency' })
+  await expect(metric).toBeVisible()
+  await expect(metric.getByRole('cell', { name: 'ms', exact: true })).toBeVisible()
+  await expect(metric.getByRole('cell', { name: 'decrease', exact: true })).toBeVisible()
+  await expect(metric).not.toContainText('delivery-speed')
+})
