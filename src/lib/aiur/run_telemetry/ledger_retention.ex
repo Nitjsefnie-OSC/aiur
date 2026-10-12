@@ -6,7 +6,7 @@ defmodule Aiur.RunTelemetry.LedgerRetention do
   @spec prune(Path.t(), keyword()) :: :ok | {:error, term()}
   def prune(path, opts) do
     # Only the daemon's canonical stream contributes to its ledger.
-    if path == RunTelemetry.telemetry_file() and RunTelemetry.telemetry_enabled?() do
+    if Path.expand(path) == Path.expand(RunTelemetry.telemetry_file()) and RunTelemetry.telemetry_enabled?() do
       materialize_opts = Keyword.merge([telemetry_file: path], Keyword.get(opts, :materialize_opts, []))
 
       case Summaries.materialize(materialize_opts) do

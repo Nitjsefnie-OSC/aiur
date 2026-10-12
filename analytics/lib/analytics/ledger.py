@@ -125,13 +125,15 @@ def build_ticket_record(events: list[dict], run_contexts: list[dict], facts: dic
     counts['changes_requested'] = facts.get('changes_requested_count') or 0
     counts['dispatches'] = len(attempts)
     counts['retries'] = sum(isinstance(a['retry_attempt'], int) and a['retry_attempt'] > 0 for a in attempts)
-    cohort = {}
+    cohort, mixed = {}, []
     for key in ATTEMPT_KEYS + CONTEXT_KEYS:
         if key in ('blockers', 'retry_attempt'):
             continue
         values = [a.get(key, a['run_context'].get(key, 'unknown')) for a in attempts]
+        if values and any(value != values[0] for value in values):
+            mixed.append(key)
         cohort[key] = values[0] if values and all(v == values[0] for v in values) else 'mixed' if values else 'unknown'
-    cohort['mixed'] = [key for key, value in cohort.items() if value == 'mixed']
+    cohort['mixed'] = mixed
     partial = not milestones['first_dispatch']['at'] or not milestones['pr_opened']['at']
     return {'schema_version': 1, 'ticket': ticket, 'repo': cohort.get('repo') or 'unknown',
             'generated_at': _now_iso({}), 'last_event_at': events[-1]['timestamp'],

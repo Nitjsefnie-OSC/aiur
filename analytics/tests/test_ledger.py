@@ -20,16 +20,18 @@ def event(name, at, boot='A', ticket='42', **attrs):
 
 class LedgerTests(unittest.TestCase):
     def test_cross_launch_cohort_and_mixed_retry(self):
-        dispatch = event('dispatch', '10:00', backend='claude', attempt_id='try1')
+        dispatch = event('dispatch', '10:00', backend='claude', attempt_id='try1', feature='mixed')
         merged = event('pr_merged', '11:00', boot='B', attempt_id=None)
         record = ledger.build_ticket_record([dispatch, merged], [])
         self.assertEqual(record['cohort']['backend'], 'claude')
+        self.assertFalse(record['quality']['mixed_cohort'])
         self.assertEqual(record['milestones']['merged'], {'at': '2026-10-09T11:00:00Z', 'status': 'observed', 'source': 'telemetry'})
         self.assertEqual(record['milestones']['first_dispatch']['at'], '2026-10-09T10:00:00Z')
-        retry = event('dispatch', '10:30', boot='B', backend='codex', attempt_id='try2', retry_attempt=1)
+        retry = event('dispatch', '10:30', boot='B', backend='codex', attempt_id='try2', retry_attempt=1, feature='mixed')
         record = ledger.build_ticket_record([dispatch, retry, merged], [])
         self.assertEqual(record['cohort']['backend'], 'mixed')
         self.assertIn('backend', record['cohort']['mixed'])
+        self.assertNotIn('feature', record['cohort']['mixed'])
         self.assertEqual(record['counts']['dispatches'], 2)
         self.assertEqual(record['counts']['retries'], 1)
         ledger_schema.validate(record)
@@ -106,6 +108,7 @@ class LedgerTests(unittest.TestCase):
             target = Path(written[0])
             record = json.loads(target.read_text())
             self.assertEqual(record['counts']['dispatches'], 1)
+            self.assertEqual(record['milestones']['merged']['status'], 'observed')
             self.assertEqual(record['cohort']['backend'], 'claude')
             self.assertNotIn('PRIVATE', (root / 'analytics/ledger-cursor.json').read_text())
             mtime = target.stat().st_mtime_ns
