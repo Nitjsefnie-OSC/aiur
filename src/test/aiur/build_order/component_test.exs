@@ -73,6 +73,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.Events.SubscriptionStoreSupervisor,
     Aiur.DecisionAttention,
     Aiur.OperatorWaitLog,
+    Aiur.Orchestrator.OptimisticLedger,
     Aiur.Orchestrator.TrackedSet,
     Aiur.Orchestrator.SnapshotCache,
     Aiur.Orchestrator.SnapshotStore,
@@ -126,7 +127,8 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.AgentList.App,
     Aiur.AgentList.Input,
     Aiur.LauncherWatchdog,
-    Aiur.BackgroundCpu
+    Aiur.BackgroundCpu,
+    Aiur.Experiments.Store
   ]
 
   setup do

@@ -447,6 +447,7 @@ defmodule Aiur.Application do
       Aiur.Events.SubscriptionStoreSupervisor,
       Aiur.DecisionAttention,
       Aiur.OperatorWaitLog,
+      Aiur.Orchestrator.OptimisticLedger,
       Aiur.Orchestrator.TrackedSet,
       Aiur.Orchestrator.SnapshotCache,
       Aiur.Orchestrator.SnapshotStore,
@@ -465,9 +466,7 @@ defmodule Aiur.Application do
       Aiur.TicketContext.child_specs(:late, opts),
       BuildOrders.child_specs(:late, opts),
       {Aiur.OpenTicketSource, poll_on_start: Application.get_env(:aiur, :open_ticket_poll?, dashboard?)},
-      # The single view-state cadence, now reconciling only the pack-status
-      # writer (OpenTicketSource and AdHocSource are event-sourced and hold no
-      # timer). Starts after its sources so its first tick never races boot fill.
+      # View-state cadence reconciles the pack-status writer; starts after its timerless sources so its first tick never races boot fill.
       BuildOrders.child_specs(:view_state_sweep, opts),
       {Aiur.Orchestrator, name: Aiur.Orchestrator, initial_poll?: Application.get_env(:aiur, :orchestrator_initial_poll?, true)},
       Aiur.BuildQueue.child(recording?),
@@ -511,7 +510,7 @@ defmodule Aiur.Application do
     ]
     |> List.flatten()
     |> Enum.reject(&is_nil/1)
-    |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu])
+    |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu] ++ List.wrap(Aiur.Experiments.child(recording?)))
   end
 
   defp configured_tailscale_funnel?({:ok, %{server: %{tailscale_funnel: enabled}}}), do: enabled

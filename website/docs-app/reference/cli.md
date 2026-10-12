@@ -86,9 +86,7 @@ When an unknown subcommand is routed through a release built from a checkout, Ai
 
 A `workspace_retained` row means provider exit is unproven, or the recovery audit could not be written. It reports the retention age (or `since unknown` for leases saved before retention tracking) and raises one `workspace_lease_retained` attention per lease.
 
-Time alone never releases the lease, and a release call that times out returns `{:error, :release_timeout}`.
-
-Use `aiur stop` for graceful provider containment; restarting alone does not clear persisted ownership. Only a local hold with verified reboot proof is eligible for `aiur workspace-recover <ticket-identifier> <generation>`.
+Time alone never releases the lease, and a release call that times out returns `{:error, :release_timeout}`. Use `aiur stop` for graceful provider containment; restarting alone does not clear persisted ownership. Only a local hold with verified reboot proof is eligible for `aiur workspace-recover <ticket-identifier> <generation>`.
 
 A `workspace_ownership_waiting` row reports the held generation and provider-exit proof state. A reboot changes a local hold with recorded boot ID to `boot_changed_release_pending`. The guardian releases it automatically after writing its durable recovery audit record.
 
@@ -279,6 +277,22 @@ Fleet-capacity and build-gate evidence have independent source states: stale fle
 | Observed empty source or valid zero-result filter | May return an empty collection. |
 | Separately derived value, such as provider spend | Lives under `auxiliary` with its own source metadata. |
 
+## Experiments
+
+[Experiments](../concepts/experiments) use control RPC and require a running daemon.
+
+| Command | What it does | Example |
+| --- | --- | --- |
+| `aiur experiments list [--status <status>] [--kind before_after\|ab] [--json]` | Lists experiment summaries; corrupt specs appear as unreadable rows. | `aiur experiments list --status active --json` |
+| `aiur experiments show <id> [--json]` | Shows spec, phase, journal tail, annotations, snapshot references and read-only state. | `aiur experiments show delivery-change --json` |
+| `aiur experiments create --from <file\|-> [--draft] [--no-freeze] [--json]` | Imports a JSON spec from a caller file or stdin. Repeating a spec key returns the existing experiment. | `cat spec.json \| aiur experiments create --from -` |
+| `aiur experiments create --title <title> --line <type>:<ref>[@time] --metric <pack>/<metric>[:direction]` | Creates a before/after experiment; repeat `--metric` to add metrics. Direction defaults to decrease. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric delivery-speed/start_to_merge:decrease --draft` |
+| `aiur experiments create --draft` | Creates a draft rather than the default active status. | `aiur experiments create --from spec.json --draft` |
+| `aiur experiments create --no-freeze` | Suppresses the default baseline-freeze request and its unavailable warning. | `aiur experiments create --from spec.json --no-freeze` |
+| `aiur experiments create --hypothesis <text>` | Sets the quick-form hypothesis; default is empty. | `aiur experiments create --title smoke --line manual:smoke@2026-10-09T00:00:00Z --metric delivery-speed/start_to_merge --hypothesis faster` |
+
+Quick creation also accepts `--hypothesis`, `--draft`, `--no-freeze` and `--json`; manual lines need a UTC timestamp, while tag/commit times can resolve from base history. JSON stdout contains the facade result; stderr carries errors and unavailable-freeze warnings. Exit codes: 0 success, 1 refused, 64 invalid usage. Newer specs refuse writes.
+
 ## Decisions, Executor events, and findings
 
 | Syntax | Default or important interaction | Runnable example |
@@ -402,11 +416,9 @@ Within that node, wake files are prefixed by the sanitized final segment of the 
 
 A notification monitor must use that `<repo>` prefix (for example, `khala.executor.wakes.ndjson`), check that the wake file exists before declaring itself armed, and never substitute the `aiur` prefix in a consumer repository.
 
-A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor. Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at
-arm time. The `aiur-run` monitor command does this.
+A `tail -F -n0` follower is a notification aid only: it has no consumer identity or lease and never advances the durable cursor. Each trim renames a new file into place and `tail -F` re-emits it from the top, so print only a `wake_id` above the last one seen, seeded from the file's last `wake_id` at arm time. The `aiur-run` monitor command does this.
 
-`executor-wait` is the normal discovery and consumption path. Use `executor-fast-forward` only after independently verifying the exact prefix already covered. The 10,000-record bound remains an emergency disk bound, not evidence of consumption. Exceeding it trims the journal to the newest 8,000
-records, consumed first: one rewrite per 2,000 wakes.
+`executor-wait` is the normal discovery and consumption path. Use `executor-fast-forward` only after independently verifying the exact prefix already covered. The 10,000-record bound remains an emergency disk bound, not evidence of consumption. Exceeding it trims the journal to the newest 8,000 records, consumed first: one rewrite per 2,000 wakes.
 
 `AIUR_EXECUTOR_ID` names this consumer when `--as` is omitted. Nothing infers consumer identity from the terminal, parent process, or any other environment signal.
 
@@ -416,9 +428,7 @@ Normal control commands use a bounded RPC. After ten seconds the launcher termin
 
 A daemon that dies after becoming ready restarts with backoff, raising one `system.daemon.down` alert per outage, then `system.daemon.restarted`. It keeps the first and latest timestamped crash dumps. After over five crashes in ten minutes (`AIUR_DAEMON_MAX_RESTARTS`) it raises `system.daemon.gave-up` and stays down. `aiur stop` stops it for good.
 
-An open **blocking** ask is also printed by plain `aiur status`; no extra flag is required. That keeps a durable request in the normal operating view instead of hiding it in a ledger that nobody reads.
-
-`--blocking` and `--filter blocking` mean *dispatch is held until you answer this*, which is also what the dispatch gate reads.
+An open **blocking** ask is also printed by plain `aiur status`; no extra flag is required. That keeps a durable request in the normal operating view instead of hiding it in a ledger that nobody reads. `--blocking` and `--filter blocking` mean *dispatch is held until you answer this*, which is also what the dispatch gate reads.
 
 An agent attention is a visibility signal rather than a gate — the agent keeps running after it opens one — so attentions are listed by `aiur commands` but are not counted as blocking.
 
@@ -464,10 +474,7 @@ When the script path and current directory point at different checkouts, command
 | `build`, `restart`, or bare run | Refuses with exit code 64 and prints both roots plus the two ways to resolve the mismatch. |
 | Control or RPC command, including `status`, `stop`, `watch`, `units`, and `executor-answer` | Runs against the script's checkout, names that checkout, and reuses its release without rebuilding. |
 
-| `AIUR_BUILD_STAMP` field | Why it matters |
-| --- | --- |
-| Repository root and source commit | A commit mismatch marks the release stale after operations such as `git switch`. |
-| Dirty-tree flag and build time | Records the exact development build provenance. |
+`AIUR_BUILD_STAMP` records the repository root, source commit, dirty-tree flag and build time. A commit mismatch marks the release stale after operations such as `git switch`; these fields identify its development build provenance.
 
 `aiur` accepts a path to a workflow configuration as the final run argument. Every fresh `aiur` or `aiurdev` launch prints `Config: /absolute/path` after startup, naming the configuration selected by discovery or that explicit argument. An already-running background no-op does not load or print a configuration.
 
@@ -484,16 +491,10 @@ Clear persists unmark intents before paced writes; crashes resume on restart. A 
 
 ## `pr merge`
 
-`aiur pr merge <N> --reviewed-sha <full-sha>` uses the operator's stored `gh` credential without requiring a daemon. The login must be in `tracker.github.human_mergers`; agent workspaces, agent accounts and App identities refuse.
+`aiur pr merge <N> --reviewed-sha <full-sha>` uses a stored, allowlisted human `gh` identity without a daemon; agents and Apps refuse. `--dry-run` writes nothing. `--approve-body-file <file>` posts pinned approval and reruns the gates; self-review refuses. Repeatable `--inherited <check>` requires watcher verification, currently unavailable.
 
-Checks cover head, draft, CI, conflicts, attribution and premerge commands on the merge result (ten minutes each). Every identity needs a current-head approval; open changes-requested reviews refuse. The operator checkout and PR branch stay unchanged.
+Gates cover head, draft, approval, requested changes, CI, conflicts, attribution and merge-result prechecks (ten minutes each). The checkout and PR branch stay unchanged. `ci: wait` is the only accepted mode; all required checks must pass. See [merge policy](/reference/merge-policy) for pending evidence, watcher and full-CI conditions.
 
-- `--dry-run`: evaluate gates without posting a review, enqueueing or merging.
-- `--approve-body-file <file>`: post a real approval on the pinned head, then apply the same gates. Self-approval and open changes requests refuse.
-- `--inherited <check>`: repeatable; refuses until verified watcher evidence is connected.
+A merge-queue rule reports `ENQUEUED` and records that state; it never merges directly or bypasses the queue. Rerun the pinned command after GitHub merges to record the observed outcome. Unknown branch rules refuse. Other bases use pinned squash merge.
 
-Under `ci: wait`, every required check must pass. The `pending_ok` gate needs current-head local-test evidence and an enabled watcher; full-CI labels on the PR or linked tickets, and full-CI paths, force waiting. Config currently accepts only `wait`.
-
-A merge-queue rule produces `ENQUEUED`, never a direct or bypass merge, and records that state. Rerun the pinned command after the queue merges to record the observed merge. Unknown branch-rule state refuses. Bases without a queue use a pinned squash merge.
-
-Exit codes: `0` merged, enqueued, observed merged or dry run; `2` policy refusal; `1` tool/network error. Records and failure logs live in `~/.aiur/logs/pr-merge/`. Only observed merges notify the daemon with `system.pr.merged`; it verifies GitHub independently. Ledger or notification failures warn without retrying the merge.
+Exit codes: `0` merged, enqueued, observed merged or dry run; `2` policy refusal; `1` tool/network error. Records and failure logs: `~/.aiur/logs/pr-merge/`. Only observed merges notify `system.pr.merged`, independently verified by the daemon. Ledger or notification failures warn without retrying the merge.
