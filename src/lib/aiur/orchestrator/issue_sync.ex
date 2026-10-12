@@ -9,7 +9,7 @@ defmodule Aiur.Orchestrator.IssueSync do
   alias Aiur.{AgentQueue, AgentQueueStore, AlertFeed, Alerts, CodingAgent, Config, CurrentRunMembership, DispatchBudgetStore, Issue, Tracker, TrackerIdentity}
   alias Aiur.GitHub.ResourceStore
   alias Aiur.GitHub.StatePolicy
-  alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, Lifecycle, MembershipLifecycle, OperatorMessages, PushRouting, Reconciler, Slots, State, TicketTransition, TrackerTasks}
+  alias Aiur.Orchestrator.{AutoSubscriptions, DispatchPolicy, Lifecycle, LiveOwner, MembershipLifecycle, OperatorMessages, PushRouting, Reconciler, Slots, State, TicketTransition, TrackerTasks}
   alias Aiur.Orchestrator.PressureAdmission
   alias Aiur.Orchestrator.StatusObservation
   alias Aiur.PollCadence
@@ -222,7 +222,7 @@ defmodule Aiur.Orchestrator.IssueSync do
   @doc false
   @spec owned_or_scheduled?(State.t(), String.t()) :: boolean()
   def owned_or_scheduled?(%State{} = state, issue_id) do
-    Map.has_key?(state.running, issue_id) or
+    LiveOwner.owns?(state.running, issue_id) or
       MapSet.member?(state.claimed, issue_id) or
       Map.has_key?(state.retry_attempts, issue_id) or
       Map.has_key?(state.auto_resume, issue_id) or
