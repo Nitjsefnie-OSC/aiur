@@ -25,9 +25,13 @@ defmodule Aiur.Experiments.Auto.DeployLedger do
          {:ok, rows} <- read(path, true) do
       case Enum.find(rows, &(&1["boot_id"] == row["boot_id"])) do
         nil -> append(path, row, rows)
-        existing -> with :ok <- cap(path, rows), do: {:ok, existing}
+        existing -> retain_existing(path, rows, existing)
       end
     end
+  end
+
+  defp retain_existing(path, rows, existing) do
+    with :ok <- cap(path, rows), do: {:ok, existing}
   end
 
   @spec previous(keyword()) :: {:ok, map() | nil} | {:error, term()}
