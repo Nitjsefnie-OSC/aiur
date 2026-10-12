@@ -43,7 +43,7 @@ defmodule Aiur.RepoBaseCase do
     git!(["-C", origin, "add", "."])
     git!(["-C", origin, "commit", "--quiet", "-m", "init"])
 
-    on_exit(fn -> File.rm_rf!(tmp) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(tmp) end)
 
     {:ok, tmp: tmp, origin: origin, node: node, base: base}
   end

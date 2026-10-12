@@ -44,7 +44,7 @@ defmodule Aiur.Workspace.WipPreservation.BoundsTest do
     @tag timeout: 60_000
     test "a hung save command times out: the recreate keeps the workspace and holds the ticket", %{test_root: test_root} do
       identifier = "WIP-HANG-#{System.unique_integer([:positive])}"
-      {workspace, trace_file} = dirty_refresh_fixture!(test_root, identifier, workspace_wip: [command_timeout_ms: 500])
+      {workspace, trace_root} = dirty_refresh_fixture!(test_root, identifier, workspace_wip: [command_timeout_ms: 500])
       File.write!(Path.join(workspace, "README.md"), "unsaved agent edit\n")
       before = snapshot(workspace)
       fake_git!(test_root, :hang)
@@ -55,7 +55,7 @@ defmodule Aiur.Workspace.WipPreservation.BoundsTest do
                Workspace.run_before_run_hook(workspace, todo_issue(identifier))
 
       assert System.monotonic_time(:millisecond) - started < 10_000
-      assert trace_count(trace_file) == 1
+      assert trace_count(trace_path(trace_root, todo_issue(identifier))) == 1
       assert snapshot(workspace) == before
     end
 
@@ -434,7 +434,7 @@ defmodule Aiur.Workspace.WipPreservation.BoundsTest do
       refute function_exported?(Provisioner, :recreate, 4)
 
       identifier = "GUARD-#{System.unique_integer([:positive])}"
-      {workspace, _trace_file} = dirty_refresh_fixture!(test_root, identifier)
+      {workspace, _trace_root} = dirty_refresh_fixture!(test_root, identifier)
       File.write!(Path.join(workspace, "README.md"), "unsaved agent edit\n")
 
       assert :ok = Provisioner.recreate(workspace, nil, nil, "aiur/#{identifier}", identifier)

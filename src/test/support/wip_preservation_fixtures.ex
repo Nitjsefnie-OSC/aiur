@@ -11,6 +11,7 @@ defmodule Aiur.WipPreservationFixtures do
   alias Aiur.Orchestrator.WorkspaceCleanup
   alias Aiur.Workflow
   alias Aiur.Workspace
+  alias Aiur.Workspace.Context
   alias Aiur.Workspace.WipPreservation
   alias Aiur.Workspace.WipPreservation.Retention
 
@@ -20,7 +21,7 @@ defmodule Aiur.WipPreservationFixtures do
     state_dir = Path.join(test_root, "runtime-state")
     Aiur.TestSupport.put_runtime_state_dir!(state_dir)
 
-    on_exit(fn -> File.rm_rf(test_root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(test_root, unset: [:runtime_state_dir]) end)
     {:ok, test_root: test_root, state_dir: state_dir}
   end
 
@@ -28,8 +29,10 @@ defmodule Aiur.WipPreservationFixtures do
     source = committed_repo!(Path.join(test_root, "source"))
     remote = Path.join(test_root, "origin.git")
     workspace_root = Path.join(test_root, "workspaces")
-    trace_file = Path.join(test_root, "before-run.trace")
+    trace_root = Path.join(test_root, "before-run-traces")
     git!(["clone", "--quiet", "--bare", source, remote])
+
+    File.mkdir_p!(trace_root)
 
     write_workflow_file!(
       Workflow.workflow_file_path(),
@@ -45,7 +48,7 @@ defmodule Aiur.WipPreservationFixtures do
         """,
         hook_before_run: """
         PATH="/usr/bin:/bin:$PATH"
-        printf 'attempt\\n' >> #{shell_quote(trace_file)}
+        printf 'attempt\\n' >> #{shell_quote(trace_root)}/"${AIUR_TICKET_BRANCH#aiur/}"
         if [ ! -d .git ]; then
           find . -mindepth 1 -maxdepth 1 -exec rm -rf {} +
           git -C "$PWD" clone --quiet #{shell_quote(remote)} .
@@ -60,7 +63,7 @@ defmodule Aiur.WipPreservationFixtures do
     )
 
     assert {:ok, workspace} = Workspace.create_for_issue(identifier)
-    {workspace, trace_file}
+    {workspace, trace_root}
   end
 
   # Modified, staged, deleted, staged-new, binary tracked and binary untracked
@@ -264,6 +267,9 @@ defmodule Aiur.WipPreservationFixtures do
 
   def todo_issue(identifier),
     do: %Issue{id: "issue-#{identifier}", identifier: identifier, title: "WIP", state: "todo", labels: ["agent:todo"]}
+
+  def trace_path(trace_root, issue),
+    do: Path.join(trace_root, String.replace_prefix(Context.build(issue).branch_name, "aiur/", ""))
 
   def trace_count(path), do: path |> File.read!() |> String.split("\n", trim: true) |> length()
 

@@ -124,7 +124,7 @@ defmodule Aiur.RepoBaseTest do
           p -> Aiur.Workflow.set_workflow_file_path(p)
         end
 
-        File.rm_rf!(tmp)
+        Aiur.TestCleanup.rm_rf!(tmp)
       end)
 
       {:ok, cfg: cfg}

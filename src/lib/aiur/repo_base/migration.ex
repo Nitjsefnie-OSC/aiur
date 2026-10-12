@@ -11,7 +11,7 @@ defmodule Aiur.RepoBase.Migration do
   alias Exqlite.Basic
 
   @legacy_built_marker ".aiur-base-built"
-  @state_entries ["builds", "analytics", "meta", "executor"]
+  @state_entries ["builds", "analytics", "meta", "executor", "experiments"]
   @migration_lease_suffix ".migration-lock.sqlite3"
   # Cache sidecar migrations copy potentially gigabytes of hex/mix/npm cache
   # under an exclusive transaction, so the busy-wait must outlast a slow copy
