@@ -18,7 +18,7 @@ scaffold() {
   cp -R "$repo_root/website/docs-app/reference" "$root/website/docs-app/"
   cp -R "$repo_root/packaging/npm/aiur-cli/libexec" "$root/packaging/npm/aiur-cli/"
   cp "$repo_root/src/lib/aiur/cli.ex" "$root/src/lib/aiur/"
-  cp "$repo_root/src/lib/aiur/experiments_cli.ex" "$repo_root/src/lib/aiur/alerts_cli.ex" "$root/src/lib/aiur/"
+  cp "$repo_root/src/lib/aiur/experiments_cli.ex" "$repo_root/src/lib/aiur/alerts_cli.ex" "$repo_root/src/lib/aiur/pr_merge_cli.ex" "$root/src/lib/aiur/"
   cp "$repo_root/scripts/aiurdev" "$root/scripts/"
 }
 

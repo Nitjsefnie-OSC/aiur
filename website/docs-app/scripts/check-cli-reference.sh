@@ -17,7 +17,7 @@ source_commands="$(
     | sed -n 's/^    \([^)]*\))\( .*\)\?$/\1/p' \
     | tr '|' '\n' \
     | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' \
-    | rg '^[a-z][a-z-]*$' \
+    | grep -E '^[a-z][a-z-]*$' \
     | sort -u
 )"
 
@@ -44,8 +44,12 @@ source_flags="$(
     ' "$repo_root"/packaging/npm/aiur-cli/libexec/*.sh "$repo_root"/packaging/npm/aiur-cli/libexec/engine/*.sh
 
     # Experiments transports argv in the shell; its control client validates flags.
-    sed -n '/^  @switches /p' "$repo_root/src/lib/aiur/experiments_cli.ex" \
-      | rg -o '[a-z_]+:' | tr -d ':' | sed '/^spec_json$/d; s/^/--/; s/_/-/g'
+    sed -n '/^  @switches \[/,/^  \]/p' "$repo_root/src/lib/aiur/experiments_cli.ex" \
+      | sed -n 's/^[[:space:]]*\([a-z_][a-z_]*\):.*/\1/p' \
+      | sed '/^spec_json$/d; s/^/--/; s/_/-/g'
+
+    sed -n 's/^  @usage "\(.*\)"$/\1/p' "$repo_root/src/lib/aiur/pr_merge_cli.ex" \
+      | grep -oE -- '--[a-z][a-z0-9-]*'
 
     # Alerts also validates transported argv in its control client.
     sed -n '/^  defp parse(\[/p' "$repo_root/src/lib/aiur/alerts_cli.ex"
@@ -62,7 +66,7 @@ source_flags="$(
              in_case && /^[[:space:]]*--[a-z0-9-]*([=][*])?\)/ { print }
              in_case && /^[[:space:]]*esac/ { in_case-- }'
   } \
-    | rg -o -- '--[a-z][a-z0-9-]*' \
+    | grep -oE -- '--[a-z][a-z0-9-]*' \
     | sort -u
 )"
 
@@ -85,15 +89,15 @@ has_complete_table_row() {
   ' "$page"
 }
 
-rendered_flags="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | rg -o -- '--[a-z][a-z0-9-]*' | sort -u)"
-source_word_commands="$(printf '%s\n' "$source_commands" | rg '^[a-z][a-z-]*$')"
-rendered_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | rg -o -- 'aiur[[:space:]]+[a-z][a-z-]*' | sed 's/^aiur[[:space:]]*//' | sort -u)"
-rendered_dev_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | rg -o -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
-source_flag_tokens="$(printf '%s\n%s\n' "$source_flags" "$source_commands" | rg '^--' | sort -u)"
+rendered_flags="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | grep -oE -- '--[a-z][a-z0-9-]*' | sort -u)"
+source_word_commands="$(printf '%s\n' "$source_commands" | grep -E '^[a-z][a-z-]*$')"
+rendered_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | grep -oE -- 'aiur[[:space:]]+[a-z][a-z-]*' | sed 's/^aiur[[:space:]]*//' | sort -u)"
+rendered_dev_commands="$(awk -F '|' 'NF >= 5 { print $2 }' "$page" | grep -oE -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
+source_flag_tokens="$(printf '%s\n%s\n' "$source_flags" "$source_commands" | grep -E '^--' | sort -u)"
 source_prose_commands="$source_word_commands"
-prose_flags="$(rg -o --no-filename -- '--[a-z][a-z0-9-]*' "$page" | sort -u)"
-prose_commands="$(rg -o --no-filename -- 'aiur[[:space:]]+[a-z][a-z-]*' "$page" | sed 's/^aiur[[:space:]]*//' | sort -u)"
-prose_dev_commands="$(rg -o --no-filename -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' "$page" | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
+prose_flags="$(grep -oE -- '--[a-z][a-z0-9-]*' "$page" | sort -u)"
+prose_commands="$(grep -oE -- 'aiur[[:space:]]+[a-z][a-z-]*' "$page" | sed 's/^aiur[[:space:]]*//' | sort -u)"
+prose_dev_commands="$(grep -oE -- 'scripts/aiurdev[[:space:]]+[a-z][a-z-]*' "$page" | sed 's|^scripts/aiurdev[[:space:]]*||' | sort -u)"
 
 compare_source_to_docs() {
   local kind="$1" source="$2" documented="$3" missing stale

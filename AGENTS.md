@@ -69,6 +69,8 @@ job when one is missing from the configuration reference;
 `scripts/test-check-config-docs.sh` guards that checker. The required `lint` job
 runs `website/docs-app/scripts/check-cli-reference.sh` and its self-test for
 non-docs-only changes; the website guards job runs them for docs-only changes.
+Keep `reference/cli.md` at 500 lines or fewer; adding a row requires an equal
+cut or consolidation in the same change.
 Dashboard pages and the remaining rows are enforced by review alone.
 
 ## Layout
