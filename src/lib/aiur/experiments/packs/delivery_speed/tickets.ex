@@ -72,6 +72,8 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Tickets do
     end
   end
 
+  defp value(_id, _ticket, _data, _window), do: nil
+
   defp rework_span(start, events) do
     finish = Enum.find(events, &(&1.event in ["pr_opened", "pr_merged"] and &1.timestamp_ms >= start.timestamp_ms))
     if finish, do: finish.timestamp_ms - start.timestamp_ms, else: 0

@@ -2,11 +2,11 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Tokens do
   @moduledoc false
   alias Aiur.UsageEnvelope.RelationshipRegistry
 
-  @spec total(map(), term(), map()) :: non_neg_integer() | nil
-  def total(cells, ticket_key, catalog) do
+  @spec total(list(), map()) :: non_neg_integer() | nil
+  def total(cells, catalog) do
     groups =
       cells
-      |> Enum.filter(fn {{dims, measure}, _value} -> dims.ticket == ticket_key and match?({:token, _}, measure) end)
+      |> Enum.filter(fn {{_dims, measure}, _value} -> match?({:token, _}, measure) end)
       |> Enum.group_by(fn {{dims, _measure}, _value} -> dims end)
 
     counts = Enum.map(groups, fn {dims, entries} -> group_total(dims, entries, catalog) end)

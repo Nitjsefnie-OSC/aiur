@@ -1,7 +1,7 @@
 defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   @moduledoc "The pack's only reader of live telemetry, retained boots and usage accounting."
   alias Aiur.Claude.Telemetry.UsageAdapter.Relationship
-  alias Aiur.Experiments.Packs.DeliverySpeed.Tokens
+  alias Aiur.Experiments.Packs.DeliverySpeed.{BootWindow, Tokens}
   alias Aiur.Experiments.Sources.Common
   alias Aiur.RunTelemetry
   alias Aiur.RunTelemetry.{Dataset, Summaries}
@@ -19,7 +19,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
 
   defp load_enabled(window, ctx) do
     boot = Map.get_lazy(ctx, :boot_id, &RunTelemetry.boot_id/0)
-    {prior, unreadable?} = Map.get(ctx, :prior_loader, &Summaries.load_prior_datasets_with_state/1).(boot)
+    {prior, unreadable?} = prior_datasets(boot, window, ctx)
     live = Dataset.build(Map.get_lazy(ctx, :telemetry_path, &RunTelemetry.telemetry_file/0))
 
     datasets =
@@ -35,7 +35,8 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
       records = Enum.filter(dataset.records, &(DateTime.compare(&1.timestamp, window.end) == :lt))
       {_actors, tickets, _findings} = Dataset.reduce(records)
       contexts = Map.new(Enum.filter(records, &(&1.kind == "run_context")), &{&1.boot_id, &1.attributes})
-      tickets = Map.new(tickets, fn {id, ticket} -> {id, ticket_record(ticket, records, contexts)} end)
+      by_ticket = records |> Enum.filter(&(&1.kind == "lifecycle")) |> Enum.group_by(& &1.attributes["ticket"])
+      tickets = Map.new(tickets, fn {id, ticket} -> {id, ticket_record(ticket, Map.get(by_ticket, id, []), contexts)} end)
       capacity = datasets |> Enum.flat_map(&(get_in(&1, [:actors, "_daemon", :samples]) || [])) |> Enum.uniq_by(& &1.record_id) |> capacity(window)
 
       {:ok,
@@ -50,9 +51,31 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     end
   end
 
-  defp ticket_record(ticket, records, contexts) do
+  defp prior_datasets(boot, window, ctx) do
+    case Map.fetch(ctx, :prior_loader) do
+      {:ok, loader} -> loader.(boot)
+      :error -> load_prior(boot, window, ctx)
+    end
+  end
+
+  # Keep earlier boots: first dispatch and prerequisite merges can precede the window.
+  defp load_prior(current, window, ctx) do
+    path = Map.get(ctx, :summary_path, &Summaries.run_summary_path/1)
+    reader = Map.get(ctx, :summary_reader, &Summaries.load_dataset/1)
+
+    Map.get(ctx, :summary_boot_ids, &Summaries.summary_boot_ids/0).()
+    |> Enum.reject(&(&1 == current))
+    |> Enum.filter(&BootWindow.before_end?(path.(&1), &1, window.end))
+    |> Enum.reduce({[], false}, fn boot, {datasets, unreadable?} ->
+      case reader.(boot) do
+        {:ok, dataset} -> {[dataset | datasets], unreadable?}
+        {:error, _reason} -> {datasets, true}
+      end
+    end)
+  end
+
+  defp ticket_record(ticket, raw, contexts) do
     dispatch = Enum.find(ticket.events, &(&1.event == "dispatch"))
-    raw = Enum.filter(records, &(&1.kind == "lifecycle" and &1.attributes["ticket"] == ticket.ticket))
     context = if dispatch, do: Map.get(contexts, dispatch.boot_id, %{}), else: %{}
     attrs = if dispatch, do: cohort(dispatch, context), else: %{}
 
@@ -138,7 +161,11 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
         {:ok, issues} ->
           query = Map.get(ctx, :usage_query, &Aiur.UsageAggregate.query/1)
           snapshot = Map.get(ctx, :usage_snapshot, &Aiur.UsageAggregate.cells_snapshot/0).()
-          {:ok, Map.new(issues, fn issue -> {issue.identifier, usage(issue.tracker_identity, query, snapshot)} end)}
+          {:ok, catalog} = RelationshipRegistry.register(Catalog.relationship_catalog(), Relationship.definition())
+          by_ticket = Enum.group_by(snapshot.cells, fn {{dims, _measure}, _value} -> dims.ticket end)
+          identities = issues |> Enum.map(& &1.tracker_identity) |> Enum.filter(&Aiur.TrackerIdentity.joinable?/1)
+          result = query.(%{tickets: identities})
+          {:ok, Map.new(issues, fn issue -> {issue.identifier, usage(issue.tracker_identity, result, snapshot, catalog, by_ticket)} end)}
 
         {:error, reason} ->
           {:error, {:accounting_identity_unavailable, reason}}
@@ -150,20 +177,18 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     :exit, reason -> {:error, {:accounting_unavailable, reason}}
   end
 
-  defp usage(identity, query, snapshot) do
-    if Aiur.TrackerIdentity.joinable?(identity) do
-      result = query.(%{tickets: [identity]})
+  defp usage(identity, result, snapshot, catalog, by_ticket) do
+    key = Aiur.TrackerIdentity.github_key(identity)
+    totals = get_in(result, [:groups, :by_ticket, key])
 
-      if result.health == :healthy and result.freshness.status == :fresh and result.aggregate_generation == snapshot.metadata.generation and
-           get_in(result, [:coverage, :projection, :partial_records]) == 0 do
-        {:ok, catalog} = RelationshipRegistry.register(Catalog.relationship_catalog(), Relationship.definition())
-        total = Tokens.total(snapshot.cells, Aiur.TrackerIdentity.github_key(identity), catalog)
-        {:ok, Map.put(result.totals, :token_total, total)}
-      else
-        {:error, :accounting_incomplete}
-      end
-    else
-      {:error, :accounting_identity_missing}
+    complete? =
+      result.health == :healthy and result.freshness.status == :fresh and result.aggregate_generation == snapshot.metadata.generation and
+        get_in(result, [:coverage, :projection, :partial_records]) == 0 and is_map(totals)
+
+    cond do
+      is_nil(key) -> {:error, :accounting_identity_missing}
+      not complete? -> {:error, :accounting_incomplete}
+      true -> {:ok, Map.put(totals, :token_total, Tokens.total(Map.get(by_ticket, key, []), catalog))}
     end
   end
 end

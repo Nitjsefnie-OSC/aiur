@@ -39,6 +39,8 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
     if weight > 0, do: Enum.sum(Enum.map(valid, fn {sample, ms} -> sample.running / sample.cap * ms end)) / weight
   end
 
+  defp value(_id, _samples, _merges), do: nil
+
   defp slices(sample) do
     at = hour(sample.start)
     boundary = DateTime.add(at, 3600, :second)

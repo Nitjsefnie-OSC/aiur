@@ -245,6 +245,11 @@ Disabled telemetry reports `unavailable/telemetry_disabled`; missing telemetry
 reports `unavailable/telemetry_missing`. Corrupt summaries, truncated history
 and fleet sample gaps report `partial`.
 
+Retained summaries get a bounded 64 KiB prefix inspection. Summaries whose first
+known event is at or after the window end are skipped. Earlier and unknown
+bounds stay included: first dispatch and prerequisite merges can precede the
+window, and historical GitHub anchors can belong to a later boot.
+
 Live and retained actor samples hold for at most five seconds. Only measured
 hours with active agents produce period observations; `observed_ms` records
 the measured portion of each hour. Thinned summary samples are not stretched

@@ -149,7 +149,13 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
           {:ok, [%{identifier: "101", tracker_identity: identity}]}
         end,
         usage_query: fn %{tickets: [^identity]} ->
+          totals = %{
+            money: %{{:provider_reported_estimate, "USD"} => Decimal.new("1.20")},
+            tokens: %{input: 150, cached_input: 30, cache_creation_input: 3, output: 60, reasoning_output: 15, provider_reported_total: 223}
+          }
+
           %{
+            groups: %{by_ticket: %{Aiur.TrackerIdentity.github_key(identity) => totals}},
             aggregate_generation: 7,
             coverage: %{projection: %{partial_records: 0}},
             health: :healthy,
@@ -198,7 +204,13 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
             totals: %{money: %{{:provider_reported_estimate, "USD"} => Decimal.new("1.2")}, tokens: %{input: 5}}
           }
         ] do
-      ctx = Map.put(ctx, :usage_query, fn _ -> usage |> Map.put(:aggregate_generation, 7) |> Map.put_new(:coverage, %{projection: %{partial_records: 0}}) end)
+      ctx =
+        Map.put(ctx, :usage_query, fn _ ->
+          usage
+          |> Map.put(:aggregate_generation, 7)
+          |> Map.put_new(:coverage, %{projection: %{partial_records: 0}})
+          |> Map.put(:groups, %{by_ticket: %{Aiur.TrackerIdentity.github_key(identity) => usage.totals}})
+        end)
 
       for id <- ~w(spend_per_merged_ticket tokens_per_merged_ticket) do
         assert result(id, ctx).coverage.state == :unavailable
