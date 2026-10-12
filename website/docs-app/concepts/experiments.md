@@ -293,6 +293,7 @@ invalidate that projection; live telemetry is never cached.
 
 Defaults bound each reader call to 10,000 record envelopes, 32 MiB of input
 and a 4 MiB retained projection (plus 1 MiB tokens and 16 nesting levels).
+
 Record, input-byte and retained-byte limits stop a read with the cause-neutral
 `truncated` state. Delivery metrics then report `unavailable/truncated` with no
 observations, rather than treating an incomplete population as a measured result.

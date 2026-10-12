@@ -6,6 +6,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   alias Aiur.Experiments.{TelemetryHistory, TelemetryReader}
   alias Aiur.RunTelemetry
   alias Aiur.RunTelemetry.{Dataset, Summaries}
+  alias Aiur.RunTelemetry.Dataset.Source
   alias Aiur.Usage.Headless.Catalog
   alias Aiur.UsageEnvelope.RelationshipRegistry
 
@@ -21,7 +22,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   defp load_enabled(window, ctx) do
     boot = Map.get_lazy(ctx, :boot_id, &RunTelemetry.boot_id/0)
     {prior, unreadable?} = prior_projection(boot, window, ctx)
-    sources = Map.get_lazy(ctx, :telemetry_path, &RunTelemetry.telemetry_file/0) |> List.wrap() |> Aiur.RunTelemetry.Dataset.Source.discover_files() |> Enum.map(&%{path: &1, format: :ndjson})
+    sources = Map.get_lazy(ctx, :telemetry_path, &RunTelemetry.telemetry_file/0) |> List.wrap() |> Source.discover_files() |> Enum.map(&%{path: &1, format: :ndjson})
     live = TelemetryReader.read(window, sources, history: true)
 
     with {:ok, live} <- live do

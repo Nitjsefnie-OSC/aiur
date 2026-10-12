@@ -13,7 +13,7 @@ defmodule Aiur.Experiments.TelemetryReader do
   `:records`, `:samples`, `:state`, `:warnings` and `:stats`; `:truncated` means
   a limit stopped the read, and must never become a zero-valued observation.
   """
-  alias Aiur.RunTelemetry.Dataset.Source
+  alias Aiur.RunTelemetry.Dataset.{Resources, Source}
 
   @chunk_bytes 16_384
   @token_bytes 1_048_576
@@ -91,15 +91,18 @@ defmodule Aiur.Experiments.TelemetryReader do
         {complete, [rest]} = Enum.split(pieces, -1)
         if byte_size(rest) > @token_bytes, do: throw(:limit)
 
-        next =
-          Enum.reduce(complete, line, fn value, number ->
-            if byte_size(value) > @token_bytes, do: throw(:limit)
-            if String.trim(value) != "", do: accept_line(value, path, number, window, opts, key)
-            number + 1
-          end)
+        next = consume_lines(complete, line, path, window, opts, key)
 
         ndjson(file, rest, next, path, window, opts, key)
     end
+  end
+
+  defp consume_lines(lines, first, path, window, opts, key) do
+    Enum.reduce(lines, first, fn value, number ->
+      if byte_size(value) > @token_bytes, do: throw(:limit)
+      if String.trim(value) != "", do: accept_line(value, path, number, window, opts, key)
+      number + 1
+    end)
   end
 
   defp accept_line(line, path, number, window, opts, key) do
@@ -187,20 +190,31 @@ defmodule Aiur.Experiments.TelemetryReader do
   end
 
   defp keep(record, window, opts, key) do
-    history = Keyword.get(opts, :history, false) and record.kind in ~w(lifecycle run_context restart)
-    kinds = Keyword.get(opts, :keep_kinds, ~w(lifecycle run_context restart resource warning))
-
-    resource = record.kind != "resource" or record.attributes["actor"] == "_daemon" or Keyword.get(opts, :projection) == :all
-
-    if resource and record.kind in kinds and (in_window?(record.timestamp, window) or (history and DateTime.compare(record.timestamp, window.end) == :lt)) do
+    if keep_record?(record, window, opts) do
       retain(key, :records, record, opts)
-
-      if record.kind == "resource" and record.attributes["actor"] == "_daemon" do
-        {actors, _warnings} = Aiur.RunTelemetry.Dataset.Resources.reduce_actors([record], [])
-        for sample <- actors["_daemon"].samples, do: retain(key, :samples, sample, opts)
-      end
+      keep_samples(record, opts, key)
     end
   end
+
+  defp keep_record?(record, window, opts) do
+    kinds = Keyword.get(opts, :keep_kinds, ~w(lifecycle run_context restart resource warning))
+    record.kind in kinds and keep_resource?(record, opts) and record_window?(record, window, opts)
+  end
+
+  defp keep_resource?(%{kind: "resource", attributes: attrs}, opts), do: attrs["actor"] == "_daemon" or Keyword.get(opts, :projection) == :all
+  defp keep_resource?(_record, _opts), do: true
+
+  defp record_window?(record, window, opts) do
+    history = Keyword.get(opts, :history, false) and record.kind in ~w(lifecycle run_context restart)
+    in_window?(record.timestamp, window) or (history and DateTime.compare(record.timestamp, window.end) == :lt)
+  end
+
+  defp keep_samples(%{kind: "resource", attributes: %{"actor" => "_daemon"}} = record, opts, key) do
+    {actors, _warnings} = Resources.reduce_actors([record], [])
+    for sample <- actors["_daemon"].samples, do: retain(key, :samples, sample, opts)
+  end
+
+  defp keep_samples(_record, _opts, _key), do: :ok
 
   defp retain(key, field, value, opts) do
     bytes = :erlang.external_size(value) + 16
