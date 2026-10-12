@@ -9,6 +9,7 @@
   {Aiur.Orchestrator.Dispatcher, :candidate_snapshot_fresh?, "Baseline core write in Aiur.Orchestrator.Dispatcher; retain until this responsibility moves to its field owner."},
   {Aiur.Orchestrator.Dispatcher, :ci_lifecycle, "Dispatcher stores candidate_list_cache inside ci_lifecycle.poll_cache; split this cache in the later ownership migration."},
   {Aiur.Orchestrator.Dispatcher, :claimed, "Baseline lifecycle write in Aiur.Orchestrator.Dispatcher; retain until this responsibility moves to its field owner."},
+  {Aiur.Orchestrator.ReworkDispatchClaim, :claimed, "Rework admission reserves the ticket while its guarded tracker transition is pending."},
   {Aiur.Orchestrator.Dispatcher, :dispatch_recovery, "Baseline lifecycle write in Aiur.Orchestrator.Dispatcher; retain until this responsibility moves to its field owner."},
   {Aiur.Orchestrator.Dispatcher, :effective_poll_interval_ms, "Dispatcher finishes the poll cycle and updates core scheduling telemetry; retain until core owns that update."},
   {Aiur.Orchestrator.Dispatcher, :idle_poll_backoff, "Dispatcher finishes the poll cycle and updates core scheduling telemetry; retain until core owns that update."},
