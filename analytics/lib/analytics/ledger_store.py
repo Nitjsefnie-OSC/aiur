@@ -21,7 +21,7 @@ def _warn(warning):
     print('analytics ledger: ' + json.dumps(warning), file=sys.stderr)
 
 
-def _ingest(files, cache):
+def _ingest(files, cache, repo=None):
     touched = set()
     for path in files:
         path = Path(path)
@@ -57,6 +57,12 @@ def _ingest(files, cache):
                         _warn({'type': 'invalid_ledger_input', 'path': key, 'line': line, 'reason': str(error)})
                         projected = None
                     if projected:
+                        if projected['kind'] == 'run_context' and projected['attributes'].get('repo') not in (None, 'unknown'):
+                            cache['boot_repos'][projected['boot_id']] = projected['attributes']['repo']
+                        owner = cache['boot_repos'].get(projected['boot_id'])
+                        if repo and owner and sources._repo_segments(owner) != sources._repo_segments(repo):
+                            offset = handle.tell()
+                            continue
                         projected['source_offset'] = offset
                         projected['source_end'] = handle.tell()
                         record_id = projected['record_id']
@@ -105,9 +111,17 @@ def _materialize(files, root, since, repo):
     cache = read_json(cursor_path, {'files': {}, 'records': {}, 'timeline_hash': None, 'partial_files': []})
     previous_cache = json.dumps(cache, sort_keys=True)
     cache.setdefault('partial_files', [])
+    cache.setdefault('boot_repos', {})
+    for row in cache['records'].values():
+        if row['kind'] == 'run_context' and row['attributes'].get('repo') not in (None, 'unknown'):
+            cache['boot_repos'][row['boot_id']] = row['attributes']['repo']
     if since:
         cache['files'] = {}
-    touched = _ingest(files, cache)
+    touched = _ingest(files, cache, repo)
+    if repo:
+        cache['records'] = {key: row for key, row in cache['records'].items()
+                            if not cache['boot_repos'].get(row['boot_id']) or
+                            sources._repo_segments(cache['boot_repos'][row['boot_id']]) == sources._repo_segments(repo)}
     records = _dedupe(list(cache['records'].values()))
     contexts = [r for r in records if r['kind'] == 'run_context']
     tickets = {}

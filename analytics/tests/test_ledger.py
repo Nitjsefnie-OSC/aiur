@@ -164,6 +164,25 @@ class LedgerTests(unittest.TestCase):
             self.assertTrue((root / 'analytics/tickets/42.json').exists())
             self.assertNotIn('private', (root / 'analytics/ledger-cursor.json').read_text())
 
+
+    def test_shared_logs_keep_known_other_repositories_out_of_the_ledger(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rows = []
+            for boot, repo, backend in [('A', 'owner/repo', 'claude'), ('B', 'other/repo', 'codex')]:
+                context = event('context', '09:00', boot=boot, repo=repo)
+                context['kind'] = 'run_context'
+                rows += [context, event('dispatch', '10:00', boot=boot, backend=backend)]
+            path = root / 'telemetry.ndjson'
+            path.write_text(''.join(json.dumps(row) + '\n' for row in rows))
+            ledger_store.materialize([path], root, repo='owner/repo')
+            record = json.loads((root / 'analytics/tickets/42.json').read_text())
+            self.assertEqual(record['cohort']['backend'], 'claude')
+            self.assertEqual(record['counts']['dispatches'], 1)
+            cursor = json.loads((root / 'analytics/ledger-cursor.json').read_text())
+            self.assertTrue(all(row['boot_id'] == 'A' for row in cursor['records'].values()))
+            self.assertEqual(ledger_store.materialize([path], root, repo='owner/repo'), [])
+
     def test_event_key_dedupe_and_since(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
