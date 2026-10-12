@@ -31,11 +31,25 @@ defmodule AiurWeb.Experiments.ViewModel do
       design_summary: design_summary(Map.get(spec, "design")),
       metric_specs: Enum.map(Map.get(spec, "metrics", []), &metric_spec(&1, catalog)),
       min_samples: Map.get(spec, "min_samples"),
-      frozen_baseline: :unknown,
+      frozen_baseline: frozen_baseline(spec, Map.get(detail, :snapshots, [])),
+      pack_changed_since_freeze?: Map.get(detail, :pack_changed_since_freeze, false),
       annotations: Map.get(detail, :annotations, []),
       read_only?: Map.get(detail, :read_only?, false)
     })
   end
+
+  defp frozen_baseline(%{"design" => %{"kind" => "before_after"}}, snapshots) do
+    snapshots
+    |> Enum.filter(&match?(%{"window_name" => "before", "revision" => revision} when is_integer(revision), &1))
+    |> Enum.max_by(& &1["revision"], fn -> nil end)
+    |> baseline_metadata()
+  end
+
+  defp frozen_baseline(_spec, _snapshots), do: :unknown
+  defp baseline_metadata(nil), do: :unknown
+
+  defp baseline_metadata(snapshot),
+    do: Map.new(~w(revision computed_at aiur_version sha256)a, &{&1, snapshot[Atom.to_string(&1)]})
 
   defp metric_spec(metric, catalog) do
     case Map.get(catalog, metric["ref"]) do

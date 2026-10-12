@@ -76,10 +76,16 @@ defmodule AiurWeb.ExperimentsLive do
               <dl>
                 <dt>Design</dt><dd>{@detail.design_summary}</dd>
                 <div :for={window <- @detail.window_labels} class="exp-window"><dt>{window.label} window</dt><dd>{window.text}</dd></div>
-                <dt>Frozen baseline</dt><dd>Evidence unavailable</dd>
+                <dt>Frozen baseline</dt>
+                <dd :if={@detail.frozen_baseline == :unknown}>Evidence unavailable</dd>
+                <dd :if={is_map(@detail.frozen_baseline)} id="exp-baseline">
+                  Revision {@detail.frozen_baseline.revision} · {@detail.frozen_baseline.computed_at || "Unknown time"} · Aiur {@detail.frozen_baseline.aiur_version || "Unknown version"}
+                  <span>SHA-256: {@detail.frozen_baseline.sha256 || "Unknown hash"}</span>
+                </dd>
                 <dt>Minimum samples</dt><dd>{@detail.min_samples}</dd>
                 <dt>Hypothesis</dt><dd>{@detail.hypothesis}</dd>
               </dl>
+              <p :if={@detail.pack_changed_since_freeze?} class="exp-notice">Metric pack definitions changed since this evidence was frozen.</p>
               <h3>Metric summary</h3>
               <p class="exp-notice" data-empty-reason="evidence_pending">Analysis evidence is not available yet.</p>
               <table :if={@detail.metric_specs != []} class="exp-table">
