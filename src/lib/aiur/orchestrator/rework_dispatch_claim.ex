@@ -3,7 +3,7 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaim do
 
   require Logger
 
-  alias Aiur.{Issue, Orchestrator.State}
+  alias Aiur.{DecisionAttention, Issue, Orchestrator.State}
   alias Aiur.Orchestrator.{DispatchPolicy, TicketTransition, TrackerTasks}
 
   @spec dispatch(State.t(), Issue.t(), (State.t() -> State.t()), (State.t() -> State.t()), (State.t(), String.t() -> term())) ::
@@ -41,6 +41,7 @@ defmodule Aiur.Orchestrator.ReworkDispatchClaim do
         current
 
       result == :ok ->
+        :ok = DecisionAttention.resolve_if_open(issue, "stranded-requeued")
         dispatch_fun.(current)
 
       true ->

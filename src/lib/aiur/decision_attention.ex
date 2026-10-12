@@ -11,7 +11,7 @@ defmodule Aiur.DecisionAttention do
 
   require Logger
 
-  alias Aiur.{AlertFeed, Alerts, DecisionStore, Issue}
+  alias Aiur.{AlertFeed, Alerts, DecisionAttentionResolution, DecisionStore, Issue}
   alias Aiur.Events.SubscriptionStore
 
   @default_reask_interval_ms :timer.minutes(15)
@@ -120,6 +120,16 @@ defmodule Aiur.DecisionAttention do
     GenServer.call(server, {:resolve, issue, slug}, @open_timeout)
   end
 
+  @spec resolve_if_open(Issue.t(), String.t()) :: :ok
+  def resolve_if_open(%Issue{} = issue, slug), do: resolve_if_open(__MODULE__, issue, slug)
+
+  @spec resolve_if_open(GenServer.server(), Issue.t(), String.t()) :: :ok
+  def resolve_if_open(server, %Issue{} = issue, slug) when is_binary(slug) do
+    GenServer.call(server, {:resolve_if_open, issue, slug}, @open_timeout)
+  catch
+    :exit, _ -> :ok
+  end
+
   @impl true
   def init(opts) do
     state = %{
@@ -132,6 +142,7 @@ defmodule Aiur.DecisionAttention do
       attention_loader: Keyword.get(opts, :attention_loader, &AlertFeed.list_decision_attentions/0),
       decision_projector: Keyword.get(opts, :decision_projector, &DecisionStore.project_attention/2),
       decision_store: Keyword.get(opts, :decision_store, DecisionStore),
+      owner_lookup: Keyword.get(opts, :owner_lookup, &DecisionAttentionResolution.live_owner?/1),
       import_limit: import_limit(opts),
       importing?: true,
       resolved_during_import: MapSet.new()
@@ -193,6 +204,16 @@ defmodule Aiur.DecisionAttention do
     {:reply, :ok, resolve_attention(state, issue, slug)}
   end
 
+  def handle_call({:resolve_if_open, issue, slug}, _from, state) do
+    identifier = issue_identifier!(issue)
+
+    if Map.has_key?(state.attentions, {identifier, slug}) or open_attention?(identifier, slug) do
+      {:reply, :ok, resolve_attention(state, issue, slug)}
+    else
+      {:reply, :ok, state}
+    end
+  end
+
   @impl true
   def handle_info({:reask, key}, state) do
     case Map.get(state.attentions, key) do
@@ -200,7 +221,7 @@ defmodule Aiur.DecisionAttention do
         {:noreply, state}
 
       attention ->
-        if stale_condition_attention?(attention, state) or answered_operator_attention?(attention, state) do
+        if DecisionAttentionResolution.resolve?(attention, state) do
           {:noreply, resolve_attention(state, attention.issue, attention.slug)}
         else
           emit(state.alert_emitter, attention)
@@ -359,7 +380,7 @@ defmodule Aiur.DecisionAttention do
       timer_ref: nil
     }
 
-    if stale_condition_attention?(attention, state) do
+    if DecisionAttentionResolution.resolve?(attention, state) do
       resolve_attention(state, issue, slug)
     else
       restore_actionable_attention(attention, source_created_at, key, state)
@@ -426,39 +447,6 @@ defmodule Aiur.DecisionAttention do
     }
   end
 
-  # These slugs describe mutable main-branch CI state. The alert is a snapshot,
-  # not a daemon-observed condition, so an unrefreshed snapshot expires instead
-  # of being re-raised forever as if the red result were still current.
-  defp stale_condition_attention?(%{slug: slug, opened_at: %DateTime{} = opened_at}, state) do
-    condition_attention?(slug) and
-      DateTime.diff(state.now_fun.(), opened_at, :millisecond) >= state.condition_attention_ttl_ms
-  end
-
-  defp stale_condition_attention?(_attention, _state), do: false
-
-  defp answered_operator_attention?(%{slug: "operator-decision", issue: issue}, state) do
-    identifier = issue_identifier!(issue)
-
-    state.decision_store
-    |> DecisionStore.list()
-    |> Enum.all?(fn decision ->
-      decision.ticket.identifier != identifier or decision.decision_status not in [:open, :deferred]
-    end)
-  end
-
-  defp answered_operator_attention?(_attention, _state), do: false
-
-  defp condition_attention?(slug) do
-    base_branch = Aiur.Config.base_branch()
-    branch_red = "#{base_branch}-red"
-    branch_ci_red = "#{base_branch}-ci-red"
-    detailed_ci_red_prefix = branch_ci_red <> "-"
-
-    slug in [branch_red, branch_ci_red] or
-      (String.starts_with?(slug, detailed_ci_red_prefix) and
-         byte_size(slug) > byte_size(detailed_ci_red_prefix))
-  end
-
   defp condition_attention_ttl_ms(opts) do
     case Keyword.get(opts, :condition_attention_ttl_ms, @condition_attention_ttl_ms) do
       ttl when is_integer(ttl) and ttl > 0 -> ttl
@@ -522,6 +510,13 @@ defmodule Aiur.DecisionAttention do
   defp attention_topic(attention), do: "ticket.#{issue_identifier!(attention.issue)}.agent.attention.#{attention.slug}"
   defp resolution_topic(attention), do: attention_topic(attention) <> ".resolved"
   defp attention_key(attention), do: {issue_identifier!(attention.issue), attention.slug}
+
+  defp open_attention?(identifier, slug) do
+    case SubscriptionStore.snapshot(identifier) do
+      %{open_attentions: open} -> slug in open
+      _missing -> false
+    end
+  end
 
   defp issue_identifier!(%Issue{id: id}) when is_binary(id) and id != "", do: id
   defp issue_identifier!(%Issue{identifier: identifier}) when is_binary(identifier) and identifier != "", do: identifier

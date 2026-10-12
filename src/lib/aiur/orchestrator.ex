@@ -644,10 +644,8 @@ defmodule Aiur.Orchestrator do
   def snapshot(server, timeout), do: StatusReport.snapshot_api(server, timeout)
 
   @doc """
-  Reads the dashboard snapshot from its read model without calling the
-  Orchestrator process. Before the first published snapshot it returns an
-  explicit unavailable result rather than joining the dispatch mailbox.
-  See `SnapshotStore.read/2` for result states.
+  Reads the published dashboard snapshot without querying the Orchestrator;
+  before first publication it returns unavailable. See `SnapshotStore.read/2`.
   """
   @spec dashboard_snapshot(GenServer.server(), timeout()) :: SnapshotStore.result()
   def dashboard_snapshot(server \\ __MODULE__, timeout \\ 15_000), do: SnapshotStore.read(server, timeout)
@@ -675,6 +673,8 @@ defmodule Aiur.Orchestrator do
 
   def handle_call(:list_running_active_identifiers, _from, state),
     do: StatusReport.list_running_active_identifiers(state)
+
+  def handle_call({:has_live_owner, identifier}, _from, state), do: StatusReport.has_live_owner(state, identifier)
 
   def handle_call({:build_queue_claim_status, ids}, _from, state) when is_list(ids) do
     {:reply, Map.new(ids, &{&1, BuildQueueClaimProbe.classify(state, &1)}), state}

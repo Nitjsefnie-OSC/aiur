@@ -1,6 +1,6 @@
 defmodule Aiur.Orchestrator.Slots do
   @moduledoc """
-  Computes orchestrator worker-host and global dispatch slot capacity.
+  Computes global dispatch capacity and issue-specific worker-host eligibility.
   """
 
   alias Aiur.{CodingAgent, Config, Issue}

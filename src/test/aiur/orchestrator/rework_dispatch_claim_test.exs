@@ -1,4 +1,5 @@
 defmodule Aiur.Orchestrator.ReworkDispatchClaimTest do
+  # Keep claim, recovery, and prompt assertions together as one dispatch lifecycle.
   use Aiur.TestSupport
 
   alias Aiur.{Issue, Tracker, Workflow}
