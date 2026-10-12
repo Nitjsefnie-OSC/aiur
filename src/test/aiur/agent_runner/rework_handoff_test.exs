@@ -1,15 +1,17 @@
 defmodule Aiur.AgentRunner.ReworkHandoffTest do
   use Aiur.TestSupport
 
+  alias Aiur.AgentRunner.ReworkHandoff
   alias Aiur.AgentRunner.TurnLoop
   alias Aiur.Workspace.Provisioner
 
   defmodule FakeOrchestrator do
     use GenServer
 
-    def start_link, do: GenServer.start_link(__MODULE__, nil)
+    def start_link(queue_depth \\ 0), do: GenServer.start_link(__MODULE__, queue_depth)
     @impl true
-    def init(state), do: {:ok, state}
+    def init(queue_depth), do: {:ok, queue_depth}
+    def handle_call({:control_capabilities, _identifier}, _from, depth), do: {:reply, {:ok, %{queue_depth: depth}}, depth}
     @impl true
     def handle_call({:claim_next_queue_item, _identifier}, _from, state), do: {:reply, :empty, state}
     def handle_call({:consume_delivered_queue_items, _identifier}, _from, state), do: {:reply, :ok, state}
@@ -17,7 +19,43 @@ defmodule Aiur.AgentRunner.ReworkHandoffTest do
     def handle_call({:fail_delivered_queue_items, _identifier, _reason}, _from, state), do: {:reply, :ok, state}
   end
 
-  test "a productive rework turn with a new PR head hands off instead of starting another turn" do
+  test "rework continues when the dispatch head is unknown, PR lookup fails, or the head is unchanged" do
+    issue = %Aiur.Issue{identifier: "rework-no-evidence", state: "rework"}
+    {:ok, orchestrator} = FakeOrchestrator.start_link()
+    context = %{orchestrator: orchestrator, opts: [rework_head_sha: :pending]}
+
+    assert :continued = ReworkHandoff.after_turn(issue, context, fn -> :continued end)
+
+    context = %{context | opts: [rework_head_sha: "known", open_pr_fetcher: fn _ -> {:error, :github_budget_hold} end]}
+    assert :continued = ReworkHandoff.after_turn(issue, context, fn -> :continued end)
+
+    context = %{context | opts: [rework_head_sha: "known", open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "known"}}} end]}
+    assert :continued = ReworkHandoff.after_turn(issue, context, fn -> :continued end)
+  end
+
+  test "rework continues to consume queued operator input before handing off" do
+    issue = %Aiur.Issue{identifier: "rework-queued", state: "rework"}
+    {:ok, orchestrator} = FakeOrchestrator.start_link(1)
+    context = %{orchestrator: orchestrator, opts: [rework_head_sha: "old", open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "new"}}} end]}
+
+    assert :continued = ReworkHandoff.after_turn(issue, context, fn -> :continued end)
+  end
+
+  test "ci-wait never starts a continuation even if configured as active" do
+    write_workflow_file!(Aiur.Workflow.workflow_file_path(),
+      tracker_kind: "memory",
+      tracker_active_states: ["todo", "in-progress", "rework", "ci-wait"]
+    )
+
+    Aiur.WorkflowStore.force_reload()
+    issue = %Aiur.Issue{id: "ci-wait", identifier: "ci-wait", state: "rework"}
+    refreshed = %{issue | state: "ci-wait"}
+
+    assert {:done, ^refreshed} =
+             TurnLoop.continue_with_issue?(issue, fn ["ci-wait"] -> {:ok, [refreshed]} end)
+  end
+
+  test "a pushed rework head with completed failing CI hands off for review instead of retrying" do
     write_workflow_file!(Aiur.Workflow.workflow_file_path(),
       tracker_kind: "memory",
       tracker_active_states: ["todo", "in-progress", "rework"]
@@ -51,7 +89,7 @@ defmodule Aiur.AgentRunner.ReworkHandoffTest do
                  workspace_probe: fn _workspace, _worker_host -> {:ok, "workspace"} end,
                  rework_head_sha: "reviewed-head",
                  open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "fixed-head"}}} end,
-                 commit_ci_status_fetcher: fn _ -> {:ok, %{check_runs: [], commit_status: %{"state" => "success"}}} end
+                 commit_ci_status_fetcher: fn _ -> {:ok, %{check_runs: [], commit_status: %{"state" => "failure"}}} end
                ],
                fn _ids -> {:ok, [issue]} end,
                orchestrator,

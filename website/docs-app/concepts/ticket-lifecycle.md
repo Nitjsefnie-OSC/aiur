@@ -664,6 +664,13 @@ the existing test-only one-poll retry still applies.
 
 An operator comment directs the same agent.
 
+After a rework turn, the agent slot is released when the dispatch recorded a
+head SHA, the open PR now has a different head, and no operator message is
+queued. Unknown or unchanged heads keep the agent working; queued messages are
+consumed before handoff. A changed head with pending checks goes to
+`agent:ci-wait`; completed checks, including failed checks, go to
+`agent:human-review` so the CI lifecycle can route failures back to rework.
+
 One precondition is worth naming: **`agent:rework` is gated.**
 `ReworkGate.verify_open_pr/2` (`src/lib/aiur/orchestrator/rework_gate.ex:23-34`)
 requires the ticket to still have an open PR — `rework` means "work exists and

@@ -308,6 +308,19 @@ defmodule Aiur.Orchestrator.ReworkGate do
     end
   end
 
+  @doc "Returns a handoff only when a completed turn pushed a new open-PR head."
+  @spec completed_agent_handoff(String.t(), term(), keyword()) :: :none | {:handoff, String.t()}
+  def completed_agent_handoff(issue_key, original_head, opts \\ []) do
+    with original when is_binary(original) and original != "" <- original_head,
+         {:ok, pr} <- open_pr(issue_key, opts),
+         head when is_binary(head) and head != "" <- head_sha(pr),
+         true <- head != original do
+      {:handoff, ci_handoff_state(head, opts)}
+    else
+      _ -> :none
+    end
+  end
+
   # #3971: the head can equal the dispatch head and still carry the fixes — they
   # were pushed by an earlier run. A blocking review that names an older commit
   # has not seen this head, so it goes back to the reviewer, red CI included.
