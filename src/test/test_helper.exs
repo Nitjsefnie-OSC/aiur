@@ -61,6 +61,12 @@ test_run_root =
 
 Application.put_env(:aiur, :test_run_root, test_run_root)
 
+suite_runtime_state_dir = Application.fetch_env!(:aiur, :runtime_state_dir)
+
+unless Path.dirname(Aiur.AlertLedger.path()) == suite_runtime_state_dir do
+  raise "alert ledger must use the suite runtime state root #{suite_runtime_state_dir}"
+end
+
 ExUnit.after_suite(fn _result ->
   # Best-effort: IdGenerator's terminate/2 flush at VM shutdown may
   # recreate the counter file after this — a small leftover under the

@@ -109,12 +109,14 @@ defmodule Aiur.TestSupportIsolationTest do
     prior_cycles = :sys.get_state(orchestrator).poll_cycles_completed
     assert %{queued: true} = Aiur.Orchestrator.request_refresh()
     assert :sys.get_state(orchestrator).poll_frozen
+    send(orchestrator, :tick)
 
     ledger = AlertLedger.path()
 
     assert :ok = PollCadence.forget_effective_interval_ms()
     Process.sleep(50)
     assert PollCadence.published_effective_interval_ms(class: :ci) == nil
+    refute :sys.get_state(orchestrator).poll_check_in_progress
     assert :sys.get_state(orchestrator).poll_cycles_completed == prior_cycles
     assert Path.dirname(ledger) == Application.fetch_env!(:aiur, :runtime_state_dir)
     assert ledger =~ "aiur-elixir-tests"
