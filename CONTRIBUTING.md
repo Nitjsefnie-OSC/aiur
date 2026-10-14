@@ -77,6 +77,11 @@ Run `python3 scripts/check-file-size.py --base <commit>` locally; without
 
 ## Testing
 
+**Harness characterization suite:** From `src/`, run
+`mise exec -- mix test --only r7_characterization --max-cases 4`. It must pass
+unchanged before and after every MP-R7 PR and MP-E7-C3; record the non-zero
+test count in each PR body. Tagged tests also run in normal partitioned CI.
+
 - **Mock at boundaries, never pure utilities.** Stub the external edges —
   GitHub, the shell, the filesystem, tmux, the coding-agent app-server — so a
   test exercises real internal logic. A pure function is tested with real
@@ -192,6 +197,7 @@ configured integrations; missing or skipped required checks remain pending.
 
 ## Documentation
 
+- `python3 scripts/check-components.py --docs` validates directory docs, sections, env names and capabilities.
 - `components.json` supplies public component descriptions and the planned-features list for the generated directory.
 - **Functionality ships with its documentation, in the same PR.** Docs are
   required when a change adds or changes a config key, a CLI command or flag,
@@ -336,6 +342,7 @@ to one component indexed by `components.json` in `components/<id>.json`. Add new
 paths in the same PR. Before running `python3 scripts/check-components.py`, install its pinned TypeScript
 toolchain with `npm ci --prefix scripts/components --ignore-scripts`. The required lint job runs both;
 unowned files, equally specific competing owners and stale globs fail the check.
+Workflow security runs the docs rules even on docs-only PRs; lint also runs the full checker.
 Use `python3 scripts/check-components.py --format` to keep the manifest deterministic.
 Arrays have one member per line; string sets and exemption TSVs stay sorted.
 Workflow security enforces this layout with `scripts/check-hot-list-format.py`.
