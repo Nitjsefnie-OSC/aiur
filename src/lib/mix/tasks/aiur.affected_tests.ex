@@ -1,6 +1,9 @@
 defmodule Mix.Tasks.Aiur.AffectedTests do
   use Mix.Task
 
+  alias Aiur.AffectedTests.Command
+  alias Aiur.AffectedTests.GitDiff
+
   @shortdoc "Print the scoped `mix test` command for files changed vs the base branch"
 
   @moduledoc """
@@ -32,41 +35,33 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
     root = repo_root()
 
     with {:ok, base} <- requested_or_default_base(root, args),
-         {:ok, diff_base} <- merge_base(root, base),
-         {:ok, changed} <- changed_files(root, diff_base),
-         {:ok, dependents} <- xref_dependents(root, changed),
-         {:ok, references} <- deleted_reference_tests(root, diff_base) do
-      changed
-      |> Aiur.AffectedTests.select(base_dir: root, dependent_sources: dependents, reference_tests: references)
-      |> command()
-      |> Enum.each(fn line -> Mix.shell().info(line) end)
+         {:ok, selection} <- selection(root, base) do
+      Enum.each(selection, fn line -> Mix.shell().info(line) end)
     else
       {:error, reason} -> Mix.raise("Cannot select affected tests safely: #{reason}")
     end
   end
 
   @doc false
-  @spec command({:full, String.t()} | {:scoped, [String.t()]}) :: [String.t()]
-  def command({:full, reason}),
-    do: ["# full suite recommended: #{reason}", "cd src && mise exec -- make ci"]
+  @spec selection(String.t(), String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def selection(root, base) do
+    with {:ok, diff_range} <- GitDiff.range(root, base),
+         {:ok, changed} <- changed_files(root, diff_range),
+         {:ok, dependents} <- xref_dependents(root, changed),
+         {:ok, references} <- deleted_reference_tests(root, diff_range) do
+      result =
+        Aiur.AffectedTests.select(changed,
+          base_dir: root,
+          dependent_sources: dependents,
+          reference_tests: references
+        )
 
-  def command({:scoped, []}), do: ["# no affected test files detected for the documentation-only change"]
-
-  def command({:scoped, tests}) do
-    mix_paths =
-      Enum.map(tests, fn path ->
-        path
-        |> String.replace_prefix("src/", "")
-        |> shell_quote()
-      end)
-
-    ["cd src && mise exec -- mix test --max-cases 4 " <> Enum.join(mix_paths, " ")]
+      {:ok, Command.build(result)}
+    end
   end
 
-  defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\"'\"'") <> "'"
-
-  defp changed_files(root, base) do
-    with {:ok, committed} <- changed_paths(root, base),
+  defp changed_files(root, {base, head}) do
+    with {:ok, committed} <- GitDiff.changed_paths(root, base, head),
          {:ok, working} <- git(root, ["diff", "--name-only", "--"]),
          {:ok, untracked} <- git(root, ["ls-files", "--others", "--exclude-standard"]) do
       {:ok, Enum.uniq(committed ++ working ++ untracked)}
@@ -74,30 +69,35 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
   end
 
   @doc false
-  @spec changed_paths(String.t(), String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
-  def changed_paths(root, base) do
-    case git(root, ["diff", "--name-only", "#{base}...HEAD", "--"]) do
-      {:ok, paths} -> {:ok, paths}
+  @spec deleted_reference_tests(String.t(), String.t() | {String.t(), String.t()}) ::
+          {:ok, [String.t()]} | {:error, String.t()}
+  def deleted_reference_tests(root, base) when is_binary(base) do
+    case GitDiff.diff(root, ["diff", "--unified=0", base, "--", "src/lib"]) do
+      {:ok, lines} -> deleted_reference_matches(root, lines)
       error -> error
     end
   end
 
-  @doc false
-  @spec deleted_reference_tests(String.t(), String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
-  def deleted_reference_tests(root, base) do
-    case git(root, ["diff", "--unified=0", base, "--", "src/lib"]) do
-      {:ok, lines} ->
-        tests =
-          lines
-          |> Enum.join("\n")
-          |> Aiur.AffectedTests.deleted_reference_terms()
-          |> then(&Aiur.AffectedTests.reference_test_files(root, &1))
+  def deleted_reference_tests(root, {base, head}), do: deleted_reference_diff(root, base, head)
 
-        {:ok, tests}
+  defp deleted_reference_diff(root, base, head) do
+    case GitDiff.diff(root, ["diff", "--unified=0", base, head, "--", "src/lib"]) do
+      {:ok, lines} ->
+        deleted_reference_matches(root, lines)
 
       error ->
         error
     end
+  end
+
+  defp deleted_reference_matches(root, lines) do
+    tests =
+      lines
+      |> Enum.join("\n")
+      |> Aiur.AffectedTests.deleted_reference_terms()
+      |> then(&Aiur.AffectedTests.reference_test_files(root, &1))
+
+    {:ok, tests}
   end
 
   @doc false
@@ -161,14 +161,6 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
       {:ok, [sha]} -> {:ok, sha}
       {:ok, other} -> {:error, "git merge-base returned #{inspect(other)}"}
       {:error, reason} -> {:error, "#{reason}\nHint: base ref `#{origin}` not found locally; run `git fetch origin`"}
-    end
-  end
-
-  defp merge_base(root, base) do
-    case git(root, ["merge-base", "HEAD", base]) do
-      {:ok, [sha]} -> {:ok, sha}
-      {:ok, other} -> {:error, "git merge-base returned #{inspect(other)}"}
-      error -> error
     end
   end
 

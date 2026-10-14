@@ -31,19 +31,23 @@ else:
                                     env=dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
                                              SELECTION=selection, CALLS=str(calls), TEST_STATUS=str(status)))
             self.assertNotIn(b"can't open file", result.stderr)
-            return result.returncode, [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+            invoked = [json.loads(line) for line in calls.read_text().splitlines()] if calls.exists() else []
+            return result.returncode, invoked, result.stdout.decode()
 
     def test_runs_selected_paths_without_shell_evaluation(self):
         self.assertEqual(self.run_selection("cd src && mise exec -- mix test --max-cases 4 'test/a test.exs' 'test/$(bad)_test.exs'"),
-                         (0, [['test', '--max-cases', '4', 'test/a test.exs', 'test/$(bad)_test.exs']]))
+                         (0, [['test', '--max-cases', '4', 'test/a test.exs', 'test/$(bad)_test.exs']],
+                          "cd src && mise exec -- mix test --max-cases 4 'test/a test.exs' 'test/$(bad)_test.exs'\n\n"))
 
     def test_unsafe_selection_defers_full_suite_to_merge_queue(self):
-        status, calls = self.run_selection('# full suite recommended: shared support\ncd src && mise exec -- make ci')
+        status, calls, output = self.run_selection('# full suite recommended: shared support\ncd src && mise exec -- make ci')
         self.assertEqual(status, 0)
         self.assertEqual(calls, [])
+        self.assertIn('::notice::', output)
 
     def test_no_tests_does_not_run_test_suite(self):
-        self.assertEqual(self.run_selection('# no affected test files detected for the documentation-only change'), (0, []))
+        self.assertEqual(self.run_selection('# no affected test files detected for the documentation-only change'),
+                         (0, [], '# no affected test files detected for the documentation-only change\n\n'))
 
     def test_failure_is_not_reported_as_success(self):
         self.assertNotEqual(self.run_selection('cd src && mise exec -- mix test --max-cases 4 test/a_test.exs', 1)[0], 0)

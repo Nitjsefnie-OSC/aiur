@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run the existing selector's command without evaluating it as shell code."""
+import os
 import shlex
 import subprocess
 import sys
@@ -15,7 +16,11 @@ else:
         raise ValueError('selector produced multiple commands')
     command = shlex.split(commands[0].removeprefix('cd src && mise exec -- '))
     if command == ['make', 'ci']:
-        print('Full CI deferred to the merge queue for this unsafe affected selection.', flush=True)
+        print('::notice::Unsafe affected selection deferred to full CI in the merge queue.', flush=True)
+        summary = os.environ.get('GITHUB_STEP_SUMMARY')
+        if summary:
+            with open(summary, 'a', encoding='utf-8') as out:
+                out.write('Full CI is deferred to the merge queue because this affected selection is unsafe to scope.\n')
     elif command[:4] != ['mix', 'test', '--max-cases', '4']:
         raise ValueError('unsupported selector command')
     else:
