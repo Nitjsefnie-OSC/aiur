@@ -16,8 +16,8 @@ defmodule Aiur.Orchestrator.StatusReport.SnapshotPayload do
   alias Aiur.Orchestrator.State
   alias Aiur.Orchestrator.StatusObservation
   alias Aiur.Orchestrator.WaitingReason
-  alias Aiur.Tmux.Socket
   alias Aiur.PollCadence
+  alias Aiur.Tmux.Socket
   alias Aiur.Workspace.Ownership.Retention
 
   @doc false
