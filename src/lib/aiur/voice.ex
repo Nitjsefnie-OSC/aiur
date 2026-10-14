@@ -23,6 +23,31 @@ defmodule Aiur.Voice do
     if is_atom(module) and module != nil and Code.ensure_loaded?(module), do: module
   end
 
+  @doc "The voice setup contribution, omitted when no voice provider is installed."
+  @spec init_contribution() :: map() | nil
+  def init_contribution do
+    if provider() do
+      %{
+        id: :elevenlabs,
+        prompt: &Aiur.Init.ElevenLabs.prompt_eleven_labs/3,
+        yaml: &Aiur.Init.ElevenLabs.eleven_labs_section_yaml/1,
+        resume: fn config ->
+          Aiur.Init.ResumeSummary.optional_section_line("elevenlabs_voice_input", config["elevenlabs"], &Aiur.Init.ResumeSummary.elevenlabs_key_state/1)
+        end,
+        backfill: fn ->
+          %{
+            key: "elevenlabs",
+            label: "ElevenLabs voice input",
+            prompt: &Aiur.Init.ElevenLabs.prompt_eleven_labs/3,
+            opted_in?: fn answer -> answer.enabled end,
+            to_yaml: &Aiur.Init.ElevenLabs.eleven_labs_section_yaml/1,
+            first_run: fn _io, _deps, _target, _tracker, _answer -> :ok end
+          }
+        end
+      }
+    end
+  end
+
   @spec availability() :: %{available: boolean(), reason: reason()}
   def availability do
     case provider() do

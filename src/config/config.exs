@@ -30,6 +30,8 @@ config :aiur, :keyring_token_fun_module, Aiur.GitHub.Config
 
 config :aiur, :experiment_metric_packs, []
 
+config :aiur, :init_contributions, [Aiur.Voice]
+
 config :aiur, :capability_providers, [
   Aiur.Capabilities.IdentityProvider,
   Aiur.Capabilities.MergePolicyProvider,
