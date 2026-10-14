@@ -6,8 +6,9 @@ repo_root="$(cd "$docs_dir/../.." && pwd)"
 engine="$repo_root/packaging/npm/aiur-cli/libexec/aiur-engine.sh"
 parser="$repo_root/src/lib/aiur/cli.ex"
 dev_shim="$repo_root/scripts/aiurdev"
+dev_harness="$repo_root/scripts/lib/aiurdev-harness.sh"
 page="$docs_dir/reference/cli.md"
-source_dev_commands="$(sed -n 's/^if \[ "${1:-}" = "\([a-z-]*\)" \]; then$/\1/p' "$dev_shim" | sort -u)"
+source_dev_commands="$(sed -n 's/^if \[ "${1:-}" = "\([a-z-]*\)" \]; then$/\1/p' "$dev_shim" "$dev_harness" | sort -u)"
 
 fail=0
 
@@ -59,9 +60,9 @@ source_flags="$(
 
     # The dev-only surface is the shim's own flag parser: the force-rebuild
     # arms and the bounded test-harness parser, never mix-reset internals.
-    sed -n '/^if \[ "${1:-}" = "build" \]; then/,/^# --- dev test/p' "$dev_shim" \
+    sed -n '/^if \[ "${1:-}" = "build" \]; then/,/^# --- dev test/p' "$dev_harness" \
       | awk '/= "--[a-z0-9-]*"/ { print }'
-    sed -n '/^# --- dev test/,/^if \[ -n "\$agent_workspace_marker" \]; then/p' "$dev_shim" \
+    sed -n '/^# --- dev test/,/^if \[ -n "\$agent_workspace_marker" \]; then/p' "$dev_harness" \
       | awk '/^[[:space:]]*case[[:space:]]/ { in_case++ }
              in_case && /^[[:space:]]*--[a-z0-9-]*([=][*])?\)/ { print }
              in_case && /^[[:space:]]*esac/ { in_case-- }'
