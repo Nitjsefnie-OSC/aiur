@@ -37,7 +37,23 @@ defmodule Aiur.Orchestrator.Reconciler do
     RateLimitFallback.reconcile(state)
   end
 
-  # Reuse the polled snapshot, then conditionally fetch missing running tickets.
+  # Two independent read-reduction strategies meet on this path (#1674):
+  #
+  #   1. Reuse. The poll has already fetched the candidate list, so a running
+  #      ticket visible in that snapshot needs no request at all.
+  #   2. Revalidation. Whatever is left — running tickets absent from the
+  #      candidate snapshot — is fetched with `If-None-Match`, so an unchanged
+  #      ticket costs a 304 (free against the GitHub rate limit) instead of a
+  #      full read.
+  #
+  # They compose: reuse eliminates requests, revalidation makes the
+  # irreducible remainder cheap. The ETag/issue pairs live in
+  # `State.running_issue_cache`, threaded through `fetch_fun`.
+  #
+  # `fetch_fun` is deliberately arity-polymorphic rather than a second
+  # `is_list/1`-guarded arity-2 clause: an arity-1 fun is the legacy
+  # cache-free contract, an arity-2 fun is the conditional one. The arity is
+  # what distinguishes them, so no two clauses can shadow each other.
   @typedoc false
   @type fetch_fun ::
           ([String.t()] -> {:ok, [Issue.t()]} | {:error, term()})
@@ -291,15 +307,7 @@ defmodule Aiur.Orchestrator.Reconciler do
     end
   end
 
-  def reconcile_issue_effects(
-        _issue,
-        state,
-        _active_states,
-        _terminal_states,
-        _observe_membership_fun,
-        _mark_reconciled_fun
-      ),
-      do: {state, []}
+  def reconcile_issue_effects(_issue, state, _active_states, _terminal_states, _observe_membership_fun, _mark_reconciled_fun), do: {state, []}
 
   defp reconcile_terminal_issue_state(state, issue, observe_membership_fun, mark_reconciled_fun) do
     Logger.info([
