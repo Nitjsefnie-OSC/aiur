@@ -283,9 +283,9 @@ test('B19 scrollbar geometry, track click, active timer and drag', async ({ page
   })
   await page.locator('#bd-vp').evaluate(el => el.append(Object.assign(document.createElement('div'), { id: 'spacer', style: 'height:20000px' })))
   let m = await measure(); expect(m.off).toBe(false); expect(m.height).toBeCloseTo(Math.max(28, m.track * m.ch / m.sh))
-  await page.locator('#bd-vp').evaluate(el => { el.scrollTop = (el.scrollHeight - el.clientHeight) / 2 })
-  await page.clock.runFor(32) // Consume the native scroll event before starting the timer boundary.
-  await page.locator('#bd-vp').evaluate(el => el.dispatchEvent(new Event('scroll')))
+  await page.locator('#bd-vp').evaluate(el => new Promise(resolve => {
+    el.addEventListener('scroll', resolve, { once: true }); el.scrollTop = (el.scrollHeight - el.clientHeight) / 2
+  }))
   m = await measure(); expect(m.y).toBeCloseTo(0.5 * (m.track - m.height), 0)
   await page.clock.runFor(699); await expect(page.locator('#bd-sb')).toHaveClass(/\bact\b/)
   await page.clock.runFor(2); await expect(page.locator('#bd-sb')).not.toHaveClass(/\bact\b/)
