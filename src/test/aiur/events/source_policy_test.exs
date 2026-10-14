@@ -97,8 +97,10 @@ defmodule Aiur.Events.SourcePolicyTest do
   end
 
   test "an absent policy uses Null", %{topic: topic, opts: opts} do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "github", tracker_repo: "owner/repo", tracker_bot_account: "aiur-bot")
+    assert GitHubConfig.daemon_account() == "aiur-bot"
     Application.delete_env(:aiur, SourcePolicy)
-    assert {:ok, id, _} = Publisher.publish(topic, %{}, Keyword.put(opts, :actor, "bot"))
+    assert {:ok, id, _} = Publisher.publish(topic, %{}, Keyword.put(opts, :actor, "aiur-bot"))
     assert_received {:event, %{id: ^id, topic: ^topic}}
   end
 
@@ -122,6 +124,7 @@ defmodule Aiur.Events.SourcePolicyTest do
     assert Process.get(:policy_calls) == [{:self_authored, nil}, {:observe, :filtered}]
   end
 
+  # Future-regression guard: the required option contract already existed before this extraction.
   test "resource_source remains required before policy evaluation", %{topic: topic} do
     assert_raise KeyError, fn -> Publisher.publish(topic, %{}, resource: {:comment, "owner", "repo", 9}) end
     assert Process.get(:policy_calls, []) == []
