@@ -1,5 +1,7 @@
 import Config
 
+config :aiur, Aiur.Events.Trace, Aiur.Events.DebugLog
+
 config :aiur, env: config_env()
 
 config :aiur, Aiur.Events.TrustClassifier, Aiur.GitHub.EventTrust

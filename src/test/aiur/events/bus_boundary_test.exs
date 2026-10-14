@@ -7,7 +7,7 @@ defmodule Aiur.Events.BusBoundaryTest do
 
   @members ~w(exchange topic publisher id_generator subscription_store
               subscription_store_supervisor universal_subscriptions
-              agent_subscription_policy debug_log)
+              agent_subscription_policy trace)
            |> Enum.map(&"events/#{&1}.ex")
            |> Kernel.++(["ticket_observation.ex"])
 
@@ -30,8 +30,6 @@ defmodule Aiur.Events.BusBoundaryTest do
     {"events/subscription_store.ex", "Aiur.Orchestrator"} => "C2-T01",
     {"events/subscription_store.ex", "Aiur.Signal"} => "C2-T01",
     {"events/subscription_store.ex", "Aiur.IssueLog"} => "C2-T03",
-    {"events/debug_log.ex", "Phoenix.PubSub"} => "C2-T05",
-    {"events/debug_log.ex", "Aiur.PubSub"} => "C2-T05",
     # Unassigned: tracker types in the L1 spine; MP-R1 decides (CONTRACT-REQUESTS).
     {"ticket_observation.ex", "Aiur.TrackerIdentity"} => "unassigned",
     {"ticket_observation.ex", "Aiur.OpaqueIdentifier"} => "unassigned"
