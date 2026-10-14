@@ -1,3 +1,4 @@
+// Lifecycle scenarios share the real server shell and its dataset/navigation helpers.
 import { expect, test } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
@@ -106,12 +107,13 @@ test('B3 clock ignores wall time; B3b invalid now never applies', async ({ page 
     const { ctx } = await import('/build-home/state.js'), { nowMs } = await import('/build-home/clock.js')
     return Math.abs(nowMs() - ctx.snap.now)
   })).toBeLessThan(1000)
+  const snapshot = await page.evaluate(async () => (await import('/build-home/state.js')).ctx.snap)
   await open(page, 'unavailable')
-  expect(await page.evaluate(async () => {
+  expect(await page.evaluate(async snapshot => {
     const { receive } = await import('/build-home/hook.js'), { ctx } = await import('/build-home/state.js')
-    receive({ v: 1, kind: 'snapshot', epoch: 'bad', generation: 0, now: null })
+    receive({ ...snapshot, now: null })
     return { D: ctx.D, now: (await import('/build-home/clock.js')).nowMs() }
-  })).toEqual({ D: null, now: null })
+  }, snapshot)).toEqual({ D: null, now: null })
   await expect(page.locator('.bd-loading')).toHaveText('Build timeline unavailable · invalid data')
 })
 
@@ -133,6 +135,8 @@ test('B5 gaps single-flight; B6 invalid diff leaves all data unchanged', async (
     ctx.push = () => { calls++; return new Promise(() => {}) }
     receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1,
       now: ctx.snap.now, upsert: [{ sec: 'now' }], remove: [ctx.D.all[0].id], set: {} })
+    receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1,
+      now: ctx.snap.now, upsert: [{ ...ctx.D.all[0], title: 'must not leak' }], remove: [], set: { features: null } })
     const unchanged = before === JSON.stringify(ctx.snap) && D === ctx.D
     for (let i = 0; i < 2; i++) receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 3 })
     return { unchanged, calls, inFlight: ctx.proto.inFlight }
