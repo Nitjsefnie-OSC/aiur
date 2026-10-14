@@ -95,7 +95,7 @@ and refuse direct REST or GraphQL issue creation that bypasses the checked label
 flags. The aiur-build publication validator separately refuses a Build Order
 whose executable members are projected undispatched. Use
 `gh issue create --label ...`; keep `gh issue list --search 'no:label'` as the
-independent safety-net audit before treating a queue as empty.
+independent safety-net audit before treating a queue as empty. An `optimistic_blocker_failed` wake names the dependent, blocker, cause, and action. Choose: wait for a replacement blocker, re-base the dependent on the default branch and resume it, or close it. Aiur keeps the branch and PR; recovery never auto-resumes parked work. Info with action `none` means work keeps running.
 
 “Worth fixing” and “we know how” do not expand the active boundary. Each
 deferred entry keeps description, severity, evidence/reproduction, affected
@@ -372,7 +372,7 @@ because the first ordinary repair is inconvenient.
 Branch freshness is an owning-worker responsibility. A pull request reaches
 review-ready state only when all of these are true:
 
-- its `baseRefName` is the configured integration branch;
+- its `baseRefName` is the configured integration branch or an Aiur-verified open, unmerged direct blocker's head branch (stacked PRs require integration retargeting before merge);
 - the current remote base head is an ancestor of the exact PR head;
 - fresh CI for that exact head has passed the required gate.
 
@@ -482,12 +482,12 @@ including `build`, `test`, and `workflow security`, with strict status checks
 enabled, and the gate is enforced once that declaration is applied to the live
 ruleset. The CI `merge ruleset drift` check verifies the live ruleset against
 that declaration on every PR and merge, so a regressed gate fails CI visibly.
-The Executor must wait for the required checks and the review conditions before
-merging; never merge a pending, failing, or stale head.
+Before every merge, run `scripts/check-stack-order.sh <pr>` (see `merge-order-gate.md`).
+Wait for required checks and review; never merge a pending, failing, or stale head.
 
 A solo operator cannot merge a branch they authored through the gate
 (issue #1437). This used to bite hardest on the periodic `develop` -> `main`
-promotion; that promotion is retired now that `main` is the single base branch,
+promotion; that promotion is retired now that `main` is the integration branch,
 but the rule still governs any Executor-authored branch.
 With a two-owner CODEOWNERS entry plus `require_code_owner_review`
 and `require_last_push_approval`, the only in-gate path is a bot approval, which

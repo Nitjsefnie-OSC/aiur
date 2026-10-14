@@ -25,6 +25,7 @@ defmodule ScriptsAiurdevTest do
     File.write!(
       engine,
       "#!/usr/bin/env bash\n" <>
+        "if [ \"${1:-}\" = __identity ]; then echo AIUR_INSTANCE_KEY=0123456789; exit; fi\n" <>
         "if [ -n \"${AIUR_ENGINE_TRACE:-}\" ]; then\n" <>
         "  {\n" <>
         "    echo '---'\n" <>
@@ -69,7 +70,7 @@ defmodule ScriptsAiurdevTest do
     )
 
     File.chmod!(engine, 0o755)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     root
   end
 
@@ -223,18 +224,17 @@ defmodule ScriptsAiurdevTest do
 
     on_exit(fn ->
       File.rm(path)
-      File.rm_rf(opencode_dir)
+      Aiur.TestCleanup.rm_rf!(opencode_dir)
     end)
 
     path
   end
 
-  # A throwaway HOME so `--clear` (which wipes ~/.aiur/logs) never touches the
-  # real one. Seeds a stale session dir the caller can assert was removed.
+  # Throwaway HOME keeps log-clearing tests away from real run evidence.
   defp sandbox_home do
     home = Aiur.TestSupport.tmp_root!("aiurdev-home")
     File.mkdir_p!(Path.join([home, ".aiur", "logs", "old-session"]))
-    on_exit(fn -> File.rm_rf!(home) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(home) end)
     home
   end
 
@@ -280,7 +280,7 @@ defmodule ScriptsAiurdevTest do
 
     File.mkdir_p!(bin)
     File.ln_s!(target, link)
-    on_exit(fn -> File.rm_rf!(bin) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(bin) end)
 
     link
   end
@@ -472,7 +472,7 @@ defmodule ScriptsAiurdevTest do
 
     seed_ready_release(root)
     File.mkdir_p!(lock)
-    on_exit(fn -> File.rm_rf(lock) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(lock) end)
 
     {out, 0} =
       run_shim(["status"], [
@@ -707,7 +707,7 @@ defmodule ScriptsAiurdevTest do
     shim = Path.join(shim_dir, "aiurdev")
     File.cp!(@script, shim)
     File.chmod!(shim, 0o755)
-    on_exit(fn -> File.rm_rf!(shim_dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(shim_dir) end)
 
     seed_ready_release(root)
     File.mkdir_p!(Path.join([root, "src", "lib"]))
@@ -873,7 +873,7 @@ defmodule ScriptsAiurdevTest do
     assert out =~ "--clear requires --debug"
   end
 
-  test "--debug --clear wipes the logs root then execs the engine" do
+  test "--debug --clear preserves unmarked logs then execs the engine" do
     root = fake_repo()
     home = sandbox_home()
     mise = fake_mise()
@@ -887,7 +887,7 @@ defmodule ScriptsAiurdevTest do
         {"HOME", home}
       ])
 
-    refute File.exists?(Path.join([home, ".aiur", "logs", "old-session"]))
+    assert File.exists?(Path.join([home, ".aiur", "logs", "old-session"]))
     assert out =~ "AIUR_DEBUG: 1"
     assert out =~ "ENGINE_ARGS:"
   end
@@ -912,9 +912,7 @@ defmodule ScriptsAiurdevTest do
     assert out =~ "AIUR_DEV_TEST_TICKET_IDS: 99"
     # --test is consumed by the shim, never handed to the engine/release.
     refute out =~ "ENGINE_ARGS: --test"
-    # Operator runs outside an agent workspace keep the real home-log clear and
-    # never enter the agent IR sandbox branch.
-    refute File.exists?(Path.join([home, ".aiur", "logs", "old-session"]))
+    assert File.exists?(Path.join([home, ".aiur", "logs", "old-session"]))
     refute out =~ "agent IR sandbox"
   end
 
@@ -937,7 +935,7 @@ defmodule ScriptsAiurdevTest do
     assert out =~ "AIUR_DEV_TEST_TICKET_IDS: 99,100,101"
     refute out =~ "--single"
     refute out =~ "ENGINE_ARGS: --test3"
-    refute File.exists?(Path.join([home, ".aiur", "logs", "old-session"]))
+    assert File.exists?(Path.join([home, ".aiur", "logs", "old-session"]))
     refute out =~ "agent IR sandbox"
   end
 
@@ -1622,7 +1620,7 @@ defmodule ScriptsAiurdevTest do
       File.mkdir_p!(Path.join(partial, "scripts"))
       File.write!(Path.join([partial, "scripts", "aiurdev"]), "")
       File.write!(Path.join([partial, "packaging", "npm", "aiur-cli", "libexec", "aiur-engine.sh"]), "")
-      on_exit(fn -> File.rm_rf!(partial) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(partial) end)
 
       seed_ready_release(checkout_a)
 
@@ -1672,7 +1670,7 @@ defmodule ScriptsAiurdevTest do
       # then compare that borrowed SHA against itself on every later launch.
       outer = Aiur.TestSupport.tmp_root!("aiurdev-outer")
       File.mkdir_p!(outer)
-      on_exit(fn -> File.rm_rf!(outer) end)
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(outer) end)
       init_git_repo(outer)
 
       root = fake_repo(Path.join(outer, "inner"))

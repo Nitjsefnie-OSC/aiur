@@ -642,16 +642,16 @@ defmodule Aiur.AiurAgentSkillTest do
     refute source =~ "mix credo --strict"
     refute source =~ "Do not run Credo locally"
     refute source =~ "Credo belongs to CI"
-    assert source =~ "`make ci` is the authoritative full lint and full-suite gate"
+    assert source =~ "event-specific gate is authoritative: fast on PRs, full in the queue"
     refute source =~ "mix dialyzer"
 
     assert source =~ "loop on unrelated suite flakes"
     assert source =~ "Re-run the scoped local pre-PR verification gate"
   end
 
-  test "agent dev loop requires the local prose guard before pushing docs changes" do
+  test "agent dev loop requires the structural gate before ready and after integration" do
     dev_loop = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/dev-loop.md")))
-    assert dev_loop =~ "When any Markdown file under `website/docs-app/` changes (including nested pages), run `node scripts/check-docs-prose.mjs` from the repository root before pushing."
+    assert dev_loop =~ "After committing, before every push and after every base integration, run the structural gate"
   end
 
   test "agent instructions require all local checks and oversized-file fixes before PR handoff" do
@@ -660,7 +660,7 @@ defmodule Aiur.AiurAgentSkillTest do
       assert source =~ "marking the PR ready or handing off to CI/review"
       assert source =~ "From `src/`: `mise exec -- mix lint`"
       assert source =~ "From the repository root: `python3 scripts/check-bare-assert-receive.py`"
-      assert source =~ ~s(then run `python3 scripts/check-file-size.py --base "$base"`)
+      assert source =~ ~s(then run `mise exec -- python3 scripts/check-pr-structure.py --base "$base"`)
       assert source =~ ~s|base="$(git -C "$workspace" rev-parse "origin/$AIUR_BASE_BRANCH")"|
       assert source =~ "run all required checks and fix any failures"
       assert source =~ "Run only affected browser specs locally (browser runs go through the build gate); CI runs the full harness."
@@ -696,7 +696,7 @@ defmodule Aiur.AiurAgentSkillTest do
     assert repo_prompt =~ "mise exec -- mix lint"
     assert repo_prompt =~ "python3 scripts/check-bare-assert-receive.py"
     refute repo_prompt =~ "Do not run Credo locally"
-    assert repo_prompt =~ "authoritative full lint and full test suite through `make ci`"
+    assert repo_prompt =~ "fast on PRs after rollout, full in the merge queue or on forced-full PRs"
     assert repo_prompt =~ "Do not gate PR-opening on a clean full-suite `mix test` run"
     assert repo_prompt =~ "Fix failures in this scoped gate"
   end
@@ -713,7 +713,7 @@ defmodule Aiur.AiurAgentSkillTest do
     refute pull_skill =~ "merge origin/main"
   end
 
-  test "agent workflow marks completed PRs ready before waiting for full current-head CI" do
+  test "agent workflow marks completed PRs ready before waiting for current-head required CI" do
     dev_loop = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/dev-loop.md")))
     turn_workflow = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/turn-workflow.md")))
     monitor = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-monitor/SKILL.md")))
@@ -730,8 +730,8 @@ defmodule Aiur.AiurAgentSkillTest do
 
     for source <- [skill, dev_loop, turn_workflow, shared_prompt, repo_prompt, example_prompt] do
       assert source =~ ~r/mark[^.]*ready[^.]*before[^.]*agent:ci-wait/i
-      assert source =~ "Drafts never pass CI"
-      assert source =~ "full required-check set"
+      assert source =~ if(source in [skill, dev_loop, turn_workflow], do: "Drafts never permit handoff", else: "Drafts never pass CI")
+      assert String.downcase(source) =~ if(source in [skill, dev_loop, turn_workflow], do: "all required checks", else: "full required-check set")
       assert source =~ "current head SHA"
       assert source =~ "agent:human-review"
       refute source =~ "keep the PR as a draft"

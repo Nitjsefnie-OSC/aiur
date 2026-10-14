@@ -19,6 +19,9 @@ def run(component, check):
         check(name, components or [base, planned], ['src/lib/a.ex'], code, messages,
               change=lambda m: (m.update(features=[json.loads(json.dumps(feature))]), change(m)))
 
+    check('public_features_format_passes', [base, planned], ['src/lib/a.ex'], format=True,
+          change=lambda m: m.update(features=[feature]))
+
     public_case('missing_public_field_fails', lambda m: m['components'][0].pop('summary'),
                 messages=('a:', '/summary: required property'))
     public_case('planned_with_paths_fails', lambda m: (m['components'][0]['paths'].remove('src/lib/a.ex'),

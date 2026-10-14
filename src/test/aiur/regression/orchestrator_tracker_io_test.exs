@@ -1,5 +1,9 @@
+Code.require_file("../../support/tracker_io_poll_barrier.exs", __DIR__)
+
 defmodule Aiur.Regression.OrchestratorTrackerIoTest do
   use Aiur.TestSupport
+
+  import Aiur.TrackerIoPollBarrier, only: [await_owned_poll: 2, await_poll_finished: 1]
 
   alias Aiur.{AgentQueueStore, DispatchBudgetStore, Issue, Orchestrator}
   alias Aiur.GitHub.{Config, DispatchAuthorization, ReadCache, Transport}
@@ -61,19 +65,18 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
       {:ok, [maybe_authorize(issue, Application.get_env(:aiur, :tracker_io_test_authorization))]}
     end
 
-    # The GitHub client authorizes every revalidated issue with a timeline read
-    # (`Aiur.GitHub.Issues` -> `DispatchAuthorization.authorize/5`). This stands
-    # in for that read so a case can hold it and see which process runs it.
+    # Stands in for the timeline read behind `DispatchAuthorization.authorize/5`; it verifies, since a denial emits a real alert from the reader (#4009).
     defp maybe_authorize(issue, nil), do: issue
 
     defp maybe_authorize(issue, {owner, token}) do
+      event = %{"id" => 1, "event" => "labeled", "created_at" => "2026-01-01T00:00:00Z", "label" => %{"name" => "agent:todo"}, "actor" => %{"login" => "operator"}}
+
       request_fun = fn _request ->
         send(owner, {:timeline_read_started, token, self()})
-        receive do: ({:release_timeline, ^token} -> {:ok, %{status: 200, body: [], headers: []}})
+        receive do: ({:release_timeline, ^token} -> {:ok, %{status: 200, body: [event], headers: []}})
       end
 
-      _verdict = DispatchAuthorization.authorize(issue, "owner", "repo", "agent", request_fun: request_fun, token: "test-token")
-      issue
+      DispatchAuthorization.authorize(issue, "owner", "repo", "agent", request_fun: request_fun, token: "test-token", allowed_users: ["operator"])
     end
 
     def fetch_issues_by_states(_states, _opts), do: {:ok, []}
@@ -108,7 +111,6 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     :ok = DispatchBudgetStore.put_lifetime(issue.id, 3)
 
     server = start_supervised!({Orchestrator, initial_poll?: false})
-    :ok = Aiur.AgentPubSub.subscribe_poll_state()
 
     worker = spawn(fn -> receive do: (:stop -> :ok) end)
 
@@ -155,7 +157,7 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     Enum.each(patterns, &:erlang.trace_pattern(&1, true, [:local]))
     :erlang.trace(server, true, [:call, {:tracer, self()}])
     send(server, :run_poll_cycle)
-    receive_barrier({:poll_started, ^token, tracker_pid})
+    tracker_pid = await_owned_poll(server, token)
 
     try do
       refute tracker_pid == server, "the tracker is executing in the orchestrator handler"
@@ -213,7 +215,7 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     state = :sys.get_state(server)
     :ok = SnapshotStore.publish(server, StatusReport.snapshot_payload(state), state)
     send(server, :run_poll_cycle)
-    receive_barrier({:poll_started, ^token, tracker_pid})
+    tracker_pid = await_owned_poll(server, token)
 
     calls = [
       status: fn -> Orchestrator.fleet_view(server, @control_budget_ms, fleet_rows?: true) end,
@@ -259,7 +261,7 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     put_test_env(:tracker_io_test_fast_writes, true)
     patterns = trace_handler_io(server)
     send(server, :run_poll_cycle)
-    receive_barrier({:poll_started, ^token, tracker_pid})
+    tracker_pid = await_owned_poll(server, token)
     id = issue.identifier
 
     controls = [
@@ -297,16 +299,18 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     end
   end
 
-  test "a successful candidate poll applies after the owner handled concurrent calls", %{server: server, issue: issue, token: token} do
+  test "a successful candidate poll applies after concurrent calls without a PubSub subscription", %{server: server, issue: issue, token: token} do
     put_test_env(:tracker_io_test_result, {:ok, [issue]})
+    {:ok, stray} = start_supervised({Task, fn -> SlowTracker.fetch_candidate_issues() end})
+    send(self(), receive_barrier({:poll_started, ^token, ^stray}))
     send(server, :run_poll_cycle)
-    receive_barrier({:poll_started, ^token, tracker_pid})
-    refute tracker_pid == server
+    tracker_pid = await_owned_poll(server, token)
     assert {:ok, :already_running} = PauseResume.resume_agent(server, issue.identifier)
     send(tracker_pid, {:release_poll, token})
     state = await_poll_finished(server)
     assert state.last_polled_issues[issue.id] == issue
     assert Map.has_key?(state.running, issue.id)
+    assert await_poll_finished(server).poll_cycles_completed == 1
   end
 
   test "GitHub firehose and CI reads leave real handlers responsive", %{server: server, issue: issue, token: token} do
@@ -362,8 +366,7 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
       send(worker, :release)
     end
 
-    receive_barrier({:poll_started, ^token, candidate_worker})
-    refute candidate_worker == server
+    candidate_worker = await_owned_poll(server, token)
     send(candidate_worker, {:release_poll, token})
     state = await_poll_finished(server)
     assert state.last_polled_issues[issue.id] == issue
@@ -437,6 +440,8 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     put_test_env(:tracker_io_test_authorization, {self(), token})
     DispatchAuthorization.clear_cache()
     owner = self()
+    {:ok, stray} = start_supervised({Task, fn -> SlowTracker.fetch_issue_states_by_ids([candidate.id]) end})
+    send(self(), receive_barrier({:timeline_read_started, ^token, ^stray}))
     patterns = [{Aiur.Tracker, :fetch_issue_states_by_ids, :_} | @dispatch_authorization_patterns]
     Enum.each(patterns, &:erlang.trace_pattern(&1, true, [:local]))
     :erlang.trace(server, true, [:call, {:tracer, self()}])
@@ -445,7 +450,7 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     :sys.replace_state(server, fn state ->
       Dispatcher.dispatch_issue(%{state | effective_concurrent_agents: 4}, candidate, nil, nil,
         dispatch_result_fun: fn current ->
-          send(owner, :dispatch_complete)
+          send(owner, {:dispatch_complete, current.dispatch_declines})
           current
         end,
         runner: fn _dispatched, _, _ ->
@@ -456,23 +461,22 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
       )
     end)
 
-    receive_barrier({:timeline_read_started, ^token, reader})
-    refute reader == server, "dispatch authorization read the timeline in the orchestrator"
+    reader = Aiur.TrackerIoPollBarrier.await_dispatch_timeline_read(server, candidate.id, token)
     # The owner still answers a control while the timeline read is held.
     assert is_list(Orchestrator.status(server, @control_budget_ms))
     send(reader, {:release_timeline, token})
-    receive_barrier(:dispatch_complete)
+    assert receive_barrier({:dispatch_complete, _declines}) == {:dispatch_complete, %{}}
     receive_barrier({:auth_runner_started, runner})
     on_exit(fn -> send(runner, :stop) end)
     assert_no_handler_io(server, patterns)
   end
 
   test "orchestrator shutdown reaps a held tracker task", %{server: server, token: token} do
+    stray = spawn(fn -> SlowTracker.fetch_candidate_issues() end)
     send(server, :run_poll_cycle)
-    receive_barrier({:poll_started, ^token, tracker})
-    refute tracker == server
+    tracker = await_owned_poll(server, token)
     monitor = Process.monitor(tracker)
-    on_exit(fn -> if Process.alive?(tracker), do: Process.exit(tracker, :kill) end)
+    on_exit(fn -> Enum.each([stray, tracker], &Process.exit(&1, :kill)) end)
     assert GenServer.stop(server) == :ok
     receive_barrier({:DOWN, ^monitor, :process, ^tracker, :killed})
     refute Process.alive?(tracker)
@@ -508,12 +512,6 @@ defmodule Aiur.Regression.OrchestratorTrackerIoTest do
     Enum.each(patterns, fn {module, function, _arity} ->
       refute_received {:trace, ^server, :call, {^module, ^function, _args}}, "an orchestrator handler performed remote work"
     end)
-  end
-
-  defp await_poll_finished(server) do
-    receive_barrier({:poll_state_changed, _payload})
-    state = :sys.get_state(server)
-    if state.poll_cycles_completed > 0, do: state, else: await_poll_finished(server)
   end
 
   defp put_test_env(key, value) do

@@ -4,8 +4,15 @@ defmodule Aiur.GitHub.Tracker do
   """
 
   @behaviour Aiur.Tracker.IssueTracker
+
+  @impl Aiur.Tracker.IssueTracker
+  def config_module, do: Aiur.GitHub.Config
+
+  @impl Aiur.Tracker.IssueTracker
+  def code_host, do: __MODULE__
   @behaviour Aiur.Tracker.CodeHost
 
+  alias Aiur.BuildOrder.History
   alias Aiur.GitHub.BoundedBlockedBy
   alias Aiur.GitHub.Client
   alias Aiur.GitHub.Config
@@ -15,6 +22,7 @@ defmodule Aiur.GitHub.Tracker do
   alias Aiur.GitHub.TicketPullRequest
   alias Aiur.GitHub.Transport
   alias Aiur.Issue
+  alias Aiur.Orchestrator.DispatchPolicy
   alias Aiur.TestTicketScope
 
   @impl Aiur.Tracker.IssueTracker
@@ -67,6 +75,16 @@ defmodule Aiur.GitHub.Tracker do
     case Transport.parse_repo() do
       {:ok, {owner, repo}} -> OpenIssueSnapshot.fetch_labels(owner, repo, max_age_ms)
       {:error, _reason} -> :none
+    end
+  end
+
+  @impl Aiur.Tracker.IssueTracker
+  @spec refresh_open_issue_labels(keyword()) :: :ok | {:error, term()}
+  # The queue keeps its own page cache so it and the dispatch poll cannot clobber each other's validators.
+  def refresh_open_issue_labels(opts \\ []) do
+    with {:ok, {owner, repo}} <- Transport.parse_repo(),
+         {:ok, cache} <- Issues.refresh_open_issues(OpenIssueSnapshot.refresh_cache(owner, repo), opts) do
+      OpenIssueSnapshot.put_refresh_cache(owner, repo, cache)
     end
   end
 
@@ -243,11 +261,20 @@ defmodule Aiur.GitHub.Tracker do
     client_module().fetch_open_pull_requests_for_branch(issue_id)
   end
 
+  @impl Aiur.Tracker.CodeHost
+  defdelegate optimistic_blocker(value, number), to: Aiur.GitHub.OptimisticFailure
+
+  @impl Aiur.Tracker.CodeHost
+  defdelegate park_pull_request(value), to: Aiur.GitHub.OptimisticFailure
+
+  @impl Aiur.Tracker.CodeHost
+  defdelegate comment_optimistic_park(dependent, blocker, cause), to: Aiur.GitHub.OptimisticFailure
+
   @impl Aiur.Tracker.IssueTracker
   @spec update_issue_state(String.t(), String.t()) :: :ok | {:error, term()}
   def update_issue_state(issue_id, state_name)
       when is_binary(issue_id) and is_binary(state_name) do
-    client_module().update_issue_state(issue_id, state_name)
+    note_in_progress(client_module().update_issue_state(issue_id, state_name), issue_id, state_name)
   end
 
   @impl Aiur.Tracker.IssueTracker
@@ -256,16 +283,26 @@ defmodule Aiur.GitHub.Tracker do
       when is_binary(issue_id) and is_binary(state_name) and is_list(opts) do
     client = client_module()
 
-    cond do
-      Code.ensure_loaded?(client) and function_exported?(client, :update_issue_state, 3) ->
-        client.update_issue_state(issue_id, state_name, opts)
+    result =
+      cond do
+        Code.ensure_loaded?(client) and function_exported?(client, :update_issue_state, 3) ->
+          client.update_issue_state(issue_id, state_name, opts)
 
-      opts == [] ->
-        client.update_issue_state(issue_id, state_name)
+        opts == [] ->
+          client.update_issue_state(issue_id, state_name)
 
-      true ->
-        {:error, :expected_state_unsupported}
-    end
+        true ->
+          {:error, :expected_state_unsupported}
+      end
+
+    note_in_progress(result, issue_id, state_name)
+  end
+
+  defp note_in_progress(result, issue_id, state_name) do
+    if result == :ok and DispatchPolicy.state_slug(state_name) == "in-progress",
+      do: History.note_start(issue_id, :label, DateTime.utc_now())
+
+    result
   end
 
   @impl Aiur.Tracker.IssueTracker

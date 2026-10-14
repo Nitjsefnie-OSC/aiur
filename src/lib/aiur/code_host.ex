@@ -8,10 +8,11 @@ defmodule Aiur.CodeHost do
 
   @spec adapter() :: module()
   def adapter do
-    case Aiur.Config.settings!().tracker.kind do
-      "github" -> Aiur.GitHub.Tracker
-      _ -> NullCodeHost
-    end
+    tracker = Aiur.Tracker.adapter()
+
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :code_host, 0),
+      do: tracker.code_host() || NullCodeHost,
+      else: NullCodeHost
   end
 
   @spec fetch_classified_pr_review_comments(String.t() | integer()) :: {:ok, [map()]} | {:error, term()}
@@ -31,4 +32,20 @@ defmodule Aiur.CodeHost do
   @spec fetch_open_pull_requests_for_branch(String.t() | integer()) ::
           {:ok, [map()]} | {:error, term()}
   def fetch_open_pull_requests_for_branch(value), do: adapter().fetch_open_pull_requests_for_branch(value)
+  @spec optimistic_blocker(String.t() | integer(), integer() | nil) :: {:ok, map() | nil} | {:error, term()}
+  def optimistic_blocker(value, number), do: optimistic_call(:optimistic_blocker, [value, number])
+
+  @spec park_pull_request(String.t() | integer()) :: :ok | {:error, term()}
+  def park_pull_request(value), do: optimistic_call(:park_pull_request, [value])
+
+  @spec comment_optimistic_park(String.t() | integer(), String.t() | integer(), term()) :: :ok | {:error, term()}
+  def comment_optimistic_park(dependent, blocker, cause), do: optimistic_call(:comment_optimistic_park, [dependent, blocker, cause])
+
+  defp optimistic_call(function, arguments) do
+    adapter = adapter()
+
+    if function_exported?(adapter, function, length(arguments)),
+      do: apply(adapter, function, arguments),
+      else: {:error, :code_host_unavailable}
+  end
 end

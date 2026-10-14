@@ -62,6 +62,8 @@ def check(name, components, files, code=0, messages=(), change=None, git=False, 
             path.write_text(content)
         if git:
             subprocess.run(['git', '-C', str(root), 'init', '-q'], check=True)
+            for key, value in [('gc.auto', '0'), ('maintenance.auto', 'false'), ('gc.autoDetach', 'false')]:
+                subprocess.run(['git', '-C', str(root), 'config', key, value], check=True)
             subprocess.run(['git', '-C', str(root), 'add', '--', *files, *declarations], check=True)
             (root / 'src/lib/untracked.ex').touch()
         import os
@@ -76,7 +78,11 @@ def check(name, components, files, code=0, messages=(), change=None, git=False, 
             assert message in output, f'{name}: missing {message!r}: {output}'
         if format:
             content = (root / 'components.json').read_bytes()
-            assert json.loads(content) == dict(manifest, components=sorted(components, key=lambda c: (c['layer'], c['id'])))
+            if manifest['features']:
+                assert all(json.dumps(f) in content.decode() for f in manifest['features']), 'features must fit one line each'
+            sys.path.insert(0, str(repo / 'scripts'))
+            from components.manifest import canonical
+            assert json.loads(content) == canonical(dict(manifest, components=sorted(components, key=lambda c: (c['layer'], c['id']))))
             subprocess.run(args, env=env, check=True, capture_output=True)
             assert (root / 'components.json').read_bytes() == content, f'{name}: formatting not idempotent'
         print(f'PASS: {name}')
@@ -178,6 +184,7 @@ if with_node:
             links={'packages/a/node_modules/leak': 'src/lib/leak'})
     imports('relative_symlink_into_src_fails', 'import "./leak/index.js";', 1, ('R-client', 'src/lib/leak/index.js'),
             extra={'src/lib/leak/index.js': ''}, links={'packages/a/src/leak': 'src/lib/leak'})
+    imports('non_js_package_dir_without_package_json_passes', '', 0, extra={'packages/elixir/voice_converse/mix.exs': ''})
     imports('missing_package_json_exits_2', '', 2, ('package.json',), extra={'packages/b/src/x.ts': ''})
     imports('external_resource_into_packages_reported', '', 1, ('R-reverse-resource',),
             extra={'src/lib/foo.ex': '@external_resource "../../packages/a/x.json"'})
@@ -230,6 +237,13 @@ check('new_section_without_owner_fails', [owner], [], 1, ("'extra' has no owner"
       declarations=dict(declarations, **{'src/lib/aiur/config/schema.ex': declarations['src/lib/aiur/config/schema.ex'] + '    embeds_one(:extra, Extra)\n'}))
 check('new_env_without_owner_fails', [owner], [], 1, ("'AIUR_NEW' has no owner",),
       declarations=dict(declarations, **{'src/lib/aiur/env/schema.ex': declarations['src/lib/aiur/env/schema.ex'] + '    {"AIUR_NEW", type: :string}\n'}))
+repo_declarations = dict(declarations, **{'src/lib/aiur/repo_base.ex': '  def experiments_path(repo), do: repo\n'})
+repo_owner = json.loads(json.dumps(owner))
+repo_owner['paths'].append('src/lib/aiur/repo_base.ex')
+repo_owner['owns']['state'].append('experiments_path')
+check('repo_state_path_owned_passes', [repo_owner], [], declarations=repo_declarations)
+check('repo_state_path_without_owner_fails', [repo_owner], [], 1, ("'experiments_path' has no owner",),
+      change=lambda m: m['components'][0]['owns']['state'].remove('experiments_path'), declarations=repo_declarations)
 check('unknown_shared_component_fails', [dict(owner, shared_with=['absent'])], [], 2,
       ('unknown component absent',), declarations=declarations)
 for kind, name in [('config', 'bad.section'), ('env', 'lowercase'), ('state', 'repo_name')]:
@@ -239,7 +253,7 @@ if not selected or 'real_tree_passes' in selected:
     ran.add('real_tree_passes')
     result = subprocess.run([sys.executable, str(checker), '--rules', 'ownership'], text=True, capture_output=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert '21 sections, 7 fields, 70 env vars, 15 state paths owned once' in result.stdout
+    assert '23 sections, 7 fields, 73 env vars, 27 state paths owned once' in result.stdout
     print('PASS: real_tree_passes')
 if not selected or 'malformed_json_exits_2' in selected:
     ran.add('malformed_json_exits_2')
@@ -298,8 +312,23 @@ else:
                 verify(root, command)
             print(f'PASS: {name}')
 
+    def use_experiments_contract(root):
+        manifest = json.loads((root / 'components.json').read_text())
+        sys.path.insert(0, str(repo / 'scripts'))
+        from components.manifest import read_manifest
+        shipped = next(c for c in read_manifest(repo)['components'] if c['id'] == 'experiments')
+        manifest['components'][0]['forbid'] = shipped['forbid']
+        (root / 'components.json').write_text(json.dumps(manifest))
+
+    reference_check('experiments_forbid_orchestrator', 'experiments_forbid_orchestrator', 1,
+                    ('R-forbid experiments -> Aiur.Orchestrator',), change=use_experiments_contract)
     reference_check('undeclared_dependency_fails', 'undeclared_dependency_fails', 1, ('R-declared a -> B.Facade',))
     reference_check('declared_facade_passes', 'declared_facade_passes')
+    # Future-regression guard: component routes import the kit, never the shell.
+    reference_check('component_route_kit_passes', 'component_routes', messages=('R-down: 0',))
+    reference_check('component_route_shell_fails', 'component_routes', 1,
+                    ('R-down commands -> AiurWeb.Router',),
+                    source='defmodule AiurWeb.Routes.Decisions do\n  require AiurWeb.Router\nend\n')
     reference_check('private_module_fails', 'private_module_fails', 1, ('R-private a -> B.Internal',))
     reference_check('facade_star_allows_any', 'facade_star_allows_any')
     reference_check('alias_resolution_counts', 'alias_resolution_counts', 1, ('R-private a -> B.Internal',))
@@ -344,6 +373,8 @@ else:
 
     def committed_fixture(root):
         subprocess.run(['git', '-C', str(root), 'init', '-q'], check=True)
+        for key, value in [('gc.auto', '0'), ('maintenance.auto', 'false'), ('gc.autoDetach', 'false')]:
+            subprocess.run(['git', '-C', str(root), 'config', key, value], check=True)
         subprocess.run(['git', '-C', str(root), 'add', '.'], check=True)
         subprocess.run(['git', '-C', str(root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test',
                         'commit', '-qm', 'Fixture baseline'], check=True)
@@ -478,4 +509,5 @@ PY
 
 if [[ " $* " == *" --with-elixir "* ]]; then
   python3 "$repo_root/scripts/test-components-seams.py"
+  python3 "$repo_root/scripts/test-pr-lifecycle-components.py"
 fi
