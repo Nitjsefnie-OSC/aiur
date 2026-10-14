@@ -57,4 +57,4 @@ Actions read permission is required to attribute checks to workflows. Failed or 
 
 Named workflows must run on every base push. For example, `[ci, "Publish Docker Image"]` works when both run on every push; a path-filtered workflow can leave status on an older SHA. Merge-queue commits without push runs are skipped. The first Actions page must reach back to the oldest commit in the 20-commit window.
 
-Status reports `watcher=running`, `watcher=unavailable` or `watcher=not_running` separately from the configured flag. Enabling watching after boot requires restarting the daemon to start its watcher.
+Status reports the base-branch watcher as `watcher=running`, `watcher=unavailable` or `watcher=not_running` separately from the configured flag. It also reports `landing_watcher=running`, `landing_watcher=unavailable` or `landing_watcher=not_running`: this watcher follows current-head approvals through required CI and the merge queue, retries infra-only failures within a bounded window, and routes real required-check failures or AI attribution trailers to rework. Enabling the base-branch watcher after boot requires restarting the daemon to start it.

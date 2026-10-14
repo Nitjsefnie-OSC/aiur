@@ -258,7 +258,8 @@ defmodule Aiur.Application.Children do
       # into the dashboard, the Principal, or the opencode supervisors.
       if(recording?, do: [Aiur.AllowedContributors, BuildOrders.child_specs(:recording, opts)]),
       BuildOrders.child_specs(:final, opts),
-      if(Aiur.MainWatch.enabled?(), do: Aiur.MainWatch)
+      if(Aiur.MainWatch.enabled?(), do: Aiur.MainWatch),
+      if(AiurConfig.tracker_kind() == "github", do: Aiur.LandingWatch)
     ]
     |> List.flatten()
     |> Enum.reject(&is_nil/1)
