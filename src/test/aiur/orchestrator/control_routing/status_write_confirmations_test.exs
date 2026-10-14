@@ -245,11 +245,9 @@ defmodule Aiur.Orchestrator.ControlRouting.StatusWriteConfirmationsTest do
       state = base_state(running: %{issue_id => entry})
 
       assert state ==
-               Orchestrator.transition_control_status(
+               Aiur.Orchestrator.TicketTransition.apply_effects(
                  state,
-                 entry,
-                 :paused,
-                 "duplicate.confirmation"
+                 [{:transition_control, entry, :paused, "duplicate.confirmation"}]
                )
 
       assert {:noreply, ^state} =
