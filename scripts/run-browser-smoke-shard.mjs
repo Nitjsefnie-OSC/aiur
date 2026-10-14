@@ -1,13 +1,18 @@
 import { spawnSync } from 'node:child_process';
 
 const shards = {
-  1: ['harness-failures.spec.mjs', 'liveview-smoke.spec.mjs', 'build-home-assets.browser.spec.mjs', 'route-shell.browser.spec.mjs', 'shell-history-contrast.browser.spec.mjs', 'shell-chrome.browser.spec.mjs', 'shell-content-width.browser.spec.mjs', 'command-history.browser.spec.mjs', 'build-queue.browser.spec.mjs', 'build-order-route.browser.spec.mjs', 'optimistic-analytics.browser.spec.mjs', 'build-order-interaction.browser.spec.mjs', 'time-brush.browser.spec.mjs'],
-  2: ['build-order-performance.browser.spec.mjs', 'build-order-responsive.browser.spec.mjs', 'layout-worker.browser.spec.mjs', 'dom-svg-layout-adapter.browser.spec.mjs', 'ticket-context.browser.spec.mjs', 'units.browser.spec.mjs', 'units-voice.browser.spec.mjs', 'units-tickets.browser.spec.mjs', 'provider_meters.browser.spec.mjs', 'meter-row.browser.spec.mjs', 'models-panel.browser.spec.mjs'],
-  3: ['quota-panel.browser.spec.mjs', 'parity-composition.browser.spec.mjs', 'streamdeck-emulator-dials-keys.browser.spec.mjs', 'streamdeck-emulator-modes-paging.browser.spec.mjs', 'streamdeck-emulator-surface.browser.spec.mjs', 'streamdeck-operator-flow.browser.spec.mjs', 'design-parity-harness.browser.spec.mjs', 'palette-probe.browser.spec.mjs', 'build-home-tokens.browser.spec.mjs', 'shell-design-parity.browser.spec.mjs', 'build-home-shell.browser.spec.mjs', 'build-home-loading-parity.browser.spec.mjs', 'build-home-motion.browser.spec.mjs', 'visual-shell.browser.spec.mjs'],
+  1: ['test:admission', 'check:elk', 'check:build-home-fixtures', 'test:build-home-protocol', 'test:build-home-now-state', 'test:harness', 'test:smoke', 'test:build-home-assets', 'test:shell', 'test:shell-chrome'],
+  2: ['test:shell-width', 'test:command-history', 'test:build-order', 'test:build-queue', 'test:interaction', 'test:time-brush', 'test:performance', 'test:responsive', 'test:layout', 'test:ticket-context'],
+  3: ['test:units', 'test:provider-meters', 'test:meter-row', 'test:models-panel', 'test:quota-panel', 'test:parity', 'test:streamdeck', 'test:streamdeck-flow', 'test:design-parity', 'test:palette', 'test:tokens', 'test:shell-parity', 'test:build-home', 'test:build-home-motion'],
 };
 
 const shard = Number(process.argv[2]);
 if (!shards[shard]) throw new Error(`Unknown browser smoke shard: ${process.argv[2]}`);
-const result = spawnSync('node', ['scripts/run-browser-tests.mjs', ...shards[shard].map((file) => `tests/${file}`)], { stdio: 'inherit' });
-if (result.error) throw result.error;
-process.exit(result.status ?? 1);
+const preflight = spawnSync('npm', ['run', 'fixture:preflight'], { stdio: 'inherit' });
+if (preflight.error) throw preflight.error;
+if (preflight.status !== 0) process.exit(preflight.status ?? 1);
+for (const script of shards[shard]) {
+  const result = spawnSync('npm', ['run', script], { stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}

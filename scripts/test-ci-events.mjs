@@ -9,8 +9,8 @@ assert.ok(/^  pull_request:$/m.test(trigger));
 assert.ok(/types: \[opened, synchronize, reopened, ready_for_review, labeled\]/.test(trigger), 'label events let ci:full start a full run');
 assert.ok(source.includes("github.event.action != 'labeled' || github.event.label.name == 'ci:full'"), 'unrelated labels must not cancel active CI');
 assert.ok(/^  merge_group:$/m.test(trigger));
-assert.ok(/  push:\n    branches: \[main, v2\]/.test(trigger), 'main pushes run quarantine');
-assert.ok(/  schedule:\n    - cron:/.test(trigger), 'quarantine also runs on a schedule');
+assert.ok(/  push:\n    branches: \[main, v2\]/.test(trigger), 'main pushes trigger CI');
+assert.ok(/  schedule:\n    - cron:/.test(trigger), 'scheduled CI is configured');
 const jobs = new Map([...source.split(/^jobs:\n/m)[1].matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/gm)]
   .map(([, id, body]) => [id, body]));
 const fullJobs = ['build', 'coverage-partition', 'test', 'dialyzer', 'browser', 'browser-2', 'browser-3', 'home-css', 'layout-release', 'analytics', 'streamdeck'];
@@ -25,6 +25,10 @@ function selected(event, full) {
   }).map(([id]) => id);
 }
 assert.deepEqual(selected('pull_request', false).sort(), fastJobs.sort(), 'PR selects only five fast jobs');
+assert.ok(!selected('merge_group', true).includes('quarantine'), 'merge group skips quarantine');
+assert.ok(selected('push', false).includes('quarantine'), 'main push selects quarantine');
+assert.ok(selected('schedule', false).includes('quarantine'), 'schedule selects quarantine');
+assert.ok(!selected('pull_request', false).includes('quarantine'), 'pull request skips quarantine');
 assert.ok(!selected('merge_group', true).includes('quarantine'), 'merge group skips quarantine');
 assert.ok(selected('merge_group', false).includes('ci-gate'), 'merge-group ci gate always runs');
 for (const event of ['merge_group', 'workflow_dispatch']) {
@@ -68,7 +72,9 @@ for (const [event, full, required] of [
 }
 assert.notEqual(gate('merge_group', false).status, 0, 'queue cannot claim fast evidence');
 assert.notEqual(gate('schedule', true).status, 0, 'gate refuses unsupported event');
-assert.ok(!jobs.has('quarantine'), 'quarantine is not part of the merge-group workflow jobs');
+assert.ok(jobs.has('quarantine'), 'quarantine job remains available for scheduled/main runs');
+assert.ok(jobs.get('quarantine').includes("github.event_name == 'schedule'"));
+assert.ok(jobs.get('quarantine').includes("github.event_name == 'push' && github.ref == 'refs/heads/main'"));
 assert.ok(jobs.get('workflow-security').includes('Set up Elixir for evidence and classifier tests'));
 assert.ok(!jobs.get('workflow-security').includes("Set up Elixir for PR evidence\n        if:"));
 const affected = jobs.get('affected-tests');
@@ -78,24 +84,14 @@ for (const guard of ['base_branch_literal_guard', 'state_owners', 'placement_rul
 assert.ok(affected.includes('run-ci-affected-tests.py "$PR_BASE"'));
 assert.ok(jobs.get('lint').includes('mix compile --warnings-as-errors'));
 assert.ok(jobs.get('workflow-security').includes('node scripts/test-ci-events.mjs'));
+const packageJson = JSON.parse(readFileSync(new URL('../src/browser/package.json', import.meta.url), 'utf8'));
+const coreCommands = [...packageJson.scripts['test:core'].matchAll(/npm run (test:[\w:-]+)/g)].map(([, name]) => name);
 const shardScript = readFileSync(new URL('./run-browser-smoke-shard.mjs', import.meta.url), 'utf8');
-const browserFiles = [...shardScript.matchAll(/'([\w.-]+\.spec\.mjs)'/g)].map(([, file]) => file);
-const expectedBrowserFiles = [
-  'harness-failures.spec.mjs', 'liveview-smoke.spec.mjs', 'build-home-assets.browser.spec.mjs', 'route-shell.browser.spec.mjs',
-  'shell-history-contrast.browser.spec.mjs', 'shell-chrome.browser.spec.mjs', 'shell-content-width.browser.spec.mjs',
-  'command-history.browser.spec.mjs', 'build-queue.browser.spec.mjs', 'build-order-route.browser.spec.mjs',
-  'optimistic-analytics.browser.spec.mjs', 'build-order-interaction.browser.spec.mjs', 'time-brush.browser.spec.mjs',
-  'build-order-performance.browser.spec.mjs', 'build-order-responsive.browser.spec.mjs', 'layout-worker.browser.spec.mjs',
-  'dom-svg-layout-adapter.browser.spec.mjs', 'ticket-context.browser.spec.mjs', 'units.browser.spec.mjs',
-  'units-voice.browser.spec.mjs', 'units-tickets.browser.spec.mjs', 'provider_meters.browser.spec.mjs',
-  'meter-row.browser.spec.mjs', 'models-panel.browser.spec.mjs', 'quota-panel.browser.spec.mjs',
-  'parity-composition.browser.spec.mjs', 'streamdeck-emulator-dials-keys.browser.spec.mjs',
-  'streamdeck-emulator-modes-paging.browser.spec.mjs', 'streamdeck-emulator-surface.browser.spec.mjs',
-  'streamdeck-operator-flow.browser.spec.mjs', 'design-parity-harness.browser.spec.mjs', 'palette-probe.browser.spec.mjs',
-  'build-home-tokens.browser.spec.mjs', 'shell-design-parity.browser.spec.mjs', 'build-home-shell.browser.spec.mjs',
-  'build-home-loading-parity.browser.spec.mjs', 'build-home-motion.browser.spec.mjs', 'visual-shell.browser.spec.mjs',
-];
-assert.deepEqual(browserFiles.sort(), expectedBrowserFiles.sort(), 'browser smoke shards cover the current test:core spec set once');
+const shardCommands = [...shardScript.matchAll(/'(test:[\w:-]+)'/g)].map(([, name]) => name);
+for (const command of coreCommands) {
+  assert.equal(shardCommands.filter((name) => name === command).length, 1, `${command} appears in exactly one browser shard`);
+}
+assert.deepEqual([...new Set(shardCommands)].sort(), [...new Set(coreCommands)].sort(), 'shards match npm test:core commands');
 for (const [job, shard] of [['browser', 1], ['browser-2', 2], ['browser-3', 3]]) {
   assert.ok(jobs.get(job).includes(`run-browser-smoke-shard.mjs ${shard}`), `${job} runs shard ${shard}`);
 }
