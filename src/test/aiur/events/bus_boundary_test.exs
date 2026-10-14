@@ -20,10 +20,6 @@ defmodule Aiur.Events.BusBoundaryTest do
   # {member_file, referenced_module} => ticket that removes the edge.
   # Seam tickets delete their rows; that deletion is the proof the edge is gone.
   @ratchet %{
-    {"events/publisher.ex", "Aiur.GitHub.AgentMarker"} => "C2-T06",
-    {"events/publisher.ex", "Aiur.GitHub.Config"} => "C2-T06",
-    {"events/publisher.ex", "Aiur.GitHub.ResourceStore"} => "C2-T06",
-    {"events/publisher.ex", "Aiur.Webhooks"} => "C2-T06",
     {"events/publisher.ex", "Aiur.IssueLog"} => "C2-T03",
     {"events/id_generator.ex", "Aiur.Executor.StatePaths"} => "C2-T07",
     {"events/id_generator.ex", "Aiur.LaunchStateAdoption"} => "C2-T07",

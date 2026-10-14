@@ -2,6 +2,8 @@ import Config
 
 config :aiur, env: config_env()
 
+config :aiur, Aiur.Events.SourcePolicy, Aiur.GitHub.EventSourcePolicy
+
 config :aiur, Aiur.Events.TrustClassifier, Aiur.GitHub.EventTrust
 
 config :aiur, :signal, alert_sink: Aiur.Alerts
