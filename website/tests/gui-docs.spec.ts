@@ -265,6 +265,15 @@ test('docs group operator surfaces and API guidance without dense prose', async 
   expect(githubAuth).toContain('## GitHub App authentication')
   expect(githubAuth).toContain('## Human-review base checks')
   expect(githubAgentCache).toContain('## Shared agent reads')
+  expect(headingSlugs(github)).toEqual(expect.arrayContaining([
+    'repository-setup-from-global-defaults',
+    'what-aiur-polls',
+    'build-order-membership-recovery',
+    'credential-pooling',
+    'what-pooling-is-worth',
+    'human-review-base-checks',
+    'experiment-window-evidence'
+  ]))
   for (const [, contents] of markdown) {
     for (const [, target, fragment] of contents.matchAll(/\]\(\/(apis\/github-[^)#]+)#([a-z0-9-]+)\)/g)) {
       const targetMarkdown = byRelativePath.get(`${target}.md`) ?? ''
