@@ -62,4 +62,15 @@ else
   fail "a documented flag in a new libexec module failed: $output"
 fi
 
+root="$work/stale-dev-command"
+scaffold "$root"
+cat >>"$root/website/docs-app/reference/cli.md" <<'DOC'
+| `scripts/aiurdev not-a-command` | Not a launcher command. | `scripts/aiurdev not-a-command` |
+DOC
+if output="$(run_check "$root")"; then
+  fail "an undocumented development command passed"
+fi
+grep -q 'stale CLI rendered-dev-command marker: not-a-command' <<<"$output" ||
+  fail "the stale-development-command failure did not name the command: $output"
+
 echo "check-cli-reference guard: all cases passed"

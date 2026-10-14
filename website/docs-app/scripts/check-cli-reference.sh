@@ -117,12 +117,30 @@ compare_source_to_docs() {
   fi
 }
 
+compare_dev_commands_to_docs() {
+  local kind="$1" special="$2" engine_commands="$3" documented="$4" missing stale valid
+
+  missing="$(comm -23 <(printf '%s\n' "$special" | sed '/^$/d' | sort -u) <(printf '%s\n' "$documented" | sed '/^$/d' | sort -u))"
+  valid="$(printf '%s\n%s\n' "$special" "$engine_commands" | sed '/^$/d' | sort -u)"
+  stale="$(comm -13 <(printf '%s\n' "$valid") <(printf '%s\n' "$documented" | sed '/^$/d' | sort -u))"
+
+  if [ -n "$missing" ]; then
+    printf '%s\n' "$missing" | sed "s/^/missing CLI $kind marker: /" >&2
+    fail=1
+  fi
+
+  if [ -n "$stale" ]; then
+    printf '%s\n' "$stale" | sed "s/^/stale CLI $kind marker: /" >&2
+    fail=1
+  fi
+}
+
 compare_source_to_docs rendered-command "$source_word_commands" "$rendered_commands"
 compare_source_to_docs rendered-flag "$source_flags" "$rendered_flags"
-compare_source_to_docs rendered-dev-command "$source_dev_commands" "$rendered_dev_commands"
+compare_dev_commands_to_docs rendered-dev-command "$source_dev_commands" "$source_word_commands" "$rendered_dev_commands"
 compare_source_to_docs prose-flag "$source_flag_tokens" "$prose_flags"
 compare_source_to_docs prose-command "$source_prose_commands" "$prose_commands"
-compare_source_to_docs prose-dev-command "$source_dev_commands" "$prose_dev_commands"
+compare_dev_commands_to_docs prose-dev-command "$source_dev_commands" "$source_word_commands" "$prose_dev_commands"
 
 while IFS= read -r command; do
   [ -n "$command" ] || continue
