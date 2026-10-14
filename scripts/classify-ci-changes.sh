@@ -2,8 +2,14 @@
 # Event selects fast/full CI; operator policy can force full CI on a PR.
 set -euo pipefail
 if [[ "$EVENT_NAME" != pull_request ]]; then
-  printf 'full_ci=true\ndocs_only=false\n' >> "$GITHUB_OUTPUT"
-  echo "event $EVENT_NAME: full CI" >> "$GITHUB_STEP_SUMMARY"
+  if [[ "$EVENT_NAME" == merge_group || "$EVENT_NAME" == workflow_dispatch || "${GITHUB_REF:-}" == refs/heads/v2 ]]; then
+    printf 'full_ci=true\ndocs_only=false\n' >> "$GITHUB_OUTPUT"
+    echo "event $EVENT_NAME: full CI" >> "$GITHUB_STEP_SUMMARY"
+  else
+    printf 'full_ci=false\ndocs_only=false\n' >> "$GITHUB_OUTPUT"
+    echo "event $EVENT_NAME: quarantine only" >> "$GITHUB_STEP_SUMMARY"
+  fi
+  printf 'affected_paths_b64=\n' >> "$GITHUB_OUTPUT"
   exit 0
 fi
 scratch="$(mktemp -d)"
@@ -21,7 +27,7 @@ gh api "repos/$REPO/rules/branches/$branch" > "$scratch/rules.json"
 if ! jq -e '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | length > 0 and all(. == "ci gate")' "$scratch/rules.json" >/dev/null; then
   sed -i 's/^full_ci=.*/full_ci=true/' "$scratch/classification"
 fi
-if grep -qx 'full_ci=false' "$scratch/classification" && ! grep -qx 'docs_only=true' "$scratch/classification"; then
+if [[ "${EVENT_NAME}" == pull_request ]] && grep -qx 'full_ci=false' "$scratch/classification" && ! grep -qx 'docs_only=true' "$scratch/classification"; then
   jq -r '.[] | .filename, (.previous_filename // empty)' "$scratch/files.json" > "$scratch/paths"
   selection="$(elixir -r src/lib/aiur/affected_tests.ex scripts/ci-test-selection.exs "$scratch/paths")"
   case "$selection" in

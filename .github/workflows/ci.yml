@@ -5,7 +5,9 @@ on:
   # The merge queue requires checks on its candidate ref (#1381).
   merge_group:
   push:
-    branches: [v2]
+    branches: [main, v2]
+  schedule:
+    - cron: '23 7 * * *'
   # Manual head checks when pull_request synchronize does not create runs (#2397).
   workflow_dispatch:
 # Initial PR runs supersede each other; queue groups and reruns stay independent.
@@ -13,8 +15,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ format('{0}-{1}', github.event_name == 'pull_request' && github.run_attempt == 1 && github.event.pull_request.number || github.run_id, github.run_attempt) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
 jobs:
-  # PRs run fast checks regardless of draft state. Full CI runs in the queue
-  # or when the base's merge_policy label/path overrides demand it on a PR.
+  # PRs run fast checks unless ci:full or base policy opts into the full set.
   # Only ci gate is required: it rejects skipped jobs in the selected set.
   changes:
     name: changes
@@ -410,63 +411,24 @@ jobs:
       - name: Agent teardown reaping regression (#423)
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: make regression
-  quarantine:
-    name: quarantined tests (non-blocking)
+  home-css:
+    name: browser home CSS
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full_ci == 'true') }}
-    continue-on-error: true
+    if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: src
+    timeout-minutes: 25
     steps:
       - name: Checkout
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Set up Elixir
+      - name: Disclose rerun attempt
+        if: ${{ (github.run_attempt > 1) && needs.changes.outputs.docs_only != 'true' }}
+        run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
+      - name: Verify home CSS
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        uses: ./.github/actions/setup-elixir
-      - name: Cache _build (dependency apps only)
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          # Dependency-only cache: `_build/test/lib` holds one directory per
-          # app, and only the dependency apps are worth restoring. The
-          # first-party `aiur` app is pruned before every run (below) so it
-          # always recompiles against the current source — a key on
-          # `mix.lock`/`mix.exs` cannot see a config-schema, struct, or module
-          # attribute change, so caching the `aiur` beams would let a run use
-          # artifacts predating that change.
-          # No prefix `restore-keys`: a stale _build from a different mix.lock
-          # restores compiled deps whose versions no longer match mix.exs, which
-          # fails with "Unchecked dependencies for environment test". Exact-key
-          # only, so a lock/dep bump recompiles fresh instead of reusing stale
-          # artifacts. The `-deps-` key prefix also retires the old whole-`_build`
-          # entries, whose tar layout no longer matches this path.
-          key: ${{ runner.os }}-quarantine-build-deps-${{ hashFiles('src/mix.lock', 'src/mix.exs') }}
-          path: src/_build/test/lib
-      - name: Drop first-party beams (always recompile against current source)
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        # The `aiur` app dir may have been restored from a cache saved before a
-        # compile-time-visible source change (a schema field, a struct, a module
-        # attribute). Removing it forces Mix to recompile the app fresh; the
-        # dependency beams the cache exists to save are left in place.
-        # `run` steps inherit the job's `working-directory: src`; action inputs
-        # such as the cache path remain workspace-relative.
-        run: rm -rf _build/test/lib/aiur
-      - name: Run quarantined tests
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        # `--exclude test` narrows to the tag without failing while the queue
-        # is empty; unlike `--only`, that lets this non-blocking job stay green
-        # until the first confirmed flake is quarantined.
-        run: mix test --include quarantine --exclude test
-      - name: Prune first-party beams before the cache save
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        # `mix test` recompiles the `aiur` app, so prune it again before the
-        # cache post-step saves, keeping the stored cache dependency-only (the
-        # path the restore step promises).
-        run: rm -rf _build/test/lib/aiur
+        uses: ./.github/actions/verify-home-css
   analytics:
     needs: changes
     if: ${{ needs.changes.outputs.full_ci == 'true' }}
@@ -515,13 +477,13 @@ jobs:
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: make dialyzer
   browser:
-    name: browser smoke
+    name: browser smoke (1/3)
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full_ci == 'true') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - name: Checkout
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
@@ -535,7 +497,15 @@ jobs:
       - name: Run browser, accessibility, and performance smoke
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
-        run: npm run test:core
+        run: node scripts/run-browser-smoke-shard.mjs 1
+      - name: Run shared browser setup checks
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: src/browser
+        run: node --test scripts/home-css-ci.test.mjs scripts/browser-admission.test.mjs scripts/build-home-protocol.test.mjs scripts/build-home-now-state.test.mjs
+      - name: Check browser fixtures and vendored assets
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: src/browser
+        run: node scripts/check-vendored-elk.mjs && npm run check:build-home-fixtures
       - name: Run visual regression baselines
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
@@ -550,28 +520,48 @@ jobs:
         if: ${{ always() && needs.changes.outputs.docs_only != 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: browser-harness-artifacts
+          name: browser-harness-artifacts-1
           path: src/browser/.artifacts-run-*/
           if-no-files-found: ignore
           include-hidden-files: true
-  home-css:
-    name: browser home CSS
+  browser-2:
+    name: browser smoke (2/3)
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - name: Checkout
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: Disclose rerun attempt
-        if: ${{ (github.run_attempt > 1) && needs.changes.outputs.docs_only != 'true' }}
-        run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
-      - name: Verify home CSS
+      - name: Set up browser harness
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        uses: ./.github/actions/verify-home-css
+        uses: ./.github/actions/setup-browser
+      - name: Run browser smoke shard 2
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: src/browser
+        run: node scripts/run-browser-smoke-shard.mjs 2
+  browser-3:
+    name: browser smoke (3/3)
+    container:
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up browser harness
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        uses: ./.github/actions/setup-browser
+      - name: Run browser smoke shard 3
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: src/browser
+        run: node scripts/run-browser-smoke-shard.mjs 3
   streamdeck:
     name: streamdeck
     needs: changes
@@ -721,7 +711,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y zsh && python3 ../scripts/run-ci-affected-tests.py "$PR_BASE"
   ci-gate:
     name: ci gate
-    needs: [changes, workflow-security, lint, affected-tests, build, coverage-partition, test, dialyzer, browser, home-css, layout-release, analytics, streamdeck]
+    needs: [changes, workflow-security, lint, affected-tests, build, coverage-partition, test, dialyzer, browser, browser-2, browser-3, home-css, layout-release, analytics, streamdeck]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
