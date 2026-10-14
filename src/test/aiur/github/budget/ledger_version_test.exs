@@ -3,10 +3,12 @@ defmodule Aiur.GitHub.Budget.LedgerVersionTest do
 
   import Aiur.GitHub.BudgetTestSupport
 
+  alias Aiur.GitHub.BudgetTestSupport
+
   alias Aiur.GitHub.Budget
 
   setup do
-    Aiur.GitHub.BudgetTestSupport.setup()
+    BudgetTestSupport.setup()
   end
 
   test "a non-billable rate_limit admission still consumes a rate-per-minute pacing slot", %{root: root} do

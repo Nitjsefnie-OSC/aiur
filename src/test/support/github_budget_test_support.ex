@@ -1,4 +1,6 @@
 defmodule Aiur.GitHub.BudgetTestSupport do
+  @moduledoc false
+
   import ExUnit.Assertions
   import ExUnit.Callbacks
 

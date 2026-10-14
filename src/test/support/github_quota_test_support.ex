@@ -1,4 +1,6 @@
 defmodule Aiur.GitHub.QuotaTestSupport do
+  @moduledoc false
+
   import ExUnit.Callbacks
 
   alias Aiur.GitHub.Quota

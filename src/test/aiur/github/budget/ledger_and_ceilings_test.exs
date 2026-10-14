@@ -4,10 +4,12 @@ defmodule Aiur.GitHub.Budget.LedgerAndCeilingsTest do
   import ExUnit.CaptureLog
   import Aiur.GitHub.BudgetTestSupport
 
+  alias Aiur.GitHub.BudgetTestSupport
+
   alias Aiur.GitHub.Budget
 
   setup do
-    Aiur.GitHub.BudgetTestSupport.setup()
+    BudgetTestSupport.setup()
   end
 
   test "one credential keeps its admission history across token rotation", %{root: root} do

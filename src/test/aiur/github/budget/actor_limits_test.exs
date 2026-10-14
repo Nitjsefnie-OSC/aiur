@@ -3,10 +3,12 @@ defmodule Aiur.GitHub.Budget.ActorLimitsTest do
 
   import Aiur.GitHub.BudgetTestSupport
 
+  alias Aiur.GitHub.BudgetTestSupport
+
   alias Aiur.GitHub.Budget
 
   setup do
-    Aiur.GitHub.BudgetTestSupport.setup()
+    BudgetTestSupport.setup()
   end
 
   test "keeps token material out of the broker key and endpoint names remain bounded" do

@@ -3,10 +3,12 @@ defmodule Aiur.GitHub.Budget.BrokerFailuresTest do
 
   import Aiur.GitHub.BudgetTestSupport
 
+  alias Aiur.GitHub.BudgetTestSupport
+
   alias Aiur.GitHub.Budget
 
   setup do
-    Aiur.GitHub.BudgetTestSupport.setup()
+    BudgetTestSupport.setup()
   end
 
   test "database lock cannot hold admission beyond its wall-clock budget", %{root: root} do
