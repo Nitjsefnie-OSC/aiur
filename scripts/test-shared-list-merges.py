@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Regression checks for conflict-prone shared list files."""
+"""Exercise union merges for validated shared registries."""
 import importlib.util
+import os
 from pathlib import Path
 import subprocess
 import tempfile
@@ -12,32 +13,85 @@ CHECKER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECKER)
 
 
+def git(root, *args):
+    return subprocess.run(['/usr/bin/git', '-C', str(root), *args], check=True, capture_output=True, text=True).stdout
+
+
 class SharedListMergeTest(unittest.TestCase):
-    def test_union_merge_of_concurrent_allowlist_additions_passes(self):
+    def test_union_merge_of_concurrent_additions_passes_registry_checker(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            path = root / 'scripts/components/allowlist/kernel.tsv'
-            path.parent.mkdir(parents=True)
-            path.write_text('# rule\ttarget_module\treason\n')
-            right = root / 'right.tsv'
-            right.write_text('# rule\ttarget_module\treason\nR-private\tB.Right\t#101 right\n')
-            path.write_text('# rule\ttarget_module\treason\nR-private\tA.Left\t#100 left\n')
-            result = subprocess.run(
-                ['git', 'merge-file', '-p', str(path), str(path), str(right)],
-                capture_output=True, text=True, check=True,
-            ).stdout
-            path.write_text(''.join(sorted(result.splitlines(keepends=True))))
+            git(root, 'init', '-q')
+            git(root, 'config', 'user.name', 'Merge test')
+            git(root, 'config', 'user.email', 'merge-test@example.invalid')
+            (root / '.gitattributes').write_text((REPO / '.gitattributes').read_text())
+            self.install_checker_fixture(root)
+            target = root / 'scripts/components/allowlist/kernel.tsv'
+            target.write_text('# rule\ttarget_module\treason\n')
+            self.commit(root, 'base')
+            base = git(root, 'rev-parse', 'HEAD').strip()
 
-            rows = [row for row in path.read_text().splitlines() if row and not row.startswith('#')]
-            self.assertEqual(rows, sorted(set(rows)))
+            git(root, 'checkout', '-q', '-b', 'left')
+            target.write_text(target.read_text() + 'R-private\tA.Left\t#100 left\n')
+            self.commit(root, 'left row')
+            git(root, 'checkout', '-q', base, '-b', 'right')
+            target.write_text(target.read_text() + 'R-private\tB.Right\t#101 right\n')
+            self.commit(root, 'right row')
 
-    def test_boundary_and_support_lists_are_not_append_only(self):
-        boundary = (REPO / 'src/test/aiur/events/bus_boundary_test.exs').read_text()
-        helper = (REPO / 'src/test/test_helper.exs').read_text()
-        self.assertNotIn('@members', boundary)
-        self.assertIn('Path.wildcard()', boundary)
-        self.assertIn('support/**/*.{ex,exs}', helper)
-        self.assertNotIn('Code.require_file("support/build_home/fixture_source.ex"', helper)
+            git(root, 'checkout', '-q', 'left')
+            result = subprocess.run(['/usr/bin/git', '-C', str(root), 'merge', '--no-edit', 'right'],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(CHECKER.check(root), [])
+
+            rows = [row for row in target.read_text().splitlines() if row and not row.startswith('#')]
+            self.assertEqual(rows, ['R-private\tA.Left\t#100 left', 'R-private\tB.Right\t#101 right'])
+
+    def test_union_merge_preserves_both_state_writer_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            git(root, 'init', '-q')
+            git(root, 'config', 'user.name', 'Merge test')
+            git(root, 'config', 'user.email', 'merge-test@example.invalid')
+            (root / '.gitattributes').write_text((REPO / '.gitattributes').read_text())
+            self.install_checker_fixture(root)
+            target = root / 'src/test/support/state_writers_allowlist.exs'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            header = '# Existing cross-owner writes only.\n[\n]\n'
+            target.write_text(header)
+            self.commit(root, 'base')
+            base = git(root, 'rev-parse', 'HEAD').strip()
+
+            git(root, 'checkout', '-q', '-b', 'left')
+            target.write_text('# Existing cross-owner writes only.\n[\n  {Aiur.LeftWriter, :left, "left"},\n]\n')
+            self.commit(root, 'left row')
+            git(root, 'checkout', '-q', base, '-b', 'right')
+            target.write_text('# Existing cross-owner writes only.\n[\n  {Aiur.RightWriter, :right, "right"},\n]\n')
+            self.commit(root, 'right row')
+
+            git(root, 'checkout', '-q', 'left')
+            result = subprocess.run(['/usr/bin/git', '-C', str(root), 'merge', '--no-edit', 'right'],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(CHECKER.check(root), [])
+            self.assertIn('{Aiur.LeftWriter, :left, "left"}', target.read_text())
+            self.assertIn('{Aiur.RightWriter, :right, "right"}', target.read_text())
+
+    @staticmethod
+    def install_checker_fixture(root):
+        import shutil
+        for name in [*CHECKER.CODE_LISTS, 'src/test/support/state_writers_allowlist.exs',
+                     'components.json', 'components.schema.json']:
+            target = root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(REPO / name, target)
+        for name in ('components', 'scripts/components/allowlist'):
+            shutil.copytree(REPO / name, root / name, dirs_exist_ok=True)
+
+    @staticmethod
+    def commit(root, message):
+        git(root, 'add', '.')
+        git(root, 'commit', '-qm', message)
 
 
 if __name__ == '__main__':

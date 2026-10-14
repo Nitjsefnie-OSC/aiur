@@ -59,16 +59,19 @@ defmodule Aiur.Events.BusBoundaryTest do
   end
 
   defp members do
-    event_files =
+    marked_members =
       @lib
-      |> Path.join("events/*.ex")
+      |> Path.join("**/*.ex")
       |> Path.wildcard()
-      |> Enum.reject(&(Path.basename(&1) in ~w(branch_ref_store.ex comment_filter.ex pr_command_scanner.ex sanitizer.ex)))
-      |> Enum.reject(&(Path.basename(&1) =~ ~r/^(github|ls_remote|trust|branch_rewrite)/))
+      |> Enum.filter(&member_file?/1)
 
-    event_files
-    |> Enum.map(&Path.relative_to(&1, @lib))
-    |> Kernel.++(["ticket_observation.ex"])
+    Enum.map(marked_members, &Path.relative_to(&1, @lib))
+  end
+
+  defp member_file?(path) do
+    path
+    |> File.read!()
+    |> String.contains?("# aiur:event-bus-boundary-member")
   end
 
   defp allowed?(mod) do
@@ -80,6 +83,23 @@ defmodule Aiur.Events.BusBoundaryTest do
     for file <- members() do
       "Aiur." <> (file |> String.trim_trailing(".ex") |> Path.split() |> Enum.map_join(".", &Macro.camelize/1))
     end
+  end
+
+  test "a boundary-member marker discovers a newly added event module" do
+    path = Path.join(@lib, "events/new_boundary_member.ex")
+    File.write!(path, "# aiur:event-bus-boundary-member\ndefmodule Aiur.Events.NewBoundaryMember do\nend\n")
+
+    on_exit(fn -> File.rm!(path) end)
+
+    assert "events/new_boundary_member.ex" in members()
+  end
+
+  test "directory discovery matches the original boundary membership" do
+    assert Enum.sort(members()) ==
+             Enum.sort(~w(events/exchange.ex events/topic.ex events/publisher.ex events/id_generator.ex
+                  events/subscription_store.ex events/subscription_store_supervisor.ex
+                  events/universal_subscriptions.ex events/agent_subscription_policy.ex
+                  events/debug_log.ex events/history_store.ex ticket_observation.ex))
   end
 
   defp edges do

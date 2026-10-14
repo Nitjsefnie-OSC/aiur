@@ -1,4 +1,5 @@
 defmodule Aiur.Events.DebugLog do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   Phoenix.PubSub topic + entry shape for the debug-only event-flow
   ticker rendered at the bottom of the agent-list pane when `--debug`

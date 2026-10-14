@@ -1,4 +1,5 @@
 defmodule Aiur.Events.SubscriptionStoreSupervisor do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   DynamicSupervisor for per-issue `Aiur.Events.SubscriptionStore` workers.
 

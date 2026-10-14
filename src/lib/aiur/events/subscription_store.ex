@@ -1,4 +1,5 @@
 defmodule Aiur.Events.SubscriptionStore do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   Per-issue GenServer that owns the persistent subscription state for one
   Aiur ticket.

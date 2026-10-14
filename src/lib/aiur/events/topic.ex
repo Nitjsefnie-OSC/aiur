@@ -1,4 +1,5 @@
 defmodule Aiur.Events.Topic do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   AMQP 0-9-1 topic-exchange pattern matcher.
 

@@ -1,4 +1,5 @@
 defmodule Aiur.Events.AgentSubscriptionPolicy do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   Authorization policy for topic patterns created explicitly by ticket agents.
 

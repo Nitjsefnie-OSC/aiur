@@ -1,4 +1,5 @@
 defmodule Aiur.Events.Publisher do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   Shared publish boundary for every `Aiur.Events` source — GitHub
   firehose, ls-remote ticker, dependencies poll, and agent-emitted

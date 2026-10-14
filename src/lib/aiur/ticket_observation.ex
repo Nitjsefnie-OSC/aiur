@@ -1,4 +1,5 @@
 defmodule Aiur.TicketObservation do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   A versioned, safe observation attached to ticket-scoped event publications.
 

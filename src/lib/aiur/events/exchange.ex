@@ -1,4 +1,5 @@
 defmodule Aiur.Events.Exchange do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   AMQP-topic-exchange-style routing for cross-ticket Aiur events.
 

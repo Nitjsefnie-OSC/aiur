@@ -1,4 +1,5 @@
 defmodule Aiur.Events.HistoryStore do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   Write sink for per-ticket event markers.
 

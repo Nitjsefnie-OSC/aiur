@@ -1,4 +1,5 @@
 defmodule Aiur.Events.IdGenerator do
+  # aiur:event-bus-boundary-member
   @moduledoc """
   Persistent monotonic event ID counter — restart-safe via Snowflake-style
   reserve-before-return.
