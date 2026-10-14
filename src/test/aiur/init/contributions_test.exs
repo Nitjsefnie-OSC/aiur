@@ -41,7 +41,7 @@ defmodule Aiur.Init.ContributionsTest do
   test "fresh wizard executes registered prompts and persists sections in order" do
     dir = Path.join(System.tmp_dir!(), "init-contributions-#{System.unique_integer([:positive])}")
     target = Path.join([dir, ".aiur", "config"])
-    on_exit(fn -> File.rm_rf!(dir) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(dir) end)
     Application.put_env(:aiur, :init_contributions, [Before, Aiur.Voice, After])
     original_io = Aiur.InitCase.io(self(), Aiur.InitCase.github_answers())
 
