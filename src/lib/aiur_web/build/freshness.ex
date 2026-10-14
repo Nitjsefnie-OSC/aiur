@@ -22,11 +22,12 @@ defmodule AiurWeb.Build.Freshness do
   """
   alias Aiur.BuildOrder.ProviderHealth
   alias Aiur.{Orchestrator, PollCadence}
+  alias AiurWeb.Build.Usage
   alias AiurWeb.Endpoint
 
   @spec daemon(term(), integer()) :: map()
   def daemon({status, _, md}, now_ms) when status in [:current, :stale] and is_map(md) do
-    heartbeat = ms(Map.get(md, :observed_at))
+    heartbeat = Usage.ms(Map.get(md, :observed_at))
     state = if heartbeat, do: daemon_state(status, Map.get(md, :reason)), else: "unknown"
     %{state: state, heartbeat_at: heartbeat, observed_at: now_ms}
   end
@@ -68,15 +69,5 @@ defmodule AiurWeb.Build.Freshness do
   defp daemon_state(:current, _), do: "live"
   defp daemon_state(:stale, :orchestrator_unavailable), do: "offline"
   defp daemon_state(:stale, _), do: "stale"
-  defp entry(state, time, reason), do: %{state: state, observed_at: ms(time), reason: if(is_nil(reason), do: nil, else: to_string(reason))}
-  defp ms(%DateTime{} = time), do: DateTime.to_unix(time, :millisecond)
-
-  defp ms(time) when is_binary(time) do
-    case DateTime.from_iso8601(time) do
-      {:ok, time, _} -> ms(time)
-      _ -> nil
-    end
-  end
-
-  defp ms(_), do: nil
+  defp entry(state, time, reason), do: %{state: state, observed_at: Usage.ms(time), reason: if(is_nil(reason), do: nil, else: to_string(reason))}
 end
