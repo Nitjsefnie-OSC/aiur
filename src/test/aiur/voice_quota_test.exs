@@ -80,6 +80,17 @@ defmodule Aiur.VoiceQuotaTest do
     assert Enum.at(children(), index + 1) == Enum.at(children, index + 2)
   end
 
+  test "the dashboard quota tick reads the selected voice provider" do
+    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, elevenlabs_quota: @unconfigured}}
+    Application.put_env(:aiur, :voice_provider, Provider)
+    assert {:noreply, socket} = AiurWeb.DashboardLive.handle_info(:elevenlabs_quota_tick, socket)
+    assert socket.assigns.elevenlabs_quota == @observed
+
+    Application.put_env(:aiur, :voice_provider, nil)
+    assert {:noreply, socket} = AiurWeb.DashboardLive.handle_info(:elevenlabs_quota_tick, socket)
+    assert socket.assigns.elevenlabs_quota == @unconfigured
+  end
+
   defp children do
     Aiur.child_specs(interactive_cli?: false, headless?: true, dashboard?: false, tailscale_funnel?: false)
   end
