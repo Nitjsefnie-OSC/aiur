@@ -1,6 +1,6 @@
 defmodule Aiur.MainWatch.FixerGitHub do
   @moduledoc false
-  alias Aiur.GitHub.{Comments, Errors, Labels, MainFixer, PullRequests, Transport, WriteThrough}
+  alias Aiur.GitHub.{Client, Errors, MainFixer, PullRequests, Transport}
 
   @spec open(String.t(), keyword()) :: {:ok, [map()]} | {:error, term()}
   def open(label, opts) do
@@ -33,7 +33,7 @@ defmodule Aiur.MainWatch.FixerGitHub do
   end
 
   defp comments(%{"comments" => count} = issue, opts) when count > 0 do
-    with {:ok, comments, _etag} <- Comments.fetch_issue_comments_conditional(issue["number"], opts) do
+    with {:ok, comments, _etag} <- Client.fetch_issue_comments_conditional(issue["number"], opts) do
       bodies = comments |> Enum.filter(&(not is_nil(MainFixer.marker(&1["body"])))) |> Enum.map(& &1["body"])
       {:ok, Enum.join([issue["body"] || "" | bodies], "\n")}
     end
@@ -42,21 +42,10 @@ defmodule Aiur.MainWatch.FixerGitHub do
   defp comments(issue, _opts), do: {:ok, issue["body"] || ""}
 
   @spec create(map(), keyword()) :: {:ok, map()} | {:error, term()}
-  def create(body, opts) do
-    with {:ok, {owner, repo}} <- Transport.parse_repo(), {:ok, token} <- Transport.require_token(opts), :ok <- Labels.ensure(owner, repo, token, body["labels"], opts) do
-      case request(%{method: :post, url: "#{Transport.base_url()}/repos/#{owner}/#{repo}/issues", token: token, body: body, caller: "main_fixer_create"}, opts) do
-        {:ok, %{status: 201, body: %{"number" => _} = issue}} ->
-          WriteThrough.issue(issue)
-          {:ok, issue}
-
-        response ->
-          error(response)
-      end
-    end
-  end
+  defdelegate create(body, opts), to: MainFixer
 
   @spec comment(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
-  def comment(id, body, opts), do: Comments.create_comment(id, body, opts)
+  def comment(id, body, opts), do: Client.create_comment(id, body, opts)
 
   @spec pr_open?(String.t(), keyword()) :: {:ok, boolean()} | {:error, term()}
   def pr_open?(id, opts) do
