@@ -14,10 +14,11 @@ for (const viewport of PARITY_VIEWPORTS) {
         for (const side of ['design', 'product']) {
           await pair[side].locator('.bd-vpw').evaluate(el => {
             const width = el.getBoundingClientRect().width
-            Object.assign(el.style, { position: 'fixed', top: '0', left: '0', zIndex: '2147483647', width: (width + 1) + 'px' })
-            // Reflow after relocation so cached grid paint bounds use the new origin.
-            el.getBoundingClientRect()
-            el.style.width = width + 'px'
+            const parent = el.parentNode, next = el.nextSibling
+            Object.assign(el.style, { position: 'fixed', top: '0', left: '0', zIndex: '2147483647', width: width + 'px' })
+            // Rebuild paint state at this origin; a width-only reflow retains stale
+            // snapped grid backgrounds in CI Chromium. Keep the same nodes and CSS.
+            el.remove(); parent.insertBefore(el, next)
           })
         }
         for (const side of ['design', 'product']) await expect(pair[side].locator('#bd-sb')).toHaveClass(/\boff\b/)
