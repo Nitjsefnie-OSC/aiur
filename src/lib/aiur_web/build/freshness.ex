@@ -2,13 +2,23 @@ defmodule AiurWeb.Build.Freshness do
   @moduledoc """
   Maps store freshness to payload v1 without inventing observation times.
 
-  Current snapshots are live; unavailable orchestrators are offline; other
-  stale snapshots are stale. Unpublished or invalid snapshots are unknown.
   The heartbeat is the data's timestamp; observed_at is the server read time.
 
-  Usable healthy providers are ok; partial healthy providers are incomplete.
-  Stale providers stay stale, unavailable/invalid providers are unavailable,
-  and explicitly disabled sources remain disabled. Unknown input is unavailable.
+  | Snapshot result | Daemon state |
+  | --- | --- |
+  | Current with valid timestamp | live |
+  | Stale, orchestrator unavailable | offline |
+  | Other stale with valid timestamp | stale |
+  | Orchestrator unavailable, no snapshot | offline, no heartbeat |
+  | Unpublished, invalid result or timestamp | unknown, no heartbeat |
+
+  | Source input | Source state |
+  | --- | --- |
+  | Usable healthy provider or current snapshot | ok |
+  | Partial healthy provider | incomplete |
+  | Stale provider or snapshot | stale |
+  | Unavailable/invalid provider, missing snapshot or unknown input | unavailable |
+  | Explicitly disabled | disabled |
   """
   alias Aiur.BuildOrder.ProviderHealth
   alias Aiur.{Orchestrator, PollCadence}

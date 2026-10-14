@@ -14,7 +14,7 @@ export function fmtAge(ms) {
   if (minutes < 48 * 60) return `${Math.floor(minutes / 60)} h ago`;
   return `${Math.floor(minutes / 1440)} days ago`;
 }
-const fmtT = t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+const fmtT = t => new Date(t).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 const fmtWD = t => new Date(t).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '');
 export function fmtWhen(t, now) {
   return (new Date(t).toDateString() === new Date(now).toDateString() ? '' : fmtWD(t) + ' ') + fmtT(t);
