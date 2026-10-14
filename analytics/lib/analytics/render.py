@@ -251,7 +251,8 @@ def fleet_pressure(summary: dict, cap: int = 10) -> dict:
         wasted = _sampled_waste(fleet)
     else:
         agents = {key: actor for key, actor in (summary.get("actors") or {}).items() if _agent_key(key)}
-        peak, wasted = _concurrency(summary, agents, cap)
+        peak = _concurrency(agents)
+        wasted = None
         latest = {}
         legacy_fallback = True
 
@@ -352,8 +353,8 @@ def _timestamp_display(value) -> str:
     return datetime.fromtimestamp(numeric / 1000, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _concurrency(summary: dict, agents: dict, cap: int) -> tuple[int, float]:
-    """Bucket agent samples on the 5s cadence; peak active agents + wasted slots."""
+def _concurrency(agents: dict) -> int:
+    """Bucket agent samples on the 5s cadence and return peak concurrency."""
     buckets: dict[int, set[str]] = {}
     for key, actor in agents.items():
         for sample in actor.get("samples", []):
@@ -366,12 +367,9 @@ def _concurrency(summary: dict, agents: dict, cap: int) -> tuple[int, float]:
             buckets.setdefault(bucket, set()).add(key)
 
     if not buckets:
-        return 0, 0.0
+        return 0
 
-    peak = max(len(active) for active in buckets.values())
-    bucket_hours = SAMPLE_SECONDS / 3600
-    wasted = sum(max(cap - len(active), 0) * bucket_hours for active in buckets.values())
-    return peak, wasted
+    return max(len(active) for active in buckets.values())
 
 
 def _agent_key(key: str) -> bool:

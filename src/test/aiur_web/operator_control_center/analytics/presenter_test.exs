@@ -72,6 +72,24 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
     Presenter.model(dataset(), Keyword.merge([cap: 4, cores: 4, host_mem_bytes: 1_000_000_000, buckets: 10], opts))
   end
 
+  defp model_with_pressure(samples, opts) do
+    pressure_dataset = put_in(dataset(), [:actors, "_daemon", :samples], samples)
+    Presenter.model(pressure_dataset, Keyword.merge([cap: 4, cores: 4, host_mem_bytes: 1_000_000_000, buckets: 10], opts))
+  end
+
+  defp capacity_samples(missing_index \\ nil) do
+    for index <- 0..10 do
+      pressure_sample(@t0 + index * 60_000,
+        occupied: 2,
+        max_agents: 16,
+        effective: if(index == missing_index, do: nil, else: if(index < 5, do: 13, else: 8)),
+        active: 2,
+        queued: 0,
+        wait: 0
+      )
+    end
+  end
+
   test "builds an available model with the requested bucket count" do
     m = model()
     assert m.available? == true
@@ -149,6 +167,28 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
     # cap the model just called unknown reads as precise and is not.
     assert model(cap_available?: false).kpis.wasted_slot_hours == nil
     assert model(cap: 4).kpis.wasted_slot_hours == nil
+  end
+
+  test "wasted slot-hours use each bucket's recorded cap, independent of the final cap" do
+    samples = capacity_samples()
+    cap_8 = model_with_pressure(samples, cap: 8).kpis
+    cap_13 = model_with_pressure(samples, cap: 13).kpis
+
+    assert cap_8.wasted_slot_hours == 1.6
+    assert cap_13.wasted_slot_hours == 1.6
+    assert cap_8.wasted_slot_hours_partial == false
+    assert cap_13.wasted_slot_hours_partial == false
+  end
+
+  test "wasted slot-hours omit missing caps and remain independent of the final cap" do
+    samples = capacity_samples(2)
+    cap_8 = model_with_pressure(samples, cap: 8).kpis
+    cap_13 = model_with_pressure(samples, cap: 13).kpis
+
+    assert cap_8.wasted_slot_hours == 1.4
+    assert cap_13.wasted_slot_hours == 1.4
+    assert cap_8.wasted_slot_hours_partial == true
+    assert cap_13.wasted_slot_hours_partial == true
   end
 
   test "buckets exact fleet pressure independently of process availability" do
@@ -382,7 +422,17 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
             Enum.map(second, &%{boot_id: "boot-b", timestamp_ms: &1, kind: "resource"}),
         actors: %{
           "_daemon" => %{
-            samples: Enum.map(first ++ second, &sample("_daemon", "daemon", &1, 20.0, 100_000_000)),
+            samples:
+              Enum.map(first ++ second, fn ts ->
+                pressure_sample(ts,
+                  occupied: 2,
+                  max_agents: 4,
+                  effective: 4,
+                  active: 2,
+                  queued: 0,
+                  wait: 0
+                )
+              end),
             profile: profile(20.0, 30.0, 100_000_000, 62)
           },
           "ticket:5" => %{
@@ -435,8 +485,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
       absolute = long_run_model(timeline: :absolute)
       compressed = long_run_model(timeline: :active)
 
-      assert absolute.kpis.wasted_slot_hours == nil
-      assert compressed.kpis.wasted_slot_hours == nil
+      assert absolute.kpis.wasted_slot_hours > 4.1
+      assert compressed.kpis.wasted_slot_hours <= 4.1
     end
 
     test "a merge recorded in the second session lands inside the second session on the axis" do

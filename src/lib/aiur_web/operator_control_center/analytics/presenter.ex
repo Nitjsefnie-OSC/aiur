@@ -376,10 +376,6 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
     end
   end
 
-  # Idle slot-hours are measured against the ceiling that actually existed —
-  # the effective cap — not the configured one, so the figure counts slots the
-  # dispatcher could have filled rather than slots that were never on offer.
-  #
   # ---- per-actor summary ----
 
   defp actor_summary(key, actor) do
