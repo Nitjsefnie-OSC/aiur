@@ -8,7 +8,7 @@ defmodule Aiur.WorkflowStore.Reload do
 
   require Logger
 
-  alias Aiur.Alerts
+  alias Aiur.Signal
   alias Aiur.Workflow
   alias Aiur.WorkflowStore.Cache
   alias Aiur.WorkflowStore.ReloadRejection
@@ -269,7 +269,7 @@ defmodule Aiur.WorkflowStore.Reload do
     # operator alert (Executor-facing feed/ledger/sound). The extra fields
     # ride the alert's exchange payload so subscribers do not receive a
     # duplicate event for the same change.
-    Alerts.emit_system(@base_branch_changed_topic,
+    Signal.alert(@base_branch_changed_topic,
       message: message,
       reason: message,
       needs_attention: false,
