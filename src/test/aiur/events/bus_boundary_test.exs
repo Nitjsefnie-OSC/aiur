@@ -7,7 +7,7 @@ defmodule Aiur.Events.BusBoundaryTest do
 
   @members ~w(exchange topic publisher id_generator subscription_store
               subscription_store_supervisor universal_subscriptions
-              agent_subscription_policy debug_log)
+              agent_subscription_policy debug_log source_policy source_policy/null)
            |> Enum.map(&"events/#{&1}.ex")
            |> Kernel.++(["ticket_observation.ex"])
 
