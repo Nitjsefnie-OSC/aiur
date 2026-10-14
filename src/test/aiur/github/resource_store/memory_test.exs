@@ -141,7 +141,7 @@ defmodule Aiur.GitHub.ResourceStore.MemoryTest do
         Application.delete_env(:aiur, :github_resource_store_path)
         Supervisor.terminate_child(Aiur.Supervisor, ResourceStore)
         Supervisor.restart_child(Aiur.Supervisor, ResourceStore)
-        File.rm_rf(dir)
+        Aiur.TestCleanup.rm_rf!(dir)
       end)
 
       # Short strings live on the process heap (a long one is a shared binary
