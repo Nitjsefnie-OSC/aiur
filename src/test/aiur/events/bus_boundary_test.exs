@@ -5,12 +5,6 @@ defmodule Aiur.Events.BusBoundaryTest do
 
   @lib Path.expand("../../../lib/aiur", __DIR__)
 
-  @members ~w(exchange topic publisher id_generator subscription_store
-              subscription_store_supervisor universal_subscriptions
-              agent_subscription_policy debug_log history_store)
-           |> Enum.map(&"events/#{&1}.ex")
-           |> Kernel.++(["ticket_observation.ex"])
-
   # Bus modules that are not scanned members, plus kernel/config. Deliberately
   # not the whole `Aiur.Events` namespace: Sanitizer, BranchRefStore and
   # CommentFilter belong to github-listeners (CR-R2-1(b)).
@@ -64,10 +58,17 @@ defmodule Aiur.Events.BusBoundaryTest do
     (expanded ++ scanned) |> Enum.uniq() |> Enum.sort()
   end
 
-  defp member_modules do
-    for file <- @members do
-      "Aiur." <> (file |> String.trim_trailing(".ex") |> Path.split() |> Enum.map_join(".", &Macro.camelize/1))
-    end
+  defp members do
+    event_files =
+      @lib
+      |> Path.join("events/*.ex")
+      |> Path.wildcard()
+      |> Enum.reject(&(Path.basename(&1) in ~w(branch_ref_store.ex comment_filter.ex pr_command_scanner.ex sanitizer.ex)))
+      |> Enum.reject(&(Path.basename(&1) =~ ~r/^(github|ls_remote|trust|branch_rewrite)/))
+
+    event_files
+    |> Enum.map(&Path.relative_to(&1, @lib))
+    |> Kernel.++(["ticket_observation.ex"])
   end
 
   defp allowed?(mod) do
@@ -75,8 +76,14 @@ defmodule Aiur.Events.BusBoundaryTest do
       Enum.any?(~w(Aiur.Config Aiur.JsonStore), &String.starts_with?(mod, &1 <> "."))
   end
 
+  defp member_modules do
+    for file <- members() do
+      "Aiur." <> (file |> String.trim_trailing(".ex") |> Path.split() |> Enum.map_join(".", &Macro.camelize/1))
+    end
+  end
+
   defp edges do
-    for file <- @members,
+    for file <- members(),
         mod <- @lib |> Path.join(file) |> File.read!() |> references(),
         not allowed?(mod),
         do: {file, mod}

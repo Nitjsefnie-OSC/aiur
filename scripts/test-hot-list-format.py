@@ -72,6 +72,34 @@ class HotListFormatTest(unittest.TestCase):
         path.write_text('R-private\tZ.Module\t#1 existing\n' * 2)
         self.assertIn('scripts/components/allowlist/kernel.tsv: entries must be sorted and unique', CHECKER.check(self.root))
 
+    def test_union_merge_of_concurrent_allowlist_additions_passes(self):
+        import subprocess
+
+        path = self.root / 'scripts/components/allowlist/kernel.tsv'
+        original = path.read_text()
+        left, right = 'R-private\tA.Left\t#100 left\n', 'R-private\tB.Right\t#101 right\n'
+        base = original.splitlines(keepends=True)
+        path.write_text(''.join(base + [left]))
+        other = self.root / 'other.tsv'
+        other.write_text(''.join(base + [right]))
+        merged = subprocess.run(
+            ['git', 'merge-file', '-p', str(path), str(path), str(other)],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        path.write_text(''.join(sorted(merged.splitlines(keepends=True))))
+
+        self.assertEqual(CHECKER.check(self.root), [])
+
+    def test_bus_boundary_members_are_directory_discovered(self):
+        source = (REPO / 'src/test/aiur/events/bus_boundary_test.exs').read_text()
+        self.assertNotIn('@members', source)
+        self.assertIn('Path.wildcard()', source)
+
+    def test_test_helper_does_not_list_support_files(self):
+        source = (REPO / 'src/test/test_helper.exs').read_text()
+        self.assertIn('support/**/*.{ex,exs}', source)
+        self.assertNotIn('Code.require_file("support/build_home/fixture_source.ex"', source)
+
     def test_flattened_writer_allowlist_fails(self):
         path = self.root / 'src/test/support/state_writers_allowlist.exs'
         comment, body = path.read_text().split('\n', 1)
