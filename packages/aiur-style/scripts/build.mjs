@@ -55,7 +55,7 @@ try {
     .join('\n');
 
   const mainCssPath = path.join(distDir, 'aiur-style.css');
-  // Compact only the bundle; preserve whitespace inside CSS strings.
+  // ponytail: trusted component CSS only; use a CSS parser if unquoted data URLs or escaped identifiers are added.
   const compactCss = cssContent.replace(/("(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?\*\/)|\s+/g,
     (match, literal) => literal?.startsWith('/*') ? ' ' : literal ?? ' ').trim();
   fs.writeFileSync(mainCssPath, compactCss + '\n', { encoding: 'utf8' });
