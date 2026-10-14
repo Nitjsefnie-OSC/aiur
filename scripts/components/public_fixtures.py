@@ -7,6 +7,31 @@ def public_fields(entry):
                 docs=[], config=[], env=[], capabilities=[])
 
 
+def fixture_component(cid, paths):
+    return public_fields(dict(id=cid, name=cid, layer=0, kind='required', paths=paths,
+        facades=['Aiur.' + cid.title()], facade_pending=None, requires=[], optional=[],
+        owns={k: [] for k in ('config', 'env', 'state', 'capabilities')}, prior=[]))
+
+
+def complete_fixture(root):
+    import json
+    path = root / 'components.json'
+    manifest = json.loads(path.read_text())
+    manifest.update(components=[public_fields(c) for c in manifest['components']], features=[])
+    path.write_text(json.dumps(manifest))
+
+
+def verify_format(root, args, manifest, components, name):
+    import json
+    import subprocess
+    from .manifest import canonical
+    content = (root / 'components.json').read_bytes()
+    assert all(json.dumps(f) in content.decode() for f in manifest['features']), 'features must fit one line each'
+    assert json.loads(content) == canonical(dict(manifest, components=sorted(components, key=lambda c: (c['layer'], c['id']))))
+    subprocess.run(args, check=True, capture_output=True)
+    assert (root / 'components.json').read_bytes() == content, f'{name}: formatting not idempotent'
+
+
 def run(component, check):
     import json
     # Public contract fixtures run through the real checker and schema.

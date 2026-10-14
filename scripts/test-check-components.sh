@@ -13,20 +13,12 @@ import tempfile
 
 repo = Path(sys.argv[1])
 sys.path.insert(0, str(repo / 'scripts'))
-from components.public_fixtures import public_fields
+from components.public_fixtures import fixture_component as component, complete_fixture, verify_format
 with_node = '--with-node' in sys.argv[2:]
 with_elixir = '--with-elixir' in sys.argv[2:]
 selected = set(sys.argv[2:]) - {'--with-node', '--with-elixir'}
 checker = repo / 'scripts/check-components.py'
 ran = set()
-
-
-def component(cid, paths):
-    return dict(id=cid, name=cid, layer=0, kind='in-app', dependency_kind='required', paths=paths,
-                summary='Provides fixture behavior.', status='core', install={'type': 'included'},
-                docs=[], config=[], env=[], capabilities=[],
-                facades=['Aiur.' + cid.title()], facade_pending=None,
-                requires=[], optional=[], owns={k: [] for k in ('config', 'env', 'state', 'capabilities')}, prior=[])
 
 
 def check(name, components, files, code=0, messages=(), change=None, git=False, format=False, declarations=None, rules='ownership', links=None):
@@ -77,14 +69,7 @@ def check(name, components, files, code=0, messages=(), change=None, git=False, 
         for message in messages:
             assert message in output, f'{name}: missing {message!r}: {output}'
         if format:
-            content = (root / 'components.json').read_bytes()
-            if manifest['features']:
-                assert all(json.dumps(f) in content.decode() for f in manifest['features']), 'features must fit one line each'
-            sys.path.insert(0, str(repo / 'scripts'))
-            from components.manifest import canonical
-            assert json.loads(content) == canonical(dict(manifest, components=sorted(components, key=lambda c: (c['layer'], c['id']))))
-            subprocess.run(args, env=env, check=True, capture_output=True)
-            assert (root / 'components.json').read_bytes() == content, f'{name}: formatting not idempotent'
+            verify_format(root, args, manifest, components, name)
         print(f'PASS: {name}')
 
 
@@ -293,10 +278,7 @@ else:
             root = Path(directory)
             shutil.copytree(repo / 'scripts/components/fixtures' / fixture, root, dirs_exist_ok=True)
             shutil.copyfile(repo / 'components.schema.json', root / 'components.schema.json')
-            path = root / 'components.json'
-            manifest = json.loads(path.read_text())
-            manifest.update(components=[public_fields(c) for c in manifest['components']], features=[])
-            path.write_text(json.dumps(manifest))
+            complete_fixture(root)
             if source is not None:
                 (root / 'src/lib/a.ex').write_text(source)
             if change:
