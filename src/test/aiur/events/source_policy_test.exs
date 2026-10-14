@@ -29,7 +29,8 @@ defmodule Aiur.Events.SourcePolicyTest do
     @impl true
     def mark_processed(opts) do
       {:messages, messages} = Process.info(self(), :messages)
-      topic = Keyword.fetch!(opts, :test_topic)
+      # Background publishers share the app-env policy but have no test-only topic.
+      topic = Keyword.get(opts, :test_topic)
       delivered = Enum.any?(messages, &match?({:event, %{topic: ^topic}}, &1))
       record({:mark_processed, delivered})
       :ok
