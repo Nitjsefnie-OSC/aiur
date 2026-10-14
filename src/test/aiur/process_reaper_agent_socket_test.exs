@@ -1,5 +1,5 @@
 defmodule Aiur.ProcessReaperAgentSocketTest do
-  use ExUnit.Case, async: false
+  use Aiur.TestSupport
   alias Aiur.Claude.Repl.Launcher
   alias Aiur.{ProcessReaper, Tmux}
 
