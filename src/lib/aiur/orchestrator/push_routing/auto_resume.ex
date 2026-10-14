@@ -7,10 +7,10 @@ defmodule Aiur.Orchestrator.PushRouting.AutoResume do
 
   require Logger
 
+  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Events.BranchRefStore
   alias Aiur.Events.SubscriptionStore
   alias Aiur.Issue
-  alias Aiur.Orchestrator
   alias Aiur.Orchestrator.{GithubBudgetPause, IssueSync, State}
 
   @doc false
@@ -223,7 +223,7 @@ defmodule Aiur.Orchestrator.PushRouting.AutoResume do
 
     # operator?: false — an automated blocker resume must preserve a
     # duration-capped agent's cumulative overrun (no fresh budget).
-    case Orchestrator.resume_paused_issue(state, entry, false) do
+    case TicketTransition.apply_effect(state, {:resume_paused, entry, false}) do
       {{:ok, :resumed}, next_state} ->
         next_state
 
@@ -301,7 +301,7 @@ defmodule Aiur.Orchestrator.PushRouting.AutoResume do
 
       # operator?: false — same automated path as attempt_auto_resume,
       # just deferred until a slot opened; preserve the duration overrun.
-      case Orchestrator.resume_paused_issue(state, entry, false) do
+      case TicketTransition.apply_effect(state, {:resume_paused, entry, false}) do
         {{:ok, :resumed}, next_state} ->
           Logger.info("Auto-resume drained: blockee=#{identifier} blocker=#{blocker_identifier} topic=#{topic}")
           maybe_clear_drained_cleared_dependency_resume(next_state, identifier, hint)
