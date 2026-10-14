@@ -2,8 +2,7 @@ defmodule Aiur.Regression.OrchestratorLifecycleTest do
   use Aiur.TestSupport
 
   @moduledoc """
-  These tests pin `Aiur.Orchestrator` lifecycle behavior prior to the T-022..T-027
-  decomposition and must pass unmodified through every extraction wave.
+  These tests pin `Aiur.Orchestrator` lifecycle behavior before T-022..T-027 decomposition.
   """
 
   alias Aiur.Events.SubscriptionStore
