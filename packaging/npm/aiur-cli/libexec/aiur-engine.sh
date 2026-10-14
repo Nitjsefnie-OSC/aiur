@@ -95,6 +95,13 @@ Usage: aiur [--interactive] [--no-dashboard] [--executor] [--pause] [--max-agent
        aiur epic clear <ids...> [--as <who>] [--json]
        aiur epic show [<ids...>] [--json]
        aiur epic list [--json]
+       aiur feature create <slug> --label <text> [--hue <0-359>] [--epic <key>=<label>]... [--as <who>] [--json]
+       aiur feature add <slug> <ids...> [--epic <key>] [--move] [--source backfill-agent] [--as <who>] [--json]
+       aiur feature remove <slug> <ids...> [--as <who>] [--json]
+       aiur feature also <slug> <ids...> [--remove] [--as <who>] [--json]
+       aiur feature baseline <slug> [--replace] [--as <who>] [--json]
+       aiur feature edit <slug> [--label <text>] [--hue <0-359>] [--end now|<ISO-8601>] [--add-epic <key>=<label>]... [--as <who>] [--json]
+       aiur feature show [<slug>] [--json]
        aiur analytics [--range run|full] [--since <ISO-8601>] [--until <ISO-8601>] [--build-order <id>] [--json]
        aiur github-cost [--budget graphql|core|all] [--format auto|table|records] [--json]  rank GitHub API spend by call site
        aiur experiments list [--status <status>] [--kind before_after|ab] [--json]
@@ -252,6 +259,7 @@ aiur_engine_main() {
       cmd_queue "$@"
       ;;
     epic) shift; cmd_epic "$@" ;;
+    feature) shift; cmd_feature "$@" ;;
     build-orders)
       shift
       cmd_build_orders "$@"
@@ -371,6 +379,7 @@ aiur_engine_main() {
 source "$(dirname "${BASH_SOURCE[0]}")/aiur-daemon-supervisor.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/aiur-queue.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/aiur-epic.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/aiur-feature.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/aiur-capabilities.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/aiur-experiments.sh"
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
