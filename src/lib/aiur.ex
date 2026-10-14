@@ -24,6 +24,7 @@ defmodule Aiur.Application do
   alias Aiur.Application.StartupChecks
   alias Aiur.GitHub.Config
   alias Aiur.Identity.Machine
+
   @impl true
   def start(_type, _args) do
     :ok = Aiur.Boot.mark()

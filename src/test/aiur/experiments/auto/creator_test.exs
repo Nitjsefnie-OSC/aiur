@@ -199,13 +199,28 @@ defmodule Aiur.Experiments.Auto.CreatorTest do
     assert {:error, {:invalid_auto_receipts, _child_spec}} = start_supervised({Creator, Keyword.put(opts, :name, nil)})
   end
 
-  test "newer window shapes return read-only without crashing Creator", %{creator: creator, root: root} do
+  test "read-only future experiments are unchanged and warn once while new lines complete", %{creator: creator, root: root} do
     assert {:ok, _spec} = Experiments.create(other("future-window", "active", "2026-10-20T00:00:00Z"))
     path = Paths.file("future-window", "spec.json")
     raw = path |> File.read!() |> Jason.decode!() |> Map.put("schema_version", 2) |> Map.put("windows", %{"future" => %{"bounds" => ["2026-10-01T00:00:00Z", "2026-10-20T00:00:00Z"]}})
-    File.write!(path, Jason.encode!(raw))
-    assert Creator.create(line(), creator) == {:error, :experiment_read_only}
-    refute File.exists?(Path.join(root, "creator.json"))
+    original = Jason.encode!(raw)
+    File.write!(path, original)
+    next_line = %{line() | key: "auto:version:0.0.11"}
+
+    log =
+      capture_log(fn ->
+        for next <- [line(), next_line] do
+          assert {:ok, spec} = Creator.create(next, creator)
+          assert {:ok, %{snapshots: [snapshot]}} = Experiments.fetch(spec.id)
+          assert snapshot["window_name"] == "before"
+          assert {:ok, :exists} = Creator.create(next, creator)
+        end
+      end)
+
+    receipts = root |> Path.join("creator.json") |> File.read!() |> Jason.decode!()
+    assert Enum.sort(receipts["completed"]) == [line().key, next_line.key]
+    assert length(Regex.scan(~r/concurrent annotation skipped: read-only experiment id=future-window/, log)) == 1
+    assert File.read!(path) == original
     assert {:ok, %{annotations: [], read_only?: true}} = Experiments.fetch("future-window")
   end
 end

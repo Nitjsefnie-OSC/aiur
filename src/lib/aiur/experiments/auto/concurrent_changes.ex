@@ -1,5 +1,6 @@
 defmodule Aiur.Experiments.Auto.ConcurrentChanges do
   @moduledoc false
+  require Logger
   alias Aiur.Experiments
   alias Aiur.Experiments.Auto.{Line, SpecBuilder}
 
@@ -19,21 +20,29 @@ defmodule Aiur.Experiments.Auto.ConcurrentChanges do
   defp continue(error), do: {:halt, error}
 
   defp annotate_one(id, line) do
-    with {:ok, experiment} <- Experiments.fetch(id),
-         :ok <- writable(experiment) do
-      seen? = Enum.any?(experiment.annotations, &(&1["auto_line_key"] == line.key))
-      inside? = Enum.any?(experiment.spec["windows"], fn {_name, window} -> contains?(window, line.at) end)
-
-      if inside? and not seen? do
-        Experiments.annotate(id, %{kind: "confounder", at: DateTime.to_iso8601(line.at), auto_line_key: line.key, reason: "concurrent change: #{line.source} #{SpecBuilder.ref(line)}"}, "auto")
-      else
-        :ok
-      end
+    with {:ok, experiment} <- Experiments.fetch(id) do
+      annotate_experiment(id, experiment, line)
     end
   end
 
-  defp writable(%{read_only?: true}), do: {:error, :experiment_read_only}
-  defp writable(%{read_only?: false}), do: :ok
+  defp annotate_experiment(id, %{read_only?: true}, _line) do
+    if is_nil(Process.put({__MODULE__, :read_only, id}, true)) do
+      Logger.warning("automatic experiment concurrent annotation skipped: read-only experiment id=#{id}")
+    end
+
+    :ok
+  end
+
+  defp annotate_experiment(id, %{read_only?: false} = experiment, line) do
+    seen? = Enum.any?(experiment.annotations, &(&1["auto_line_key"] == line.key))
+    inside? = Enum.any?(experiment.spec["windows"], fn {_name, window} -> contains?(window, line.at) end)
+
+    if inside? and not seen? do
+      Experiments.annotate(id, %{kind: "confounder", at: DateTime.to_iso8601(line.at), auto_line_key: line.key, reason: "concurrent change: #{line.source} #{SpecBuilder.ref(line)}"}, "auto")
+    else
+      :ok
+    end
+  end
 
   defp contains?(%{"start" => from, "end" => until}, at) do
     {:ok, from, _offset} = DateTime.from_iso8601(from)

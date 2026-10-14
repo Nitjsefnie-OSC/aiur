@@ -251,6 +251,8 @@ Automatic line creation uses the experiment store's baseline-freezing transactio
 Repeated keys create neither another experiment nor another baseline; completion
 receipts survive restarts. Concurrent lines annotate other open windows once.
 
+Read-only experiments are left unchanged and log one warning per Creator lifetime while new lines still complete.
+
 With telemetry disabled, a line creates nothing and logs its skip once per key.
 If automatic experiment storage cannot start, Aiur logs its unavailability and
 continues running.
