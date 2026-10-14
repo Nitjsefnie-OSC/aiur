@@ -187,8 +187,6 @@ defmodule Aiur.GitHub.Quota do
       # cannot tell "nobody else spent it" from "I was not running when it was
       # spent", and would attribute the daemon's own forgotten calls to
       # somebody else.
-      # Overridable so a test can place the boot before or after a window's
-      # start without also moving the clock that prices everything else.
       started_at: Keyword.get_lazy(opts, :started_at, fn -> Keyword.get(opts, :clock, &DateTime.utc_now/0).() end),
       clock: Keyword.get(opts, :clock, &DateTime.utc_now/0),
       emit_fun: Keyword.get(opts, :emit_fun, &Signal.alert/2),
@@ -1223,7 +1221,9 @@ defmodule Aiur.GitHub.Quota do
   end
 
   defp notify_orchestrator_recovery do
-    case Process.whereis(Aiur.Orchestrator) do
+    target = Application.get_env(:aiur, :github_quota_recovery_target)
+
+    case target && GenServer.whereis(target) do
       pid when is_pid(pid) -> send(pid, :github_quota_recovered)
       nil -> :ok
     end
