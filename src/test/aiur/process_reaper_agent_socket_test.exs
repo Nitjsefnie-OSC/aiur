@@ -16,6 +16,7 @@ defmodule Aiur.ProcessReaperAgentSocketTest do
     task =
       Task.async(fn ->
         Launcher.start_session(System.tmp_dir!(),
+          model: "sonnet",
           hook_settings_fun: fn _rc, _identifier -> nil end,
           process_group_fun: fn pid -> pid end,
           process_identity_fun: fn _pid -> :gone end,

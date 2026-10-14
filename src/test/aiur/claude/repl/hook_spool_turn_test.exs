@@ -19,7 +19,7 @@ defmodule Aiur.Claude.Repl.HookSpoolTurnTest do
     session = %{tmux: name, pane_id: "%50", os_pid: 4242, identifier: id}
     {:ok, path} = HookSettings.spool_path(id)
     File.mkdir_p!(Path.dirname(path))
-    task = Task.async(fn -> HookTurn.run(session, "work", poll_interval_ms: 1) end)
+    task = Task.async(fn -> HookTurn.run(session, "work", poll_interval_ms: 1, turn_timeout_ms: 10_000) end)
     assert {:ok, %{result: :completed, thread_id: "offline-session", message: "offline done"}} = drive(name, path, task, id)
   end
 
