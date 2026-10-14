@@ -60,6 +60,7 @@ test('stale cause and previous local day retain their own copy', async ({ page }
   await expect(page.locator('.bd-offline')).toContainText('Daemon stale · last heartbeat 3 h ago (11:20)')
   await daemon(page, 'offline', NOW - 86400000)
   await expect(page.locator('.bd-offline')).toContainText('(Tue Oct 6 14:20)')
+  expect(await page.evaluate(() => m.fmtWhen(new Date(2026, 9, 7, 0, 5).getTime(), 1791408000000))).toBe('00:05')
   expect(await page.evaluate(() => [m.fmtAge(-1), m.fmtAge(60000), m.fmtAge(172800000)])).toEqual(['less than 1 min ago', '1 min ago', '2 days ago'])
 })
 test('missing and malformed heartbeat never render a plausible timestamp', async ({ page }) => {
