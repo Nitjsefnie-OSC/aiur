@@ -11,7 +11,7 @@ assert.ok(/^  merge_group:$/m.test(trigger));
 assert.ok(/  push:\n    branches: \[v2\]/.test(trigger), 'push CI is limited to v2; main pushes create no run');
 const jobs = new Map([...source.split(/^jobs:\n/m)[1].matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:|$(?![\s\S]))/gm)]
   .map(([, id, body]) => [id, body]));
-const fullJobs = ['build', 'coverage-partition', 'test', 'dialyzer', 'browser', 'layout-release', 'analytics', 'streamdeck', 'quarantine'];
+const fullJobs = ['build', 'coverage-partition', 'test', 'dialyzer', 'browser', 'home-css', 'layout-release', 'analytics', 'streamdeck', 'quarantine'];
 const fastJobs = ['changes', 'workflow-security', 'lint', 'affected-tests', 'ci-gate'];
 function selected(event, full) {
   return [...jobs].filter(([, body]) => {
