@@ -39,6 +39,13 @@ jobs:
       - name: Check dist
         run: cd packages/aiur-style && npm run check-dist
 
+      - name: Verify packed assets
+        run: |
+          cd packages/aiur-style
+          npm pack --dry-run 2>&1 | tee "$RUNNER_TEMP/aiur-style-pack.log"
+          grep -F 'dist/aiur-style.css' "$RUNNER_TEMP/aiur-style-pack.log"
+          grep -F 'dist/js/index.js' "$RUNNER_TEMP/aiur-style-pack.log"
+
       - name: Run tests
         run: cd packages/aiur-style && npm test
 
