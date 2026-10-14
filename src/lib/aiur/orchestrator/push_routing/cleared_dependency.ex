@@ -9,9 +9,8 @@ defmodule Aiur.Orchestrator.PushRouting.ClearedDependency do
 
   require Logger
 
-  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.{Alerts, Issue}
-  alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, IssueSync, State, TrackerTasks}
+  alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, IssueSync, State, TicketTransition, TrackerTasks}
 
   @doc false
   @spec maybe_resume_blockee_on_cleared_dependency(

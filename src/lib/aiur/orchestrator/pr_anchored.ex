@@ -6,10 +6,9 @@ defmodule Aiur.Orchestrator.PrAnchored do
 
   require Logger
 
-  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.{Alerts, Config, Issue, TicketBranch}
   alias Aiur.GitHub.Client, as: GitHubClient
-  alias Aiur.Orchestrator.{CommentWake, Dispatcher, Slots, State, TrackerTasks, WorkspaceCleanup}
+  alias Aiur.Orchestrator.{CommentWake, Dispatcher, Slots, State, TicketTransition, TrackerTasks, WorkspaceCleanup}
 
   @pr_anchored_state "pr-watch"
 

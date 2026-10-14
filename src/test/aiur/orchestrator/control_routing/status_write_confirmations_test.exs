@@ -5,7 +5,7 @@ defmodule Aiur.Orchestrator.ControlRouting.StatusWriteConfirmationsTest do
 
   import Aiur.TestSupport.ControlRoutingFixture
 
-  alias Aiur.Orchestrator.{Lifecycle, PauseResume, PushRouting, RuntimeWatchdog}
+  alias Aiur.Orchestrator.{Lifecycle, PauseResume, PushRouting, RuntimeWatchdog, TicketTransition}
 
   describe "control-status writes" do
     test "worker completion expires a pending control instead of leaving it applied or pending" do
@@ -245,7 +245,7 @@ defmodule Aiur.Orchestrator.ControlRouting.StatusWriteConfirmationsTest do
       state = base_state(running: %{issue_id => entry})
 
       assert state ==
-               Aiur.Orchestrator.TicketTransition.apply_effects(
+               TicketTransition.apply_effects(
                  state,
                  [{:transition_control, entry, :paused, "duplicate.confirmation"}]
                )

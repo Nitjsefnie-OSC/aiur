@@ -7,11 +7,10 @@ defmodule Aiur.Orchestrator.PushRouting.AutoResume do
 
   require Logger
 
-  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Events.BranchRefStore
   alias Aiur.Events.SubscriptionStore
   alias Aiur.Issue
-  alias Aiur.Orchestrator.{GithubBudgetPause, IssueSync, State}
+  alias Aiur.Orchestrator.{GithubBudgetPause, IssueSync, State, TicketTransition}
 
   @doc false
   @spec resume_and_maybe_ack_unblock(State.t(), String.t(), String.t(), map(), term()) :: State.t()

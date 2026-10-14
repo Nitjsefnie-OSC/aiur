@@ -6,9 +6,8 @@ defmodule Aiur.Orchestrator.OperatorMessages.Enqueue do
 
   @max_operator_message_chars 8_000
 
-  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.{AgentEvents, AgentPubSub, AgentQueue, AgentQueueStore, OperatorWaitLog}
-  alias Aiur.Orchestrator.{AutoSubscriptions, CommentWake, LifecycleFence, PauseResume, State}
+  alias Aiur.Orchestrator.{AutoSubscriptions, CommentWake, LifecycleFence, PauseResume, State, TicketTransition}
   alias Aiur.Orchestrator.OperatorMessages.{Capabilities, DeliveryPolicy}
 
   @doc false

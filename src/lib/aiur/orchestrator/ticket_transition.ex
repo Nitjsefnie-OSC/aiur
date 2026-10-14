@@ -10,8 +10,8 @@ defmodule Aiur.Orchestrator.TicketTransition do
   """
 
   require Logger
-  alias Aiur.Tracker
   alias Aiur.Orchestrator.{AgentTeardown, CiLifecycle, Effect, HumanReview, PauseResume, RetryEngine, State}
+  alias Aiur.Tracker
 
   @doc "Apply requests in order, before the caller reads transition output."
   @spec apply_effects(State.t(), [Effect.t()]) :: State.t()

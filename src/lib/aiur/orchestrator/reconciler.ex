@@ -16,8 +16,8 @@ defmodule Aiur.Orchestrator.Reconciler do
     PauseResume,
     RateLimitFallback,
     State,
-    TrackerTasks,
-    TicketTransition
+    TicketTransition,
+    TrackerTasks
   }
 
   # A before_run hook failure parks the agent alive in

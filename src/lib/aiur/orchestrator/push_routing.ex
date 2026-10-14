@@ -9,11 +9,10 @@ defmodule Aiur.Orchestrator.PushRouting do
 
   require Logger
 
-  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.{Commands, Config, Issue}
   alias Aiur.Events.BranchRefStore
   alias Aiur.Events.GithubKeys
-  alias Aiur.Orchestrator.{Dispatcher, GithubBudgetPause, PauseResume, State}
+  alias Aiur.Orchestrator.{Dispatcher, GithubBudgetPause, PauseResume, State, TicketTransition}
   alias Aiur.Orchestrator.PushRouting.{AutoResume, ClearedDependency}
 
   @doc false

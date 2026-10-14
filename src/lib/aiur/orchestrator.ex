@@ -4,7 +4,7 @@ defmodule Aiur.Orchestrator do
   require Logger
 
   alias Aiur.{Alerts, Issue}
-  alias Aiur.Orchestrator.{AutoSubscriptions, BlockerPropagation, CiLifecycle, CommentPolling, CommentWake, Parking}
+  alias Aiur.Orchestrator.{AutoSubscriptions, BlockerPropagation, CiLifecycle, CommentPolling, CommentWake, Parking, TicketTransition}
   alias Aiur.Orchestrator.BuildQueueClaimProbe
   alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, EventTopics, HumanReview, Interrupts}
   alias Aiur.Orchestrator.{GlobalPause, Lifecycle, PauseResume, PriorityControl, PushRouting, RetryEngine}
@@ -915,7 +915,7 @@ defmodule Aiur.Orchestrator do
   @impl true
   def handle_cast({:mark_sleeping, identifier}, state) when is_binary(identifier) do
     {next, effects} = PushRouting.sleeping_effects(state, identifier)
-    {:noreply, Aiur.Orchestrator.TicketTransition.apply_effects(next, effects)}
+    {:noreply, TicketTransition.apply_effects(next, effects)}
   end
 
   @doc false

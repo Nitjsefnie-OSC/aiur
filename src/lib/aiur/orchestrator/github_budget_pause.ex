@@ -1,9 +1,8 @@
 defmodule Aiur.Orchestrator.GithubBudgetPause do
   @moduledoc false
 
-  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Alerts
-  alias Aiur.Orchestrator.{ControlLifecycle, State}
+  alias Aiur.Orchestrator.{ControlLifecycle, State, TicketTransition}
   alias Aiur.Protocol.MapAccess
 
   @budget_resources ["core", "graphql"]
