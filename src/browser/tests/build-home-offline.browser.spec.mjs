@@ -15,7 +15,9 @@ test.beforeEach(async ({ page }) => {
     const hook = await import('/build-home/hook.js')
     state.resetState({})
     Object.assign(state.ctx, { life: life.createLife(), root: document.querySelector('#build-root'), snap: { daemon: { state: 'live' } } })
-    window.calls = { teardown: 0, connect: 0, resync: 0, status: 0 }
+    window.calls = { teardown: 0, connect: 0, resync: 0, status: 0, ticks: 0 }
+    const every = window.setInterval.bind(window)
+    window.setInterval = (fn, ms) => every(() => { calls.ticks++; fn() }, ms)
     state.ctx.resync = () => calls.resync++
     state.fx.renderStatus = () => calls.status++
     window.liveSocket = { disconnectedTimeout: 500, getSocket: () => ({ isConnected: () => false,
@@ -34,7 +36,10 @@ const daemon = (page, state, heartbeat = NOW - 360000) => page.evaluate(({ state
 }, { state, heartbeat })
 
 test('short socket drops are debounced through hook callbacks', async ({ page }) => {
-  await down(page); await page.clock.runFor(400); await up(page)
+  await down(page); await page.clock.runFor(400)
+  await expect(page.locator('.bd-offline')).toHaveCount(0)
+  await expect(page.locator('#build-root')).not.toHaveClass(/stale/)
+  await up(page)
   await expect(page.locator('.bd-offline')).toHaveCount(0)
   await expect(page.locator('#build-root')).not.toHaveClass(/stale/)
 })
@@ -120,6 +125,7 @@ test('dispose and reset release pending offline timers and state', async ({ page
   await down(page); await page.clock.runFor(600); await page.locator('#bd-retry').click()
   await page.evaluate(() => { m.ctx.life.dispose(); m.resetState(); document.querySelector('#bd-offline').innerHTML = '' })
   await page.clock.runFor(60000)
+  expect(await page.evaluate(() => calls.ticks)).toBe(0)
   await expect(page.locator('.bd-offline')).toHaveCount(0)
   expect(await page.evaluate(() => m.daemonView().socketDown)).toBe(false)
 })
