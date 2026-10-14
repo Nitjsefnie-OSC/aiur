@@ -29,6 +29,7 @@
     "commands",
     "conversations",
     "github",
+    "github-access",
     "streamdeck-server",
     "telemetry",
     "ticket-context",
