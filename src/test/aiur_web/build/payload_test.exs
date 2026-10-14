@@ -34,6 +34,17 @@ defmodule AiurWeb.Build.PayloadTest do
     end
   end
 
+  test "planned unknown readiness is a boolean in the payload" do
+    for unknown <- [true, false] do
+      data = put_in(fixture(), ["sections", "plan", Access.at(0), "cue", "unknown"], unknown)
+      assert Payload.validate(data) == :ok
+    end
+
+    data = put_in(fixture(), ["sections", "plan", Access.at(0), "cue", "unknown"], "unknown")
+    assert {:error, errors} = Payload.validate(data)
+    assert {"sections.plan.0.cue.unknown", :type} in errors
+  end
+
   test "counts must cover order" do
     data = fixture() |> update_in(["counts"], &Map.delete(&1, "bugs"))
     assert {:error, errors} = Payload.validate(data)
@@ -61,6 +72,7 @@ defmodule AiurWeb.Build.PayloadTest do
   test "unknown stays null and raw strings stay raw" do
     data = fixture() |> put_in(["sections", "now", Access.at(0), "pct"], nil) |> Map.put("counts", nil)
     data = data |> put_in(["sections", "now", Access.at(0), "est"], nil) |> put_in(["sections", "now", Access.at(0), "start"], nil)
+    data = put_in(data, ["sections", "now", Access.at(0), "start_src"], "unknown")
     data = put_in(data, ["sections", "now", Access.at(0), "title"], "A & B")
     json = Payload.snapshot(data, "E", 1) |> Jason.encode!() |> Jason.decode!()
     assert Payload.validate(json) == :ok
@@ -100,8 +112,8 @@ defmodule AiurWeb.Build.PayloadTest do
       end)
 
     IO.puts("build payload census mean_row_bytes=#{Float.round(bytes / rows, 2)} rows=#{rows}")
-    # Required agent names raise the fixture census from 397.84 to 411.43 bytes.
-    assert bytes / rows <= 420
+    # Historic children, states and missing counts raise the measured census from 431.69 to 492.33 bytes.
+    assert bytes / rows <= 500
 
     for name <- ~w(live dense) do
       {:ok, data} = FixtureSource.snapshot(dataset: name)

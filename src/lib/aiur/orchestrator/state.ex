@@ -1,7 +1,5 @@
 defmodule Aiur.Orchestrator.State do
-  @moduledoc """
-  Runtime state for the orchestrator polling loop. Field owners: `Aiur.Orchestrator.State.Owners`.
-  """
+  @moduledoc "Runtime state for the orchestrator polling loop. Field owners: `Aiur.Orchestrator.State.Owners`."
 
   alias Aiur.{AgentQueueStore, Issue, TrackerIdentity}
   alias Aiur.LiveConversation.Source, as: LiveConversationSource
@@ -23,24 +21,18 @@ defmodule Aiur.Orchestrator.State do
           poll_cycles_completed: non_neg_integer(),
           tracker_tasks: %{reference() => map()},
           restack_completed: map(),
+          blocker_propagations: map(),
           last_dispatch_poll_at_ms: integer() | nil,
           queued_demand_hints: %{String.t() => non_neg_integer()},
           max_concurrent_agents: integer() | nil,
           session_max_concurrent_agents: integer() | nil,
           effective_concurrent_agents: integer() | nil,
-          load_envelope_state: %{
-            optional(:sample_id) => reference() | integer() | nil,
-            optional(:sampled_at_ms) => integer() | nil,
-            optional(:overload_samples) => non_neg_integer(),
-            last_decrease_ms: integer() | nil,
-            cpu_snapshot: Aiur.SystemCpu.snapshot() | nil,
-            bootstrap_complete?: boolean()
-          },
+          load_envelope_state: map(),
           capacity_hold:
             %{
               optional(:reclaimable_cpu_percent) => float(),
               optional(:reclaimable_cpu_threshold) => float(),
-              signal: :memory | :file_descriptors | :run_queue | :load | :build | :provider | :envelope,
+              signal: :memory | :file_descriptors | :run_queue | :load | :cpu_pressure | :build | :provider | :envelope,
               measured: term(),
               threshold: term(),
               measured_at: DateTime.t(),
@@ -68,6 +60,7 @@ defmodule Aiur.Orchestrator.State do
           contradictory_state_label_alert_active: boolean(),
           queue_store: term(),
           last_polled_issues: map(),
+          terminal_verification_attempts: %{String.t() => non_neg_integer()},
           tracker_observations: %{optional(String.t()) => DateTime.t()},
           status_observed_at: DateTime.t() | nil,
           human_review_observed_ids: MapSet.t(String.t()) | nil,
@@ -95,6 +88,7 @@ defmodule Aiur.Orchestrator.State do
           dispatch_selection_hold: map() | nil,
           dispatch_declines: %{optional(String.t()) => term()},
           dispatch_capacity_sample: %{
+            optional(:cpu_pressure | :pressure_threshold | :pressure_target | :memory_mb | :memory_threshold_mb) => term(),
             optional(:load_discount_reason | :load_daemon_nice) => :enabled | :unavailable | integer(),
             optional(:gate_signal) => number() | :unavailable,
             optional(:load_sampled_at_ms) => integer() | nil,
@@ -121,7 +115,7 @@ defmodule Aiur.Orchestrator.State do
           dependency_circular_wait: %{
             optional(String.t()) => %{identifier: String.t(), waiting_count: pos_integer(), since_ms: integer(), alerted?: boolean()}
           },
-          running: map(),
+          running: %{optional(String.t()) => %{optional(:start_mode) => :ready | :optimistic, optional(:optimistic_blockers) => [String.t()], optional(atom()) => term()}},
           running_issue_cache: %{optional(String.t()) => %{etag: String.t() | nil, issue: Issue.t()}},
           completed: MapSet.t(),
           claimed: MapSet.t(),
@@ -240,6 +234,7 @@ defmodule Aiur.Orchestrator.State do
     dispatch_hold: nil,
     queue_store: AgentQueueStore.new(),
     last_polled_issues: %{},
+    terminal_verification_attempts: %{},
     tracker_observations: %{},
     status_observed_at: nil,
     human_review_observed_ids: nil,
@@ -282,12 +277,12 @@ defmodule Aiur.Orchestrator.State do
     running_issue_cache: %{},
     tracker_tasks: %{},
     restack_completed: %{},
+    blocker_propagations: %{},
     completed: MapSet.new(),
     claimed: MapSet.new(),
     dispatch_recovery: @default_dispatch_recovery,
     retry_attempts: %{},
-    # Timer refs for in-flight comment-rework retries, keyed by
-    # `{issue_key, source_key}`. Tracked so a superseded retry can be cancelled
+    # In-flight comment-rework timers keyed by `{issue_key, source_key}`, so superseded retries can be cancelled
     # and so `terminate/2` never leaves a timer firing into a dead orchestrator's
     # successor — see `Aiur.Orchestrator.CommentWake`.
     comment_rework_retries: %{},
@@ -520,22 +515,7 @@ defmodule Aiur.Orchestrator.State do
   end
 
   @spec alive?(term()) :: boolean()
-  def alive?(pid) when is_pid(pid), do: Process.alive?(pid)
-  def alive?(name) when is_atom(name), do: Process.whereis(name) != nil
-  def alive?({:via, _, _} = name), do: registered_process_alive?(name)
-  def alive?({:global, _} = name), do: registered_process_alive?(name)
-  def alive?(_), do: false
-
-  defp registered_process_alive?(name) do
-    case GenServer.whereis(name) do
-      pid when is_pid(pid) -> Process.alive?(pid)
-      _ -> false
-    end
-  rescue
-    _ -> false
-  catch
-    :exit, _ -> false
-  end
+  defdelegate alive?(name), to: Aiur.Orchestrator.State.ProcessLiveness
 
   @spec maybe_put_runtime_value(term(), term(), term()) :: term()
   def maybe_put_runtime_value(running_entry, _key, nil), do: running_entry
@@ -740,7 +720,7 @@ defmodule Aiur.Orchestrator.State do
   # A provider usage limit belongs here for the same reason: the account, not
   # this agent, is what the fleet waits on, there is no turn in flight, and
   # holding the slot turns one account limit into a fleet-wide dispatch stall.
-  @non_reserving_pause_reasons [:ci_wait, :blocker_dependency, :max_agent_duration, :usage_limit_exhausted]
+  @non_reserving_pause_reasons [:ci_wait, :blocker_dependency, :optimistic_blocker_failed, :max_agent_duration, :usage_limit_exhausted]
 
   @spec non_reserving_pause_reason?(term()) :: boolean()
   def non_reserving_pause_reason?(reason), do: reason in @non_reserving_pause_reasons
