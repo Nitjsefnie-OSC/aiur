@@ -37,9 +37,9 @@ else:
         self.assertEqual(self.run_selection("cd src && mise exec -- mix test --max-cases 4 'test/a test.exs' 'test/$(bad)_test.exs'"),
                          (0, [['test', '--max-cases', '4', 'test/a test.exs', 'test/$(bad)_test.exs']]))
 
-    def test_unsafe_selection_refuses_full_suite_in_fast_job(self):
+    def test_unsafe_selection_defers_full_suite_to_merge_queue(self):
         status, calls = self.run_selection('# full suite recommended: shared support\ncd src && mise exec -- make ci')
-        self.assertNotEqual(status, 0)
+        self.assertEqual(status, 0)
         self.assertEqual(calls, [])
 
     def test_no_tests_does_not_run_test_suite(self):
