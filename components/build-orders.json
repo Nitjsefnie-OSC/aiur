@@ -19,6 +19,7 @@
     "Aiur.BuildOrder.Component",
     "Aiur.BuildOrder.DependencyChain",
     "Aiur.BuildOrder.Features",
+    "Aiur.BuildOrder.Features.LabelProjection",
     "Aiur.BuildOrder.GitHubGraph",
     "Aiur.BuildOrder.GraphProjection",
     "Aiur.BuildOrder.GraphProjection.Snapshot",
