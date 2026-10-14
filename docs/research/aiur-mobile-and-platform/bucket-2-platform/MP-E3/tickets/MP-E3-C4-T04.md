@@ -39,8 +39,10 @@ researched: 2026-10-06
 - The skill asks for a progress table "on a real cadence"
   (`.claude/skills/aiur-run/SKILL.md:99-120`); aiur never sees it.
 - `aiur executor-emit <topic> --payload <json>` publishes `executor.*` only
-  (`packaging/npm/aiur-cli/libexec/aiur-engine.sh:472`, `:3290-3300`;
+  (`packaging/npm/aiur-cli/libexec/aiur-engine.sh:111`, `:3290-3300`;
   `agent_control_cli.ex:384-402`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:111`. base_sha retained; other citations need review.
 
 ## Chosen design
 

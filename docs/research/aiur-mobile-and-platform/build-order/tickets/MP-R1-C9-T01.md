@@ -63,7 +63,7 @@ researched: 2026-10-06
 
 - The firehose is polled inline in the orchestrator tick:
   `Dispatcher.do_maybe_dispatch/1` calls `CommentPolling.poll_github_firehose(state)`
-  (`src/lib/aiur/orchestrator/dispatcher.ex:133`), before the async comment poll
+  (`src/lib/aiur/orchestrator/dispatcher.ex:277`), before the async comment poll
   (`:137`), the CI poll (`:138`) and the candidate poll.
 - `CommentPolling.poll_github_firehose/2` (`orchestrator/comment_polling.ex:36-62`) passes
   `state.events_etag` / `state.events_last_id` to `GithubFirehose.poll/1`, then updates
@@ -82,7 +82,7 @@ researched: 2026-10-06
 - Connectivity and poll-delay state stay in the orchestrator: `github_connectivity` and
   `github_poll_delays` are written by `TrackerHealth` (`orchestrator/tracker_health.ex:21,31,96`)
   and read by the poll scheduler (`tracker_health.ex:344`).
-- Supervision: `Aiur.Supervisor` is `:rest_for_one` (`src/lib/aiur.ex:118`).
+- Supervision: `Aiur.Supervisor` is `:rest_for_one` (`src/lib/aiur.ex:127`).
   `Aiur.Orchestrator` is started at `aiur.ex:442`, right after `Aiur.GitHub.ViewStateSweep`
   (`:441`). Today a crash inside `GithubFirehose.poll/1` crashes the orchestrator, which
   restarts it and every later child, and the restarted orchestrator starts with
@@ -90,6 +90,8 @@ researched: 2026-10-06
 - Existing tests: `src/test/aiur/orchestrator_firehose_test.exs` (streak, truncation
   alert, recent-merge persistence), `src/test/aiur/events/github_firehose_test.exs`.
   Nine test files build `%State{events_etag: …, events_last_id: …}` (listed in Step 6).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/orchestrator/dispatcher.ex:277`, `src/lib/aiur.ex:127`. base_sha retained; other citations need review.
 
 ## Chosen design
 

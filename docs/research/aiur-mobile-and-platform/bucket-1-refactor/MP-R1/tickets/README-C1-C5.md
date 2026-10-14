@@ -150,3 +150,101 @@ Recorded in [plan.md §9–§10](../plan.md), [component-map.md](../component-ma
 None blocking. Two implementation-time measurements are required by the tickets:
 the 41-component baseline violation counts (C1-T02/T03 PR bodies) and the `npm ci`
 cost of the TS walker in the lint job (C1-T04).
+
+## Recurring refresh and ticket-start size ownership (RC-23)
+
+[MP-R1-C11-T02](MP-R1-C11-T02.md)
+owns this procedure. The coordinator or Executor owns the refresh cursor,
+serializes research-branch writes, reviews worker drafts, and commits reports
+and accepted ticket edits together on `research/refactor-findings`. Workers may
+run the tool and draft edits; this process changes neither contracts nor main.
+
+### A. After each move merges
+
+Trigger this after MP-R1 C5–C9 moves and MP-R2/R5/R6/R7 moves changing component
+paths, including indexed `components/*.json` entries. Coalesce close merges
+into one range. Start the first run at `45a290e3`; thereafter use the last
+**fully accepted** refresh SHA. Pin the merged main SHA and research SHA before
+running, and record both plus the ledger publication SHA in the report.
+
+From a tooling checkout containing the merged C11-T01 tool, using the repo root
+selected explicitly (agent Git commands must always include `-C "$workspace"`):
+
+```sh
+python3 -I scripts/plan_refresh.py --repo "$workspace" \
+  --from "$last_refresh_sha" --to "$merged_main_sha" \
+  --pack docs/research/aiur-mobile-and-platform --pack-ref "$research_sha" \
+  --u8-ledger "$published_ledger_csv" --out "$report_path"
+```
+
+The ledger argument is a local CSV, not a ref. Export it from U0's newest
+published ledger commit, recording that commit separately. For draft validation,
+omit `--pack-ref` and point `--pack` at the edited local pack. Keep the full raw
+report; split large accepted reports into files of at most 500 lines under
+`refresh/<sha>/`, with `refresh/<sha>.md` as the index.
+
+For each affected ticket, including its build-order mirror:
+
+1. `MOVED` and `LINES-SHIFTED`: update citations only after checking the destination
+   and cited code at the merged SHA. A combined `LINES-CHANGED` or `SPLIT?` needs
+   semantic review before any mechanical replacement.
+2. `LINES-CHANGED`, `SPLIT?`, `GONE`: read the new code and rewrite Verified starting
+   point. If it invalidates the design, retain existing blockers, add
+   `REFRESH-<ticket>-<sha>` and set `status: blocked`; notify the feature owner.
+   An unresolved abbreviated or proposed path is not automatically a regression.
+3. Append `Refreshed against <sha> on <date> (MP-R1-C11-T02).` to Verified starting
+   point only after its review; list the reviewed scope when other citations still
+   belong to the old baseline. Change `base_sha` only when **every** citation has
+   been verified. Never advance the global cursor with semantic reviews pending.
+4. Update migration-plan §4 only for verified completed moves: record
+   `moved (<sha>)` and the real target. File survival or a proposed component name
+   alone does not prove a migration step shipped. Preserve partial/unresolved rows.
+5. Compare all cited contract status/date metadata against the previous accepted
+   report or pinned research commit; list changed contracts and citing tickets for
+   their owners. The tool reports four contract records; inspect remaining cited
+   contracts separately. Do not edit owner contracts or infer missing metadata.
+6. When the range touches `orchestrator/issue_sync.ex`,
+   `orchestrator/dispatch_policy.ex`, `github/labels.ex`, or `github/issues.ex`,
+   re-resolve their current paths and inspect MP-E1-C1's named hooks from its tickets.
+   Verify marker recognition, readiness guards, heal exemptions, and the queue's
+   single label-writer seam and callers. A grep match alone does not prove the
+   queue still calls the seam. Missing hooks go to the move owner as regressions;
+   never silently repoint or recreate them here.
+7. Commit the accepted report and edits together after coordinator review. Record
+   pending owner reviews in the index. A reverted move is handled by the next
+   reverse range; a stale-citation worker may draft a ticket-only refresh for the
+   coordinator to fold in. Serialize with other research editors.
+
+The current tool compares coordinates at `--from` with `--to`; it does not know
+which local citations already refer to `--to`. Replaying the same range is a
+reproducibility check, **not** an all-OK acceptance check for shifted citations.
+Check refreshed citations directly with `git -C "$workspace" show <sha>:<path>`;
+use a target-to-target run only for existence/owner checks, and do not interpret
+its OK rows as proof of citation meaning. Until tool replay semantics are enhanced,
+record this limitation explicitly rather than claiming an all-OK replay.
+
+### B. At every MP ticket start (binding RC-23)
+
+Run before dispatch/transition from ready to in-progress, including MP-R1's later
+tickets. `ready` in this pack means researched; gates and predecessors still apply.
+The Executor records each admission in the refresh index with ticket, current main
+SHA, intended edited files and owner outcome. Recheck after scope or ledger changes.
+
+1. Identify **edited** files from Implementation steps and actual scope; cited files
+   that will not be edited are excluded. The tool scans all citations and therefore
+   supplies candidates, not the admission decision. Include new files and tests.
+2. Count LF bytes plus one for a nonempty unterminated last line at pinned current
+   main. Record predicted final size too. A file at most 500 lines that stays at
+   most 500 needs no owner. New or small files may not cross 500; split the work.
+3. For every oversized edited file, look up its current path in the newest
+   U0-published U8 ledger. Record `size_owner: <package> (<path>, <lines> lines at
+   <main sha>, ledger <ledger sha>)`; list all owners when several files qualify.
+   Missing row means `UNASSIGNED`: ask U0 and hold that edit before admission.
+   MP tickets consume the ledger and never edit it.
+4. If the transitional size gate is installed, write the measured no-growth ceiling
+   in Compatibility and rollout. Use today's count, not a research-time ceiling.
+   Oversized files must remain the same length or shorter; put new code/tests in
+   small files. A no-longer-oversized file needs no historical owner.
+5. Record the decision in the canonical ticket and build-order mirror. Review one
+   oversized example against the actual CSV row and spot-check three refreshed
+   citations at the recorded SHA before accepting a refresh.

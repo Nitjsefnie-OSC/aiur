@@ -58,7 +58,7 @@ researched: 2026-10-06
 ## Verified starting point (base `45a290e3`)
 
 - **Schema:**
-  - `src/lib/aiur/config/schema.ex:17` (alias);
+  - `src/lib/aiur/config/schema.ex:19` (alias);
   - `:70` (`embeds_one(:elevenlabs, ElevenLabs, on_replace: :update, defaults_to_struct: true)`);
   - `:182` (`cast_embed`);
   - `:232-241` (redaction of `api_key` in the inspected settings).
@@ -73,6 +73,8 @@ researched: 2026-10-06
 - **Docs checker:** `scripts/check-config-docs.py` resolves every key through
   `embeds_one` reachability. It runs in the required `lint` job
   (`.github/workflows/ci.yml:259-262`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `website/docs-app/apis/elevenlabs.md:41`, `src/lib/aiur/config/schema.ex:19`. base_sha retained; other citations need review.
 
 ## Chosen design
 
@@ -122,7 +124,7 @@ One design, fixed by MP-R1-C4-T05 (RQ4):
   `{:error, :init_contributions_unregistered}`, the same shape as MP-R1-C4-T01's
   `:config_checks_unregistered`; it never silently skips every contribution.
 - **An `ELEVENLABS_API_KEY` env reference in YAML:** resolution is unchanged
-  (`$ELEVENLABS_API_KEY` syntax, `website/docs-app/apis/elevenlabs.md:29`).
+  (`$ELEVENLABS_API_KEY` syntax, `website/docs-app/apis/elevenlabs.md:41`).
 
 ## Compatibility and rollout
 

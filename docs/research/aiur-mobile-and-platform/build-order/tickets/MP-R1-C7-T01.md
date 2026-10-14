@@ -91,13 +91,15 @@ researched: 2026-10-06
   `orchestrator/human_review.ex:84`, `pr_health_scanner.ex:105`, `rework_gate.ex:272`,
   `rework_requeue.ex:137` (`Tracker.adapter() == GitHubTracker`).
 - Tests: `src/test/aiur/tracker_github_test.exs:51` ("implements Tracker behaviour"),
-  `src/test/aiur/extensions_test.exs:365` ("tracker delegates to memory and linear
+  `src/test/aiur/extensions_test.exs:366` ("tracker delegates to memory and linear
   adapters"), `:402`.
 - Size owner pinned to the U8 ledger at `465aca643`; re-resolve at start (RC-23).
 - Prior evidence: `feature-boundaries.md` §2 entry 3 (split recommendation), corrected
   by `synthesis/architecture-verification.md` claim codebase-10 ("consider separate
   issue-tracker/code-host capabilities, without claiming every adapter-specific
   reference is a defect").
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/aiur/extensions_test.exs:366`. base_sha retained; other citations need review.
 
 ## Chosen design
 

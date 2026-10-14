@@ -60,7 +60,7 @@ researched: 2026-10-06
 - `src/lib/aiur/decision_projection.ex:158` `apply_record(_, %Unrecognized{})` is identity;
   `:47-86` `decode_request_record/2` re-validates the snapshot and compares
   `content_hash`; `:48` requires a `ticket` map. Transitions start at `:276`.
-- `src/lib/aiur/decision_store.ex:154-160` `request/4`; `:2161-2168` `handle_request/3`;
+- `src/lib/aiur/decision_store.ex:153-159` `request/4`; `:2161-2168` `handle_request/3`;
   `:2426-2460` `persist_and_notify/3` (single `requested` append, then `notify/3`);
   `:2471-2505` `build_and_persist_event/5` / `build_and_append_event/5`.
 - Callers that create Commands: `agent_runner/tool_executor.ex:568-660`
@@ -68,10 +68,12 @@ researched: 2026-10-06
   `decision_store.ex:2170-2200`.
 - `src/lib/aiur/decision_validation.ex:440-456` `normalize_ticket/1` (any bounded
   non-empty identifier, so `"executor"` is accepted today).
-- `src/lib/aiur/decision_expiry.ex:112-117` `expired_candidate?/4` keys on
+- `src/lib/aiur/decision_expiry.ex:106-111` `expired_candidate?/4` keys on
   `decision.ticket.identifier`.
 - Tests: `src/test/aiur/decision_store_test.exs` (incl. `:4440-4474` future event
   retention), `decision_projection_test.exs:937-967`, `decision_expiry_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/decision_store.ex:153-159`, `src/lib/aiur/decision_expiry.ex:106-111`. base_sha retained; other citations need review.
 
 ## Chosen design
 

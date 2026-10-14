@@ -45,12 +45,12 @@ researched: 2026-10-06
 
 | Item | Evidence |
 | --- | --- |
-| Voice markup | `src/lib/aiur_web/components/operator_control_center/conversation_drawer.ex:183-231`: `div.agent-voice-tools` → `div.agent-voice-controls` with `button[data-voice-mic]` (`aria-label="Dictate message"`, `data-conversation-focus="dictation"`, `:185-198`), `button[data-voice-conversation]` (`aria-label="Start interactive voice chat"`, `data-conversation-focus="conversation"`, `:199-212`), `label.agent-voice-device-label` + `select[data-voice-device]` (`:213-218`), `canvas[data-voice-waveform]` 360×52 (`:220-227`), `p[data-voice-status]` `role="status" aria-live="polite"` with "Press the microphone to dictate. Review the text, then press Send." (`:228-230`) |
+| Voice markup | `src/lib/aiur_web/components/operator_control_center/conversation_drawer.ex:193-241`: `div.agent-voice-tools` → `div.agent-voice-controls` with `button[data-voice-mic]` (`aria-label="Dictate message"`, `data-conversation-focus="dictation"`, `:185-198`), `button[data-voice-conversation]` (`aria-label="Start interactive voice chat"`, `data-conversation-focus="conversation"`, `:199-212`), `label.agent-voice-device-label` + `select[data-voice-device]` (`:213-218`), `canvas[data-voice-waveform]` 360×52 (`:220-227`), `p[data-voice-status]` `role="status" aria-live="polite"` with "Press the microphone to dictate. Review the text, then press Send." (`:228-230`) |
 | Siblings the controller also binds | `textarea[data-voice-input]` (`:174-182`) and `button[data-voice-send]` (`:234`) stay in the drawer: they belong to the composer, not to voice |
 | Form marker | `form[data-voice-composer]` (`:166-172`) |
 | Controller binding | `conversation-voice-controller.js:27-55` queries each selector inside the hook element |
 | Focus restore | `data-conversation-focus` values are read by `conversation-drawer-hook.js:25-38` (`activeFocusKey`) |
-| Existing tests | `src/test/aiur_web/operator_control_center/conversation_drawer_test.exs:191` "renders dictation and interactive conversation controls in the standard composer"; browser spec `src/browser/tests/units.browser.spec.mjs:326-690` (selectors listed in the C1 RQ-E5-2 note below) |
+| Existing tests | `src/test/aiur_web/operator_control_center/conversation_drawer_test.exs:200` "renders dictation and interactive conversation controls in the standard composer"; browser spec `src/browser/tests/units.browser.spec.mjs:326-690` (selectors listed in the C1 RQ-E5-2 note below) |
 
 **RQ-E5-2 (resolved).** The browser spec relies on: `[data-voice-status]`,
 `[data-voice-input]`, `[data-voice-send]`, `[data-voice-mic]`, `[data-voice-conversation]`,
@@ -58,6 +58,8 @@ researched: 2026-10-06
 chat", "Cancel waiting for voice reply"; globals `window.AiurVoiceSocket` and
 `window.AiurConversationVoiceController`; socket option `params._csrf_token`
 (`units.browser.spec.mjs:347,412-464,597-654`). All are preserved.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/components/operator_control_center/conversation_drawer.ex:193-241`, `src/test/aiur_web/operator_control_center/conversation_drawer_test.exs:200`. base_sha retained; other citations need review.
 
 ## Chosen design
 

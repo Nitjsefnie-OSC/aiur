@@ -25,7 +25,7 @@ researched: 2026-10-06
   `pr-lifecycle` component instead of `orchestration` core, so the checker can enforce that
   orchestration does not depend on it and that it does not reach into the orchestrator.
 - **Deliverable:** `Aiur.Orchestrator.PRHealthScanner`
-  (`src/lib/aiur/orchestrator/pr_health_scanner.ex`) becomes `Aiur.PRLifecycle.HealthScanner`
+  (`src/lib/aiur/pr_lifecycle/health_scanner.ex`) becomes `Aiur.PRLifecycle.HealthScanner`
   (PROPOSED, `src/lib/aiur/pr_lifecycle/health_scanner.ex`). Manifest entry `pr-lifecycle`
   (PROPOSED, L3, optional, requires `tracker`, `github`, `config`, `kernel`, `signal`; see
   "Compatibility" for the manifest change request) lists it.
@@ -56,8 +56,10 @@ researched: 2026-10-06
 - Gate: `GitHubConfig.pr_health_enabled?() and Tracker.adapter() == GitHubTracker`
   (`:105`).
 - The only references outside the file: `aiur.ex:447` and
-  `src/test/aiur/orchestrator/pr_health_scanner_test.exs`. No `Process.whereis/1` on the
+  `src/test/aiur/pr_lifecycle/health_scanner_test.exs`. No `Process.whereis/1` on the
   name anywhere.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/pr_lifecycle/health_scanner.ex`, `src/test/aiur/pr_lifecycle/health_scanner_test.exs`. base_sha retained; other citations need review.
 
 ## Chosen design
 

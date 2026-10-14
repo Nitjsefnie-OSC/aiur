@@ -36,10 +36,12 @@ researched: 2026-10-06
 
 - `src/lib/aiur/orchestrator/status_report.ex:1040-1070` running-entry fields
   (`last_codex_event`, `last_codex_timestamp` at `:1060-1062`).
-- `src/lib/aiur_web/operator_control_center/units_presenter.ex:26-41` builds rows with
+- `src/lib/aiur_web/operator_control_center/units_presenter.ex:29-44` builds rows with
   `activity` from `TicketActivity.snapshots/0`; `units_policy.ex` conditions.
-- `src/lib/aiur_web/components/operator_control_center/units_table.ex:286-307` row tone
+- `src/lib/aiur_web/components/operator_control_center/units_table.ex:295-316` row tone
   (`is-blocked` from `reasons.blocking`, `has-alert`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/operator_control_center/units_presenter.ex:29-44`, `src/lib/aiur_web/components/operator_control_center/units_table.ex:295-316`. base_sha retained; other citations need review.
 
 ## Chosen design
 

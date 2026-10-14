@@ -38,7 +38,7 @@ researched: 2026-10-06
 
 ## Verified starting point (45a290e3)
 
-- The application supervisor uses `:rest_for_one` (`src/lib/aiur.ex:116-119`).
+- The application supervisor uses `:rest_for_one` (`src/lib/aiur.ex:125-128`).
 - Child order: `Aiur.Events.IdGenerator` (`aiur.ex:358`), `{Aiur.Events.Exchange,
   name: Aiur.Events.Exchange}` (`:359`), `Aiur.Events.Publisher` (`:374`),
   `Aiur.DecisionStore` (`:407`), subscription registry and supervisor (`:415-416`),
@@ -53,7 +53,9 @@ researched: 2026-10-06
   (`events/exchange.ex:57-58,130-142,184-193`); `subscribe/2` and `publish/3` take
   the server name (`:70,93`).
 - Existing re-bind evidence for the real listener: deleting its rows from the
-  Exchange table and sending `:resubscribe` (`src/test/aiur/executor_listener_test.exs:97-131`).
+  Exchange table and sending `:resubscribe` (`src/test/aiur/executor_listener_test.exs:98-132`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur.ex:125-128`, `src/test/aiur/executor_listener_test.exs:98-132`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -50,9 +50,11 @@ researched: 2026-10-06
 | File and size | `src/priv/static/conversation-voice-controller.js`, 539 lines, IIFE exporting `window.AiurConversationVoiceController` (`:1-2,538-539`) |
 | Capture code | `openCapture` (`:195-211`, loads `/voice-capture-worklet.js`, node name `aiur-voice-capture`), `handleSamples` (`:274-288`), `downsample` (`:290-303`), `pushWaveform`/`resetWaveform`/`drawWaveform` (`:305-343`), `refreshDevices` (`:104-125`), `rememberDevice` (`:57-61`), `disposeCapture` (`:506-515`) |
 | Transport code | `openChannel` (`:213-258`): `new VoiceSocket("/voice", {params: {_csrf_token}})`, topic `voice:conversation` or `voice:dictation`, handlers `transcript`, `error`, `stopped`, `audio`, `audio_done`, `audio_error`, `onError`, `onClose`; `closeChannel` (`:517-523`) |
-| Loaders | `src/lib/aiur_web/components/layouts.ex:40-41` (`<script defer>` for the controller, then the drawer hook); static allowlist `src/lib/aiur_web/static_assets.ex:13-27` (`conversation-voice-controller.js`, `voice-capture-worklet.js`); browser fixture `src/test/browser/fixture_server.exs:31` |
+| Loaders | `src/lib/aiur_web/components/layouts.ex:44-45` (`<script defer>` for the controller, then the drawer hook); static allowlist `src/lib/aiur_web/static_assets.ex:13-27` (`conversation-voice-controller.js`, `voice-capture-worklet.js`); browser fixture `src/test/browser/fixture_server.exs:31` |
 | Tests that load it | `src/test/aiur/extensions_test.exs:1062,1108-1109,1542,1559-1561` (served, contains `AiurConversationVoiceController`); `src/browser/tests/units.browser.spec.mjs:326-690` |
 | Hook | `src/priv/static/conversation-drawer-hook.js:16-17,33,42` constructs and drives the controller |
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/components/layouts.ex:44-45`. base_sha retained; other citations need review.
 
 ## Chosen design
 

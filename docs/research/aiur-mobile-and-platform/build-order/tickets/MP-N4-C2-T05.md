@@ -39,8 +39,10 @@ OQ-N4-1); this ticket does not deploy anything.
 - Docs rule: AGENTS.md "Docs ship with the change" — a new surface gets a
   `website/docs-app/guide/` page and a sidebar entry in
   `website/docs-app/.vitepress/config.ts` (guide entries at `config.ts:131-140`).
-- The webhook tunnel (`website/docs-app/apis/github.md:744-760`) is inbound-only; the
+- The webhook tunnel (`website/docs-app/apis/github.md:793-809`) is inbound-only; the
   page must say the relay is unrelated to it.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `website/docs-app/apis/github.md:793-809`, `.github/workflows/website.yml:68-71`. base_sha retained; other citations need review.
 
 ## Chosen design
 
@@ -83,7 +85,7 @@ against a deployed URL. Rollback: previous image; handles persist on the volume.
 
 Commands: `env -C packages/aiur-push-relay mise exec -- mix test`,
 `docker build packages/aiur-push-relay` (local), and the docs site build used by
-`.github/workflows/website.yml:50-53`: `env -C website/docs-app bun install --frozen-lockfile`
+`.github/workflows/website.yml:68-71`: `env -C website/docs-app bun install --frozen-lockfile`
 then `env -C website/docs-app bun run build`.
 
 ## Completion and handoff

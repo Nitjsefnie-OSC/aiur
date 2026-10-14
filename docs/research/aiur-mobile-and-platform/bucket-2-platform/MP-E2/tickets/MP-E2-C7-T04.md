@@ -35,11 +35,13 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- `src/lib/aiur/commands_cli.ex:7` `@filters ~w(all open blocking resolved)a`; `:9-20`
+- `src/lib/aiur/commands_cli.ex:8` `@filters ~w(all open blocking resolved)a`; `:9-20`
   `run/1` (`--json` or `print_human/1`); `:24-57` `build/1` envelope with `snapshot.captured_at`,
   `sources` (`observed_at: nil` today, `:146-150`).
-- Engine `commands)` dispatch `packaging/npm/aiur-cli/libexec/aiur-engine.sh:4122`.
+- Engine `commands)` dispatch `packaging/npm/aiur-cli/libexec/aiur-engine.sh:231`.
 - Test `src/test/aiur/commands_cli_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/commands_cli.ex:8`, `packaging/npm/aiur-cli/libexec/aiur-engine.sh:231`. base_sha retained; other citations need review.
 
 ## Chosen design
 

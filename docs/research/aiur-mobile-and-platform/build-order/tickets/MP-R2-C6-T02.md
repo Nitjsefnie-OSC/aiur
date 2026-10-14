@@ -45,7 +45,7 @@ researched: 2026-10-06
 
 | Fact | Evidence |
 | --- | --- |
-| Root supervisor is `:rest_for_one` | `src/lib/aiur.ex:116-119` |
+| Root supervisor is `:rest_for_one` | `src/lib/aiur.ex:125-128` |
 | Child order: `IdGenerator`, `Exchange`, … `Publisher` | `aiur.ex:358-374` |
 | Executor recording children placed late "after the Exchange and the Publisher they subscribe to" | `aiur.ex:454-463,503` |
 | `AllowedContributors` placed last in the always-on list so its restart cannot cascade into dashboard/Principal/opencode | `aiur.ex:476-480` |
@@ -53,13 +53,15 @@ researched: 2026-10-06
 | `SupervisionHealth` gets the full child list | `aiur.ex:487-489` |
 | `DecisionLog.append/2` writes one line and fsyncs per call; `replay/3` truncates a torn tail unless `repair_torn_tail: false`; supports `max_file_bytes`, `max_record_bytes` | `src/lib/aiur/decision_log.ex:126-145,150-194,196-207` |
 | Corrupt-journal precedent: log + one `needs_attention` alert, replay stopped | `src/lib/aiur/executor_events.ex:416-440` |
-| Runtime state dir resolver | `src/lib/aiur/config/paths.ex:243` (`runtime_state_dir/0`, `{:ok, dir} | {:error, reason}` as used at `events/id_generator.ex:273-285`) |
+| Runtime state dir resolver | `src/lib/aiur/config/paths.ex:298` (`runtime_state_dir/0`, `{:ok, dir} | {:error, reason}` as used at `events/id_generator.ex:273-285`) |
 | Cold-boot id floor scans `"id": <int>` in floor files | `events/id_generator.ex:350-357`; `:floor_files` option from C2-T07 |
 
 PROPOSED files: `src/lib/aiur/events/export/exporter.ex`,
 `src/lib/aiur/events/export/reader.ex`,
 `src/lib/aiur/events/export/layout.ex` (paths + meta read/write),
 `src/test/aiur/events/export/exporter_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur.ex:125-128`, `src/lib/aiur/config/paths.ex:298`. base_sha retained; other citations need review.
 
 ## Chosen design
 

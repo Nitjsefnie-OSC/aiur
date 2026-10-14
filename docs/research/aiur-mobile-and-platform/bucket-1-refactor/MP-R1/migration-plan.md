@@ -93,7 +93,7 @@ is what MP-R1-C11 regenerates after each move, so implementers do not rediscover
 | PR-05 | `aiur_web/streamdeck_logs.ex` (anchor rule) | conversations (neutral name) | S12 (MP-R6) | E4, N6 |
 | PR-06 | `decision*.ex`, `decision_store/**`, `asks*.ex` | commands (`aiur_decisions`) | S10 | E2, E5, N4, N6 |
 | PR-07 | direct `Aiur.Alerts.*` calls | `Signal.alert/2` | S1 | E1, E2, every feature raising attention |
-| PR-08 | `aiur_web/router.ex` single router | web-shell router + registered component routes | S11 | E3, E4, E5, N2, N4, N6 |
+| PR-08 | `aiur_web/router.ex` single router | web-shell: `src/lib/aiur_web/router.ex` composes `src/lib/aiur_web/routes/{api,capabilities,dashboard_pages,decisions,github_webhook,streamdeck}.ex` | S11; moved (`e777b37e011551800b81f84cd489bab5c0174f54`), verified at `47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f` | E3, E4, E5, N2, N4, N6 |
 | PR-09 | `config/schema.ex` embeds | per-component section modules | S9 | every feature adding config |
 | PR-10 | `build_order/**`, `aiur_web/build_order*` | build-orders | S12 | E1, N3, N5 |
 | PR-11 | `src/lib/aiur/build_queue/**` (wave 0) | build-queue (final) | S13 | N3, N5 |

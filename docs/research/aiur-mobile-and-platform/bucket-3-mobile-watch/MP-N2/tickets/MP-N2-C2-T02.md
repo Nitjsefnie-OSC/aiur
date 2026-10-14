@@ -33,10 +33,12 @@ DESIGN-N2 gate; MP-N2-C2-T01. Dependents: MP-N2-C2-T04.
 ## Verified starting point (base `45a290e3`)
 
 - `Aiur.Shutdown.cleanup/1` runs best-effort phases through `safely/2` (`src/lib/aiur/shutdown.ex:42-63`),
-  called from `Aiur.Application.stop/1` (`src/lib/aiur.ex:520-526`).
+  called from `Aiur.Application.stop/1` (`src/lib/aiur.ex:197-203`).
 - The launcher deletes the record on clean session exit (`aiur-engine.sh:2104`) and in `aiur stop`
   (`:3619`). A crash leaves both record and advert behind; T04 classifies that as `crashed` (record
   + node down) regardless of advert age.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur.ex:197-203`. base_sha retained; other citations need review.
 
 ## Chosen design
 

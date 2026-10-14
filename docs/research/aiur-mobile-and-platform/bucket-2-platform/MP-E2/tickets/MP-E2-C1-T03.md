@@ -41,7 +41,7 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- `src/lib/aiur/decision_store.ex:2554-2561` `notify_lifecycle/3` builds
+- `src/lib/aiur/decision_store.ex:2616-2623` `notify_lifecycle/3` builds
   `"ticket.#{decision.ticket.identifier}.agent.decision.#{lifecycle_slug(event.type)}"`
   and calls `Publisher.publish_persisted/3`.
 - `:4603-4621` `notify/3` builds `"ticket.#{decision.ticket.identifier}.agent.decision.requested"`,
@@ -53,6 +53,8 @@ researched: 2026-10-06
 - Rollback mechanics: `decision_event.ex:167-193`, `decision_event/unrecognized.ex`,
   `decision_projection.ex:158`; existing tests `decision_projection_test.exs:937-967`,
   `decision_store_test.exs:4440-4474`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/decision_store.ex:2616-2623`. base_sha retained; other citations need review.
 
 ## Chosen design
 

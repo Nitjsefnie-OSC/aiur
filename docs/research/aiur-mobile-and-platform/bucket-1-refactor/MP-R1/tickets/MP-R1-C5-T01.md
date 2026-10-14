@@ -58,8 +58,10 @@ researched: 2026-10-06
   `usage_ledger/recovery.ex`, `usage_ledger/store.ex`, `webhooks/delivery_log.ex`.
 - `Aiur.Fs.sync_filesystem/0` doc names `Aiur.DecisionLog.append/2` (`fs.ex:72`);
   update the reference.
-- Test: `src/test/aiur/decision_log_test.exs` (symlink refusal, torn tail truncation,
+- Test: `src/test/aiur/journal_test.exs` (symlink refusal, torn tail truncation,
   interior corruption halts replay, first-creation sync).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/aiur/journal_test.exs`. base_sha retained; other citations need review.
 
 ## Chosen design
 

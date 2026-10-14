@@ -37,11 +37,13 @@ researched: 2026-10-06
 ## Verified starting point (`45a290e3`)
 
 - `src/lib/aiur_web/streamdeck_commands.ex` (`item/1`, `actor/0` `:19,73`).
-- `src/lib/aiur_web/streamdeck_channel.ex:151-168` `answer_command`; `:587-600`
+- `src/lib/aiur_web/streamdeck_channel.ex:154-171` `answer_command`; `:587-600`
   `build_answer_payload/1` (exactly one of `option_id` / `custom_response`).
 - Plugin `packages/streamdeck/src/channel.ts:238-270`, `controller.ts:1061`.
 - Tests: `src/test/aiur_web/streamdeck_commands_test.exs`,
   `streamdeck_channel_test.exs`, `streamdeck_key_face_contract_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/streamdeck_channel.ex:154-171`. base_sha retained; other citations need review.
 
 ## Chosen design
 

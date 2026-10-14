@@ -26,7 +26,7 @@ researched: 2026-10-06
   chat transcripts (R-optional rule: a required component never depends on an
   optional one).
 - **Deliverable:** `Aiur.BuildOrder.TicketDetail.Sanitizer`
-  (`src/lib/aiur/build_order/ticket_detail_sanitizer.ex`, 298 lines) is renamed to
+  (`src/lib/aiur/display_sanitizer.ex`, 298 lines) is renamed to
   `Aiur.DisplaySanitizer` at PROPOSED `src/lib/aiur/display_sanitizer.ex`, owned by
   `kernel` beside `Aiur.SecretRedactor` (its only dependency). Callers renamed. A
   characterization test is added (none exists today).
@@ -57,6 +57,8 @@ researched: 2026-10-06
   - `src/lib/aiur_web/markdown.ex:6` (moduledoc text only).
 - No test references the module (`git grep -l 'sanitize_projection\|TicketDetail.Sanitizer' 45a290e3 -- src/test` is empty); it is covered indirectly by
   `src/test/aiur/live_conversation_test.exs` and the build-order ticket-detail tests.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/display_sanitizer.ex`. base_sha retained; other citations need review.
 
 ## Chosen design
 

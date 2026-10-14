@@ -61,7 +61,9 @@ researched: 2026-10-06
 | Write gates | `:api_write` (`router.ex:50-53`), `:require_writable` (`:60-62`) |
 | Limiter | `VoiceSessionLimiter.acquire(authority, owner)` takes any binary authority (`voice_session_limiter.ex:22-25`); caps 2 per authority, 8 global (`:12-13`) |
 | Channel authority today | `voice_authority: %{configuration_generation, connection_generation}` (`voice_channel.ex:37-45`); FinancialDataAccess generation check (`:47-51`) |
-| Endpoint `check_origin: false` | `src/config/config.exs:17` — native WebSocket clients are not origin-checked |
+| Endpoint `check_origin: false` | `src/config/config.exs:79` — native WebSocket clients are not origin-checked |
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/config/config.exs:79`. base_sha retained; other citations need review.
 
 ## Chosen design
 

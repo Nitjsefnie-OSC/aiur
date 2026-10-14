@@ -56,12 +56,14 @@ researched: 2026-10-06
 
 | Fact | Evidence |
 | --- | --- |
-| No device credential exists at base; dashboard auth is Basic Auth with a session proof | `src/lib/aiur_web/router.ex:201-211`; `src/lib/aiur_web/financial_data_access.ex:50-84` |
+| No device credential exists at base; dashboard auth is Basic Auth with a session proof | `src/lib/aiur_web/router.ex:88-98`; `src/lib/aiur_web/financial_data_access.ex:50-84` |
 | Planned: device bearer accepted on any `:dashboard_auth` route; checked against the machine store, cached by file mtime; revoked device fails on the next request | `contracts/pairing-and-instance-registry.md` §4.4 (line 177 at research time) |
 | Planned: `DELETE /v1/devices/<id>` and unpair-all; offline device learns on next request (`401 device_revoked`) | same contract §4.5 (line 205 at research time) |
 | Access token TTL 15 min; store holds only sha256(token) | same contract, credentials table (line 55) |
 | Channel lifetime model this extends (token expiry and credential-generation change stop the channel) | `src/lib/aiur_web/streamdeck_channel.ex:37,238-243`; C7-T02 |
 | MP-N2 tickets: C6-T01 plug wiring; C7-T01 revoke; C7-T02 unpair-all | `bucket-3-mobile-watch/MP-N2/chunks.md:98-123` |
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/router.ex:88-98`. base_sha retained; other citations need review.
 
 ## Chosen design
 

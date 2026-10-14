@@ -44,7 +44,7 @@ researched: 2026-10-06
 | Fact to document | Evidence |
 | --- | --- |
 | Page: 106 lines; sections Topic shape, Agent events, Tracker and repository events, Automatic subscriptions, Manual subscription scope, Dependencies, Commands and decisions, GitHub observation | `website/docs-app/concepts/message-bus.md:1-106` |
-| Sidebar entry exists | `website/docs-app/.vitepress/config.ts:152` |
+| Sidebar entry exists | `website/docs-app/.vitepress/config.ts:160` |
 | Opening sentence says the exchange is for "durable coordination" — but most topics are not durable (F1) | `message-bus.md:3` vs `src/lib/aiur/issue_log.ex:545-560,573-581` |
 | Ids: unique per instance, restart-safe, gaps allowed, not a delivery order | `src/lib/aiur/events/id_generator.ex:1-56,83-85`; `exchange.ex:93-108` |
 | Agent-emitted events are kept per ticket only with a trusted identity while the ticket's writer exists | `issue_log.ex:545-560,616-621`; `agent_runner/tool_executor.ex:123,441` |
@@ -54,6 +54,8 @@ researched: 2026-10-06
 | Command lifecycle: DecisionStore persists, then publishes with the durable id, then PubSub | `decision_store.ex:2552-2575,4603-4618` |
 | Alerts are also recorded in the alert ledger | `alerts.ex:191-197` |
 | Only Exchange → PubSub bridges exist (`TicketActivity`, `TicketHistoryProvider`, `DecisionMetrics`) | inventory §6; C1-T05 `placement_rule_test.exs` |
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `.github/workflows/website.yml:68-72`, `website/docs-app/.vitepress/config.ts:160`. base_sha retained; other citations need review.
 
 ## Chosen design
 
@@ -108,7 +110,7 @@ Docs only. Rollback: revert.
   (record `git show <head>:<path> | sed -n` outputs for the four class rows
   in the PR body).
 - Docs build, as the `website` workflow runs it
-  (`.github/workflows/website.yml:50-54`):
+  (`.github/workflows/website.yml:68-72`):
   `env -C website/docs-app bun install --frozen-lockfile && env -C website/docs-app bun run build`.
 - Rendered check: open the built page locally and confirm both tables
   render (screenshot in the PR body).

@@ -51,13 +51,15 @@ researched: 2026-10-06
 - `src/lib/aiur/executor_wake_projection.ex:9-42`: `project/1` returns `:ignore` for any
   `executor.` topic (`:12`); record keys `wake_id`, `topic`, `ticket`, … (no
   `decision_id`).
-- `src/lib/aiur/executor_wake_inbox.ex:24` `enqueue/2 :: :ok`.
-- `src/lib/aiur/executor_events.ex:200-216` scrubbed command topics.
+- `src/lib/aiur/executor_wake_inbox.ex:25` `enqueue/2 :: :ok`.
+- `src/lib/aiur/executor_events.ex:207-223` scrubbed command topics.
 - Dispatch scheduling after an answer: `maybe_schedule_after_answer/3`
   `decision_store.ex:3735`; `dispatchable?/2` clauses `:4513-4518`; redelivery
   `:4562-4601`.
 - `src/lib/aiur/decision.ex:234-240` `delivered?/1`.
 - `aiur executor-wait` reads `ExecutorWakeInbox.wait/2` (`agent_control_cli.ex:444-520`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/executor_wake_inbox.ex:25`, `src/lib/aiur/executor_events.ex:207-223`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -48,12 +48,14 @@ researched: 2026-10-06
 ## Verified starting point (`45a290e3`)
 
 - `check-config-docs.py` documents its exemption list in-code (`EXEMPT`,
-  `scripts/check-config-docs.py:36-38`) with "a one-line reason with each entry; 'it is
+  `scripts/check-config-docs.py:43-45`) with "a one-line reason with each entry; 'it is
   new' is not a reason" — the same review norm this ticket applies to allowlist lines.
 - CI step summaries are already used (`ci.yml:115-140` writes `$GITHUB_STEP_SUMMARY`).
 - The `lint` job checks out with default depth (`actions/checkout` at `ci.yml:240-242`),
   i.e. depth 1; the growth guard therefore needs `fetch-depth: 0` or an explicit
   `git fetch --depth=1 origin <base_sha>` in that step.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `scripts/check-config-docs.py:43-45`. base_sha retained; other citations need review.
 
 ## Chosen design
 

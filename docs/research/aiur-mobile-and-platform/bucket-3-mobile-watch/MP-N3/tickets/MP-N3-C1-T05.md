@@ -38,7 +38,7 @@ researched: 2026-10-06
 
 ## Verified starting point (base `45a290e3`)
 
-- `GraphProjection.catalog/1` is a `GenServer.call` (`src/lib/aiur/build_order/graph_projection.ex:43-44`).
+- `GraphProjection.catalog/1` is a `GenServer.call` (`src/lib/aiur/build_order/graph_projection.ex:39-40`).
   Its handler reconciles in process (`:141-145`); upstream reads run as supervised tasks
   (`:850`, `:1764`), so the call does not wait on GitHub. **RQ-N3-2 resolved:** cost is one call
   into the projection mailbox; the provider uses a 300 ms timeout and catches the exit.
@@ -52,6 +52,8 @@ researched: 2026-10-06
   (`:resolved | :partial | :unresolved | :unknown`), `completed?`, `updated_at`
   (`build_order/root_summary.ex:6-40`).
 - No background-agent source exists (MP-N3 plan G7).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/build_order/graph_projection.ex:39-40`. base_sha retained; other citations need review.
 
 ## Chosen design
 

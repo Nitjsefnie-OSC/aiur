@@ -46,8 +46,10 @@ researched: 2026-10-06
 - `ExecutorWakeInbox.wait/2` returns `{:ok, records} | :timeout | {:error, _}`
   (`executor_wake_inbox.ex:26-29,153-167`).
 - Existing pattern to reuse: listener restart test
-  (`src/test/aiur/executor_listener_test.exs:278-305`), wake test (`:201-216`),
+  (`src/test/aiur/executor_listener_test.exs:281-308`), wake test (`:201-216`),
   setup (`:15-43`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/aiur/executor_listener_test.exs:281-308`. base_sha retained; other citations need review.
 
 ## Chosen design
 

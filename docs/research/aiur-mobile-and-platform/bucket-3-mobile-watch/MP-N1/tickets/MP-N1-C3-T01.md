@@ -61,12 +61,14 @@ function resolve(id: AffordanceId, inputs: ResolverInputs, now: number): Afforda
 
 - No capability endpoint exists; clients infer (baseline R1). The single explicit projection
   today is `AiurWeb.StreamdeckProjection.voice/0` returning `%{available, reason}`
-  (`src/lib/aiur_web/streamdeck_projection.ex:33-40`), which the contract generalises.
+  (`src/lib/aiur_web/streamdeck_projection.ex:34-41`), which the contract generalises.
 - Dashboard precedents for distinct states: "Command counts unavailable." and "Partial Command
-  counts" (`src/lib/aiur_web/components/operator_control_center/overview.ex:79-89`).
+  counts" (`src/lib/aiur_web/components/operator_control_center/overview.ex:81-91`).
 - Contract text this ticket implements: `client-capability-model.md` §3 (states), §4
   (precedence 1–11), §5 (requirements table), §8 (404 → `needs_update`; ID missing on a
   new-enough server → `unavailable/unknown`). Reconciled 2026-10-06 (RC-04, RC-15 transport kinds).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/streamdeck_projection.ex:34-41`, `src/lib/aiur_web/components/operator_control_center/overview.ex:81-91`. base_sha retained; other citations need review.
 
 ## Chosen design
 

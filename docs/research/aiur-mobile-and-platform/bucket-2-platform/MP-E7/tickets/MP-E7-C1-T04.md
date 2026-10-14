@@ -71,12 +71,14 @@ researched: 2026-10-06
   `scripts/test-check-*.sh` in the `workflow-security` job
   (`ci.yml:144-189`, e.g. :177-183).
 - Reading priv files at runtime: `Application.app_dir(:aiur, "priv/opencode_plugins/input-identity.mjs")`
-  (`src/lib/aiur/opencode/workspace_setup.ex:78`).
+  (`src/lib/aiur/opencode/workspace_setup.ex:79`).
 - JSON decoding: `{:jason, "~> 1.4"}` (`src/mix.exs` deps). No JSON-Schema
   library is a dependency; none is added (structural checks suffice because
   the schema is validated on the Khala side, C1-T02).
 - `src/priv/` already ships non-Elixir assets in the release
   (`src/priv/build_orders/*.json`, `src/priv/opencode_plugins/`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/opencode/workspace_setup.ex:79`. base_sha retained; other citations need review.
 
 ## Chosen design
 

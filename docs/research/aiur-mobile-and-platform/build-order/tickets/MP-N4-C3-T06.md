@@ -37,7 +37,9 @@ Non-goals: packet capture at the relay and providers (C7 V-P1); relay-side loggi
 - Contract v2 §1 table (relay never sees summary, repo, ticket, Command id, machine id,
   instance key); §8 envelope fields.
 - Logger capture: ExUnit `capture_log/2` with `Logger.configure(level: :debug)` inside the
-  test (the daemon uses `Logger`; `extra_applications: [:logger]`, `src/mix.exs:150`).
+  test (the daemon uses `Logger`; `extra_applications: [:logger]`, `src/mix.exs:158`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:158`. base_sha retained; other citations need review.
 
 ## Chosen design
 

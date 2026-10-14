@@ -40,13 +40,15 @@ researched: 2026-10-06
 
 - `src/lib/aiur/codex/config.ex:10,20-25` `@default_command "codex app-server"`,
   overridable `codex.command`.
-- `src/lib/aiur/codex/app_server_port.ex:187-205` `codex_command/2` builds a **shell
+- `src/lib/aiur/codex/app_server_port.ex:239-257` `codex_command/2` builds a **shell
   command string**: `CodexConfig.command()` plus trailing `--config key="value"` pairs via
   `append_config/3`, relying on "codex applies the last `--config` for a key" (comment
   `:187-193`). Note `append_config/3` quotes the value as a TOML **string**.
 - `codex app-server --enable <FEATURE>` is documented as equivalent to
   `-c features.<name>=true` (`codex app-server --help`, 0.160.0, read 2026-10-06).
 - Tests: `src/test/aiur/codex/app_server_port_test.exs`, `codex/config_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/codex/app_server_port.ex:239-257`. base_sha retained; other citations need review.
 
 ## Chosen design
 

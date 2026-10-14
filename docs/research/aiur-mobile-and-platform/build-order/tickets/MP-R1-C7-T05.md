@@ -74,7 +74,7 @@ researched: 2026-10-06
 Facts:
 
 - The preflight already has a test seam: app env `:workspace_github_preflight_enabled`
-  (`hooks.ex:332`, set `false` in test config `src/config/config.exs:36`) and
+  (`hooks.ex:332`, set `false` in test config `src/config/config.exs:107`) and
   `:workspace_github_preflight_fun` (`hooks.ex:340`). Call site `hooks.ex:236-247`;
   failure handling `:252-270`; message `:364-370` and probe text `:372-…`.
 - `repo_base.ex:709-718` `git_auth_env/1` (public, takes the token) builds the
@@ -86,6 +86,8 @@ Facts:
   would return `"memory"` for memory (`memory/tracker.ex:11`), so it is **not** a drop-in.
 - `RepoBase` validates the Asks and Findings ledgers when it reads repo metadata
   (`repo_base.ex:1372-1411`, `validate_ledger/3`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/config/config.exs:107`. base_sha retained; other citations need review.
 
 ## Chosen design
 

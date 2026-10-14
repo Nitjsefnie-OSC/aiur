@@ -44,15 +44,17 @@ researched: 2026-10-06
   (`aiur-engine.sh:1510-1512`), `aiur_state_slug` = `AIUR_RELEASE_NODE` with non `[A-Za-z0-9._-]`
   replaced by `_` (`:1506-1508`), record `<slug>.instance` (`:1514-1516`). The engine exports
   `AIUR_RELEASE_NODE` and `AIUR_INSTANCE_KEY` before booting the BEAM (`:294-298`); the daemon already
-  reads `AIUR_INSTANCE_KEY` (`src/lib/aiur/config/paths.ex:332`).
+  reads `AIUR_INSTANCE_KEY` (`src/lib/aiur/config/paths.ex:439`).
 - Child list: `Aiur.DaemonHeartbeatWriter` at `src/lib/aiur.ex:452`; `Aiur.HttpServer` at `:469`,
-  only when `dashboard?`. `--no-dashboard` sets `:no_dashboard` (`src/lib/aiur/cli.ex:563-569`).
-- `Aiur.HttpServer.base_url/0` (`src/lib/aiur/http_server.ex:141-156`) returns the loopback/bind URL
+  only when `dashboard?`. `--no-dashboard` sets `:no_dashboard` (`src/lib/aiur/cli.ex:417-423`).
+- `Aiur.HttpServer.base_url/0` (`src/lib/aiur/http_server.ex:144-159`) returns the loopback/bind URL
   or nil; `display_host/1` maps `0.0.0.0` to `127.0.0.1` (`:264`). `bound_port/1` at `:129-139`.
 - Periodic worker skeleton with crash-isolated ticks: `src/lib/aiur/periodic_worker.ex:1-30`.
 - Heartbeat cadence is 5 minutes (`src/lib/aiur/daemon_heartbeat_writer.ex:19`), too slow for the
   contract's 90 s liveness rule, so the advert has its own 30 s cadence.
 - Contract §6.1 (advert shape), §6.3 (registry reasons), §8.1 (transport rules).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/config/paths.ex:439`, `src/lib/aiur/cli.ex:417-423`, `src/lib/aiur/http_server.ex:144-159`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -43,11 +43,13 @@ researched: 2026-10-06
   with ticket detail; it is too heavy for a per-row read (MP-N3 plan G4).
 - The control RPC plane the gateway will use: `"$release_bin" rpc <expr>` with a watchdog
   (`run_release_rpc_with_timeout`, `packaging/npm/aiur-cli/libexec/aiur-engine.sh:2333-2387`);
-  `aiur status` is `Aiur.AgentControlCLI.status()` (`src/lib/aiur/agent_control_cli.ex:100`).
+  `aiur status` is `Aiur.AgentControlCLI.status()` (`src/lib/aiur/agent_control_cli.ex:103`).
 - Value-free degraded precedent: `FinancialDataAccess.locked_capability/0`
   (`src/lib/aiur_web/financial_data_access.ex:143-152`).
 - Contract: `contracts/pairing-and-instance-registry.md` §7 (Fact shape, field table, 4 KiB, no
   Command text, no ticket or build-order titles).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/agent_control_cli.ex:103`. base_sha retained; other citations need review.
 
 ## Chosen design
 

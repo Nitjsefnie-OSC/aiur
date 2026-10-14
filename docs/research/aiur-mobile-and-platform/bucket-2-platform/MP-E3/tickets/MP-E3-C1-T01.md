@@ -41,7 +41,7 @@ researched: 2026-10-06
 
 - The Executor today is only a wake-stream consumer: `id`, `role`, `host`,
   OS `pid`, lease times, ack counts — no harness, session id or transcript path
-  (`src/lib/aiur/executor/claims.ex:309-325`). Consumer id resolution:
+  (`src/lib/aiur/executor/claims.ex:323-339`). Consumer id resolution:
   `--as`, then `AIUR_EXECUTOR_ID`, then `<hostname>-<instance>`
   (`claims.ex:180-193`).
 - Claims rule this ticket mirrors: "taking the stream from a live, renewing owner
@@ -54,6 +54,8 @@ researched: 2026-10-06
   key (`AIUR_INSTANCE_KEY`, as `claims.ex:477-481` reads it).
 - Atomic JSON write: `Aiur.JsonStore.write!/2` (temp file, fsync, rename;
   `json_store.ex:25-37`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/executor/claims.ex:323-339`. base_sha retained; other citations need review.
 
 ## Chosen design
 

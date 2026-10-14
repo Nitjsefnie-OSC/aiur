@@ -59,7 +59,7 @@ researched: 2026-10-06
 | Sanitizer documents the trust flag from `CodeOwners.allowed?/1` | `src/lib/aiur/events/sanitizer.ex:28-31` |
 | Hard edge: `alias Aiur.GitHub.CodeOwners`; `author_trusted?/1` calls it only when the process is registered, else `false`; exits → `false` | `sanitizer.ex:3,198-210` |
 | `stamp_author_trust/2` puts `:author_trusted?` (author from payload `:author` or opt `:actor`) | `sanitizer.ex:191-196`; used by `github_payload` pipeline `:141` |
-| Authority today: `Aiur.GitHub.CodeOwners.allowed?/2`, nil → false, case-insensitive GenServer call | `src/lib/aiur/github/code_owners.ex:73-80` |
+| Authority today: `Aiur.GitHub.CodeOwners.allowed?/2`, nil → false, case-insensitive GenServer call | `src/lib/aiur/github/code_owners.ex:23-30` |
 | Readers of the flag (unchanged) | `agent_runner/events_digest.ex:54,72-73`; `events/pr_command_scanner.ex:20-21,122-123`; `build_order/ticket_history_normalizer.ex:246` |
 | Second fallback U5 removes | `src/lib/aiur/codeowners.ex:277` comment refers to `Sanitizer.author_trusted?/1` |
 | Tests | `src/test/aiur/events/sanitizer_test.exs` |
@@ -67,6 +67,8 @@ researched: 2026-10-06
 PROPOSED new files: `src/lib/aiur/events/trust_classifier.ex`,
 `src/lib/aiur/github/event_trust.ex` (default adapter in the GitHub
 component), `src/test/aiur/events/trust_classifier_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/github/code_owners.ex:23-30`. base_sha retained; other citations need review.
 
 ## Chosen design
 

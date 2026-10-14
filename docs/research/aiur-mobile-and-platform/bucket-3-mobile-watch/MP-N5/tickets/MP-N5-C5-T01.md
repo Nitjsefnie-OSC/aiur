@@ -36,7 +36,9 @@ to link).
 ## Verified starting point
 
 Sidebar guide entries at `website/docs-app/.vitepress/config.ts:131-140`; docs build per
-`.github/workflows/website.yml:50-53`.
+`.github/workflows/website.yml:68-71`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `.github/workflows/website.yml:68-71`. base_sha retained; other citations need review.
 
 ## Chosen design
 

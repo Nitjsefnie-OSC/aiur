@@ -58,7 +58,7 @@ Sibling checkout `/home/everdred/github/everdred/claude-app-server` at
 `b1ea979c` (2026-09-18), `package.json` name `aiur-claude`, version `1.1.0`.
 **npm registry shows only `1.0.0` published** (`npm view aiur-claude time`,
 2026-10-06: `1.0.0` on 2026-06-16). aiur's install hint names no version
-(`src/lib/aiur/coding_agent/providers/claude.ex:21` at `45a290e3`:
+(`src/lib/aiur/coding_agent/providers/claude.ex:22` at `45a290e3`:
 `"install it with: npm install -g aiur-claude"`). MP-R7-C5 pins the minimum
 version aiur supports; this ticket must not raise it.
 
@@ -101,6 +101,8 @@ Existing sibling tests: `test/server.test.mjs`, `test/protocol.test.mjs`,
 `test/rate-limit-cost.test.mjs`; none covers `turn/steer` (`grep steer test/`
 returns nothing). Test command: `npm test` (= `npm run build && node --test
 test/*.test.mjs`, `package.json:37`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/coding_agent/providers/claude.ex:22`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -49,7 +49,7 @@ researched: 2026-10-06
 - `src/mix.exs` has no QR dependency. Toolchain: erlang 28, elixir 1.19.5-otp-28 (`mise.toml`).
   Ed25519 signing is available in OTP `:crypto` (`:crypto.sign(:eddsa, :none, msg, [priv, :ed25519])`).
 - Launcher dispatch is a `case` in the engine main near `status`
-  (`packaging/npm/aiur-cli/libexec/aiur-engine.sh:4110`, cited by MP-N2 chunks C3-T02).
+  (`packaging/npm/aiur-cli/libexec/aiur-engine.sh:219`, cited by MP-N2 chunks C3-T02).
 - Contract: `contracts/pairing-and-instance-registry.md` §3 (QR fields, 10-minute expiry, max 3
   outstanding, no loopback endpoint, `t=` only under T-B), §5 (`pairing.json`), §8.1 rule 2.
 
@@ -58,6 +58,8 @@ External evidence (accessed 2026-10-06):
 - `eqrcode` 0.2.1, released 2025-02-21, MIT, zero dependencies, 3.08 M downloads
   (<https://hex.pm/packages/eqrcode>). API: `encode/2` with error-correction `:l | :m | :q | :h`,
   `render/1` (terminal), `svg/2`, `png/2` (<https://eqrcode.hexdocs.pm/0.2.1/EQRCode.html>).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:219`. base_sha retained; other citations need review.
 
 ## Chosen design
 

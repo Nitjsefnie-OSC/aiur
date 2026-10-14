@@ -58,9 +58,11 @@ flags: `agent_queue_test.exs:93-127`. Policy normalization:
 `orchestrator/operator_messages/delivery_policy_test.exs:7-38`. Accepted sets:
 `orchestrator/operator_messages/capabilities_test.exs:8-65`.
 
-CI: `.github/workflows/ci.yml:291-292` runs the suite as the 4-way
+CI: `.github/workflows/ci.yml:233-234` runs the suite as the 4-way
 `coverage-partition` matrix. A new tag adds no exclusion, so tagged tests
 still run in that job. `CONTRIBUTING.md` has a `## Testing` section (:66).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `.github/workflows/ci.yml:233-234`. base_sha retained; other citations need review.
 
 ## Chosen design
 

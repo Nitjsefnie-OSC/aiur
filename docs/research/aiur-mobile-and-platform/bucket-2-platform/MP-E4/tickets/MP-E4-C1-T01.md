@@ -40,7 +40,7 @@ researched: 2026-10-06
 - No `Aiur.Conversation*` module exists at `45a290e3`
   (`git grep -n "Aiur.Conversation" 45a290e3 -- src/lib` is empty).
 - Durable state root: `Aiur.Config.Paths.decision_state_dir/0`
-  (`src/lib/aiur/config/paths.ex:61-66`), instance- and project-scoped
+  (`src/lib/aiur/config/paths.ex:62-67`), instance- and project-scoped
   (`paths.ex:322-357`). Sibling leaf pattern with an `Application` override:
   `progress_retention_state_dir/0` (`paths.ex:99-109`).
 - Test isolation: `src/test/support/test_boot_guard.exs:37-44` lists every
@@ -64,6 +64,8 @@ researched: 2026-10-06
 - Fallback identity to match: `LiveConversation.Normalizer.stable_id/3`
   (`live_conversation/normalizer.ex:196-199`), hashing via
   `LiveConversation.Source.opaque_id/2` (`live_conversation/source.ex:90-96`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/config/paths.ex:62-67`. base_sha retained; other citations need review.
 
 ## Chosen design
 

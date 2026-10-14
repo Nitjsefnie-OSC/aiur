@@ -39,7 +39,7 @@ MP-E7 chunks C6 proposed "Node, in `aiur-cli`, using the shared codecs".
 command, because:
 
 - `aiur-cli` declares `"engines": {"node": ">=18"}`
-  (`packaging/npm/aiur-cli/package.json:25-27`) while Khala's published
+  (`packaging/npm/aiur-cli/package.json:31-33`) while Khala's published
   packages need Node `^22.18.0 || >=24.11.0` (MP-E7 plan E7-F5). Importing the
   shared TS codec would raise aiur's Node floor (RQ-E7-5). Daemon-side
   rendering makes RQ-E7-5 moot for this chunk.
@@ -64,6 +64,8 @@ command, because:
   single-quote escaper (`:76`). Tests: `src/test/aiur/claude/hook_settings_test.exs`.
 - `aiur-cli` supports `linux` and `darwin` only (`package.json` `"os"`), so a
   POSIX shell and `curl` are assumed, as today.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `packaging/npm/aiur-cli/package.json:31-33`. base_sha retained; other citations need review.
 
 ## Chosen design
 

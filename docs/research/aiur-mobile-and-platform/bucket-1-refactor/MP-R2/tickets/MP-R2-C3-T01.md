@@ -56,11 +56,13 @@ researched: 2026-10-06
 | Executor replay: corruption → `report_corruption/2` (Logger.error `phase=journal_corrupt` + `Alerts.emit_custom("executor_events.corrupted", …, needs_attention: true)`) and `{:error, {:corrupt, line, reason}}`; `{:error, reason}` → Logger.error `phase=journal_unavailable` and `{:error, {:journal_unavailable, reason}}` | `executor_events.ex:416-440` |
 | `journal_events/0` callers | `executor_events.ex:148` (replay), `:354` (reconcile_requested), `:390` (requested_event_id), `:405` (deferred_event_id) |
 | Journal path | `executor/state_paths.ex:69-70` (`journal_path/0`) |
-| Tests | `src/test/aiur/decision_log_test.exs` (primitive), `src/test/aiur/executor_events_test.exs:24-33,313-325` (publish+replay, interior corruption) |
+| Tests | `src/test/aiur/journal_test.exs` (primitive), `src/test/aiur/executor_events_test.exs:24-33,313-325` (publish+replay, interior corruption) |
 
 PROPOSED: `src/lib/aiur/events/journal.ex`,
 `src/test/aiur/events/journal_test.exs`,
 `src/test/fixtures/events/executor_journal_golden.ndjson`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/aiur/journal_test.exs`. base_sha retained; other citations need review.
 
 ## Chosen design
 

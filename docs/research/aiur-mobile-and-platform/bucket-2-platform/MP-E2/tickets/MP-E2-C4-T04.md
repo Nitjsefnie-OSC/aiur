@@ -37,13 +37,15 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- `src/lib/aiur/app_server/turn_loop.ex:22-29` pause messages → `Interrupts.handle_pause_request/3`
+- `src/lib/aiur/app_server/turn_loop.ex:25-32` pause messages → `Interrupts.handle_pause_request/3`
   (`app_server/interrupts.ex:8-33`); `:48-50` `after state.timeout_ms -> {:error, :turn_timeout}`;
   `:131-151` port exit.
 - `src/lib/aiur/codex/turn_loop.ex:35-70` `turn/failed` and `turn/cancelled` handling
   (fails pending operator requests).
 - Pause reasons that self-pause for input: `orchestrator/pause_resume.ex:36`
   (`@input_pause_reasons [:agent_pause_request, :input_required]`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/app_server/turn_loop.ex:25-32`. base_sha retained; other citations need review.
 
 ## Chosen design
 

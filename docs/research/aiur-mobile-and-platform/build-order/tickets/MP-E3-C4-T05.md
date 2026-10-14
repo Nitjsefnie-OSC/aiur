@@ -34,9 +34,11 @@ researched: 2026-10-06
 
 ## Verified starting point
 
-- `aiur status` prints `WAKES CURSOR … PENDING …` (`src/lib/aiur/agent_control_cli.ex:2399-2403`);
+- `aiur status` prints `WAKES CURSOR … PENDING …` (`src/lib/aiur/agent_control_cli.ex:2095-2099`);
   `executor-roster` prints the roster (`:682-700`); `Roster.build/1`
   (`executor/roster.ex:50-51`) returns `%{cursor, pending_count, executors}`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/agent_control_cli.ex:2095-2099`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -36,7 +36,7 @@ mounted under `:api_write`.
 
 ## Verified starting point (base `45a290e3`)
 
-- `src/lib/aiur_web/router.ex:41-53`: `:api_write` = `verify_same_origin` + `require_custom_header`;
+- `src/lib/aiur_web/router.ex:46-58`: `:api_write` = `verify_same_origin` + `require_custom_header`;
   the comment says the Origin check defends against cross-site browser requests and that "curl +
   3rd-party scripts are legitimate callers as long as they come from the Executor's machine".
 - `:215-226` `verify_same_origin/2` → 403 `origin not allowed`; `:260-301` origin parsing (a request
@@ -49,6 +49,8 @@ Auth cached by a browser). A bearer token in an `Authorization` header is never 
 browser automatically, so the Origin check adds nothing for it. Bypassing it only for requests
 already authenticated by the device bearer keeps the browser path unchanged. `X-Aiur-Request: 1`
 remains required for both (cheap, uniform).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/router.ex:46-58`. base_sha retained; other citations need review.
 
 ## Chosen design
 

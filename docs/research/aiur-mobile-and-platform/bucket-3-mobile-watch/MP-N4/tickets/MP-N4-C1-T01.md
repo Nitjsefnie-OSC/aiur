@@ -47,7 +47,7 @@ or an old libcrypto); the capability report says why.
 - Toolchain pin at `45a290e3`: `mise.toml` — `erlang = "28"`, `elixir = "1.19.5-otp-28"`.
   CI and release builds install through mise (`.github/workflows/release-npm.yml:190-199`,
   "matching the versions the rest of CI uses (mise.toml)"; `ci.yml:725-729`).
-- `src/mix.exs:150` `extra_applications: [:logger]`; `:crypto` is already used at runtime:
+- `src/mix.exs:158` `extra_applications: [:logger]`; `:crypto` is already used at runtime:
   `src/lib/aiur_web/github_webhook/signature.ex:33` and
   `src/lib/aiur_web/financial_data_access/proof.ex:149` call `:crypto.mac(:hmac, :sha256, …)`.
   So `:crypto` is already in the release.
@@ -66,6 +66,8 @@ or an old libcrypto); the capability report says why.
   - `:crypto` has no HKDF function; HKDF is two HMAC calls (RFC 5869).
   - A scratch probe (not committed) reproduced RFC 9180 A.2.1 and RFC 8032 §7.1 TEST 1
     with `:crypto` only.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:158`. base_sha retained; other citations need review.
 
 ## Chosen design
 

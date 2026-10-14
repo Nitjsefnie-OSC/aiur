@@ -37,10 +37,12 @@ covering the DESIGN-N4 §4 machine-side states: notifications off, relay not con
 
 - `aiur status` → `cmd_status` (`packaging/npm/aiur-cli/libexec/aiur-engine.sh:2612`,
   dispatch at `:4110`) → `Aiur.AgentControlCli.status/1`
-  (`src/lib/aiur/agent_control_cli.ex:100`), which prints load then
+  (`src/lib/aiur/agent_control_cli.ex:103`), which prints load then
   `print_status_report/3` (`:189`).
 - AGENTS.md: a surface that computes an age renders it (`observed_at`, `age_ms`,
   `freshness`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/agent_control_cli.ex:103`. base_sha retained; other citations need review.
 
 ## Chosen design (structure fixed; copy pending DESIGN-N4)
 

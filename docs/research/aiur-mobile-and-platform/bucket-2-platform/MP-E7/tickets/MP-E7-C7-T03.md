@@ -57,13 +57,15 @@ researched: 2026-10-06
   match (`aiur_web/router.ex:152-159`). The new route goes in the same scope
   (contract §12: same authority as sending a message).
 - Shared engine dispatches subcommands; `message)` case at
-  `packaging/npm/aiur-cli/libexec/aiur-engine.sh:4222`; Elixir side
+  `packaging/npm/aiur-cli/libexec/aiur-engine.sh:337`; Elixir side
   `AgentControlCli.message/3` (`agent_control_cli.ex:1363-1372`), output
   helpers `report_message_outcome/3` (`:1466-1476`).
 - CLI docs table: `website/docs-app/reference/cli.md:117-127`.
 - Tests: `src/test/aiur/agent_control_cli_test.exs`; controller tests under
   `src/test/aiur_web/controllers/`; launcher tests
   `packaging/npm/aiur-cli/test/launcher.test.mjs` (`bun test`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:337`. base_sha retained; other citations need review.
 
 ## Chosen design
 

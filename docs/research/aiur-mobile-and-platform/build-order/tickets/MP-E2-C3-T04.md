@@ -35,7 +35,7 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- `src/lib/aiur_web/streamdeck_channel.ex:151-168` `handle_in("answer_command", …)`
+- `src/lib/aiur_web/streamdeck_channel.ex:154-171` `handle_in("answer_command", …)`
   (focused-ticket check, exact `version`, idempotency key); `:567-579`
   `record_command_answer/2` calls `DecisionStore.answer/4` with
   `StreamdeckCommands.actor/0`; `:581-585` `answer_result/1`; errors become
@@ -45,6 +45,8 @@ researched: 2026-10-06
 - Plugin: `packages/streamdeck/src/channel.ts:238-270,417-429,572` (reply types),
   `controller.ts:1061` (applies an `answer_command` reply).
 - Tests: `src/test/aiur_web/streamdeck_channel_test.exs`, `streamdeck_commands_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/streamdeck_channel.ex:154-171`. base_sha retained; other citations need review.
 
 ## Chosen design
 

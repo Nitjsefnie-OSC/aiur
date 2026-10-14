@@ -47,7 +47,7 @@ researched: 2026-10-06
 | --- | --- |
 | Credential handling rules | key in header only, resolved inside connect and discarded, failure values never logged (`realtime.ex:21-36,122-140`) |
 | Transport behaviour to reuse | `connect(url, headers)`, `send_text/2`, `close/1`; inbound `{:elevenlabs_transport, :text \| :closed \| :error, …}` (`realtime/transport.ex:10-25`); Mint implementation (`mint_transport.ex:16-30`) |
-| HTTP client | `{:req, "~> 0.7"}` and `{:mint_web_socket, "~> 1.0"}` (`src/mix.exs:164-165`) |
+| HTTP client | `{:req, "~> 0.7"}` and `{:mint_web_socket, "~> 1.0"}` (`src/mix.exs:172-173`) |
 | Redaction of URL-borne capabilities | `Aiur.SecretRedactor.redact_urls/1` (`secret_redactor.ex:56-60`) |
 
 External (accessed 2026-10-06, see `../provider-research.md` §2): signed URL endpoint
@@ -56,6 +56,8 @@ External (accessed 2026-10-06, see `../provider-research.md` §2): signed URL en
 `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=…` and client→server event names
 (<https://elevenlabs.io/docs/agents-platform/api-reference/agents-platform/websocket>);
 overrides must be enabled per field (<https://elevenlabs.io/docs/agents-platform/customization/personalization/overrides>).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:172-173`. base_sha retained; other citations need review.
 
 ## Chosen design
 

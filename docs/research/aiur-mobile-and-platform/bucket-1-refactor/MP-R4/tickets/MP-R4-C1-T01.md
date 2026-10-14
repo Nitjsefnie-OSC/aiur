@@ -64,7 +64,7 @@ researched: 2026-10-06
   § Webhook ingress and the Cloudflare tunnel (`:48-81`). Step 4 (`:79`)
   already says `hooks.aiur.dev` "is one operator's choice, not a requirement".
   Line `:81` already says polling is the default fallback.
-- **Strings asserted by `website/tests/gui-docs.spec.ts:239-245`** must survive:
+- **Strings asserted by `website/tests/gui-docs.spec.ts:246-252`** must survive:
   - `` `POST /api/v1/github/webhook` ``
   - `` `AIUR_GITHUB_WEBHOOK_SECRET` ``
   - `` `hooks.aiur.dev` ``
@@ -104,6 +104,8 @@ researched: 2026-10-06
   one sentence, so the copy says "can read", not "logs".
 - The HMAC signature stops an ingress operator from **forging** a delivery. It
   does not stop the operator from **reading** one.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `website/tests/gui-docs.spec.ts:246-252`. base_sha retained; other citations need review.
 
 ## Chosen design
 

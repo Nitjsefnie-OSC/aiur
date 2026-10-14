@@ -33,7 +33,7 @@ DESIGN-N3; MP-N3-C1-T01 (envelope). Concurrent with C1-T03..T05.
 
 ## Verified starting point (base `45a290e3`)
 
-- `Aiur.Orchestrator.dashboard_snapshot/2` (`src/lib/aiur/orchestrator.ex:683-684`) delegates
+- `Aiur.Orchestrator.dashboard_snapshot/2` (`src/lib/aiur/orchestrator.ex:652-653`) delegates
   to `SnapshotStore.read/2`, which reads `:persistent_term` (`orchestrator/snapshot_store.ex:5-7,351`)
   and returns `{:current | :stale, snapshot, freshness}`, `:snapshot_unpublished` or
   `:orchestrator_unavailable` (`:68-73,384-388`). **RQ-N3-1 resolved:** the read does not join the
@@ -43,6 +43,8 @@ DESIGN-N3; MP-N3-C1-T01 (envelope). Concurrent with C1-T03..T05.
   `running: length(snapshot.running)`, `capacity`, `globally_paused` (`:39`).
 - The dashboard deliberately does not alarm on `:snapshot_unpublished` after a restart
   (`operator_control_center/overview.ex:136-142`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/orchestrator.ex:652-653`. base_sha retained; other citations need review.
 
 ## Chosen design
 

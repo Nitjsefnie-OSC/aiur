@@ -37,13 +37,15 @@ researched: 2026-10-06
 ## Verified starting point (`45a290e3`)
 
 - A closed issue drops out of the open listing (F8); its reason needs one read.
-- `src/lib/aiur/github/issues.ex:152-167` `fetch_issue_raw_conditional/2`
+- `src/lib/aiur/github/issues.ex:151-166` `fetch_issue_raw_conditional/2`
   returns the raw issue body (which carries `state_reason`) and says whether
   it was `:fresh` (no request), `:not_modified` (304) or `:fetched`
   (`:102-151`). The caller label is hard-coded: `caller: "issue_raw_conditional"` (`:197`).
 - Webhook `issues` deliveries and `WriteThrough` keep the `:issue` record
   current, so a recently closed prerequisite is often `:fresh`.
 - `aiur github-cost` attributes by caller (`website/docs-app/apis/github.md`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/github/issues.ex:151-166`. base_sha retained; other citations need review.
 
 ## Chosen design
 

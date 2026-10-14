@@ -36,8 +36,10 @@ criterion; Cloudflare stays optional (brief §3, MP-Q2).
 ## Verified starting point
 
 - No Cloudflare Worker code in the repo; the only Cloudflare piece is the inbound
-  `cloudflared` tunnel for webhooks (`website/docs-app/apis/github.md:744-760`), which
+  `cloudflared` tunnel for webhooks (`website/docs-app/apis/github.md:793-809`), which
   shares nothing with this.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `website/docs-app/apis/github.md:793-809`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -47,7 +47,7 @@ researched: 2026-10-06
 - **The agent queue is not durable across a daemon restart.**
   `Aiur.AgentQueueStore` is "In-memory queue state" (`src/lib/aiur/agent_queue_store.ex:2-3`)
   and the Orchestrator starts with `queue_store: AgentQueueStore.new()`
-  (`src/lib/aiur/orchestrator/state.ex:234`). The `durability: :durable` field
+  (`src/lib/aiur/orchestrator/state.ex:235`). The `durability: :durable` field
   on items (`src/lib/aiur/agent_queue.ex:21`) does not persist anything. The
   mode store therefore cannot live in the queue; it needs its own file. (This
   corrects MP-E7 plan "Restart" non-happy path and contract §3/§5 wording that
@@ -64,6 +64,8 @@ researched: 2026-10-06
   `orchestrator.ex:391` and `orchestrator/agent_teardown.ex:57`.
 - Relevant tests to mirror: `src/test/aiur/session_handle_test.exs`,
   `src/test/aiur/json_store_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/orchestrator/state.ex:235`. base_sha retained; other citations need review.
 
 ## Chosen design
 

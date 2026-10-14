@@ -10,7 +10,7 @@ prior_units: [U6, U2]
 prior_boundaries: [PRJ #28, WEB #34]
 prior_features: []
 prior_findings: [web-occ-07, web-rest-02]
-size_owner: WEB (units_row_test.exs, 597 lines) — U8 ledger at 465aca643; re-resolve at ticket start per RC-23 / MP-R1-C11-T02. No moved production file is over 500 lines.
+size_owner: WEB (units_row_test.exs, 597 lines pre-move at 45a290e3) — U8 ledger at 465aca643; re-resolve at ticket start per RC-23 / MP-R1-C11-T02. No moved production file is over 500 lines.
 base_sha: 45a290e3
 researched: 2026-10-06
 ---
@@ -61,12 +61,14 @@ researched: 2026-10-06
 - Other callers (`git grep -l -E 'UnitsRow|UnitsPolicy' 45a290e3 -- src/lib`):
   `aiur_web/operator_control_center/{units_presenter,units_control_policy,units_url}.ex`,
   `aiur_web/components/operator_control_center/{units_filters,units_table}.ex`.
-- Tests: `src/test/aiur_web/operator_control_center/units_row_test.exs` (597 lines, 38 refs),
+- Tests: `src/test/aiur/projections/units_row_test.exs` (490 lines at 47140566; 38 refs pre-move, at 45a290e3),
   `units_policy_test.exs` (37 refs), `units_url_test.exs`, `units_presenter_test.exs`,
-  `src/test/aiur/units_cli_test.exs`, `src/test/aiur/orchestrator/status_report_test.exs` (3 refs),
+  `src/test/aiur/units_cli_test.exs`, `src/test/aiur/orchestrator/status_report_rows_test.exs` (3 refs pre-move, at 45a290e3),
   `src/test/aiur/cadence_freshness_test.exs` (2), `src/test/aiur_web/streamdeck_control_agreement_test.exs` (10),
   `src/test/aiur/current_run_projections_test.exs`, `src/test/aiur/current_run_summary/projection_test.exs`.
 - Rename tooling: `scripts/rename_preflight.py` ("Report rename hits that a joined-literal search would miss") also reports the CI shard of each hit.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/aiur/projections/units_row_test.exs`, `src/test/aiur/orchestrator/status_report_rows_test.exs`. base_sha retained; other citations need review.
 
 ## Chosen design
 

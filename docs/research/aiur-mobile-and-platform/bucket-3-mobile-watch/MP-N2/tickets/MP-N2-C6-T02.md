@@ -50,8 +50,8 @@ dashboard), MP-N6 phone surfaces that open conversations.
 
 ## Verified starting point (base `45a290e3`)
 
-- Session cookie `_aiur_key`, `store: :cookie`, signed (`src/lib/aiur_web/endpoint.ex:8-12`);
-  `secret_key_base` random per boot (`src/lib/aiur/http_server.ex:268-270`), so sessions die on
+- Session cookie `_aiur_key`, `store: :cookie`, signed (`src/lib/aiur_web/endpoint.ex:10-14`);
+  `secret_key_base` random per boot (`src/lib/aiur/http_server.ex:271-273`), so sessions die on
   restart (contract §4.4 "silently repeats this exchange").
 - `:browser` pipeline: `fetch_session` then `FinancialDataAccess.persist_session`
   (`router.ex:28-35`; `financial_data_access.ex:86-93`).
@@ -69,6 +69,8 @@ to, so the server sets `_aiur_key` itself in a normal top-level response. No Web
 no custom request headers on the initial load are needed (Android `WebView.postUrl` cannot carry
 headers; per-origin cookie injection behaviour across process death was N1-RQ5). This removes both
 platform dependencies.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/endpoint.ex:10-14`, `src/lib/aiur/http_server.ex:271-273`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -53,9 +53,11 @@ researched: 2026-10-06
 - Swaps add before remove and keep markers (`:199-219`, `:289-310`).
 - `src/lib/aiur/memory/tracker.ex:93-106, 131-151`: memory expected-state check;
   `normalize_state_slug(nil)` is `""` (`:183-195`).
-- `src/lib/aiur/tracker.ex:86-107` facade; `github/tracker.ex:176-191`.
-- Tests: `src/test/aiur/github/issue_state_test.exs:420-470` (expected_state
+- `src/lib/aiur/tracker.ex:120-141` facade; `github/tracker.ex:176-191`.
+- Tests: `src/test/aiur/github/issue_state_test.exs:508-558` (expected_state
   `"ci-wait"` cases).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/tracker.ex:120-141`, `src/test/aiur/github/issue_state_test.exs:508-558`. base_sha retained; other citations need review.
 
 ## Chosen design
 

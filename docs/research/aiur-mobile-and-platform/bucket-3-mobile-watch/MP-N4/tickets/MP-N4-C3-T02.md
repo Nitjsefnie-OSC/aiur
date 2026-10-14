@@ -44,13 +44,15 @@ Non-goals: deciding what to send (MP-N5), sealing/sending (C3-T03).
 ## Verified starting point
 
 - Persist-before-notify precedent: `Aiur.DecisionStore` fsyncs `decisions.ndjson` before
-  projecting and publishing (moduledoc; `request/2` at `src/lib/aiur/decision_store.ex:154`).
-- Location: `Aiur.Config.Paths.runtime_state_dir/0` (`src/lib/aiur/config/paths.ex:243`):
+  projecting and publishing (moduledoc; `request/2` at `src/lib/aiur/decision_store.ex:153`).
+- Location: `Aiur.Config.Paths.runtime_state_dir/0` (`src/lib/aiur/config/paths.ex:298`):
   "Runtime state is what the daemon reads back after a restart … It shares the instance-
   and repository-qualified root"; tests override with the `:runtime_state_dir` app env.
 - Journal helper: MP-R2-C6 names a `Journal` used by the exporter; at `45a290e3` the
   DecisionStore writes its own ndjson. Reuse whichever shared journal module exists after
   C3-T00; otherwise a 60-line local writer (open append, write, `:file.sync/1`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/decision_store.ex:153`, `src/lib/aiur/config/paths.ex:298`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -65,7 +65,7 @@ researched: 2026-10-06
   - `codex/frames.ex:6,52`, `claude/coding_agent.ex:19,234`,
     `open_ai_compat/tool_spec.ex:4,109` (`tool_specs/0`)
   - comment-only: `github/issue_dependencies.ex:8`, `claude/coding_agent.ex:7`.
-- `src/mix.exs:42` lists `Aiur.Codex.DynamicTool` in coverage `ignore_modules`.
+- `src/mix.exs:44` lists `Aiur.Codex.DynamicTool` in coverage `ignore_modules`.
 - Tests: 13 files under `src/test/aiur/codex/dynamic_tool/` plus
   `src/test/aiur/codex/dynamic_tool_test.exs` and `src/test/aiur/dynamic_tool_test.exs`;
   `src/test/aiur/claude/coding_agent_test.exs` and
@@ -74,6 +74,8 @@ researched: 2026-10-06
   by Claude, OpenAI-compat and the runner — it is not Codex-specific)"; MP-R1
   migration-plan row PR-02 assigns this path to the harness-adapters tool
   surface (step S7, owner MP-R7).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:44`. base_sha retained; other citations need review.
 
 ## Chosen design
 

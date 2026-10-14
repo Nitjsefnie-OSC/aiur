@@ -59,11 +59,13 @@ researched: 2026-10-06
 - `src/lib/aiur/tracker.ex:8-32` callbacks and `@optional_callbacks`;
   `:56-73` the `Code.ensure_loaded?` + `function_exported?` dispatch pattern;
   `:162-168` `adapter/0` by `tracker.kind`.
-- `src/lib/aiur/linear/tracker.ex:139-142` already answers
+- `src/lib/aiur/linear/tracker.ex:141-144` already answers
   `{:error, :unsupported}` for `add_label/remove_label`.
 - PubSub broadcast pattern: `build_order/graph_projection.ex:1517-1519`
   (guards on `Process.whereis(Aiur.PubSub)`).
 - Existing snapshot test: `src/test/aiur/orchestrator/dispatcher_blocked_by_cost_test.exs:49-53, 368, 411`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/linear/tracker.ex:141-144`. base_sha retained; other citations need review.
 
 ## Chosen design
 

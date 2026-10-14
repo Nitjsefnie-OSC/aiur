@@ -67,6 +67,8 @@ and the docs must ship with the change anyway (AGENTS.md "Docs ship with the cha
   requires iOS 15.1+ (<https://github.com/react-native-webview/react-native-webview>, S23,
   community).
 
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `.github/workflows/website.yml:69-72`. base_sha retained; other citations need review.
+
 ## Chosen design
 
 - **Framework:** React Native on Expo with Continuous Native Generation (CNG): the
@@ -143,7 +145,7 @@ and the docs must ship with the change anyway (AGENTS.md "Docs ship with the cha
   - macOS only: `npx --prefix packages/aiur-mobile expo run:ios --configuration Debug`
   - Linux/macOS: `npx --prefix packages/aiur-mobile expo run:android --variant debug`
   - Docs: `env -C website/docs-app bun run build` (the docs-app build step of
-    `.github/workflows/website.yml:51-54`); a dead sidebar link fails the build.
+    `.github/workflows/website.yml:69-72`); a dead sidebar link fails the build.
 - **Manual:** the debug app launches on an iOS 17 simulator and an Android API 29 emulator and
   shows "aiur". No physical-device row applies yet.
 

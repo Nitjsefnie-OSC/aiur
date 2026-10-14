@@ -21,7 +21,7 @@ researched: 2026-10-06
 
 - Bucket 1, MP-R1, chunk C9, prior §7 step 9.
 - **User value:** none visible. Same move as C9-T05 for the second periodic PR worker:
-  `Aiur.Orchestrator.ReworkRequeue` (`src/lib/aiur/orchestrator/rework_requeue.ex`) becomes
+  `Aiur.Orchestrator.ReworkRequeue` (`src/lib/aiur/pr_lifecycle/rework_requeue.ex`) becomes
   `Aiur.PRLifecycle.ReworkRequeue` (PROPOSED, `src/lib/aiur/pr_lifecycle/rework_requeue.ex`).
 - **Non-goals:** no change to classification (`:addressed`, `:merge_only`,
   `:not_addressed`, `:unknown`, moduledoc `:16-35`), to its alert wording (finding
@@ -54,7 +54,9 @@ researched: 2026-10-06
   `Tracker.fetch_open_pull_request_for_branch/1` (`:146`). Writes:
   `Tracker.update_issue_state/2` (`:87` default `state_writer`). Gate
   `pr_health_enabled?` and GitHub tracker (`:137`).
-- References outside the file: `aiur.ex:448` and `src/test/aiur/orchestrator/rework_requeue_test.exs`.
+- References outside the file: `aiur.ex:448` and `src/test/aiur/pr_lifecycle/rework_requeue_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/pr_lifecycle/rework_requeue.ex`, `src/test/aiur/pr_lifecycle/rework_requeue_test.exs`. base_sha retained; other citations need review.
 
 ## Chosen design
 

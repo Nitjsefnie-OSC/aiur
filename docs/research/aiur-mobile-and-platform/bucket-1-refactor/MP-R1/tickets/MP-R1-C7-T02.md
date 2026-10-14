@@ -63,14 +63,16 @@ researched: 2026-10-06
   is implemented by `github/config.ex:6,570`, `linear/config.ex`, `memory/config.ex`;
   only GitHub's is called by `Config`.
 - Precedent for module registration through app env:
-  `src/config/config.exs:24` (`:build_order_data_source`), read with
+  `src/config/config.exs:90` (`:build_order_data_source`), read with
   `Application.get_env/3` at `build_orders_cli.ex:43` and `build_order_live.ex:44`.
-- Tests: `src/test/aiur/core_test.exs:164`
+- Tests: `src/test/aiur/core_test.exs:162`
   (`{:error, {:unsupported_tracker_kind, "123"}}`), `extensions_test.exs:365,399`
   (`Aiur.Tracker.adapter()` returns `Memory` / `LinearTracker`).
 - Size: `src/lib/aiur/config.ex` is 1,471 lines at base and is owned by U8 package
   `CONFIG` (`assignments.csv:65`, 1,462 lines at `465aca643`). This ticket adds no
   lines to it net; re-check the owner at ticket start (RC-23).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/config/config.exs:90`, `src/test/aiur/core_test.exs:162`. base_sha retained; other citations need review.
 
 ## Chosen design
 

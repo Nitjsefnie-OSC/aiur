@@ -49,11 +49,11 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- `src/lib/aiur/github/labels.ex:25` state suffixes; `:31-35` marker suffixes
+- `src/lib/aiur/github/labels.ex:26` state suffixes; `:31-35` marker suffixes
   `watch paused parked rate-limit-fallback`; `:46-53` `label_set/2` seeds
   `marker_labels/1`; `:91-96` `marker_suffix?/1`; `:139-152`
   `state_description/1`.
-- `src/lib/aiur/github/issues.ex:1176-1187` `state_label_suffix/2` drops any
+- `src/lib/aiur/github/issues.ex:1144-1155` `state_label_suffix/2` drops any
   suffix for which `Labels.marker_suffix?/1` is true; `:1011-1012` sets
   `paused:`/`parked:` from `paused_label?/2`, `parked_label?/2` (`:1189-1203`).
 - `src/lib/aiur/issue.ex:34-52` struct defaults (`paused: false`,
@@ -63,6 +63,8 @@ researched: 2026-10-06
 - `github/issue_state.ex:289-310, 411-424` keeps marker labels through every
   state swap (F1).
 - Tests: `src/test/aiur/github/labels_test.exs` (`describe "label_set/2"`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/github/labels.ex:26`, `src/lib/aiur/github/issues.ex:1144-1155`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -56,7 +56,7 @@ researched: 2026-10-06
 capture/transport/delivery table**, and it does not say that a human presses
 Send before text reaches an agent.
 
-`website/tests/gui-docs.spec.ts:246-250` asserts these strings: `Speech to
+`website/tests/gui-docs.spec.ts:253-257` asserts these strings: `Speech to
 Text`, `` `User` ``, `Text to Speech`, `audio-minute` and `character pool`.
 All must survive.
 
@@ -67,9 +67,11 @@ Facts for the table, with evidence:
 | Capture | Browser AudioWorklet or the deck sidecar's `parec`, 16 kHz mono PCM16; mic only while held or recording | `src/priv/static/conversation-voice-controller.js`, `voice-capture-worklet.js`; `packages/streamdeck/src/audio/capture.ts`; contract §2 |
 | Transport | Authenticated Phoenix sockets `/voice` (dashboard session, CSRF, writable) and `/streamdeck` (token) | `voice_socket.ex:21-35`; `streamdeck_socket.ex:11-25` |
 | Transcription | Aiur's daemon opens the ElevenLabs realtime session with its own key; audio and text pass through ElevenLabs | `realtime.ex:14-35,53-54`; `apis/elevenlabs.md:12,52` |
-| Delivery | Text returns to the composer or the deck buffer; it reaches an agent only when the operator presses Send | `src/lib/aiur_web/components/operator_control_center/conversation_drawer.ex:229` (contract V5); deck `sendTranscript` (`packages/streamdeck/src/controller.ts:743`) |
+| Delivery | Text returns to the composer or the deck buffer; it reaches an agent only when the operator presses Send | `src/lib/aiur_web/components/operator_control_center/conversation_drawer.ex:239` (contract V5); deck `sendTranscript` (`packages/streamdeck/src/controller.ts:743`) |
 | Retention | Aiur writes no audio to disk or logs; sent text is an ordinary chat message | baseline grep (no `File.*` and no audio `Logger` in voice modules); contract V2 |
 | Exception | The dashboard "interactive voice chat" (`voice:conversation`) auto-submits after push-to-talk | `conversation-voice-controller.js:225-235,354-366,379-396`; contract §1 note, owner item E5-OQ2 |
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `website/tests/gui-docs.spec.ts:253-257`, `src/lib/aiur_web/components/operator_control_center/conversation_drawer.ex:239`. base_sha retained; other citations need review.
 
 ## Chosen design
 

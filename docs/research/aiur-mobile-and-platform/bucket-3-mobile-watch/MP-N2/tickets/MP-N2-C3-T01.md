@@ -47,8 +47,10 @@ researched: 2026-10-06
   shutdown-adjacent paths (advert removal) and from the lean gateway, where `:yamerl` may not be started.
 - Config schema style to mirror: Ecto `embedded_schema` with `field/3` and `cast/3`
   (`src/lib/aiur/config/schema/server.ex:1-22`); the docs checker discovers keys by regex over
-  `embeds_one`/`field` (`scripts/check-config-docs.py:86-127`).
+  `embeds_one`/`field` (`scripts/check-config-docs.py:93-134`).
 - Contract §8, §8.1 (key list and defaults).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `scripts/check-config-docs.py:93-134`. base_sha retained; other citations need review.
 
 ## Chosen design
 

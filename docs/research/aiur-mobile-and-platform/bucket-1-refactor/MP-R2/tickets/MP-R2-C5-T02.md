@@ -43,12 +43,14 @@ researched: 2026-10-06
 | --- | --- |
 | Internal event = producer payload (mixed atom/string keys) + atom `:id`, `:topic`, optional `:digest_source`, always `:ticket_observation` | `src/lib/aiur/events/publisher.ex:298-304` |
 | Replayed `executor.*` events are JSON-normalized with string keys | `src/lib/aiur/executor_events.ex:71` |
-| `TicketObservation` fields incl. `source` (kinds `:agent_event | :agent_alert | :legacy`, `:55`), `occurred_at`, `observed_at`, `payload_version`; `occurred_at` unknown stays `nil` | `src/lib/aiur/ticket_observation.ex:36-71` |
+| `TicketObservation` fields incl. `source` (kinds `:agent_event | :agent_alert | :legacy`, `:55`), `occurred_at`, `observed_at`, `payload_version`; `occurred_at` unknown stays `nil` | `src/lib/aiur/ticket_observation.ex:37-72` |
 | Typed identifier extraction precedent | `src/lib/aiur/executor_wake_projection.ex:4-40` |
 | Contract envelope fields | `contracts/events-and-replay.md` §4.2 |
 
 PROPOSED: `src/lib/aiur/events/envelope.ex`,
 `src/test/aiur/events/envelope_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:167`, `src/lib/aiur/ticket_observation.ex:37-72`. base_sha retained; other citations need review.
 
 ## Chosen design
 
@@ -101,7 +103,7 @@ Output (string keys, JSON-ready):
    (copy the three regex/guards from `executor_wake_projection.ex`
    rather than calling a private function there).
 2. Add tests (below), including a StreamData property (`{:stream_data,
-   "~> 1.2", only: :test}` is already a dependency, `src/mix.exs:160`).
+   "~> 1.2", only: :test}` is already a dependency, `src/mix.exs:167`).
 3. Add the file to the C1-T06 member list.
 
 ## Non-happy paths

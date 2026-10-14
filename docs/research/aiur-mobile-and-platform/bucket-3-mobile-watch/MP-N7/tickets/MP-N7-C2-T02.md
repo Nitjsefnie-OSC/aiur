@@ -37,9 +37,11 @@ researched: 2026-10-06
 ## Verified starting point
 
 - Wording sources at `45a290e3`: "1 unit awaiting commands" / "N units awaiting commands"
-  (`src/lib/aiur_web/components/operator_control_center/overview.ex:168-169`), aria
+  (`src/lib/aiur_web/components/operator_control_center/overview.ex:172-173`), aria
   "N Commands awaiting you, M blocking" (`overview.ex:53`).
 - Field rules: plan.md §6 (this feature), MP-N3 plan §5 per-field rules, capability model §7.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/components/operator_control_center/overview.ex:172-173`. base_sha retained; other citations need review.
 
 ## Chosen design
 

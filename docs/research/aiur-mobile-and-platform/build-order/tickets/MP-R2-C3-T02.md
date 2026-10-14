@@ -54,10 +54,12 @@ researched: 2026-10-06
 | `source_name/1` atom → string | `executor_events.ex:297-298` |
 | Callers of `ExecutorEvents.publish/3` | `agent_control_cli.ex:388` (`aiur executor emit`); internal `publish_requested/1` `:59-61`, `publish_deferred/2` `:38-55` |
 | `Aiur.JSONSafe` (kernel utility) | `src/lib/aiur/json_safe.ex:1-15` |
-| Tests | `src/test/aiur/executor_events_test.exs:24-33` (publish+replay), `:61` (GitHub rejection), `:157` (renotify fresh id) |
+| Tests | `src/test/aiur/executor_events_test.exs:26-35` (publish+replay), `:61` (GitHub rejection), `:157` (renotify fresh id) |
 
 PROPOSED: `src/lib/aiur/events/journaled_publish.ex`,
 `src/test/aiur/events/journaled_publish_test.exs`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/aiur/executor_events_test.exs:26-35`. base_sha retained; other citations need review.
 
 ## Chosen design
 

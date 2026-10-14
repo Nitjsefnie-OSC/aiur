@@ -52,9 +52,9 @@ researched: 2026-10-06
 ## Verified starting point (base 45a290e3)
 
 - Session cookie: `@session_options [store: :cookie, key: "_aiur_key", signing_salt:
-  "aiur-session"]` (`src/lib/aiur_web/endpoint.ex:8-12`); the LiveView socket reads the session
+  "aiur-session"]` (`src/lib/aiur_web/endpoint.ex:10-14`); the LiveView socket reads the session
   from `connect_info` (`endpoint.ex:14-17`, `longpoll: false`).
-- `secret_key_base` is random per boot (`src/lib/aiur/http_server.ex:268-270`), so every
+- `secret_key_base` is random per boot (`src/lib/aiur/http_server.ex:271-273`), so every
   instance restart invalidates every session (MP-N2 plan F10).
 - Every LiveView page sits in `live_session :dashboard, on_mount: AiurWeb.FinancialDataAccess`
   (`router.ex:139-148`); `on_mount` assigns a locked capability (no redirect) when the session
@@ -70,6 +70,8 @@ researched: 2026-10-06
     `android.webkit.CookieManager.setCookie(String, String, ValueCallback)` and `flush()`
     (<https://developer.android.com/reference/android/webkit/CookieManager>).
   - Cookies are not isolated by port (RFC 6265 §8.5, <https://www.rfc-editor.org/rfc/rfc6265#section-8.5>).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/endpoint.ex:10-14`, `src/lib/aiur/http_server.ex:271-273`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -59,16 +59,18 @@ researched: 2026-10-06
 ## Verified starting point (base 45a290e3)
 
 - Contract §7 field list and sources (`Orchestrator.dashboard_snapshot/2` at
-  `src/lib/aiur/orchestrator.ex:684`; `Aiur.DecisionQuery.counts/1` at
+  `src/lib/aiur/orchestrator.ex:653`; `Aiur.DecisionQuery.counts/1` at
   `src/lib/aiur/decision_query.ex:76-96`; `Aiur.Executor.Roster.build/1` at
   `src/lib/aiur/executor/roster.ex:50-67`; `RootSummary.progress` at
-  `src/lib/aiur/build_order/root_summary.ex:21-22`). The summary budget is < 4 KiB per instance
+  `src/lib/aiur/build_order/root_summary.ex:23-24`). The summary budget is < 4 KiB per instance
   and carries no Command text (contract §7).
 - WatchConnectivity application context is a property-list dictionary; Apple documents no fixed
   size but recommends small payloads (S6, <https://developer.apple.com/documentation/watchconnectivity>);
   Data Layer `DataItem` payload limit is 100 KB
   (<https://developer.android.com/training/wearables/data/data-items>, accessed 2026-10-06 —
   **UNVERIFIED** exact figure; the implementer confirms on the page and records it).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/orchestrator.ex:653`, `src/lib/aiur/build_order/root_summary.ex:23-24`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -49,14 +49,16 @@ researched: 2026-10-06
 | Fact | Evidence |
 | --- | --- |
 | `events` section schema: three integer fields | `src/lib/aiur/config/schema/events.ex:7-11,13-24` |
-| Root embeds it | `src/lib/aiur/config/schema.ex:63` (`embeds_one(:events, Events, on_replace: :update, defaults_to_struct: true)`) |
+| Root embeds it | `src/lib/aiur/config/schema.ex:75` (`embeds_one(:events, Events, on_replace: :update, defaults_to_struct: true)`) |
 | Nested embed pattern (several schema modules, `cast_embed`) | `src/lib/aiur/config/schema/agent.ex:1-12,271-274,377-379` |
 | Accessor pattern | `src/lib/aiur/config.ex:560-573` (`settings!().events.<key>`) |
-| Docs rows for `events.*` | `website/docs-app/reference/configuration.md:610-616` |
+| Docs rows for `events.*` | `website/docs-app/reference/configuration.md:284-290` |
 | Docs checker walks `embeds_one` from `Aiur.Config.Schema` and requires each full dotted path | `scripts/check-config-docs.py:2-18,29-34`; CI `lint` job `.github/workflows/ci.yml:259-262`; self-test `scripts/test-check-config-docs.sh` |
 | Annotated example line | `.aiur/examples/config.example:209` (`# events: { block_state_debounce_seconds: 10, … }`) |
 
 PROPOSED: `Aiur.Config.Schema.EventsExport` in `config/schema/events.ex`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/config/schema.ex:75`, `website/docs-app/reference/configuration.md:284-290`. base_sha retained; other citations need review.
 
 ## Chosen design
 

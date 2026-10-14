@@ -70,7 +70,9 @@ Tests and fixtures:
   `:160`, `:224` and `:255`.
 - The `"unconfigured dictation explains in the rejected join"` test (`:156`)
   removes the STT seam so the real `Realtime` path runs without a key.
-- `src/test/browser/fixture_server.exs:2591-2600` sets both seams.
+- `src/test/browser/fixture_server.exs:404-413` sets both seams.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/test/browser/fixture_server.exs:404-413`. base_sha retained; other citations need review.
 
 ## Chosen design
 

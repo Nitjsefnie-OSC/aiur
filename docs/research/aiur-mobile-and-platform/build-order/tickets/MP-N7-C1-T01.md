@@ -55,12 +55,14 @@ researched: 2026-10-06
   (`decision.ex:125`), `recommendation` (`decision.ex:126`), `urgency`/`blocking`
   (`decision.ex:120-121`).
 - Count wording: "N units awaiting commands"
-  (`src/lib/aiur_web/components/operator_control_center/overview.ex:168-169`), aria
+  (`src/lib/aiur_web/components/operator_control_center/overview.ex:172-173`), aria
   "Commands awaiting you" (`overview.ex:53`).
 - Precedent for a standalone TS package with its own tests:
   `packages/streamdeck/package.json` (vitest, eslint, typecheck scripts).
 - PROPOSED paths (none exist): `packages/aiur-mobile/fixtures/watch-link/`,
   `packages/aiur-mobile/fixtures/watch-link/schema/*.schema.json`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/components/operator_control_center/overview.ex:172-173`. base_sha retained; other citations need review.
 
 ## Chosen design
 

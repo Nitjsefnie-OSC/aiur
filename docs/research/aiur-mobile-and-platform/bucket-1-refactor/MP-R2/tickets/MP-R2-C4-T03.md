@@ -59,9 +59,11 @@ researched: 2026-10-06
   `application_test.exs` (supervision order).
 - Manual verbs: `aiur executor-wait [--timeout <s>] [--json]`,
   `executor-listen`, `executor-emit` (`packaging/npm/aiur-cli/libexec/aiur-engine.sh:469-472,3159-3184`);
-  `aiur status` prints `WAKES CURSOR <n> PENDING <n>` (`src/lib/aiur/agent_control_cli.ex:2399`).
+  `aiur status` prints `WAKES CURSOR <n> PENDING <n>` (`src/lib/aiur/agent_control_cli.ex:2095`).
 - `scripts/aiurdev --test` = single-ticket sandbox with debug and clear
   (`scripts/aiurdev:711`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/agent_control_cli.ex:2095`. base_sha retained; other citations need review.
 
 ## Chosen design
 

@@ -42,7 +42,9 @@ researched: 2026-10-06
 No mobile code exists. Inputs are the contract shapes: `InstanceEntry` (§6.3), summary Facts
 (§7), machine reachability from the client (client-capability-model.md I2/I3). Dashboard
 wording to mirror by key: "Command counts unavailable", "Partial Command counts"
-(`src/lib/aiur_web/components/operator_control_center/overview.ex:79-89`).
+(`src/lib/aiur_web/components/operator_control_center/overview.ex:81-91`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur_web/components/operator_control_center/overview.ex:81-91`. base_sha retained; other citations need review.
 
 ## Chosen design
 

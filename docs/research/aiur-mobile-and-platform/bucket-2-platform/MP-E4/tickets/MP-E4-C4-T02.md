@@ -42,7 +42,7 @@ researched: 2026-10-06
 ## Verified starting point
 
 - `Decision.source` = `%{agent_id, session_id, event_id}`; `event_id` is the
-  tool invocation id (`src/lib/aiur/agent_runner/tool_executor.ex:845-850`;
+  tool invocation id (`src/lib/aiur/agent_runner/tool_executor.ex:826-831`;
   `decision.ex:17,113-117`).
 - Lifecycle topic: `ticket.<identifier>.agent.decision.requested`
   (`decision_store.ex:4604`).
@@ -50,6 +50,8 @@ researched: 2026-10-06
   (`components/operator_control_center/decision_detail.ex:12-40`, attrs
   `decision`, `history`, `action_state`, `writable`, `filter`, `query`),
   rendered by `DashboardLive` for `/commands/:decision_id` (`router.ex:143`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/agent_runner/tool_executor.ex:826-831`. base_sha retained; other citations need review.
 
 ## Chosen design
 

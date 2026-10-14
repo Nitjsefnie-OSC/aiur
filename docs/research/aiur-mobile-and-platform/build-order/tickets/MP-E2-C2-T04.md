@@ -38,15 +38,17 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- Engine: usage lines `packaging/npm/aiur-cli/libexec/aiur-engine.sh:459-460`;
+- Engine: usage lines `packaging/npm/aiur-cli/libexec/aiur-engine.sh:88-89`;
   `cmd_executor_answer` `:2786-2836` (base64-encoded opts → `run_control_rpc
   "Aiur.AgentControlCLI.executor_answer([...])"`); dispatch `:4126-4137`.
-- `src/lib/aiur/agent_control_cli.ex:345-357` `executor_answer/1`, `executor_escalate/1`,
+- `src/lib/aiur/agent_control_cli.ex:354-366` `executor_answer/1`, `executor_escalate/1`,
   `executor_moot/1` delegators (`guarded/2` + `exit_marker/1`).
 - `src/lib/aiur/executor_command_cli.ex:8-66` `answer/2`, `escalate/2`, `moot/2`
   (actor `%{kind: :executor, id: executor_id}`; supersede `:148-159`; errors `:253-281`).
 - Executor id default: `Aiur.Executor.Claims.resolve_consumer_id/1`
   (`executor/claims.ex:185-195`).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:88-89`, `src/lib/aiur/agent_control_cli.ex:354-366`. base_sha retained; other citations need review.
 
 ## Chosen design
 

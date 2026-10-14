@@ -45,16 +45,18 @@ researched: 2026-10-06
 
 ## Verified starting point (`45a290e3`)
 
-- Engine patterns: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:459-460` usage,
+- Engine patterns: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:88-89` usage,
   `:2786-2836` `cmd_executor_answer` (base64 option encoding, `run_control_rpc`),
   dispatch `:4122-4137` (`commands)`, `executor-answer)` …).
-- `src/lib/aiur/agent_control_cli.ex:345-357` delegators.
-- `src/lib/aiur/executor/claims.ex:185-195` `resolve_consumer_id/1` (`--as` >
+- `src/lib/aiur/agent_control_cli.ex:354-366` delegators.
+- `src/lib/aiur/executor/claims.ex:181-191` `resolve_consumer_id/1` (`--as` >
   `AIUR_EXECUTOR_ID` > host-instance).
 - `DecisionStore.request/4` `decision_store.ex:154-160`; validation requires `blocking`
   (`decision_validation.ex:98`), `options` ≤ 20.
 - Executor answer policy `decision_store.ex:1503-1526`
   (`validate_answer_policy_context/2` executor clause).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `packaging/npm/aiur-cli/libexec/aiur-engine.sh:88-89`, `src/lib/aiur/agent_control_cli.ex:354-366`, `src/lib/aiur/executor/claims.ex:181-191`. base_sha retained; other citations need review.
 
 ## Chosen design
 

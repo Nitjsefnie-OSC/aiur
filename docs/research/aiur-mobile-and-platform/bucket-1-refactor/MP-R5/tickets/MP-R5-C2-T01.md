@@ -53,7 +53,7 @@ researched: 2026-10-06
   comment there says: "Absent an API key it observes nothing at all".
 - `Aiur.ElevenLabs.Quota.snapshot/1` (`quota.ex:80-85`) returns
   `@unconfigured` when the process is absent (`catch :exit`).
-- `src/config/config.exs:38` sets `:elevenlabs_quota_refresh?` to false for
+- `src/config/config.exs:109` sets `:elevenlabs_quota_refresh?` to false for
   tests.
 - `src/lib/aiur_web/live/dashboard_live.ex`:
   - `alias Aiur.ElevenLabs.Quota, as: ElevenLabsQuota` (`:19`);
@@ -64,6 +64,8 @@ researched: 2026-10-06
   (`components/operator_control_center/run_summary_strip.ex:61,99,311-313`).
 - No existing test asserts the ElevenLabs strip row: a grep for
   `elevenlabs_quota` or `Credits` under `src/test/aiur_web` finds none.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/config/config.exs:109`. base_sha retained; other citations need review.
 
 ## Chosen design
 

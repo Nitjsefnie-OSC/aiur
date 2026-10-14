@@ -43,8 +43,10 @@ researched: 2026-10-06
 | Embed pattern | `schema.ex:70` `embeds_one(:elevenlabs, ElevenLabs, on_replace: :update, defaults_to_struct: true)`; cast `:182` |
 | Leaf schema style | `config/schema/eleven_labs.ex:1-26` (comment per field, `changeset/2` with `cast/4`) |
 | Example config | `.aiur/examples/config.example:153` (`{{ELEVENLABS_SECTION}}` placeholder filled by `init/templates.ex`) |
-| Reference page | `website/docs-app/reference/configuration.md:641` `## elevenlabs` |
+| Reference page | `website/docs-app/reference/configuration.md:315` `## elevenlabs` |
 | Docs gate | `scripts/check-config-docs.py` walks `embeds_one` from the root schema and requires every full dotted path in the reference (`:1-20`) |
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `website/docs-app/reference/configuration.md:315`. base_sha retained; other citations need review.
 
 ## Chosen design
 

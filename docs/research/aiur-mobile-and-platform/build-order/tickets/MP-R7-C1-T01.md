@@ -41,7 +41,7 @@ researched: 2026-10-06
 
 ## Verified starting point (base `45a290e3`)
 
-- Behaviour: `src/lib/aiur/coding_agent/backend.ex:117-147` — required
+- Behaviour: `src/lib/aiur/coding_agent/backend.ex:118-148` — required
   callbacks `start_session/2`, `run_turn/4`, `stop_session/1`,
   `normalize_event/1`, `send_operator_message/2`; optional `interrupt/1`
   (`@optional_callbacks interrupt: 1`, :147).
@@ -66,6 +66,8 @@ researched: 2026-10-06
   (searched `src/test` for `Registry.entries` and `CodingAgent.backends()`:
   only `coding_agent_test.exs`, `init_test.exs`, `model_discovery_test.exs`,
   none of which assert the contract).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/coding_agent/backend.ex:118-148`. base_sha retained; other citations need review.
 
 ## Chosen design
 

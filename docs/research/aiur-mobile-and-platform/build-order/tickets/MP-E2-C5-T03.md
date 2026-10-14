@@ -41,11 +41,13 @@ researched: 2026-10-06
 
 ## Verified starting point
 
-- aiur `src/lib/aiur/coding_agent/providers/claude.ex:34-40` (thread map in memory; no
+- aiur `src/lib/aiur/coding_agent/providers/claude.ex:35-41` (thread map in memory; no
   disk resume through `thread/start`).
-- aiur `src/lib/aiur/decision_store.ex:4562-4601` (`schedule_pending_answer_delivery`):
+- aiur `src/lib/aiur/decision_store.ex:4725-4764` (`schedule_pending_answer_delivery`):
   answers that miss the old worker are redelivered as messages to the next worker (#2713).
 - Sibling `src/server.ts:882-927` result handling (where a multi-call result arrives).
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/lib/aiur/coding_agent/providers/claude.ex:35-41`, `src/lib/aiur/decision_store.ex:4725-4764`. base_sha retained; other citations need review.
 
 ## Chosen design
 

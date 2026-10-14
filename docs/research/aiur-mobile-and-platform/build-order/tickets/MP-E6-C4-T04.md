@@ -42,6 +42,8 @@ researched: 2026-10-06
 - Config-relative path precedent: `prompt_file:` resolved relative to the config (AGENTS.md
   "Layout").
 
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:177`. base_sha retained; other citations need review.
+
 ## Chosen design
 
 - Role file format: Markdown with a YAML front-matter `id`, `title`, `targets: [worker |
@@ -55,7 +57,7 @@ researched: 2026-10-06
 ## Implementation steps
 
 1. Loader with front-matter parsing via `YamlElixir` (`{:yaml_elixir, "~> 2.12"}`,
-   `src/mix.exs:169`); 2. defaults; 3. tests.
+   `src/mix.exs:177`); 2. defaults; 3. tests.
 
 ## Non-happy paths
 

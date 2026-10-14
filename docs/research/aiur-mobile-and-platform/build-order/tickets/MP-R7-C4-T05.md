@@ -36,12 +36,14 @@ researched: 2026-10-06
 
 ## Verified starting point (base `45a290e3`)
 
-- Release: `src/mix.exs:195-203` — one release `aiur`,
+- Release: `src/mix.exs:204-212` — one release `aiur`,
   `applications: [aiur: :permanent]`, steps `[:assemble, &copy_cli_launcher/1]`.
-- Dev build: `scripts/aiurdev:401` runs `mix compile --force && mix release --overwrite`.
+- Dev build: `scripts/aiurdev:347` runs `mix compile --force && mix release --overwrite`.
 - Platform package: `packaging/npm/platform/` (README + .gitignore at base);
   published by `.github/workflows/release-npm.yml`.
 - CI: `.github/workflows/ci.yml`.
+
+Refreshed against 47140566ffbf8d8ae9b6e031dbedaf0fc3c6ae9f on 2026-10-14 (MP-R1-C11-T02). Verified citations: `src/mix.exs:204-212`, `scripts/aiurdev:347`. base_sha retained; other citations need review.
 
 ## Chosen design
 
