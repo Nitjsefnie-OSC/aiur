@@ -4,6 +4,7 @@ defmodule Aiur.ElevenLabs do
   @behaviour Aiur.Voice.Provider
 
   alias Aiur.Config
+  alias Aiur.ElevenLabs.Quota
 
   @impl true
   def transcriber, do: Aiur.ElevenLabs.Realtime
@@ -13,10 +14,10 @@ defmodule Aiur.ElevenLabs do
 
   # Without an API key the quota child observes nothing and makes no request.
   @impl true
-  def child_specs, do: [Aiur.ElevenLabs.Quota]
+  def child_specs, do: [Quota]
 
   @impl true
-  def quota_snapshot, do: Aiur.ElevenLabs.Quota.snapshot()
+  def quota_snapshot, do: Quota.snapshot()
 
   @impl true
   def configured? do
