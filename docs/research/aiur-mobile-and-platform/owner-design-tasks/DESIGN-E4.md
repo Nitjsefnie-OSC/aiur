@@ -73,13 +73,18 @@ interrupt and spawn stay where they are (D15).
    redacted body (Phase D, security review M5). Reason: the transcript is now served to
    phones, and the redactor already exists for voice.
 5. **Retention**: confirm "keep every transcript locally forever; no automatic
-   pruning" (brief §3 history requirement). Measured disk cost (MP-E4-C1-T00,
-   preliminary, 2026-10-06; Phase D, CR-E4-9): lower bound 112 KB per hour per agent
-   (p50); upper bound 228 KB/h (p50) and 3.0 MB/h (p90) at the 64 KiB body cap. The final
-   C1-T00 figure replaces these before you approve. Recommended: **confirm keep-forever**, because
-   brief §3 requires full history; at the p50 upper bound that is about 2 GB per
-   agent-year of continuous work (p90: about 26 GB). Revisit if the final C1-T00 figure is
-   much larger.
+   pruning" (brief §3 history requirement). **Census 2026-10-14, MP-E4-C1-T00
+   (#4453), plan §10 RQ-E4-1:** 155 IssueLog ticket-launches; 676 historical and
+   341 recent usable workspaces. At 64 KiB, the recent workspace proxy is
+   604 KB/h p50 and 4.48 MB/h p90 per agent: **0.232 / 1.720 GB/day** for
+   16 continuously active agents. Historical: **0.154 / 1.359 GB/day**;
+   IssueLog: **0.012 / 0.038 GB/day**. Recent all-16-KiB scenarios are in the
+   census table; the recommended mixed 16 KiB tool / 64 KiB message+diff
+   policy's actual size is unmeasured. These are capacity proxies, not measured
+   fleet growth; idle spans and a short available launch history limit them.
+   Recommended: **confirm keep-forever**, because brief §3 requires full
+   history, with this measured disk-cost evidence. Kevin's explicit approval
+   is still required; no pruning or retention change is authorized here.
 6. **Drawer**: keep as quick view, or replace with the full view? Recommended: **keep
    it, with a "Full conversation" link**, because the drawer is the fast path from the
    units table.

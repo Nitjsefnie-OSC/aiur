@@ -31,7 +31,9 @@ researched: 2026-10-06
 
 - **DESIGN-E4** (decisions 3 and 5: reasoning stored or not; retention) — the
   record kinds and "no pruning" are fixed by it.
-- **MP-E4-C1-T00** sets `@max_body_bytes` and `@segment_bytes`.
+- **MP-E4-C1-T00** measured 2026-10-14 (#4453; plan §10 RQ-E4-1):
+  `@max_body_bytes = 65_536`, `@max_tool_body_bytes = 16_384`,
+  `@segment_bytes = 8_388_608`; the census is complete.
 - Contract: `contracts/conversations-transcripts-anchors.md` §3–§6, §8.
 - Concurrent with: MP-E4-C8-T02 docs drafting; MP-R6-C1.
 
@@ -118,10 +120,17 @@ is the provider call id that `ToolExecutor` records as the invocation id
 `msg_id`), which is what MP-E4-C3-T02's `exact` anchoring joins on.
 `delivery_id` comes from `payload.delivery_id` (operator deliveries, T03).
 
-**Bounds** (`bound/2`): `body` and `output` each ≤ `@max_body_bytes`
-(default 65,536 unless T00 says otherwise). Over the bound: keep the first and
-last 16,384 bytes at UTF-8 boundaries, join with `"\n…[N bytes omitted]…\n"`,
-set `body_truncated` / `output_truncated: true`.
+**Bounds** (`bound/2`): `body` and `output` each ≤ `@max_tool_body_bytes`
+(16,384 bytes) for `command` and `tool_result`; each ≤ `@max_body_bytes`
+(65,536 bytes) for other kinds, including `message` and `diff`. T00's
+2026-10-14 census selects this mixed policy because the live 64 KiB p90
+capacity projection is 1.720 GB/day at 16 agents. The mixed policy's actual
+rate remains unmeasured; do not claim it falls below 1 GB/day.
+Over the bound: retain first/last ends at UTF-8 boundaries and join with
+`"\n…[N bytes omitted]…\n"`, including that marker in the selected byte budget;
+set `body_truncated` / `output_truncated: true`. At 64 KiB, retain at most
+16,384 bytes per end; at 16 KiB, at most 4,096 bytes per end. Test both caps,
+including multibyte UTF-8 and the marker's bytes.
 
 **dedup_key** (contract §5): first present of
 `{:msg, role, provider_msg_id}` → `{:item, role, provider_item_id}` (passed by
@@ -145,7 +154,7 @@ informational; identity stays `provider_id`.
 - `append_entries(dir, segment_state, [entry_json])`: one `:file.write` of the
   joined lines and one `:file.sync` per batch (DecisionLog's raw-fd pattern,
   but one sync per batch). Rolls to the next segment before a write that would
-  exceed `@segment_bytes` (8 MiB default). Returns `{:ok, segment_state}`.
+  exceed `@segment_bytes = 8_388_608` (8 MiB, T00-selected). Returns `{:ok, segment_state}`.
 - `rebuild_head(dir)`: replays segments in order through `DecisionLog.replay/3`
   with a validator that requires `v`, integer `pos`, strictly increasing; a torn
   tail is truncated (never acknowledged, so this is not a rewrite); interior
