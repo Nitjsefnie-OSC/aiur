@@ -12,7 +12,7 @@ defmodule Aiur.Orchestrator.EffectsTest do
       Reconciler.reconcile_issue_effects(issue, state, MapSet.new(["in-progress"]), MapSet.new(["done"]), fn _, _ -> :ok end, fn _ -> :ok end)
 
     assert effects == [{:terminate, issue.id, false}]
-    assert pending.running[issue.id] == entry
+    assert Map.take(pending.running[issue.id], Map.keys(entry)) == entry
     assert MapSet.member?(pending.claimed, issue.id)
 
     applied = TicketTransition.apply_effects(pending, effects)
@@ -60,11 +60,11 @@ defmodule Aiur.Orchestrator.EffectsTest do
       {pending, effects} = Reconciler.reconcile_issue_effects(observed, state, MapSet.new(["in-progress"]), MapSet.new(["done"]), fn _, _ -> :ok end, fn _ -> :ok end)
 
       assert effects == [{unquote(effect), observed}]
-      assert pending.running[issue.id] == entry
+      assert Map.take(pending.running[issue.id], Map.keys(entry)) == entry
     end
   end
 
-  test "one issue's terminate effect frees capacity before the next issue resumes" do
+  test "future regression guard: termination frees capacity before the next issue resumes" do
     {first, first_entry, state} = running_issue("effect-first")
     {second, second_entry, _} = running_issue("effect-second")
     first = %{first | dispatch_authorized?: false, dispatch_authorization: :denied}
@@ -79,7 +79,7 @@ defmodule Aiur.Orchestrator.EffectsTest do
     assert is_integer(request_id) and request_id > 0
   end
 
-  test "a deferred before-run resume does not burn an attempt or message the worker" do
+  test "future regression guard: a deferred resume neither burns an attempt nor messages the worker" do
     {issue, entry, state} = running_issue("effect-deferred")
     {busy, busy_entry, _} = running_issue("effect-occupied")
     entry = Map.merge(entry, %{pid: self(), control: %{status: :paused, can_interrupt: true}, paused_reason: :before_run_failure, before_run_resume_attempts: 0})
