@@ -7,7 +7,7 @@ defmodule Aiur.Events.BusBoundaryTest do
 
   @members ~w(exchange topic publisher id_generator subscription_store
               subscription_store_supervisor universal_subscriptions
-              agent_subscription_policy debug_log)
+              agent_subscription_policy debug_log journal)
            |> Enum.map(&"events/#{&1}.ex")
            |> Kernel.++(["ticket_observation.ex"])
 
@@ -15,7 +15,7 @@ defmodule Aiur.Events.BusBoundaryTest do
   # not the whole `Aiur.Events` namespace: Sanitizer, BranchRefStore and
   # CommentFilter belong to github-listeners (CR-R2-1(b)).
   @allowed_modules ~w(Aiur.Events Aiur.Events.SubscriptionStoreRegistry
-                      Aiur.Config Aiur.JsonStore)
+                      Aiur.Config Aiur.JsonStore Aiur.Journal)
 
   # {member_file, referenced_module} => ticket that removes the edge.
   # Seam tickets delete their rows; that deletion is the proof the edge is gone.
