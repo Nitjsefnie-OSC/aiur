@@ -1,7 +1,7 @@
 name: ci
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
   # The merge queue requires checks on its candidate ref (#1381).
   merge_group:
   push:
@@ -13,7 +13,7 @@ on:
 # Initial PR runs supersede each other; queue groups and reruns stay independent.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ format('{0}-{1}', github.event_name == 'pull_request' && github.run_attempt == 1 && github.event.pull_request.number || github.run_id, github.run_attempt) }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.run_attempt == 1 && (github.event.action != 'labeled' || github.event.label.name == 'ci:full') }}
 jobs:
   # PRs run fast checks unless ci:full or base policy opts into the full set.
   # Only ci gate is required: it rejects skipped jobs in the selected set.
@@ -676,7 +676,7 @@ jobs:
   affected-tests:
     name: affected tests
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'false' }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.changes.outputs.full_ci == 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -712,7 +712,7 @@ jobs:
   ci-gate:
     name: ci gate
     needs: [changes, workflow-security, lint, affected-tests, build, coverage-partition, test, dialyzer, browser, browser-2, browser-3, home-css, layout-release, analytics, streamdeck]
-    if: ${{ always() }}
+    if: ${{ always() && (github.event_name != 'schedule') && !(github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

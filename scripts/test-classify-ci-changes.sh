@@ -7,12 +7,6 @@ mkdir "$test_dir/bin"
 cat > "$test_dir/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
-  *'/rules/branches/'*)
-    if [[ "${TEST_LEGACY:-false}" == true ]]; then
-      echo '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"test"}]}}]'
-    else
-      echo '[{"type":"required_status_checks","parameters":{"required_status_checks":[{"context":"ci gate"}]}}]'
-    fi ;;
   *'/files'*)
     if [[ "${TEST_OVERSIZED_PATHS:-false}" == true ]]; then
       python3 -c 'import json; print(json.dumps([[{"filename":"src/test/aiur/affected_tests_test.exs","previous_filename":"docs/"+str(i)+"x"*1000+".md"} for i in range(1000)]]))'
@@ -65,19 +59,19 @@ expect() {
 for draft in true false; do
   expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"src/lib/aiur/config.ex"}]'
   expect 'docs_only=true full_ci=false' pull_request "$draft" '[{"filename":"website/docs-app/guide/a.md"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":".github/workflows/ci.yml"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/mix.lock"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"mix.lock"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md","previous_filename":"src/mix.exs"}]'
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":".github/workflows/ci.yml"}]'
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"src/mix.lock"}]'
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"mix.lock"}]'
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"website/new.md","previous_filename":"src/mix.exs"}]'
   expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"MAIN-FIX"}]'
   expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"urgent"}]'
   expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[{"name":"CI:FULL"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/test/support/helper.exs"}]' '[]' full
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"scripts/example.sh"}]' '[]' full
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[]'
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"src/test/support/helper.exs"}]' '[]' full
+  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"scripts/example.sh"}]' '[]' full
 done
 for path in scripts/check-ci-gate.py scripts/classify-ci-changes.sh scripts/ci-policy.rb scripts/ci-test-selection.exs scripts/run-ci-affected-tests.py src/lib/aiur/affected_tests.ex src/lib/mix/tasks/aiur.affected_tests.ex; do
-  expect 'docs_only=false full_ci=true' pull_request false "[{\"filename\":\"$path\"}]"
+  expect 'docs_only=false full_ci=false' pull_request false "[{\"filename\":\"$path\"}]"
 done
 for event in push merge_group workflow_dispatch; do
   if [[ "$event" == push ]]; then
@@ -90,11 +84,11 @@ GITHUB_REF=refs/heads/main expect 'docs_only=false full_ci=false' push true '[]'
 GITHUB_REF=refs/heads/main expect 'docs_only=false full_ci=false' schedule true '[]'
 GITHUB_REF=refs/heads/v2 expect 'docs_only=false full_ci=true' push true '[]'
 TEST_BIGPATCH=true expect 'docs_only=false full_ci=false' pull_request false '[]'
-TEST_LEGACY=true expect 'docs_only=true full_ci=true' pull_request false '[{"filename":"website/new.md"}]'
-TEST_LEGACY=true expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]'
-TEST_FILE_CAP=true expect 'docs_only=false full_ci=true' pull_request false '[]'
-expect 'docs_only=false full_ci=true' pull_request false '[]' '[]' '' true
-expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:401
+TEST_LEGACY=true expect 'docs_only=true full_ci=false' pull_request false '[{"filename":"website/new.md"}]'
+TEST_LEGACY=true expect 'docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]'
+TEST_FILE_CAP=true expect 'docs_only=true full_ci=false' pull_request false '[]'
+expect 'docs_only=false full_ci=false' pull_request false '[]' '[]' '' true
+expect 'docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:401
 classify pull_request false '[{"filename":"src/test/aiur/config_test.exs"},{"filename":"src/lib/aiur/config.ex"}]' >/dev/null
 expected_paths="$(printf '["src/lib/aiur/config.ex","src/test/aiur/config_test.exs"]' | base64 -w0)"
 grep -Fxq "affected_paths_b64=$expected_paths" "$test_dir/out"

@@ -6,7 +6,8 @@ import { spawnSync } from 'node:child_process';
 const source = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
 const trigger = source.split(/^concurrency:/m)[0];
 assert.ok(/^  pull_request:$/m.test(trigger));
-assert.ok(!/\b(unlabeled|labeled)\b/.test(trigger), 'unrelated labels must not start or cancel CI');
+assert.ok(/types: \[opened, synchronize, reopened, ready_for_review, labeled\]/.test(trigger), 'label events let ci:full start a full run');
+assert.ok(source.includes("github.event.action != 'labeled' || github.event.label.name == 'ci:full'"), 'unrelated labels must not cancel active CI');
 assert.ok(/^  merge_group:$/m.test(trigger));
 assert.ok(/  push:\n    branches: \[main, v2\]/.test(trigger), 'main pushes run quarantine');
 assert.ok(/  schedule:\n    - cron:/.test(trigger), 'quarantine also runs on a schedule');
@@ -31,7 +32,9 @@ for (const event of ['merge_group', 'workflow_dispatch']) {
   for (const job of fullJobs) assert.ok(selectedFull.includes(job), `${event} requires ${job}`);
   assert.ok(!selectedFull.includes('affected-tests'));
 }
-assert.ok(jobs.get('ci-gate').includes('if: ${{ always() }}'), 'aggregate must run after failed dependencies');
+assert.ok(jobs.get('ci-gate').includes('always()'), 'aggregate must run after failed dependencies');
+assert.ok(jobs.get('ci-gate').includes("github.event_name != 'schedule'"), 'schedule does not need the blocking gate');
+assert.ok(jobs.get('affected-tests').includes("github.event_name == 'pull_request'"), 'scoped selector only runs for PRs');
 assert.ok(jobs.get('changes').includes('affected_paths_b64: "${{ steps.classify.outputs.affected_paths_b64 }}"'));
 assert.ok(jobs.get('affected-tests').includes('AIUR_CI_CHANGED_PATHS_B64: ${{ needs.changes.outputs.affected_paths_b64 }}'));
 for (const job of [...fullJobs.filter((job) => job !== 'quarantine'), ...fastJobs.filter((job) => job !== 'ci-gate')]) {
