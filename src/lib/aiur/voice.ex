@@ -14,6 +14,8 @@ defmodule Aiur.Voice do
   logs, returns no credential, and never delivers text to an agent.
   """
 
+  alias Aiur.Init.{ElevenLabs, ResumeSummary}
+
   @type reason :: nil | :unconfigured | :not_installed
   @type session :: %{pid: pid(), module: module()}
 
@@ -29,18 +31,18 @@ defmodule Aiur.Voice do
     if provider() do
       %{
         id: :elevenlabs,
-        prompt: &Aiur.Init.ElevenLabs.prompt_eleven_labs/3,
-        yaml: &Aiur.Init.ElevenLabs.eleven_labs_section_yaml/1,
+        prompt: &ElevenLabs.prompt_eleven_labs/3,
+        yaml: &ElevenLabs.eleven_labs_section_yaml/1,
         resume: fn config ->
-          Aiur.Init.ResumeSummary.optional_section_line("elevenlabs_voice_input", config["elevenlabs"], &Aiur.Init.ResumeSummary.elevenlabs_key_state/1)
+          ResumeSummary.optional_section_line("elevenlabs_voice_input", config["elevenlabs"], &ResumeSummary.elevenlabs_key_state/1)
         end,
         backfill: fn ->
           %{
             key: "elevenlabs",
             label: "ElevenLabs voice input",
-            prompt: &Aiur.Init.ElevenLabs.prompt_eleven_labs/3,
+            prompt: &ElevenLabs.prompt_eleven_labs/3,
             opted_in?: fn answer -> answer.enabled end,
-            to_yaml: &Aiur.Init.ElevenLabs.eleven_labs_section_yaml/1,
+            to_yaml: &ElevenLabs.eleven_labs_section_yaml/1,
             first_run: fn _io, _deps, _target, _tracker, _answer -> :ok end
           }
         end
