@@ -1,0 +1,151 @@
+defmodule Aiur.PostDeployChecklist do
+  @moduledoc "Durable checklist of manual checks reported by merged pull requests."
+
+  use GenServer
+
+  alias Aiur.{Config, JsonStore}
+
+  @filename "post_deploy_checks.json"
+
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+
+  @spec ingest(map(), GenServer.server()) :: :ok | {:error, term()}
+  def ingest(event, server \\ __MODULE__) when is_map(event), do: GenServer.call(server, {:ingest, event})
+
+  @spec list(GenServer.server()) :: [map()]
+  def list(server \\ __MODULE__), do: GenServer.call(server, :list)
+
+  @spec mark_done(String.t(), String.t(), GenServer.server()) :: :ok | {:error, term()}
+  def mark_done(id, actor, server \\ __MODULE__) when is_binary(id) and is_binary(actor),
+    do: GenServer.call(server, {:mark_done, id, actor})
+
+  @impl true
+  def init(opts) do
+    path = Keyword.get(opts, :path) || state_path()
+
+    with path when is_binary(path) <- path,
+         {:ok, records} when is_list(records) <- JsonStore.read(path, []),
+         true <- Enum.all?(records, &valid_record?/1) do
+      {:ok, %{path: path, records: records, writable?: true}}
+    else
+      {:error, reason} -> {:ok, %{path: nil, records: [], writable?: false, error: reason}}
+      _ -> {:ok, %{path: nil, records: [], writable?: false, error: :invalid_checklist}}
+    end
+  end
+
+  @impl true
+  def handle_call(:list, _from, state), do: {:reply, Enum.reverse(state.records), state}
+
+  def handle_call({:ingest, _event}, _from, %{writable?: false} = state), do: {:reply, {:error, :store_unavailable}, state}
+
+  def handle_call({:ingest, event}, _from, state) do
+    case checks(event) do
+      [] ->
+        {:reply, :ok, state}
+
+      entries ->
+        {next, changed?} = Enum.reduce(entries, {state.records, false}, &upsert(&1, &2, event))
+        persist_ingest(next, state, changed?)
+    end
+  end
+
+  def handle_call({:mark_done, _id, _actor}, _from, %{writable?: false} = state), do: {:reply, {:error, :store_unavailable}, state}
+
+  def handle_call({:mark_done, id, actor}, _from, state) do
+    at = DateTime.utc_now() |> DateTime.to_iso8601()
+
+    {next, changed?} =
+      Enum.map_reduce(state.records, false, fn
+        %{"id" => ^id, "done_at" => nil} = item, _changed -> {Map.merge(item, %{"done_at" => at, "done_by" => actor}), true}
+        item, changed -> {item, changed}
+      end)
+
+    if changed?, do: persist_reply(next, state, true), else: {:reply, {:error, :not_found_or_done}, state}
+  end
+
+  defp persist_reply(_records, state, false), do: {:reply, :ok, state}
+
+  defp persist_reply(records, state, true) do
+    :ok = JsonStore.write!(state.path, records)
+    {:reply, :ok, %{state | records: records}}
+  rescue
+    error -> {:reply, {:error, Exception.message(error)}, state}
+  end
+
+  defp persist_ingest(records, state, changed?) do
+    case persist_reply(records, state, changed?) do
+      {:reply, :ok, next_state} = reply ->
+        if changed?, do: broadcast(next_state.records)
+        reply
+
+      other ->
+        other
+    end
+  end
+
+  defp upsert(entry, {records, changed?}, event) do
+    pr = Map.get(event, :pr, %{})
+    repo = Map.get(event, :repository) || get_in(pr, ["head", "repo", "full_name"]) || "unknown/unknown"
+    id = "#{repo}##{Map.get(pr, "number", "unknown")}:#{entry.text}"
+
+    case Enum.find_index(records, &(&1["id"] == id)) do
+      nil ->
+        item = %{
+          "id" => id,
+          "repository" => repo,
+          "pr_number" => Map.get(pr, "number"),
+          "pr_url" => safe_pr_url(repo, Map.get(pr, "number")),
+          "ticket" => ticket_id(event),
+          "text" => entry.text,
+          "operator" => entry.operator,
+          "merged_at" => Map.get(pr, "merged_at"),
+          "done_at" => nil,
+          "done_by" => nil
+        }
+
+        {[item | records], true}
+
+      _ ->
+        {records, changed?}
+    end
+  end
+
+  defp checks(%{post_deploy_checks: checks}) when is_list(checks), do: Enum.filter(checks, &is_binary/1) |> Enum.map(&parse_check/1)
+  defp checks(_event), do: []
+
+  defp parse_check(text) do
+    case Regex.run(~r/\s*\(operator:\s*([^\)]+)\)\s*$/i, text) do
+      [_, operator] -> %{text: String.trim(String.replace(text, ~r/\s*\(operator:\s*[^\)]+\)\s*$/i, "")), operator: String.trim(operator)}
+      _ -> %{text: String.trim(text), operator: nil}
+    end
+  end
+
+  defp ticket_id(%{topic: topic}) when is_binary(topic) do
+    case Regex.run(~r/^ticket\.([^.]+)\.pr\.merged$/, topic) do
+      [_, id] -> id
+      _ -> nil
+    end
+  end
+
+  defp ticket_id(_), do: nil
+
+  defp safe_pr_url(repo, number) when is_binary(repo) and is_integer(number) and number > 0 do
+    if Regex.match?(~r/\A[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\z/, repo), do: "https://github.com/#{repo}/pull/#{number}"
+  end
+
+  defp safe_pr_url(_repo, _number), do: nil
+
+  defp valid_record?(%{"id" => id, "text" => text, "done_at" => done_at}) when is_binary(id) and is_binary(text) and (is_binary(done_at) or is_nil(done_at)), do: true
+  defp valid_record?(_record), do: false
+
+  defp broadcast(records) do
+    Phoenix.PubSub.broadcast(Aiur.PubSub, "post_deploy_checks", {:post_deploy_checks_updated, Enum.reverse(records)})
+  rescue
+    _error -> :ok
+  end
+
+  defp state_path do
+    with {:ok, dir} <- Config.Paths.decision_state_dir(), do: Path.join(dir, @filename)
+  end
+end

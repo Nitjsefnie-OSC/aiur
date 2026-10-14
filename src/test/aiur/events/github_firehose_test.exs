@@ -102,6 +102,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                  "action" => "merged",
                  "pull_request" => %{
                    "number" => 7,
+                   "body" => "## Local tests\nPost-deploy check: run the real TUI and verify the rendered message",
                    "head" => %{"ref" => "aiur/7"}
                  }
                }
@@ -116,7 +117,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                  boot_time: ~U[2026-07-12 18:00:00Z] |> DateTime.to_unix()
                )
 
-      assert_receive {:event, %{topic: "ticket.7.pr.merged"}}, 500
+      assert_receive {:event, %{topic: "ticket.7.pr.merged", post_deploy_checks: ["run the real TUI and verify the rendered message"]}}, 500
     end
 
     test "PullRequestEvent ready_for_review publishes its own topic" do

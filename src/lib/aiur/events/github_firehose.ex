@@ -415,7 +415,9 @@ defmodule Aiur.Events.GithubFirehose do
         dedup_key: GithubKeys.pr_dedup_key(repo_name, pr_number, action, head_sha)
       ]
 
-      {topic, %{action: action, pr: pr, timestamp: Map.get(event, "created_at")}, publish_opts}
+      payload = %{action: action, pr: pr, timestamp: Map.get(event, "created_at"), repository: repo_name}
+      payload = if merged?, do: Map.put(payload, :post_deploy_checks, post_deploy_checks(Map.get(pr, "body"))), else: payload
+      {topic, payload, publish_opts}
     else
       _ -> nil
     end
@@ -430,6 +432,20 @@ defmodule Aiur.Events.GithubFirehose do
   defp pr_topic(id, "closed", true), do: "ticket.#{id}.pr.merged"
   defp pr_topic(id, "closed", false), do: "ticket.#{id}.pr.closed_unmerged"
   defp pr_topic(_id, _action, _merged), do: nil
+
+  defp post_deploy_checks(body) when is_binary(body) do
+    body
+    |> String.split("\n")
+    |> Enum.flat_map(fn line ->
+      case Regex.run(~r/^\s*(?:[-*]\s*)?Post-deploy check:\s*(\S.*)$/i, String.trim(line)) do
+        [_, text] -> [String.slice(text, 0, 2_000)]
+        _ -> []
+      end
+    end)
+    |> Enum.take(20)
+  end
+
+  defp post_deploy_checks(_body), do: []
 
   # GitHub's Events API emits sparse merge notifications as action=merged.
   # Retain the older closed+merged form for replay compatibility.

@@ -16,6 +16,7 @@ defmodule AiurWeb.DashboardLive do
   alias Aiur.Conversation.History, as: ConversationHistory
   alias Aiur.ElevenLabs.Quota, as: ElevenLabsQuota
   alias Aiur.GitHub.Quota, as: GitHubQuota
+  alias Aiur.PostDeployChecklist
   alias Aiur.ProviderMeterRefresh
   alias Aiur.TrackerIdentity
   alias Aiur.Usage.GroupedScopes
@@ -85,7 +86,11 @@ defmodule AiurWeb.DashboardLive do
     connected = connected?(socket)
 
     socket = AiurWeb.RefreshSubscriptions.dashboard(socket)
-    if connected, do: subscribe_ticket_context_resets()
+
+    if connected do
+      subscribe_ticket_context_resets()
+      :ok = Phoenix.PubSub.subscribe(Aiur.PubSub, "post_deploy_checks")
+    end
 
     payload = PayloadLoader.load(if connected, do: :fresh, else: :cached)
 
@@ -169,6 +174,8 @@ defmodule AiurWeb.DashboardLive do
      |> assign(:decision_filter, filter)
      |> assign(:table_sort, UnitsPanel.normalize_table_sort(params["sort"]))
      |> assign(:current_route, RouteRegistry.current_route(Map.get(socket.assigns, :live_action)))
+     |> assign(:post_deploy_checks, if(Map.get(socket.assigns, :live_action) == :post_deploy, do: PostDeployChecklist.list(), else: []))
+     |> assign(:post_deploy_error, nil)
      |> assign(:conversation_from_route?, conversation_route?)
      |> UnitsPanel.assign_units_selection(params)
      |> assign_decision_page(filter, params)
@@ -323,6 +330,14 @@ defmodule AiurWeb.DashboardLive do
     {:noreply, socket |> reload_payload(mode) |> PayloadLoader.mark_loaded()}
   end
 
+  def handle_info({:post_deploy_checks_updated, checks}, socket) when is_list(checks) do
+    if Map.get(socket.assigns, :live_action) == :post_deploy do
+      {:noreply, assign(socket, :post_deploy_checks, checks)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:control_lifecycle, payload}, socket) when is_map(payload) do
     {:noreply, Controls.apply_control_lifecycle(socket, payload)}
   end
@@ -335,6 +350,24 @@ defmodule AiurWeb.DashboardLive do
 
   @impl true
   def handle_event("toggle-nav", _params, socket), do: {:noreply, NavState.toggle(socket)}
+
+  def handle_event("post-deploy-done", %{"id" => id}, socket) when is_binary(id) do
+    handle_writable_event(socket, fn ->
+      actor = System.get_env("AIUR_DASHBOARD_USERNAME") || "Executor"
+
+      case PostDeployChecklist.mark_done(id, actor) do
+        :ok ->
+          checks = PostDeployChecklist.list()
+          Phoenix.PubSub.broadcast(Aiur.PubSub, "post_deploy_checks", {:post_deploy_checks_updated, checks})
+          {:noreply, assign(socket, :post_deploy_checks, checks)}
+
+        {:error, _reason} ->
+          {:noreply, assign(socket, :post_deploy_error, "Could not update the post-deploy checklist.")}
+      end
+    end)
+  end
+
+  def handle_event("post-deploy-done", _params, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("restore-nav", %{"collapsed" => collapsed}, socket),
@@ -799,6 +832,20 @@ defmodule AiurWeb.DashboardLive do
       </:banner>
 
       <Overview.error error={@payload.fleet[:error]} />
+
+      <section :if={@live_action == :post_deploy} class="section-card" aria-labelledby="post-deploy-title">
+        <h2 id="post-deploy-title">Post-deploy checks</h2>
+        <p>Run these manual checks after rebuilding the runtime. Completed checks remain in the history.</p>
+        <p :if={@post_deploy_error} role="alert">{@post_deploy_error}</p>
+        <p :if={@post_deploy_checks == []}>No post-deploy checks have been recorded.</p>
+        <article :for={check <- @post_deploy_checks} id={"post-deploy-#{check["id"]}"} class="bo-state-card">
+          <p><strong :if={check["operator"]}>Requires: {check["operator"]}</strong></p>
+          <p>{check["text"]}</p>
+          <p><a :if={check["pr_url"]} href={check["pr_url"]} target="_blank" rel="noreferrer">PR #{check["pr_number"]}</a></p>
+          <p :if={check["done_at"]}>Completed by {check["done_by"]} at {check["done_at"]}</p>
+          <button :if={is_nil(check["done_at"])} type="button" phx-click="post-deploy-done" phx-value-id={check["id"]}>Mark done</button>
+        </article>
+      </section>
 
       <div :if={@live_action in [:decisions, :decision]} class="control-panel">
         <div :if={not is_nil(@selected_decision) and partial_detail?(@selected_decision_health)} class="readonly-banner" role="status" aria-live="polite">

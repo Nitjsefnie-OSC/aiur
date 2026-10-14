@@ -147,3 +147,7 @@ The binding admission signal (which host-pressure gate is holding dispatch) and 
 Because reading the build gate scans its lock files, that probe runs on a reduced cadence and carries the last observation forward, so telemetry never disturbs a real build acquisition. `/analytics`, `aiurdev analytics` (including `--json`), and the self-contained HTML report expose the same pressure evidence.
 
 This telemetry is measurement-only; it does not adapt `max_concurrent_agents` automatically.
+
+### Post-deploy checks
+
+The `/post-deploy` dashboard page lists manual checks recorded in merged PR bodies. Add each check under `## Local tests` as `Post-deploy check: <exact steps>`; append `(operator: physical Stream Deck)` when a named operator or device is required. Checks stay pending until an Executor marks them done, and completed entries remain visible in history. Run pending steps after rebuilding the runtime.
