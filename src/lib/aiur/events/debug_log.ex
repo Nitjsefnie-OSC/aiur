@@ -1,5 +1,4 @@
 defmodule Aiur.Events.DebugLog do
-  # aiur:event-bus-boundary-member
   @moduledoc """
   Phoenix.PubSub topic + entry shape for the debug-only event-flow
   ticker rendered at the bottom of the agent-list pane when `--debug`
@@ -20,7 +19,7 @@ defmodule Aiur.Events.DebugLog do
 
   The renderer maps these to 💬 / 📬 / 📄 respectively.
   """
-
+  # aiur:event-bus-boundary-member
   @topic "aiur:events:debug"
 
   @type kind :: :publish | :receive | :read

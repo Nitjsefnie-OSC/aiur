@@ -1,5 +1,4 @@
 defmodule Aiur.Events.SubscriptionStoreSupervisor do
-  # aiur:event-bus-boundary-member
   @moduledoc """
   DynamicSupervisor for per-issue `Aiur.Events.SubscriptionStore` workers.
 
@@ -7,7 +6,7 @@ defmodule Aiur.Events.SubscriptionStoreSupervisor do
   `subscription_store.ex`) per the repo's existing `Aiur.IssueLog`
   convention — avoids a 3-deep nested module path.
   """
-
+  # aiur:event-bus-boundary-member
   use DynamicSupervisor
 
   @spec start_link(keyword()) :: Supervisor.on_start()

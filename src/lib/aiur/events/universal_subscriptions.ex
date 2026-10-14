@@ -1,7 +1,6 @@
 defmodule Aiur.Events.UniversalSubscriptions do
-  # aiur:event-bus-boundary-member
   @moduledoc false
-
+  # aiur:event-bus-boundary-member
   require Logger
 
   alias Aiur.Config

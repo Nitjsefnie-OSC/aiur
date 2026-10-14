@@ -1,5 +1,4 @@
 defmodule Aiur.Events.SubscriptionStore do
-  # aiur:event-bus-boundary-member
   @moduledoc """
   Per-issue GenServer that owns the persistent subscription state for one
   Aiur ticket.
@@ -46,7 +45,7 @@ defmodule Aiur.Events.SubscriptionStore do
   `terminate/2` flushes pending writes and unsubscribes every binding
   from the Exchange so ETS rows don't accumulate.
   """
-
+  # aiur:event-bus-boundary-member
   use GenServer
 
   require Logger

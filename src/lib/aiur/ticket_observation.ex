@@ -1,5 +1,4 @@
 defmodule Aiur.TicketObservation do
-  # aiur:event-bus-boundary-member
   @moduledoc """
   A versioned, safe observation attached to ticket-scoped event publications.
 
@@ -8,7 +7,7 @@ defmodule Aiur.TicketObservation do
   repository identity check. The normalizer deliberately does not inspect a
   topic, issue number, workspace, or arbitrary payload to discover identity.
   """
-
+  # aiur:event-bus-boundary-member
   alias Aiur.{OpaqueIdentifier, TrackerIdentity}
 
   @version 1
