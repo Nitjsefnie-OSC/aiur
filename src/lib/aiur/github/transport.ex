@@ -444,6 +444,8 @@ defmodule Aiur.GitHub.Transport do
   # the deadline must cover the whole request including retries. It is a
   # backstop against a wedge, not the primary latency bound.
   #
+  # Preserve the tighter deadline for any direct orchestrator request. Poll and
+  # control I/O now runs outside that owner, using the ordinary request deadline.
   @spec request_deadline_ms(map()) :: pos_integer()
   def request_deadline_ms(request) do
     case Application.get_env(:aiur, :github_request_deadline_ms) do
@@ -466,16 +468,14 @@ defmodule Aiur.GitHub.Transport do
     end
   end
 
-  defp orchestrator_process? do
-    owner = Application.get_env(:aiur, :github_poll_owner)
-    owner != nil and self() == GenServer.whereis(owner)
-  end
+  defp orchestrator_process?, do: self() == GenServer.whereis(Application.get_env(:aiur, :github_poll_owner))
 
   defp quota_preflight(quota, request), do: Quota.preflight(quota, request)
 
   # Every real GitHub response passes here, which makes it the one place that
   # can tell the auth preflight memo its answer went stale. See
   # `Aiur.GitHub.AuthPreflight.note_response/2`.
+  #
   # Quota accounting goes first and owns the return value. It gates the whole
   # fleet, so it must not be able to be skipped by a defect in an advisory
   # cache hint that was bolted on after it.

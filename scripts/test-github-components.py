@@ -49,5 +49,7 @@ def check(target, expected):
 
 # Future regression guard: existing Client access must remain allowed.
 check('Aiur.GitHub.Client', 0)
+# Future regression guard: main's status command already consumes this facade.
+check('Aiur.GitHub.ResourceStore.Memory', 0)
 # RequestLog is internal at this census; PollSnapshots is already an external API.
 check('Aiur.GitHub.RequestLog', 1)
