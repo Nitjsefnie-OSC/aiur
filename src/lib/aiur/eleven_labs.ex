@@ -11,6 +11,13 @@ defmodule Aiur.ElevenLabs do
   @impl true
   def synthesizer, do: Aiur.ElevenLabs.TTS
 
+  # Without an API key the quota child observes nothing and makes no request.
+  @impl true
+  def child_specs, do: [Aiur.ElevenLabs.Quota]
+
+  @impl true
+  def quota_snapshot, do: Aiur.ElevenLabs.Quota.snapshot()
+
   @impl true
   def configured? do
     case Config.elevenlabs_api_key() do

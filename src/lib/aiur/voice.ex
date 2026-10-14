@@ -14,6 +14,8 @@ defmodule Aiur.Voice do
   logs, returns no credential, and never delivers text to an agent.
   """
 
+  @unconfigured_quota %{state: :unconfigured, window: nil, failure: nil, observed_at: nil}
+
   @type reason :: nil | :unconfigured | :not_installed
   @type session :: %{pid: pid(), module: module()}
 
@@ -21,6 +23,22 @@ defmodule Aiur.Voice do
   def provider do
     module = Application.get_env(:aiur, :voice_provider, Aiur.ElevenLabs)
     if is_atom(module) and module != nil and Code.ensure_loaded?(module), do: module
+  end
+
+  @spec child_specs() :: [Supervisor.child_spec() | module() | {module(), term()}]
+  def child_specs do
+    case provider() do
+      nil -> []
+      provider -> provider.child_specs()
+    end
+  end
+
+  @spec quota_snapshot() :: map()
+  def quota_snapshot do
+    case provider() do
+      nil -> @unconfigured_quota
+      provider -> provider.quota_snapshot()
+    end
   end
 
   @spec availability() :: %{available: boolean(), reason: reason()}
