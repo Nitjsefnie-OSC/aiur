@@ -11,7 +11,7 @@ defmodule Aiur.Claude.HookSpoolTest do
 
     on_exit(fn ->
       if prior, do: Application.put_env(:aiur, :runtime_state_dir, prior), else: Application.delete_env(:aiur, :runtime_state_dir)
-      File.rm_rf!(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     id = "HOOK-#{System.unique_integer([:positive])}"

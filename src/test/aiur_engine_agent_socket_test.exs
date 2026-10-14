@@ -112,7 +112,7 @@ defmodule AiurEngineAgentSocketTest do
     File.mkdir_p!(Path.join(root, "bin"))
     File.write!(Path.join(root, "bin/tmux"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$EVENTS\"\ncase \"$*\" in '-L aiur-test has-session'*) exit 1;; esac\nexit 0\n")
     File.chmod!(Path.join(root, "bin/tmux"), 0o755)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     assert {_, 0} =
              System.cmd(

@@ -10,7 +10,7 @@ defmodule Aiur.Claude.Repl.HookSpoolTurnTest do
 
     on_exit(fn ->
       if previous, do: Application.put_env(:aiur, :runtime_state_dir, previous), else: Application.delete_env(:aiur, :runtime_state_dir)
-      File.rm_rf!(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     name = Module.concat(__MODULE__, :"Tmux#{System.unique_integer([:positive])}")

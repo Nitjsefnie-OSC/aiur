@@ -8,7 +8,7 @@ defmodule Aiur.Claude.HookSpoolProducerTest do
     root = Path.join(System.tmp_dir!(), "claude-hook-producer-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     Aiur.TestSupport.put_runtime_state_dir!(root)
-    on_exit(fn -> File.rm_rf!(root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
     input = Path.join(root, "input.json")
     File.write!(input, Jason.encode!(%{"hook_event_name" => "Stop", "session_id" => "claude-session"}))
     {:ok, root: root, input: input}
