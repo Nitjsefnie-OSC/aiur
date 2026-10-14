@@ -9,10 +9,10 @@ defmodule Aiur.Orchestrator.PushRouting do
 
   require Logger
 
+  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.{Commands, Config, Issue}
   alias Aiur.Events.BranchRefStore
   alias Aiur.Events.GithubKeys
-  alias Aiur.Orchestrator
   alias Aiur.Orchestrator.{Dispatcher, GithubBudgetPause, PauseResume, State}
   alias Aiur.Orchestrator.PushRouting.{AutoResume, ClearedDependency}
 
@@ -170,20 +170,26 @@ defmodule Aiur.Orchestrator.PushRouting do
     do: state
 
   @spec maybe_mark_sleeping(State.t(), String.t() | integer()) :: State.t()
-  def maybe_mark_sleeping(%State{} = state, identifier) do
+  def maybe_mark_sleeping(state, identifier) do
+    {next, effects} = sleeping_effects(state, identifier)
+    TicketTransition.apply_effects(next, effects)
+  end
+
+  @spec sleeping_effects(State.t(), String.t() | integer()) :: {State.t(), [Aiur.Orchestrator.Effect.t()]}
+  def sleeping_effects(%State{} = state, identifier) do
     case State.find_running_by_identifier(state.running, identifier) do
       running_entry when is_map(running_entry) ->
         existing_status =
           (Map.get(running_entry, :control) || %{}) |> Map.get(:status, :working)
 
         if existing_status == :working do
-          Orchestrator.transition_control_status(state, running_entry, :sleeping, "stream.idle_close")
+          {state, [{:transition_control, running_entry, :sleeping, "stream.idle_close"}]}
         else
-          state
+          {state, []}
         end
 
       _ ->
-        state
+        {state, []}
     end
   end
 
