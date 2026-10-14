@@ -7,7 +7,7 @@ defmodule Aiur.VoiceQuotaTest do
   alias AiurWeb.OperatorControlCenter.RunSummaryStrip
 
   @unconfigured %{state: :unconfigured, window: nil, failure: nil, observed_at: nil}
-  @observed %{state: :observed, window: %{used_percent: 10, remaining: 90, reset_at: nil}, failure: nil, observed_at: nil}
+  @observed %{state: :observed, window: %{used_percent: 10.0, remaining: 90, reset_at: nil}, failure: nil, observed_at: nil}
 
   defmodule Provider do
     @behaviour Aiur.Voice.Provider
@@ -20,7 +20,7 @@ defmodule Aiur.VoiceQuotaTest do
     @impl true
     def child_specs, do: [Aiur.VoiceQuotaTest.Provider]
     @impl true
-    def quota_snapshot, do: %{state: :observed, window: %{used_percent: 10, remaining: 90, reset_at: nil}, failure: nil, observed_at: nil}
+    def quota_snapshot, do: %{state: :observed, window: %{used_percent: 10.0, remaining: 90, reset_at: nil}, failure: nil, observed_at: nil}
   end
 
   setup do
@@ -61,7 +61,7 @@ defmodule Aiur.VoiceQuotaTest do
     Application.put_env(:aiur, :voice_provider, Provider)
     assert Voice.quota_snapshot().window.used_percent == 10
     assert render_quota() =~ "Credits"
-    assert render_quota() =~ "width:10%"
+    assert render_quota() =~ "width:10.0%"
   end
 
   test "voice children retain the quota boot position and disappear without a provider" do
@@ -92,7 +92,7 @@ defmodule Aiur.VoiceQuotaTest do
   end
 
   defp children do
-    Aiur.child_specs(interactive_cli?: false, headless?: true, dashboard?: false, tailscale_funnel?: false)
+    Aiur.Application.child_specs(interactive_cli?: false, headless?: true, dashboard?: false, tailscale_funnel?: false)
   end
 
   defp render_quota do
