@@ -14,7 +14,7 @@ defmodule AiurWeb.Build.HomeAssetsScanTest do
 
   test "future regression guard requires managed resources and detects planted calls" do
     Enum.each(Path.wildcard(Path.join(@assets, "**/*.js")), fn path ->
-      unless Path.basename(path) in ["life.js", "loader.js"] do
+      unless Path.basename(path) == "life.js" do
         assert resource_violations(File.read!(path)) == []
       end
     end)
