@@ -33,7 +33,7 @@ nothing retires. This is a deliberate divergence from the daemon's `ReadCache`
 policy, which refuses every `/actions` path wholesale — the two stores serve
 different callers with different invalidation reach.
 
-An answer is kept for 60 seconds.
+Answers are kept for 60 seconds.
 
 **Conditional requests and 304s.** `gh api` reads carry a validator where the
 store holds one: a re-read sends `If-None-Match` with the entry's stored `ETag`,
@@ -55,10 +55,7 @@ The wrapper records hit and miss events in durable `agent-cache.tsv` files in
 each agent workspace. These counters describe the agent `gh` cache on that
 workspace's host; they do not include remote SSH workers in a local census.
 
-The cache key intentionally includes the exact requested output shape. Two
-reads of one pull request that request different JSON fields, templates, or
-queries cannot share an answer without changing `gh`'s output, so each shape
-misses independently.
+The cache key includes the exact requested output shape. Different JSON fields, templates or queries miss independently to preserve `gh`’s output.
 
 Likewise, a write or daemon delivery retires every shape of the changed
 resource to protect correctness.
@@ -72,8 +69,7 @@ The wrapper now records a reason with every miss (`absent`, `expired`,
 
 That lets a later regression distinguish expected correctness misses from
 entries expiring before reuse, and can tell a cold cache from a
-store-integrity failure — a present stamp whose body has vanished is `torn`,
-never `absent`.
+store-integrity failure — a present stamp whose body has vanished is `torn`, never `absent`.
 
 Editing a ticket or a pull request discards the kept answers for it at once, so
 an agent never reads back what it just replaced.
@@ -91,7 +87,7 @@ fetch and the rest wait behind it, then read what it wrote.
 If the admitted one never answers, the others stop waiting and fetch. The cost is
 the single call the waiting was meant to save, never a stall.
 
-Sharing is controlled by these settings:
+Sharing settings:
 
 | Setting | Effect |
 | --- | --- |

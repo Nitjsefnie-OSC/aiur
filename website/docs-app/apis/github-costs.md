@@ -36,6 +36,7 @@ The write response supplies this state without another read. Two consequences:
 
 | Situation | What happens |
 | --- | --- |
+| Feature membership changes | CLI or agent joins write `feature:<slug>`; leaves remove it. Calls, including label creation, use `build_queue.max_writes_per_minute` and a 200/hour cap. Human labels become journaled joins/leaves through History without extra reads. Imports are exempt; unconfirmed backfill waits for explicit release. |
 | A view is showing the resource | It updates from the write, with no API call of its own, and before any webhook for that change could arrive. |
 | The webhook for that change arrives | It is recognised as already handled and wakes nobody. An agent is never re-woken by its own comment or its own review reply. |
 | A label or a close is delivered | It reconciles state rather than waking anybody, so an orchestrator label write cannot wake the agent that state belongs to. |
@@ -49,6 +50,14 @@ Such a write still records the marker of the snapshot it was applied to, rather 
 A label write also corrects the labels on the issue Aiur already holds, and does so as one indivisible step. Reading the issue, changing it, and writing it back as separate steps would let a delivery that landed in between be overwritten by the older copy — including its `open` or `closed` state.
 
 A write that fails records nothing.
+
+## Experiment window evidence
+
+`aiur experiments events` reads merges, releases, tags, incidents and Actions through telemetry's quota-accounted transport as `experiment_window_events`. Errors and page caps mark GitHub incomplete; frozen reads are local until refresh or window/source changes.
+
+Each of five sources permits ten pages: at most 40 GraphQL page requests and 10 REST page requests, before transport retries. GraphQL points depend on the query; `rateLimit.cost` supplies the actual charge.
+
+Measured on aiur-team/aiur, 2026-10-12, with a 48-hour merge/Actions range: eight GraphQL pages cost 12 points (176 merges, nine releases and 137 tags across repository history, zero incidents); four REST pages returned 311 runs. This read-only census used the shipped query shapes; no saving is claimed.
 
 Main watch debounces base Actions deliveries for two seconds. At the default 120-second cadence, an unchanged completed census costs three Core reads: commits plus push and merge_group run censuses. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
 

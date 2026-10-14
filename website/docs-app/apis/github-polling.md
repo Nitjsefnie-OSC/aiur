@@ -22,7 +22,7 @@ Label read/create failures stop startup before agents start and explain the requ
 | CI | Terminal checks while a ticket is in `agent:ci-wait` or `agent:human-review` | Returns passed work for human review and failed work for repair. |
 | Base-branch CI (main watch enabled) | Completed watched workflow runs for up to 20 recent base commits | Detects failures through check webhooks, base pushes and polling; retains state across restarts. |
 | Repository events | Default-branch pushes and opened, reopened, merged or closed-unmerged pull requests | Refreshes work whose base or review state changed. |
-| Analytics facts | Terminal PR facts; boot/hourly base history and tags | Body-free `pr_facts` and `analytics/repo-timeline.ndjson`; callers `analytics_facts` and `analytics_repo_timeline`. |
+| Analytics facts | Terminal and on-demand backfill PR facts; boot/hourly base history and tags | Body-free `pr_facts` and `analytics/repo-timeline.ndjson`; callers `analytics_facts` and `analytics_repo_timeline`. |
 
 Once per repository and history query version, the daemon reads every issue for build history (caller `build_order_history_backfill`). It starts after a 60-second boot delay, spaces pages by 10 seconds, holds below 20% remaining GraphQL budget and pauses further reads after 300 reported points in a rolling hour.
 
@@ -30,7 +30,7 @@ Rows and the resume checkpoint share the history file; a restart resumes unfinis
 
 The predicted cost is about 3 points per 100 issues; `rateLimit.cost` and `aiur github-cost` report the actual spend. Blocker overflow is paged; label and timeline overflow is marked incomplete. A page costing more than 5 reported points is saved, then the job stops with `page_cost_exceeded`, including after restart.
 
-Polling remains the complete fallback because it reads current GitHub state even when no webhook is installed or a delivery is missed.
+Polling remains the webhook fallback. Delivery-speed cost evaluation resolves eligible merged-ticket identities (`issue_by_id`, plus tracker authorization reads). Review census on 2026-10-12: 526 merged PRs in 14 days, potentially 526 identities per evaluation; these lookups are not polling. Accounting is then queried once for the ticket set.
 
 `observability.capture_github_facts` gates both analytics readers. Missing credentials and non-GitHub trackers disable history capture. Budget holds defer queued tickets; three failed PR reads record unavailable coverage. Other timeline failures back off from one minute to one hour.
 
@@ -62,12 +62,12 @@ The repository events feed does not show a pull request going from draft to read
 
 A durable per-PR ledger records what they saw:
 
-- `ticket.<id>.pr.ready_for_review` is published once per draft period, whoever ran `gh pr ready`.
-- A restart neither loses nor repeats it.
+- `ticket.<id>.pr.ready_for_review` is published once per ready head, whether the poll or webhook sees the transition; a changed head can wake again.
+- Webhook transitions seed the ledger; the shared dedup key prevents a later poll from replaying that same head as `initial_sync`.
 - A ticket PR first seen already ready costs one issue-events read, once, to tell a former draft from a PR opened ready. A failed read is retried after a backoff, not on every poll.
 - First-sight backfill wakes carry `observation: "initial_sync"`: review if not already reviewed. Observed draft-to-ready transitions carry no marker.
 - Like the webhook, a PR opened ready gets no `ready_for_review`.
-- The poll uses the webhook's dedup key, so a repository with a webhook is not woken twice for the same head.
+- Wake records carry `head_sha` and, when cached review submissions provide it, `last_review_sha`; the Executor drops a ready wake when both match.
 
 Where a webhook is proven, the comment sweep becomes a reconciliation pass rather than a second source. It still reads everything, but a comment a delivery already handled is not published twice, so an agent wakes once per comment rather than once per path. See [Comments arriving twice](/apis/github-webhooks#comments-arriving-twice).
 

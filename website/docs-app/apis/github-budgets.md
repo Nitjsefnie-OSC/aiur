@@ -118,15 +118,13 @@ tracker:
         token_env: OPERATOR_TOKEN
 ```
 
-An empty list — the default — is the single-credential setup and is unchanged
-by any of this.
+An empty list — the default — is the single-credential setup and is unchanged by any of this.
 
 For each request the daemon picks the eligible credential with the most
 remaining budget for that request's resource.
 
 Core and GraphQL are chosen separately. They are separate budgets on separate
-windows, so REST core sitting near-idle is not headroom a GraphQL query can
-spend.
+windows, so REST core sitting near-idle is not headroom a GraphQL query can spend.
 
 Headroom comes from the `x-ratelimit-*` headers of calls the daemon was already
 making, so selection costs no budget of its own.
@@ -152,15 +150,13 @@ merges and pull request creation where they belong.
 
 #### What pooling is worth
 
-Each credential carries its own hourly budget, so three credentials raise the
-ceiling roughly threefold.
+Each credential carries its own hourly budget, so three credentials raise the ceiling roughly threefold.
 
 That is headroom, not a fix. A fleet burning more than its combined ceiling
 still exhausts it, just later.
 
 The pool total is also a ceiling rather than a balance, because the credentials'
-windows reset at different moments. Pooling buys margin while the burn itself is
-reduced.
+windows reset at different moments. Pooling buys margin while the burn itself is reduced.
 
 
 

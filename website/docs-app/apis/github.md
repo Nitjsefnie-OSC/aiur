@@ -53,6 +53,10 @@ App setup lives in [GitHub credentials and security](/apis/github-auth#github-ap
 
 Write-path details live in [Per-caller costs](/apis/github-costs).
 
+### Experiment window evidence
+
+The experiment-window read census lives in [Per-caller costs](/apis/github-costs#experiment-window-evidence).
+
 ### Comments arriving twice
 
 Delivery reconciliation lives in [GitHub webhooks](/apis/github-webhooks#comments-arriving-twice).
