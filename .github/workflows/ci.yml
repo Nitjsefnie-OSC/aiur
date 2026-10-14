@@ -506,16 +506,6 @@ jobs:
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
         run: node scripts/check-vendored-elk.mjs && npm run check:build-home-fixtures
-      - name: Run visual regression baselines
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        working-directory: src/browser
-        run: |
-          npm run test:visual
-          npm run test:visual
-      - name: Verify browser failure evidence, redaction, and teardown
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        working-directory: src/browser
-        run: npm run verify:failure-artifacts
       - name: Upload browser evidence
         if: ${{ always() && needs.changes.outputs.docs_only != 'true' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -543,6 +533,10 @@ jobs:
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
         run: node scripts/run-browser-smoke-shard.mjs 2
+      - name: Run first visual regression baseline
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: src/browser
+        run: npm run test:visual
   browser-3:
     name: browser smoke (3/3)
     container:
@@ -562,6 +556,10 @@ jobs:
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         working-directory: src/browser
         run: node scripts/run-browser-smoke-shard.mjs 3
+      - name: Run second visual regression baseline and verify failure evidence
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: src/browser
+        run: npm run test:visual && npm run verify:failure-artifacts
   streamdeck:
     name: streamdeck
     needs: changes

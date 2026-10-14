@@ -81,7 +81,7 @@ assert.ok(jobs.get('workflow-security').includes('node scripts/test-ci-events.mj
 const shardScript = readFileSync(new URL('./run-browser-smoke-shard.mjs', import.meta.url), 'utf8');
 const browserFiles = [...shardScript.matchAll(/'([\w.-]+\.spec\.mjs)'/g)].map(([, file]) => file);
 const expectedBrowserFiles = [
-  'liveview-smoke.spec.mjs', 'build-home-assets.browser.spec.mjs', 'route-shell.browser.spec.mjs',
+  'harness-failures.spec.mjs', 'liveview-smoke.spec.mjs', 'build-home-assets.browser.spec.mjs', 'route-shell.browser.spec.mjs',
   'shell-history-contrast.browser.spec.mjs', 'shell-chrome.browser.spec.mjs', 'shell-content-width.browser.spec.mjs',
   'command-history.browser.spec.mjs', 'build-queue.browser.spec.mjs', 'build-order-route.browser.spec.mjs',
   'optimistic-analytics.browser.spec.mjs', 'build-order-interaction.browser.spec.mjs', 'time-brush.browser.spec.mjs',
