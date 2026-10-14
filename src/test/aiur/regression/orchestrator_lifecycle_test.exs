@@ -19,6 +19,9 @@ defmodule Aiur.Regression.OrchestratorLifecycleTest do
       end)
     end
 
+    def update_issue_state(issue_id, state_name, _opts),
+      do: update_issue_state(issue_id, state_name)
+
     def fetch_issue_states_by_ids(issue_ids) do
       wanted = MapSet.new(issue_ids)
       {:ok, Enum.filter(issues(), &(&1.id in wanted or &1.identifier in wanted))}
@@ -292,7 +295,7 @@ defmodule Aiur.Regression.OrchestratorLifecycleTest do
       previous_agent = Application.get_env(:aiur, :hermetic_rework_agent)
       previous_issues = Application.get_env(:aiur, :hermetic_rework_issues)
       previous_delay = Application.get_env(:aiur, :comment_rework_retry_delay_ms)
-      {:ok, agent} = Agent.start_link(fn -> [{:error, {:github_api_status, 502}}, :ok] end)
+      {:ok, agent} = Agent.start_link(fn -> [{:error, {:github_api_status, 502}}, :ok, :ok] end)
 
       Application.put_env(:aiur, :comment_rework_retry_delay_ms, 0)
 
