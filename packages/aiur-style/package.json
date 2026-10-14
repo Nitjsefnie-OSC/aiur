@@ -45,7 +45,7 @@
     "sync": "node scripts/sync.mjs",
     "test": "npm run test:node",
     "test:node": "node --test test/*.test.mjs",
-    "test:visual": "playwright test test/gallery.visual.spec.ts",
+    "test:visual": "playwright test",
     "test:visual:docker": "docker run --rm --ipc=host -v \"$PWD:/work\" -w /work mcr.microsoft.com/playwright:v1.61.1-noble npm run test:visual"
   },
   "devDependencies": {
