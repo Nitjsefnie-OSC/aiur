@@ -1,9 +1,7 @@
 defmodule Aiur.Regression.OrchestratorLifecycleTest do
   use Aiur.TestSupport
 
-  @moduledoc """
-  These tests pin `Aiur.Orchestrator` lifecycle behavior before T-022..T-027 decomposition.
-  """
+  @moduledoc "These tests pin Aiur.Orchestrator lifecycle behavior before the T-022..T-027 decomposition."
 
   alias Aiur.Events.SubscriptionStore
   require Logger
