@@ -81,9 +81,10 @@ const state = page => page.evaluate(async () => {
 
 test('B1 skeleton stays past the design timer until a payload arrives', async ({ page }) => {
   await page.context().setHTTPCredentials(dashboardCredentials)
+  await page.clock.install()
   await page.goto('/build-fixture/hold')
   await expect(page.locator('#build-root')).toHaveAttribute('data-build-home-hook', 'mounted')
-  await page.clock.install(); await page.clock.runFor(2000)
+  await page.clock.runFor(2000)
   await expect(page.locator('.bd-skel > i')).toHaveCount(16)
   await expect(page.locator('.bd-spin')).toHaveCount(1)
   await expect(page.locator('#bd-content')).toHaveCount(0)
