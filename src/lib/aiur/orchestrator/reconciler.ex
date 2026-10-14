@@ -6,8 +6,8 @@ defmodule Aiur.Orchestrator.Reconciler do
 
   require Logger
 
-  alias Aiur.{Alerts, CurrentRunMembership, Issue, Orchestrator, Tracker, TrackerIdentity}
-  alias Aiur.Orchestrator.{CiLifecycle, LifecycleFenceExpiry, Parking, PushRouting, RuntimeWatchdog}
+  alias Aiur.{Alerts, CurrentRunMembership, Issue, Tracker, TrackerIdentity}
+  alias Aiur.Orchestrator.{CiLifecycle, HumanReview, LifecycleFenceExpiry, Parking, PushRouting, RuntimeWatchdog}
 
   alias Aiur.Orchestrator.{
     DispatchPolicy,
@@ -16,7 +16,8 @@ defmodule Aiur.Orchestrator.Reconciler do
     PauseResume,
     RateLimitFallback,
     State,
-    TrackerTasks
+    TrackerTasks,
+    TicketTransition
   }
 
   # A before_run hook failure parks the agent alive in
@@ -36,23 +37,7 @@ defmodule Aiur.Orchestrator.Reconciler do
     RateLimitFallback.reconcile(state)
   end
 
-  # Two independent read-reduction strategies meet on this path (#1674):
-  #
-  #   1. Reuse. The poll has already fetched the candidate list, so a running
-  #      ticket visible in that snapshot needs no request at all.
-  #   2. Revalidation. Whatever is left — running tickets absent from the
-  #      candidate snapshot — is fetched with `If-None-Match`, so an unchanged
-  #      ticket costs a 304 (free against the GitHub rate limit) instead of a
-  #      full read.
-  #
-  # They compose: reuse eliminates requests, revalidation makes the
-  # irreducible remainder cheap. The ETag/issue pairs live in
-  # `State.running_issue_cache`, threaded through `fetch_fun`.
-  #
-  # `fetch_fun` is deliberately arity-polymorphic rather than a second
-  # `is_list/1`-guarded arity-2 clause: an arity-1 fun is the legacy
-  # cache-free contract, an arity-2 fun is the conditional one. The arity is
-  # what distinguishes them, so no two clauses can shadow each other.
+  # Reuse the polled snapshot, then conditionally fetch missing running tickets.
   @typedoc false
   @type fetch_fun ::
           ([String.t()] -> {:ok, [Issue.t()]} | {:error, term()})
@@ -203,12 +188,8 @@ defmodule Aiur.Orchestrator.Reconciler do
   def reconcile_running_issue_states([], state, _active_states, _terminal_states), do: state
 
   def reconcile_running_issue_states([issue | rest], state, active_states, terminal_states) do
-    reconcile_running_issue_states(
-      rest,
-      reconcile_issue_state(issue, state, active_states, terminal_states),
-      active_states,
-      terminal_states
-    )
+    {next, effects} = reconcile_issue_effects(issue, state, active_states, terminal_states, &MembershipLifecycle.observe/2, &CurrentRunMembership.mark_reconciled/1)
+    reconcile_running_issue_states(rest, TicketTransition.apply_effects(next, effects), active_states, terminal_states)
   end
 
   @spec reconcile_issue_state(Issue.t() | term(), State.t(), MapSet.t(), MapSet.t()) :: State.t()
@@ -258,16 +239,15 @@ defmodule Aiur.Orchestrator.Reconciler do
       ),
       do: state
 
-  @doc false
-  @spec reconcile_issue_state(
-          Issue.t() | term(),
-          State.t(),
-          MapSet.t(),
-          MapSet.t(),
-          (TrackerIdentity.t(), atom() -> term()),
-          (:fresh | :unavailable -> term())
-        ) :: State.t()
-  def reconcile_issue_state(
+  @spec reconcile_issue_state(term(), State.t(), MapSet.t(), MapSet.t(), function(), function()) :: State.t()
+  def reconcile_issue_state(issue, state, active, terminal, observe, mark) do
+    {next, effects} = reconcile_issue_effects(issue, state, active, terminal, observe, mark)
+    TicketTransition.apply_effects(next, effects)
+  end
+
+  @doc "Return deferred transitions; outcome-sensitive effects apply before their dependent actions."
+  @spec reconcile_issue_effects(term(), State.t(), MapSet.t(), MapSet.t(), function(), function()) :: {State.t(), [Aiur.Orchestrator.Effect.t()]}
+  def reconcile_issue_effects(
         %Issue{} = issue,
         state,
         active_states,
@@ -276,36 +256,42 @@ defmodule Aiur.Orchestrator.Reconciler do
         mark_reconciled_fun
       )
       when is_function(observe_membership_fun, 2) and is_function(mark_reconciled_fun, 1) do
-    if DispatchPolicy.terminal_issue_state?(issue.state, terminal_states) do
-      case LifecycleFence.reconcile_observed_state(state, issue, terminal_states) do
-        :admit ->
-          # Resolve any open divergence attention before the entry is removed,
-          # so a terminal ticket never leaves a stuck alert behind. A fenced
-          # issue is still running, so its divergence state is left intact.
-          state
-          |> clear_reported_divergence(issue.id, issue.identifier)
-          |> reconcile_terminal_issue_state(
-            issue,
-            observe_membership_fun,
-            mark_reconciled_fun
-          )
+    result =
+      if DispatchPolicy.terminal_issue_state?(issue.state, terminal_states) do
+        case LifecycleFence.reconcile_observed_state(state, issue, terminal_states) do
+          :admit ->
+            # Resolve any open divergence attention before the entry is removed,
+            # so a terminal ticket never leaves a stuck alert behind. A fenced
+            # issue is still running, so its divergence state is left intact.
+            state
+            |> clear_reported_divergence(issue.id, issue.identifier)
+            |> reconcile_terminal_issue_state(
+              issue,
+              observe_membership_fun,
+              mark_reconciled_fun
+            )
 
-        {:fenced, next_state} ->
-          next_state
+          {:fenced, next_state} ->
+            next_state
+        end
+      else
+        state
+        |> report_label_divergence(issue)
+        |> reconcile_nonterminal_issue_state(
+          issue,
+          active_states,
+          terminal_states,
+          observe_membership_fun
+        )
       end
-    else
-      state
-      |> report_label_divergence(issue)
-      |> reconcile_nonterminal_issue_state(
-        issue,
-        active_states,
-        terminal_states,
-        observe_membership_fun
-      )
+
+    case result do
+      %State{} = next -> {next, []}
+      {next, effects} -> {next, effects}
     end
   end
 
-  def reconcile_issue_state(
+  def reconcile_issue_effects(
         _issue,
         state,
         _active_states,
@@ -313,7 +299,7 @@ defmodule Aiur.Orchestrator.Reconciler do
         _observe_membership_fun,
         _mark_reconciled_fun
       ),
-      do: state
+      do: {state, []}
 
   defp reconcile_terminal_issue_state(state, issue, observe_membership_fun, mark_reconciled_fun) do
     Logger.info([
@@ -513,7 +499,7 @@ defmodule Aiur.Orchestrator.Reconciler do
 
   defp terminate_recorded_terminal_issue(state, issue, mark_reconciled_fun) do
     if CurrentRunMembership.set_terminal_verification_pending(&CurrentRunMembership.set_terminal_verification_pending/2, issue.tracker_identity, false) in [:ok, :skipped] do
-      Orchestrator.terminate_running_issue(state, issue.id, true)
+      {state, [{:terminate, issue.id, true}]}
     else
       mark_membership_unavailable(state, mark_reconciled_fun, issue.tracker_identity)
     end
@@ -540,7 +526,7 @@ defmodule Aiur.Orchestrator.Reconciler do
 
         state
         |> clear_reported_divergence(issue.id)
-        |> Orchestrator.terminate_running_issue(issue.id, false)
+        |> then(&{&1, [{:terminate, issue.id, false}]})
 
       !DispatchPolicy.issue_dispatch_authorized?(issue) and
           not DispatchPolicy.issue_dispatch_authorization_deferred?(issue) ->
@@ -554,7 +540,7 @@ defmodule Aiur.Orchestrator.Reconciler do
 
         state
         |> clear_reported_divergence(issue.id)
-        |> Orchestrator.terminate_running_issue(issue.id, false)
+        |> then(&{&1, [{:terminate, issue.id, false}]})
 
       # Authorization could not be *checked* this cycle — a transient budget
       # hold, rate limit, or transport failure on the provenance fetch — as
@@ -596,7 +582,7 @@ defmodule Aiur.Orchestrator.Reconciler do
 
         state
         |> clear_reported_divergence(issue.id)
-        |> Orchestrator.terminate_running_issue(issue.id, false)
+        |> then(&{&1, [{:terminate, issue.id, false}]})
 
       Issue.paused?(issue) ->
         PauseResume.pause_issue_for_label_override(state, issue)
@@ -643,14 +629,14 @@ defmodule Aiur.Orchestrator.Reconciler do
       DispatchPolicy.active_issue_state?(issue.state, active_states) ->
         maybe_reactivate_or_refresh(state, issue)
 
-      Orchestrator.ci_wait_state?(issue.state) ->
-        Orchestrator.pause_issue_for_ci_wait(state, issue)
+      CiLifecycle.ci_wait_state?(issue.state) ->
+        {state, [{:pause_for_ci_wait, issue}]}
 
-      Orchestrator.human_review_state?(issue.state) ->
-        Orchestrator.maybe_deactivate_human_review_issue(state, issue)
+      HumanReview.human_review_state?(issue.state) ->
+        {state, [{:maybe_deactivate_human_review, issue}]}
 
-      Orchestrator.error_issue_state?(issue.state) ->
-        Orchestrator.preserve_running_issue_on_external_error(state, issue)
+      DispatchPolicy.normalize_issue_state(issue.state) == "error" ->
+        {state, [{:preserve_on_external_error, issue}]}
 
       true ->
         Logger.info([
@@ -665,7 +651,7 @@ defmodule Aiur.Orchestrator.Reconciler do
 
         state
         |> clear_reported_divergence(issue.id)
-        |> Orchestrator.terminate_running_issue(issue.id, false)
+        |> then(&{&1, [{:terminate, issue.id, false}]})
     end
   end
 
@@ -714,7 +700,7 @@ defmodule Aiur.Orchestrator.Reconciler do
   defp reactivate_deactivated_issue(state, running_entry, issue) do
     new_entry = Map.put(running_entry, :issue, issue)
     state = %{state | running: Map.put(state.running, issue.id, new_entry)}
-    {_result, next_state} = Orchestrator.reactivate_issue(state, new_entry)
+    {_result, next_state} = TicketTransition.apply_effect(state, {:reactivate, new_entry})
     next_state
   end
 
@@ -727,7 +713,7 @@ defmodule Aiur.Orchestrator.Reconciler do
         do: CiLifecycle.cancel_ci_wait_rewake(state, issue.id),
         else: state
 
-    case Orchestrator.resume_paused_issue(state, new_entry, false) do
+    case TicketTransition.apply_effect(state, {:resume_paused, new_entry, false}) do
       {{:ok, :resumed}, next_state} ->
         next_state
 
@@ -752,7 +738,7 @@ defmodule Aiur.Orchestrator.Reconciler do
         new_entry = Map.put(running_entry, :issue, issue)
         state = %{state | running: Map.put(state.running, issue.id, new_entry)}
 
-        case Orchestrator.resume_paused_issue(state, new_entry, false) do
+        case TicketTransition.apply_effect(state, {:resume_paused, new_entry, false}) do
           {{:ok, :resumed}, next_state} ->
             bump_before_run_resume_attempts(next_state, issue.id)
 
@@ -805,16 +791,19 @@ defmodule Aiur.Orchestrator.Reconciler do
       if MapSet.member?(visible_issue_ids, issue_id) do
         state_acc
       else
-        log_missing_running_issue(state_acc, issue_id)
-
-        state_acc
-        |> clear_reported_divergence(issue_id)
-        |> Orchestrator.terminate_running_issue(issue_id, false)
+        {next, effects} = missing_running_issue_effects(state_acc, issue_id)
+        TicketTransition.apply_effects(next, effects)
       end
     end)
   end
 
   def reconcile_missing_running_issue_ids(state, _requested_issue_ids, _issues), do: state
+
+  @spec missing_running_issue_effects(State.t(), String.t()) :: {State.t(), [Aiur.Orchestrator.Effect.t()]}
+  def missing_running_issue_effects(state, issue_id) do
+    log_missing_running_issue(state, issue_id)
+    {clear_reported_divergence(state, issue_id), [{:terminate, issue_id, false}]}
+  end
 
   @spec refresh_running_issue_state(State.t(), Issue.t()) :: State.t()
   def refresh_running_issue_state(%State{} = state, %Issue{} = issue) do
