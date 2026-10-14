@@ -33,7 +33,7 @@ defmodule Aiur.AgentControlCLI do
   }
 
   alias Aiur.Codex.EventHumanizer, as: CodexEventHumanizer
-  alias Aiur.GitHub.{CiReadiness, CodeOwners, StatePolicy}
+  alias Aiur.GitHub.{CiReadiness, CodeOwners, ResourceStore, StatePolicy}
   alias Aiur.GitHub.Config, as: GitHubConfig
   alias Aiur.Orchestrator.{CapacityBinding, DispatchPolicy, EnvelopeResume, OptimisticSlots, StatusObservation, StatusReason, TicketTransition, WaitingReason}
   alias Aiur.{SystemLoad, Tracker}
@@ -60,8 +60,7 @@ defmodule Aiur.AgentControlCLI do
   # A deep orchestrator mailbox means `set max-agents` queues behind real contention; say so up front (#2137).
   @orchestrator_busy_mailbox_threshold 20
   # Leave room to render the daemon timeout before the shared 10-second watchdog edge. Eight
-  # seconds was not enough: RPC BEAM startup costs ~2s, so a saturated snapshot
-  # measured 10335ms and lost the race — the launcher killed it at 10s and the
+  # seconds lost the race: ~2s RPC startup plus a 10335ms saturated snapshot meant the launcher killed it, and the
   # operator got a truncated fleet listing plus exit 124 instead of one honest
   # "agents query timed out after 8s" line (#1684).
   @agents_timeout_ms 6_000
@@ -221,10 +220,10 @@ defmodule Aiur.AgentControlCLI do
     SystemLoad.print_dispatch_sample(Map.get(snapshot, :capacity))
     print_capacity_status(Map.get(snapshot, :capacity), Map.get(snapshot, :polling))
     print_polling_status(Map.get(snapshot, :polling))
-
     supervision_exit_code = print_supervision_health()
     print_ci_readiness()
     print_build_gate_status()
+    if Config.tracker_kind() == "github", do: ResourceStore.Memory.print_status()
     print_prewarm_status()
     print_blocking_asks(opts)
     exit_marker(supervision_exit_code)
@@ -366,9 +365,10 @@ defmodule Aiur.AgentControlCLI do
   end
 
   @spec units(keyword()) :: :ok
-  def units(opts \\ []) do
-    UnitsCLI.run(opts) |> exit_marker()
-  end
+  def units(opts \\ []), do: UnitsCLI.run(opts) |> exit_marker()
+
+  @spec feature(keyword()) :: :ok
+  def feature(opts \\ []), do: guarded("feature", fn -> opts |> Keyword.put(:error_fun, &control_error/1) |> Aiur.FeatureCLI.run() |> exit_marker() end)
 
   @spec epic(keyword()) :: :ok
   def epic(opts \\ []), do: guarded("epic", fn -> opts |> Keyword.put(:error_fun, &control_error/1) |> Aiur.EpicCLI.run() |> exit_marker() end)

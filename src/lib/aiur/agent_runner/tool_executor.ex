@@ -7,7 +7,14 @@ defmodule Aiur.AgentRunner.ToolExecutor do
 
   require Logger
 
-  alias Aiur.AgentRunner.{CiWaitTransition, DecisionLifecycleFailureAlert, EpicSetter, ReworkHandoffGuard, SessionLifecycle}
+  alias Aiur.AgentRunner.{
+    DecisionLifecycleFailureAlert,
+    EpicSetter,
+    FeatureWriter,
+    SessionLifecycle
+  }
+
+  alias Aiur.AgentRunner.ToolExecutor.TicketStateSetter
 
   alias Aiur.{Boot, CodingAgent, Commands, CoordinationTasks, EventPublicationLog, Issue, Signal}
 
@@ -58,8 +65,7 @@ defmodule Aiur.AgentRunner.ToolExecutor do
       subscribe_blocker: Keyword.get(opts, :blocker_subscriber, &Orchestrator.subscribe_for_declared_blocker/2),
       unsubscribe_blocker: Keyword.get(opts, :blocker_unsubscriber, &Orchestrator.unsubscribe_for_declared_blocker/2),
       # `aiur_set_ticket_state` (#2805) re-reads the issue and makes the target the sole `agent:*` state label —
-      # so an agent never has to name (and never has to guess) the label to
-      # remove.
+      # Agents need not guess the label to remove.
       set_ticket_state: Keyword.get(opts, :ticket_state_writer, &TicketTransition.write_state(&1, &2, writer: :agent_tool)),
       ci_wait_pr_fetcher: Keyword.get(opts, :ci_wait_pr_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1)
     }
@@ -125,9 +131,19 @@ defmodule Aiur.AgentRunner.ToolExecutor do
         unblocker: fn blocker_number ->
           unblock_for_issue(issue, blocker_number, coordination)
         end,
+        feature_writer: fn args -> FeatureWriter.write(issue, args, Keyword.get(opts, :feature_opts, [])) end,
         epic_setter: fn args -> EpicSetter.set(issue, args, Keyword.get(opts, :epic_opts, [])) end,
         ticket_state_setter: fn state_name ->
-          set_ticket_state_for_issue(issue, state_name, coordination, workspace, worker_host, opts)
+          TicketStateSetter.write(
+            issue,
+            state_name,
+            coordination,
+            workspace,
+            worker_host,
+            opts,
+            &ticket_coordination_key/1,
+            &coordination_operation_opts/1
+          )
         end
       )
     end
@@ -170,32 +186,6 @@ defmodule Aiur.AgentRunner.ToolExecutor do
   # so an agent's own state write cannot interleave with another mutation of the
   # same ticket. The write itself is a swap: add the target label, then remove
   # every other `agent:*` state label present on the freshly fetched body.
-  defp set_ticket_state_for_issue(issue, state_name, coordination, workspace, worker_host, opts) do
-    case tracker_issue_id(issue) do
-      nil ->
-        {:error, :no_issue_number}
-
-      issue_id ->
-        coordination.run.(
-          ticket_coordination_key(issue),
-          fn -> write_ticket_state(issue, coordination, issue_id, state_name, workspace, worker_host, opts) end,
-          coordination_operation_opts(issue)
-        )
-    end
-  end
-
-  defp write_ticket_state(issue, coordination, issue_id, state_name, workspace, worker_host, opts) do
-    ReworkHandoffGuard.write(issue, issue_id, state_name, workspace, worker_host, opts, &CiWaitTransition.write(coordination, &1, &2))
-  end
-
-  defp tracker_issue_id(issue) do
-    case Map.get(issue, :id) || Map.get(issue, :identifier) do
-      id when is_binary(id) and id != "" -> id
-      id when is_integer(id) -> Integer.to_string(id)
-      _ -> nil
-    end
-  end
-
   defp unblock_for_issue(issue, blocker_number, coordination) do
     case issue_number_of(issue) do
       nil ->
@@ -380,11 +370,7 @@ defmodule Aiur.AgentRunner.ToolExecutor do
     %{issue: issue} = event_context
     identifier = issue_identifier(issue)
 
-    topic =
-      case identifier do
-        nil -> "agent.#{name}"
-        id -> "ticket.#{id}.agent.#{name}"
-      end
+    topic = DynamicTool.EmitEvent.topic(identifier, name)
 
     if durable_decision_topic?(topic) do
       {:error, :decision_requires_durable_publish}
