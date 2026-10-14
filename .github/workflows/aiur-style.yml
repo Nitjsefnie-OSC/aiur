@@ -31,13 +31,13 @@ jobs:
           cache-dependency-path: 'packages/aiur-style/package-lock.json'
 
       - name: Install dependencies
-        run: cd packages/aiur-style && npm ci
+        run: cd packages/aiur-style && npm ci --ignore-scripts
+
+      - name: Build package
+        run: cd packages/aiur-style && npm run build
 
       - name: Check dist
         run: cd packages/aiur-style && npm run check-dist
-
-      - name: Build
-        run: cd packages/aiur-style && npm run build
 
       - name: Run tests
         run: cd packages/aiur-style && npm test
