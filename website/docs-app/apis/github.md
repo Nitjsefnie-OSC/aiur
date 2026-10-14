@@ -68,3 +68,59 @@ The agent credential boundary lives in [GitHub credentials and security](/apis/g
 ### Operator PR merge command
 
 See the [CLI reference](/reference/cli#pr-merge).
+
+### Repository setup from global defaults
+
+Repository setup guidance lives in [GitHub polling](/apis/github-polling).
+
+### What Aiur polls
+
+The polling inventory lives in [GitHub polling](/apis/github-polling).
+
+### Build Order membership recovery
+
+Membership reconciliation lives in [GitHub polling](/apis/github-polling#build-order-membership-recovery).
+
+#### Set up the App
+
+See [GitHub App authentication](/apis/github-auth#github-app-authentication).
+
+#### Configure the daemon
+
+See [GitHub App authentication](/apis/github-auth#github-app-authentication).
+
+#### Organization repository access during init
+
+See [GitHub App authentication](/apis/github-auth#organization-repository-access-during-init).
+
+#### Token lifecycle
+
+See [GitHub App authentication](/apis/github-auth#token-lifecycle).
+
+#### Identity under App auth
+
+See [GitHub App authentication](/apis/github-auth#identity-under-app-auth).
+
+#### What a validator may answer
+
+See [GitHub polling](/apis/github-polling#what-a-validator-may-answer).
+
+#### Where the budget went
+
+See [GitHub API budgets](/apis/github-budgets#where-the-budget-went).
+
+#### Credential pooling
+
+See [GitHub API budgets](/apis/github-budgets#credential-pooling).
+
+#### What pooling is worth
+
+See [GitHub API budgets](/apis/github-budgets#what-pooling-is-worth).
+
+#### Human-review base checks
+
+See [GitHub credentials and security](/apis/github-auth#human-review-base-checks).
+
+##### Writes stay on their own identity
+
+See [GitHub API budgets](/apis/github-budgets#credential-pooling).

@@ -27,6 +27,12 @@ function imagePathsIn(markdown: string): string[] {
   )
 }
 
+function headingSlugs(markdown: string): string[] {
+  return [...markdown.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)].map(([, heading]) =>
+    heading.replace(/`/g, '').toLowerCase().replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-')
+  )
+}
+
 test('every dashboard surface screenshot is published on the page that explains it', async () => {
   const websiteRoot = path.resolve(import.meta.dirname, '..')
 
@@ -259,6 +265,12 @@ test('docs group operator surfaces and API guidance without dense prose', async 
   expect(githubAuth).toContain('## GitHub App authentication')
   expect(githubAuth).toContain('## Human-review base checks')
   expect(githubAgentCache).toContain('## Shared agent reads')
+  for (const [, contents] of markdown) {
+    for (const [, target, fragment] of contents.matchAll(/\]\(\/(apis\/github-[^)#]+)#([a-z0-9-]+)\)/g)) {
+      const targetMarkdown = byRelativePath.get(`${target}.md`) ?? ''
+      expect(headingSlugs(targetMarkdown), `${target}#${fragment} must target a heading`).toContain(fragment)
+    }
+  }
   for (const [name, contents] of Object.entries({ github, githubPolling, githubBudgets, githubCosts, githubWebhooks, githubAuth, githubAgentCache })) {
     expect(contents.split('\n').length, `${name} exceeds the 500-line docs limit`).toBeLessThanOrEqual(500)
   }

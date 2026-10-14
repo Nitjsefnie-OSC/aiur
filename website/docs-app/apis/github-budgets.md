@@ -90,7 +90,7 @@ Separate budgets, separate windows.
 An agent-driven `gh pr view` never appears in the daemon's GraphQL ranking and never spends the App pool. Agent activity correlating with App-pool spend means something else scales with the fleet.
 
 Related: a low read-cache hit rate is not automatically a defect. See
-[Shared agent reads](#shared-agent-reads) for what the cache refuses on purpose
+[Shared agent reads](/apis/github-agent-cache#shared-agent-reads) for what the cache refuses on purpose
 and why refusing is correct.
 
 ### Credential pooling

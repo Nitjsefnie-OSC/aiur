@@ -69,7 +69,7 @@ A durable per-PR ledger records what they saw:
 - Like the webhook, a PR opened ready gets no `ready_for_review`.
 - The poll uses the webhook's dedup key, so a repository with a webhook is not woken twice for the same head.
 
-Where a webhook is proven, the comment sweep becomes a reconciliation pass rather than a second source. It still reads everything, but a comment a delivery already handled is not published twice, so an agent wakes once per comment rather than once per path. See [Comments arriving twice](#comments-arriving-twice).
+Where a webhook is proven, the comment sweep becomes a reconciliation pass rather than a second source. It still reads everything, but a comment a delivery already handled is not published twice, so an agent wakes once per comment rather than once per path. See [Comments arriving twice](/apis/github-webhooks#comments-arriving-twice).
 
 The CI poll drops from its batch a target a `check_run` delivery already answered since the last read — the read is not bought again. Displacement is per target: a ticket with no delivery keeps its cadence, and only the read is skipped; no verdict is served from the held body. An unmatched check-run id keeps the target polled; polling stays the fallback.
 
