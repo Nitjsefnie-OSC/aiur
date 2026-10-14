@@ -48,10 +48,7 @@ defmodule Aiur.Orchestrator do
 
   def handle_info(:tick, state), do: Lifecycle.handle_tick(state)
   def handle_info(:propagate_blocker_tick, state), do: {:noreply, BlockerPropagation.flush(state)}
-  # A test freeze (freeze_poll_cycle) sets `poll_frozen` so the one-shot
-  # `:run_poll_cycle` the initial tick scheduled (20ms render delay, not
-  # token-fenced) cannot fire a live poll that would ramp the load envelope
-  # mid-test.
+  # Freeze scheduled polls during tests to keep live polling from changing the load envelope.
   def handle_info(:run_poll_cycle, %State{poll_frozen: true} = state), do: {:noreply, state}
   def handle_info(:run_poll_cycle, %State{} = state), do: Dispatcher.run_poll_cycle(state)
 
@@ -102,9 +99,7 @@ defmodule Aiur.Orchestrator do
       when is_binary(issue_id) and is_map(runtime_info),
       do: State.handle_worker_runtime_info(state, issue_id, runtime_info)
 
-  # The runner confirms it survived provisioning; bill exactly one lifetime
-  # dispatch unit (#1453). Preflight/prewarm/tracker-auth failures never reach
-  # this message, so they leave the lifetime budget unchanged.
+  # Only runners surviving provisioning bill one lifetime dispatch unit (#1453); preflight failures do not.
   def handle_info({:dispatch_committed, issue_id}, state) when is_binary(issue_id) do
     state = Dispatcher.record_dispatch_committed(state, issue_id)
     {:noreply, state}
@@ -679,6 +674,8 @@ defmodule Aiur.Orchestrator do
   def handle_call({:build_queue_claim_status, ids}, _from, state) when is_list(ids) do
     {:reply, Map.new(ids, &{&1, BuildQueueClaimProbe.classify(state, &1)}), state}
   end
+
+  def handle_call(:build_queue_next_set, _from, state), do: {:reply, BuildQueueClaimProbe.next_set(state), state}
 
   def handle_call(:status, _from, state), do: StatusReport.status(state)
 
