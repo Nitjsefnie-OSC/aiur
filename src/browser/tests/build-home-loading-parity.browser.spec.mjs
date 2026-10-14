@@ -20,25 +20,11 @@ for (const viewport of PARITY_VIEWPORTS) {
             el.style.width = width + 'px'
           })
         }
-        await expectDesignParity(pair, { name, region: '#bd-vp' })
         for (const side of ['design', 'product']) await expect(pair[side].locator('#bd-sb')).toHaveClass(/\boff\b/)
-        // Hidden elements have no screenshot box; compare their host in the off state.
+        // One capture covers every loading-viewport pixel and its hidden-scrollbar host.
+        // A second capture can cross the server's five-second bounded-read deadline.
         await expectDesignParity(pair, { name: `c9t01-sb-off-${name}`, region: '.bd-vpw' })
         await expect(pair.product.locator('#build-root')).toHaveAttribute('data-build-state', 'loading')
-      } catch (error) {
-        const ancestors = {}
-        for (const side of ['design', 'product']) ancestors[side] = await pair[side].locator('.bd-vpw').evaluate(el => {
-          const rows = []
-          while (el) {
-            const s = getComputedStyle(el)
-            rows.push({ tag: el.tagName, id: el.id, classes: el.className, box: el.getBoundingClientRect().toJSON(),
-              styles: Object.fromEntries(['zoom', 'transform', 'perspective', 'filter', 'opacity', 'contain', 'content-visibility', 'will-change', 'backdrop-filter', 'position'].map(k => [k, s.getPropertyValue(k)])) })
-            el = el.parentElement
-          }
-          return { width: innerWidth, height: innerHeight, scale: visualViewport.scale, rows }
-        })
-        await test.info().attach('loading-ancestors', { body: JSON.stringify(ancestors), contentType: 'application/json' })
-        throw error
       } finally { await pair.close() }
     })
     for (const dataset of ['live', 'dense']) for (const state of ['top', 'act', 'hover', 'drag']) {
