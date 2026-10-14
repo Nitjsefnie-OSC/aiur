@@ -11,7 +11,6 @@
     "src/lib/aiur/cli.ex",
     "src/lib/aiur/cli/**",
     "src/lib/aiur/control_cli/**",
-    "src/lib/aiur/feature_cli/**",
     "src/lib/aiur/daemon_lifecycle.ex",
     "src/lib/aiur/distribution.ex",
     "src/lib/aiur/external_content.ex",

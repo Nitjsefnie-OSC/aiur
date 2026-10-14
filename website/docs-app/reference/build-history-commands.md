@@ -42,4 +42,3 @@ Overrides are local: these commands never write GitHub labels or report effectiv
 | Repeats | Same epic/source/confirmation is unchanged. Changed results and journal retain the previous assignment. |
 | Recovery | Unsafe journals are unavailable. Move corrupt `epic-overrides.json` aside in the instance’s `epic-overrides` directory, then restart; GitHub cannot rebuild overrides. First-write sync failure after rename leaves reads/writes unavailable until restart. |
 | Exit codes | 0 success; 1 refusal/unavailability; 64 usage; 124 RPC timeout with unknown outcome. Retrying an identical set is safe. |
-

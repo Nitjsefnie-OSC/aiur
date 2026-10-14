@@ -97,6 +97,7 @@ defmodule Aiur.FeatureCLI.Output do
   defp label(_), do: "unknown"
   defp nullable(:none), do: nil
   defp nullable(value), do: value
+  defp state(:unknown), do: "end unknown"
   defp state(nil), do: "open"
   defp state(_), do: "ended"
   defp time(%DateTime{} = value), do: DateTime.to_iso8601(value)
