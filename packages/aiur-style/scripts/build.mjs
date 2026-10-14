@@ -55,7 +55,10 @@ try {
     .join('\n');
 
   const mainCssPath = path.join(distDir, 'aiur-style.css');
-  fs.writeFileSync(mainCssPath, cssContent, { encoding: 'utf8' });
+  // Compact only the bundle; preserve whitespace inside CSS strings.
+  const compactCss = cssContent.replace(/("(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|\/\*[\s\S]*?\*\/)|\s+/g,
+    (match, literal) => literal?.startsWith('/*') ? ' ' : literal ?? ' ').trim();
+  fs.writeFileSync(mainCssPath, compactCss + '\n', { encoding: 'utf8' });
   console.log(`✓ CSS concatenated to dist/aiur-style.css (${cssFiles.length} files)`);
 
   // Copy individual CSS files to dist/css/
