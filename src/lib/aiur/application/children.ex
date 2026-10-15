@@ -138,6 +138,9 @@ defmodule Aiur.Application.Children do
       BuildOrders.child_specs(:early, opts),
       {Aiur.Events.IdGenerator, floor_files: &Aiur.IdFloorSources.floor_files/0, legacy_counter_files: &Aiur.IdFloorSources.legacy_counter_files/0},
       {Aiur.Events.Exchange, name: Aiur.Events.Exchange},
+      # Subscribe before the orchestrator's immediate first poll so a merge
+      # observed during startup also reaches the durable checklist.
+      Aiur.PostDeployChecklist,
       Aiur.Events.BranchRefStore,
       # Restart-durable GitHub state keyed by resource identity. Starts before
       # the Publisher and before anything that polls or receives, so the first
@@ -194,7 +197,7 @@ defmodule Aiur.Application.Children do
       Aiur.GitHub.CodeOwners,
       {Registry, keys: :unique, name: Aiur.Events.SubscriptionStoreRegistry},
       Aiur.Events.SubscriptionStoreSupervisor,
-      Aiur.DecisionAttention,
+      {Aiur.DecisionAttention, owner_lookup: &Aiur.Orchestrator.has_live_owner?/1},
       Aiur.OperatorWaitLog,
       Aiur.Orchestrator.OptimisticLedger,
       Aiur.Orchestrator.TrackedSet,
@@ -264,7 +267,7 @@ defmodule Aiur.Application.Children do
       cli_children ++
         [Aiur.BackgroundCpu] ++
         Aiur.Experiments.children(recording?) ++
-        Auto.child_specs(recording?: recording?) ++
+        Auto.child_specs(recording?: recording?, feature_opts: [recent_merges: &Aiur.RecentMergeStore.list/0]) ++
         BuildOrders.child_specs(:label_projection, opts) ++
         landing_watch_children() ++
         Aiur.Experiments.window_children(recording?) ++ List.wrap(if(dashboard?, do: AiurWeb.Build.Index))
