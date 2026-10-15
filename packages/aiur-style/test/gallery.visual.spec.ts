@@ -174,9 +174,10 @@ test(`optimized logos on ${background}; nearest neighbor fails`, async ({ page }
       [original, png, bad].forEach((image, index) => ctx.drawImage(image, index * width, 0, width, height));
       return c.toDataURL();
     });
-    return { panels, png: [compare(png, 224), compare(png, 28)],
+    return { badSource: bad.src, panels, png: [compare(png, 224), compare(png, 28)],
       webp: [compare(webp, 224), compare(webp, 28)], bad: compare(bad, 224) };
   }, background);
+  writeFileSync(testInfo.outputPath('nearest-neighbor-512.png'), Buffer.from(errors.badSource.split(',')[1], 'base64'));
   for (const [index, panel] of errors.panels.entries()) {
     writeFileSync(testInfo.outputPath(`logo-review-${[224, 28][index]}.png`), Buffer.from(panel.split(',')[1], 'base64'));
     await testInfo.attach(`logo-original-lanczos-nearest-${[224, 28][index]}.png`, {
