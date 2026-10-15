@@ -313,6 +313,7 @@ defmodule Aiur.GitHub.ResourceStore do
     :main_watch,
     :flake_issues,
     :issue_comments,
+    :issue_timeline,
     :pr_issue_comments,
     # The two repo-wide comment streams. `Aiur.Orchestrator.CommandScan` used to
     # keep their validators under its own call-site names, so its cached state

@@ -43,6 +43,7 @@ defmodule Aiur.MainWatch.Persistence do
       early_merges: [],
       canary_at: nil,
       unavailable: false,
+      last_error: nil,
       last_completed_at: nil,
       started_at: System.system_time(:millisecond)
     }
