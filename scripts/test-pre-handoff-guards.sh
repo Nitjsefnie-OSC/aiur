@@ -48,6 +48,10 @@ assert_absent "$tmp/non-pr.log" 'scripts/check-pr-body.py' 'non-PR path included
 events_repo="$tmp/events-repo"
 mkdir -p "$events_repo/scripts" "$tmp/bin"
 cp "$repo_root/scripts/run-pre-handoff-guards.sh" "$events_repo/scripts/run-pre-handoff-guards.sh"
+cat > "$events_repo/scripts/run-pre-handoff-code-checks.sh" <<'CODE_CHECKS'
+#!/usr/bin/env bash
+printf 'code-checks: %s\n' "$*"
+CODE_CHECKS
 cat > "$events_repo/scripts/pre-handoff-guards" <<'GUARDS'
 #!/usr/bin/env bash
 printf '%s\n' "$*" > "$EVENT_LOG"
@@ -60,6 +64,7 @@ cat > "$events_repo/scripts/check-docs-prose.mjs" <<'NODE'
 process.exit(0)
 NODE
 chmod +x "$events_repo/scripts/pre-handoff-guards"
+chmod +x "$events_repo/scripts/run-pre-handoff-code-checks.sh"
 
 cat > "$tmp/bin/gh" <<'GH'
 #!/usr/bin/env bash
