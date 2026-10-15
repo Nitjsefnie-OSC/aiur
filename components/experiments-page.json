@@ -36,5 +36,17 @@
     "AiurWeb.OperatorControlCenter.Analytics.Presenter",
     "AiurWeb.OperatorControlCenter.Analytics.Charts",
     "Aiur.Experiments.*"
-  ]
+  ],
+  "dependency_kind": "optional",
+  "summary": "Displays experiment designs, frozen baselines and stored evidence.",
+  "status": "optional",
+  "install": {
+    "type": "included"
+  },
+  "docs": [
+    "guide/gui.md#read-an-experiment"
+  ],
+  "config": [],
+  "env": [],
+  "capabilities": []
 }
