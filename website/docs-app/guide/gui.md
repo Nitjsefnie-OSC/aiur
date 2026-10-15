@@ -2,6 +2,8 @@
 
 The GUI is Aiur's browser interface for supervising a run. It combines the live fleet, durable decisions, recorded outcomes, provider meters, Build Orders, and analytics.
 
+High-rate snapshot notifications on Home, Units, Commands, Build Orders, and Stream Deck arrive in batches spaced at least 500 ms apart. Each subscription group holds one unacknowledged batch while newer notifications coalesce by event type. User actions and chat messages keep their existing delivery path.
+
 ## Open the GUI
 
 | Launch condition | GUI result |
@@ -18,6 +20,12 @@ Startup prints the URL and effective bind only when the listener runs:
 Dashboard: http://127.0.0.1:4000 (bind host=0.0.0.0, port=4000)
 ```
 
+## Build timeline freshness
+
+The build timeline at `/build` labels daemon state separately from socket reachability. An offline or stale snapshot shows its last heartbeat age and local time; a missing heartbeat reads “no heartbeat recorded”. Socket loss lasting at least 500 ms shows “Daemon unreachable” and stops the live glows.
+
+**Reconnect** retries a dropped socket immediately, or requests a fresh snapshot when the socket is open. It reads “Reconnecting…” while pending and returns to **Reconnect** after ten seconds if the page is still degraded. This control also works with read-only access.
+
 ## Find a surface
 
 Use the browser when you need interactive detail; use the paired command when terminal output is more useful.
@@ -28,7 +36,7 @@ Use the browser when you need interactive detail; use the paired command when te
 | **Commands** | `/commands` is the durable decision inbox and each decision's detail. | `aiur commands` |
 | **Build Order** | `/build-orders` is the Build Order catalog and one root's execution detail. | `aiur build-orders` |
 | **Build queue** | `/build-orders` includes the read-only queue panel on the catalog page: item states, waiting prerequisites, start-order ranks, progress, source freshness and observation age, and open or recently resolved attentions. Manage queues with the CLI. | `aiur queue show` |
-| **Analytics** | `/analytics` is latest-run telemetry with durable restart fallback and an optional Build Order scope. A source line labels the data as the live boot or a retained prior run and shows how long ago it was observed. | `aiur analytics` |
+| **Analytics** | `/analytics` is latest-run telemetry with durable restart fallback and an optional Build Order scope. The page opens with a loading message while telemetry is analyzed in the background; concurrent cold loads share one retained-summary scan. A source line labels the data as the live boot or a retained prior run and shows how long ago it was observed. A notice identifies periods with analytics capture disabled. | `aiur analytics` |
 | **Streamdeck** | `/streamdeck` is the browser emulator for the physical Stream Deck + sidecar. | none |
 
 | Route change | Behavior |
@@ -69,6 +77,22 @@ A degraded CODEOWNERS trust banner shows the lookup cause and elapsed age (`age 
 
 The `sort` query parameter preserves the selected table, column, and direction in copied or refreshed URLs. Paginated and progressively revealed tables sort the displayed rows, then reapply that order when more rows appear.
 
+The temporary, unlinked `/build` route previews the build timeline loading shell.
+It requires dashboard authentication; the production data source is not wired yet.
+
+The toolbar selects Timeline, Gantt or List and retains the view in the URL.
+Use Left/Right arrows or Home/End to move between view tabs, then Enter or Space
+to select. The status line shows the daemon state, including unknown before
+the first snapshot, and the legend for the selected view.
+
+Its links retain view, span, feature focus, filters and ticket selection in
+`view`, `span`, `feature`, `fmode`, `epic`, `model`, `tstate`, `astate`,
+`live`, `trees` and `ticket`. Invalid values are removed.
+
+Legacy Units
+parameters (`v`, `scope`, `conditions`) at this preview route become agent-state
+or ticket-state presets. The hook bridge replaces the current history entry.
+
 ## The pages
 
 Each page renders a durable concept whose detail lives in Concepts.
@@ -106,16 +130,15 @@ Analytics records fleet and build-gate whole-host sources alongside daemon proce
 telemetry. The pressure chart shows occupied agents, configured/max/effective
 agent capacity, active and queued builds, and the oldest live build wait.
 
-Its source state strip and timestamped data table distinguish current, stale,
-degraded, partial, and empty observations. The table additionally reports the
-binding admission signal and the measured load against its threshold, so a growing
-build queue with load far below threshold reads as build-gate-saturated rather
-than host-saturated.
+Its source strip and timestamped table distinguish current, stale, degraded,
+partial and empty observations. Load stays diagnostic. Dispatch uses CPU PSI when
+available; status names its threshold or load fallback. A growing build queue
+shows verification throttling; build occupancy does not hold dispatch.
 
 A gap means the source was not current enough to support that value; it is never
 silently plotted as zero. Build-queue wait is the oldest waiter still live at the
 sample time, not a completed-build latency. These measurements expose when the
-build gate is the fleet constraint; they do not automatically change the agent cap.
+build gate limits verification; they do not automatically change the agent cap.
 
 The build-gate scan runs on a reduced cadence and carries the last observation
 forward, so measuring the gate never perturbs a real build acquisition.
@@ -163,3 +186,11 @@ The supervisor Decision API has a separate bearer credential, `AIUR_SUPERVISOR_T
 An exported value wins, then the global file, then the repository file. The token must be at least 32 bytes, bearer-safe, and free of surrounding whitespace. A present non-empty invalid value aborts startup, while an absent or empty value leaves the API disabled.
 
 Dashboard credentials never grant machine-API authority, and the bearer token never signs a human browser action.
+
+The Analytics ticket timeline marks the earliest PR-open time. Open PRs appear in review; merged, rework, and paused states take precedence.
+
+Retained Analytics charts use at most 180 evenly spaced resource observations per actor, including the first and last. Chart detail is sampled; headline CPU totals and resource peaks use the full retained profiles.
+
+Full log combines the newest materialized prior runs that fit a bounded projection with the current telemetry stream. Its source label states how many retained runs are included. Without materialized history, only raw files up to 1 MiB can be analyzed; larger files report unavailable rather than trigger an unbounded parse.
+
+Retained summaries that exceed the read budget also report unavailable.

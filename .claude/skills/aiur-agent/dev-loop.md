@@ -1,9 +1,10 @@
 # Dev loop
 
 In every repository, mark completed, self-reviewed work ready **before**
-entering `agent:ci-wait`. Drafts never pass CI, including a draft fast-gate pass.
-Only the full required-check set passing on the current head SHA permits
+entering `agent:ci-wait`. Drafts never permit handoff, even with green checks.
+All required checks passing on the current head SHA permit
 `agent:human-review`. A green or skipped `gh pr checks` aggregate is not proof.
+Aiur PRs run fast checks; the full suite runs in the merge queue or on forced-full PRs.
 
 ## Branch
 
@@ -47,7 +48,8 @@ the merge/fetch — committing avoids the stash path that often triggers the
 index-write failure. Never `mktemp -d /tmp/...` for recovery and never push from
 `/tmp`.**
 
-**Integrating an upstream blocker's branch**: when
+**Integrating an upstream blocker's branch**: an **Optimistic start** prompt
+block routes to [the canonical loop](stub-then-fetch.md#optimistic-start-started-on-an-unmerged-blocker). For paused dependents, when
 `ticket.<blocker-id>.agent.unblocked` arrives, use the latest
 `ticket.<blocker-id>.branch.push` payload to fetch the actual validated ref (or
 discover it with `scripts/resolve-ticket-branch <blocker-id>`)
@@ -56,6 +58,10 @@ continue. Never infer readiness from the branch push alone. Do NOT run
 `git -C "$workspace" stash`
 before the merge — committing WIP is just as safe
 and avoids the index-write failure path entirely.
+
+### After the blocker merges: restack
+
+On `ticket.<B>.pr.merged`, follow [the restack recipe](restack.md) before merging the integration branch. A plain merge after a squash can duplicate blocker code and conflict on dependent edits.
 
 Ticket branches are named `aiur/<id>-<slug>` for new tickets, with legacy
 `aiur/<id>` branches still supported. `scripts/resolve-ticket-branch <id>` is the
@@ -146,11 +152,13 @@ blocking finding is the only enforcement they have.
 
 ## The loop
 
-**Resolve validation from the target repository first.** Read
-[`validation.md`](validation.md) before choosing commands. The Elixir examples
-below apply only to Aiur's Elixir core, not to every workspace Aiur operates.
-For other repositories, substitute their documented build/typecheck, formatter,
-focused test runner, test-tree paths and CI gate at each step.
+In the Aiur repository, before opening or updating a PR, run `aiur pre-pr` (or
+`aiurdev pre-pr`) from the branch checkout. Paste its complete result block
+into the PR body; it records the merged `origin/main` SHA and each gate result.
+It never pushes and refuses a dirty checkout.
+
+**Resolve validation from the target repository first.** Read [`validation.md`](validation.md).
+The Elixir examples below apply only to Aiur's Elixir core.
 
 1. Implement
 2. Add / update / run tests
@@ -158,22 +166,29 @@ focused test runner, test-tree paths and CI gate at each step.
    for Aiur changes, use `website/docs-app/` and the threshold above
 4. Run the scoped local pre-PR verification gate before opening or finalizing
    the PR using the target repository's commands. For Aiur's Elixir core:
-   `mix compile --warnings-as-errors`, `mix format`, and affected tests
-   only (the test files for modules you touched plus directly related tests),
+   Follow the current config-driven `Local tests policy` section: `all` runs
+   the full suite, `partial` selects affected tests only (full suite if unsafe),
+   `none` runs compile and format only. Always run
+   `mix compile --warnings-as-errors` and `mix format`. For `partial`, select
+   changed tests, source mirrors, direct callers and deleted-name references,
    each run with `mix test --max-cases 4`. Compute that scoped set
    deterministically instead of guessing it: from the workspace root run
    `cd src && mise exec -- mix aiur.affected_tests`, which maps the modules you
    changed to their sibling test files and prints the exact root-runnable test
    command (or advises `make ci` when the change cannot be scoped safely).
    Run only affected browser specs locally (browser runs go through the build gate); CI runs the full harness.
-   Running only the affected tests also keeps full-suite log volume out of your context.
+   In every PR body, include `## Local tests` with `Policy`, the full pushed
+   `Tested head` SHA, `Base` ref and SHA, `Selection`, and exact command bullets
+   (``- `command` -> result``). Record actual failures/blockers and refresh after
+   every push. Validate with `mix pr_body.check --file <body>`; reviewers compare
+   the head and selection against the diff. Never replace evidence with checkboxes.
    Before marking the PR ready or handing off to CI/review, run all required checks and fix any failures:
 
    - From `src/`: `mise exec -- mix lint` (specs check and Credo strict).
    - From the repository root: `python3 scripts/check-bare-assert-receive.py`.
-   - After committing and after every base integration, run the structural gate before marking the PR ready:
+   - After committing, before every push and after every base integration, run the structural gate — above all after creating, moving or splitting modules:
      `base="$(git -C "$workspace" rev-parse "origin/$AIUR_BASE_BRANCH")"`, then run
-     `mise exec -- python3 scripts/check-pr-structure.py --base "$base"` (size, docs prose/table, components).
+     `mise exec -- python3 scripts/check-pr-structure.py --base "$base"` (size, docs prose/table, components, bare receives, format, state-writer allowlist).
 
    When a change must touch an oversized text file (over 500 lines), keep that
    file the same length or shorter. Put new code in a new small module and new
@@ -185,7 +200,7 @@ focused test runner, test-tree paths and CI gate at each step.
    crash. An earlier startup requires a commented `@early_start_exceptions`
    entry in that test explaining the dependency; never extend its baseline.
 
-   CI's `make ci` is the authoritative full lint and full-suite gate.
+   CI's event-specific gate is authoritative: fast on PRs, full in the queue.
 
    **Use `--trace` only with a specific `file:line`, never with a bare file or
    directory.** `--trace` silently forces `max_cases: 1` in ExUnit, overriding
@@ -208,12 +223,13 @@ focused test runner, test-tree paths and CI gate at each step.
    The structural gate shares Website / guards' prose/table rules and runs
    `check-components.py --require-elixir`. Split paragraphs over 360 characters
    and keep at most one sentence above tables; assign every new source file
-   a component owner. Install its toolchain once with
+   a component owner and list every new foreign `State` writer in
+   `src/test/support/state_writers_allowlist.exs`. Install its toolchain once with
    `npm ci --prefix scripts/components --ignore-scripts`; use a clean worktree.
 
    Do not loop on unrelated suite flakes. Use the target repository's required
    CI gate; do not assume it has `make ci`. For Aiur's Elixir core, do not gate
-   PR-opening on a clean full-suite `mix test` run: CI runs the full `make ci`.
+   PR-opening on a clean full-suite `mix test` run: the merge queue runs full CI.
 
    **For an Elixir failure that looks impossible, rule out a stale test
    build.** `mix compile --force` rebuilds `dev`, **not** `test`, so a stale
@@ -332,7 +348,8 @@ focused test runner, test-tree paths and CI gate at each step.
    and tell the Executor what you deleted and why.
 8. **Open the PR as a draft** with that branch as `--head` and the authoritative
    integration branch as `--base`: `gh pr create --draft --head "$branch"
-   --base "$AIUR_BASE_BRANCH" ...` (not ready for review yet). If a PR already
+   --base "$AIUR_BASE_BRANCH" ...` (not ready for review yet), unless your prompt
+   has an **Optimistic start** block: follow [the canonical PR rules](stub-then-fetch.md#optimistic-start-started-on-an-unmerged-blocker). If a PR already
    exists, read its `baseRefName` before CI handoff. Leave a matching base
    unchanged; if it differs, PATCH only the PR's `base` through GitHub's pull
    request REST endpoint, then re-fetch and verify `baseRefName`. Stop with the
@@ -361,6 +378,14 @@ focused test runner, test-tree paths and CI gate at each step.
     `git -C "$workspace" merge-tree --write-tree "$head_sha" "$base_sha"`.
     No shared changed paths and no conflicts permits handoff despite staleness.
     A fetch/probe error or incomplete path list does not permit handoff.
+
+    **An approved PR is exempt from integration** (`reviewDecision` is
+    `APPROVED`): never merge or rebase the base into it unless GitHub reports
+    `mergeable: CONFLICTING`, and say why in a PR comment when it does. The
+    merge queue tests the merge; a refresh push only cancels in-flight CI and
+    risks the approval, and it cannot fix a red or cancelled check. The agent
+    `git` guard refuses a push to a PR in the merge queue unless it is
+    conflicting or has changes requested.
 
     If paths overlap or the merge conflicts, allow up to 3 integrations per
     handoff without asking, recording the pre-merge head and rescue ref first.
@@ -430,10 +455,7 @@ when ready.
 
 ## Manual CLI verification before opening a PR
 
-Before opening the draft PR, run the CLI locally and manually exercise all new
-functionality end-to-end. If the CLI fails to run, debug and fix the issues — do
-not skip verification or give up. Only open the draft PR once the requested
-functionality is confirmed working in the CLI.
+Run the CLI and exercise new functionality before the draft PR when the workspace can do so. For workspace-inaccessible hands-on checks, do not raise a decision or pause: finish automated work and add `Post-deploy check: <exact steps>` under `## Local tests`; the Executor runs it after deployment. Name required physical equipment.
 
 Manual CLI verification is in addition to the scoped local pre-PR verification
 gate above, not a replacement for it. A PR is not ready for human review until
@@ -443,8 +465,8 @@ use compile, format and affected tests with the four-case cap, plus
 `python3 scripts/check-bare-assert-receive.py` and
 `mise exec -- python3 scripts/check-pr-structure.py --base "$base"` from the repository root
 (resolve `base` as above and check the committed head).
-Use the target repository's full CI gate, which is
-`make ci` for Aiur's Elixir core; do not loop locally on unrelated suite flakes.
+Use the target repository's required CI gate; Aiur runs fast checks on PRs and
+full CI in the merge queue. Do not loop locally on unrelated suite flakes.
 
 ## Closing keyword in the PR description
 

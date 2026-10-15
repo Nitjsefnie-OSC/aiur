@@ -294,32 +294,7 @@ defmodule Aiur.GitHub.Issues do
   # as having acted on it, and marking it handled here would suppress the wake
   # that the resource's genuine change is supposed to cause.
   defp put_issue_resource(key, body, etag, source) do
-    version = issue_version(body)
-
-    if regression?(key, version) do
-      # A webhook delivery carrying a newer object beat this read. Writing anyway
-      # would not merely hold an older body: `put_resource/3` stamps
-      # `fetched_at_ms` with now, so the older body would be described as freshly
-      # fetched and a reader asking for something no older than a window would be
-      # handed state from before the change.
-      :ok
-    else
-      ResourceStore.put_resource(key, body, source: source, version: version, etag: etag)
-    end
-  end
-
-  # Refuses a strictly older version, and writes on equal or missing ones.
-  #
-  # Both markers are GitHub's own ISO-8601 timestamps, which sort lexically.
-  # Equal versions still write because a body can legitimately differ under an
-  # unchanged marker, and a missing marker on either side is not evidence that
-  # anything went backwards. Same rule and same reasoning as
-  # `Aiur.Events.GithubWebhook.Deposit.regression?/2` — the two must not drift.
-  defp regression?(key, version) do
-    case ResourceStore.fetch(key) do
-      {:ok, %{version: held}} when is_binary(held) and is_binary(version) -> version < held
-      _other -> false
-    end
+    ResourceStore.deposit_unless_older(key, body, source: source, version: issue_version(body), etag: etag)
   end
 
   # What a `304` is allowed to write back, and — more importantly — what it is not.
@@ -394,7 +369,20 @@ defmodule Aiur.GitHub.Issues do
     end
   end
 
+  @doc "Conditionally lists and records every open issue without selecting or authorizing dispatch candidates."
+  @spec refresh_open_issues(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def refresh_open_issues(cache, opts \\ []) when is_map(cache) do
+    with {:ok, _issues, _ctx, updated_cache} <- list_open_issues_conditional(cache, [caller: "build_queue_open_issue_list"] ++ opts), do: {:ok, updated_cache}
+  end
+
   defp do_fetch_candidate_issues_conditional(cache, opts) do
+    with {:ok, issues, ctx, updated_cache} <- list_open_issues_conditional(cache, opts) do
+      active_states = Config.active_states() |> Enum.map(&StatePolicy.normalize_state/1) |> MapSet.new()
+      {:ok, filter_and_authorize_candidates_with_degenerate(issues, active_states, ctx.request_fun, ctx.token, ctx.owner, ctx.repo, ctx.prefix), updated_cache}
+    end
+  end
+
+  defp list_open_issues_conditional(cache, opts) do
     listed_from = DateTime.utc_now()
 
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
@@ -405,31 +393,14 @@ defmodule Aiur.GitHub.Issues do
         owner: owner,
         repo: repo,
         prefix: GitHub.Config.label_prefix(),
-        caller: "open_issue_list_conditional"
+        caller: Keyword.get(opts, :caller, "open_issue_list_conditional")
       }
 
       url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/issues?state=open&per_page=100"
-      active_states = Config.active_states() |> Enum.map(&StatePolicy.normalize_state/1) |> MapSet.new()
 
-      case fetch_label_issue_pages_conditional(ctx, url, cache) do
-        {:ok, issues, updated_cache} ->
-          record_open_issues(ctx.owner, ctx.repo, issues, listed_from)
-
-          candidates =
-            filter_and_authorize_candidates_with_degenerate(
-              issues,
-              active_states,
-              ctx.request_fun,
-              ctx.token,
-              ctx.owner,
-              ctx.repo,
-              ctx.prefix
-            )
-
-          {:ok, candidates, updated_cache}
-
-        {:error, _reason} = error ->
-          error
+      with {:ok, issues, updated_cache} <- fetch_label_issue_pages_conditional(ctx, url, cache) do
+        record_open_issues(owner, repo, issues, listed_from)
+        {:ok, issues, ctx, updated_cache}
       end
     end
   end
@@ -1057,7 +1028,7 @@ defmodule Aiur.GitHub.Issues do
   end
 
   def hydrate_blocked_by(%Issue{id: id} = issue, opts) when is_binary(id) and id != "" do
-    case CycleFetchCache.fetch({:blocked_by, id}, fn -> fetch_blocked_by(id, opts) end) do
+    case CycleFetchCache.fetch({:blocked_by, id, opts[:record_max_age_ms]}, fn -> fetch_blocked_by(id, opts) end) do
       {:ok, blockers} when is_list(blockers) ->
         {:ok, %{issue | blocked_by: normalize_blockers(blockers, GitHub.Config.label_prefix())}}
 
@@ -1080,15 +1051,13 @@ defmodule Aiur.GitHub.Issues do
 
   # Reduces GitHub's native dependency issue objects to the same `blocked_by`
   # shape Linear's normalize_issue produces (`%{id, identifier, state, url}`)
-  # so the dispatch gate (`DispatchPolicy.todo_issue_blocked_by_non_terminal?`)
+  # so the dispatch gate (`DispatchPolicy.todo_issue_held_by_dependency?`)
   # and the blocker event machinery consume them unchanged. Blocker state comes
   # from the same source as the issue itself: `agent:*` labels, with a raw
   # `state: "closed"` resolving to the terminal "Closed". A blocker with no
   # derivable state keeps `state: nil`, which the gate treats as non-terminal
   # (blocking) — fail-closed on incomplete payloads.
-  defp normalize_blockers(blockers, prefix) when is_list(blockers) do
-    Enum.map(blockers, &normalize_blocker(&1, prefix))
-  end
+  defp normalize_blockers(blockers, prefix) when is_list(blockers), do: Enum.map(blockers, &normalize_blocker(&1, prefix))
 
   defp normalize_blocker(blocker, prefix) when is_map(blocker) do
     number = Map.get(blocker, "number")
@@ -1099,7 +1068,8 @@ defmodule Aiur.GitHub.Issues do
       id: to_string(number),
       identifier: to_string(number),
       state: extract_state(blocker, label_names, prefix),
-      url: Map.get(blocker, "html_url")
+      url: Map.get(blocker, "html_url"),
+      observed_at_ms: System.system_time(:millisecond)
     }
   end
 

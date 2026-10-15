@@ -3,9 +3,11 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   require Logger
   alias Aiur.Accounts
   alias Aiur.Accounts.UsageReadings
-  alias Aiur.{AgentPubSub, Alerts, CodingAgent, Config, Issue, ModelDiscovery, ProcessTree, Tracker}
-  alias Aiur.AgentRunner.{CodexUpdateRelay, MessageHandler, ModelLabelRefresh, SessionResume, TurnBudget, TurnLoop}
+  alias Aiur.{AgentPubSub, CodingAgent, Config, Issue, ModelDiscovery, ProcessTree, Signal, Tracker}
+  alias Aiur.AgentRunner.{CodexUpdateRelay, DispatchSelectionEvent, MessageHandler, ModelLabelRefresh, SessionResume, TurnBudget, TurnLoop}
+  alias Aiur.AgentRunner.SessionCleanup
   alias Aiur.Claude.{DisplayTailer, Telemetry}
+  alias Aiur.CodingAgent.HeadroomDispatch
   alias Aiur.LiveConversation.Source
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.Workspace.Ownership
@@ -14,8 +16,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   # headless wrapper's bash pid) is owned by this runner task. An
   # abort/shutdown brutally kills the task, skipping the `after
   # stop_session` cleanup, so report it to the orchestrator's running
-  # entry — the only place an abort path can still reach it. What gets
-  # reported is the backend's registry-declared `runtime_report`
+  # entry for abort cleanup. Report the registry-declared `runtime_report`
   # capability (`Aiur.CodingAgent.runtime_report/1`).
   defp report_repl_session(recipient, %Issue{id: issue_id}, session)
        when is_binary(issue_id) and is_pid(recipient) do
@@ -70,6 +71,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
       :repl_pane ->
         %{
           pane_id: Map.get(session, :pane_id),
+          tmux_socket: Map.get(session, :tmux_socket),
           os_pid: Map.get(session, :os_pid),
           session_url: Map.get(session, :session_url)
         }
@@ -444,8 +446,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
          session_context
        ) do
     report_session_execution(codex_update_recipient, issue, session)
-
-    # Persist the live session handle so the next aiur restart can resume it.
+    DispatchSelectionEvent.write(workspace, worker_host, issue)
     SessionResume.persist_session_handle(session, issue.identifier, worker_host)
     SessionResume.log_resume_outcome(issue, session, Keyword.get(session_context.session_opts, :resume_thread_id))
     report_repl_session(codex_update_recipient, issue, session)
@@ -460,6 +461,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
       |> maybe_put_display_authority(display_authority?)
 
     display_tailer = maybe_start_display_tailer(session, issue, session_context.rc?, opts)
+    Process.put(:handoff_display_tailer, display_tailer)
     opts = maybe_put_display_source_resolver(opts, display_tailer)
 
     # A resumed thread already carries the original task + full prior turn
@@ -550,27 +552,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   @spec stop_session_with_ownership(map(), Ownership.lease() | nil, (map() -> term())) :: term()
   def stop_session_with_ownership(session, ownership, stop_fun \\ &CodingAgent.stop_session/1)
       when is_map(session) and is_function(stop_fun, 1) do
-    try do
-      case stop_fun.(session) do
-        {:ok, :cleanup_proven} ->
-          _ = Ownership.mark_provider_cleanup_succeeded(ownership)
-          :ok
-
-        :ok ->
-          _ = Ownership.mark_provider_cleanup_unknown(ownership)
-          :ok
-
-        cleanup_failure ->
-          _ = Ownership.mark_provider_cleanup_unknown(ownership)
-          cleanup_failure
-      end
-    after
-      Telemetry.revoke(Map.get(session, :telemetry_launch))
-    end
-  catch
-    kind, reason ->
-      _ = Ownership.mark_provider_cleanup_unknown(ownership)
-      :erlang.raise(kind, reason, __STACKTRACE__)
+    SessionCleanup.stop(session, ownership, stop_fun)
   end
 
   defp record_session_start_failure(issue, session_context, reason) do
@@ -692,8 +674,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
 
     # Rejoin the prior agent thread across an aiur restart instead of cold-
     # starting a fresh conversation that re-discovers the work (issue #378).
-    # Only a resumable, local backend with a persisted handle qualifies; any
-    # miss degrades silently to a clean start.
+    # Only a resumable, local backend with a persisted handle qualifies; any miss degrades silently to a clean start.
     resume_thread_id = Keyword.get(opts, :resume_thread_id) || SessionResume.load_resume_thread_id(session_backend, worker_host, issue.identifier)
 
     session_opts =
@@ -707,7 +688,8 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
         attempt_id: Keyword.get(opts, :telemetry_attempt_id)
       ]
       |> maybe_put_rc_name(rc?, issue)
-      |> maybe_put_account(session_backend, config_for_accounts(opts), opts)
+      |> maybe_put_account(session_backend, config_for_accounts(opts), HeadroomDispatch.account_opts(issue, session_backend, opts))
+      |> HeadroomDispatch.put_selection_reason(issue)
       |> SessionResume.maybe_put_resume_thread_id(resume_thread_id)
 
     {session_backend, rc?, session_opts}
@@ -719,8 +701,8 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
     account_backend = if backend == "claude-repl", do: "claude", else: backend
 
     case Keyword.get(opts, :account_name) do
-      name when is_binary(name) and account_backend == "claude" ->
-        Keyword.merge(session_opts, account_name: name, env: Accounts.profile_env("claude", name))
+      name when is_binary(name) and account_backend in ["claude", "codex"] ->
+        Keyword.merge(session_opts, account_name: name, env: Accounts.profile_env(account_backend, name))
 
       _ ->
         case Accounts.capability(account_backend) do
@@ -1002,9 +984,22 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
     rc? and CodingAgent.rc_display_tail?(backend) and is_binary(identifier)
   end
 
-  defp stop_display_tailer(nil), do: :ok
+  @doc false
+  @spec start_adopted_display(map(), Issue.t(), keyword()) :: {pid() | nil, keyword()}
+  def start_adopted_display(session, issue, opts) do
+    rc? = Map.get(session, :remote_control, false)
+    opts = opts |> put_live_conversation_session_id(session) |> maybe_put_display_authority(should_display_tail?(session_backend!(session), rc?, issue.identifier))
+    tailer = maybe_start_display_tailer(session, issue, rc?, opts)
+    if tailer, do: DisplayTailer.restore_handoff(tailer, Keyword.get(opts, :handoff_display_state))
+    Process.put(:handoff_display_tailer, tailer)
+    {tailer, maybe_put_display_source_resolver(opts, tailer)}
+  end
 
-  defp stop_display_tailer(pid) do
+  @doc false
+  @spec stop_display_tailer(pid() | nil) :: :ok
+  def stop_display_tailer(nil), do: :ok
+
+  def stop_display_tailer(pid) do
     if Process.alive?(pid), do: GenServer.stop(pid, :normal, 1_000)
     :ok
   catch
@@ -1210,7 +1205,7 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
       reason = unsupported_model_reason(backend, model)
       Logger.warning("Unknown model #{inspect(model)} for backend #{backend}: #{reason}")
 
-      Alerts.emit_system("ticket.#{issue.identifier}.agent.attention.unsupported_model",
+      Signal.alert("ticket.#{issue.identifier}.agent.attention.unsupported_model",
         issue: issue,
         workspace: workspace,
         worker_host: worker_host,

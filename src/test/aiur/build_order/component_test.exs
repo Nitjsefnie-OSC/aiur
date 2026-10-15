@@ -12,6 +12,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.Webhooks.ModeTable,
     Aiur.Capabilities.Table,
     {Aiur.PubSub.Boot, [name: Aiur.PubSub]},
+    Aiur.AgentPubSub.FleetRefresh,
     {Registry, [keys: :unique, name: Aiur.IssueLog.Registry]},
     {Registry, [keys: :unique, name: Aiur.Opencode.PaneRegistry]},
     {Registry, [keys: :duplicate, name: Aiur.Opencode.SessionWriterRegistry.Registry]},
@@ -42,8 +43,9 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.ElevenLabs.Quota,
     {Aiur.BuildOrder.TicketDetailCoordinator, [runtime_config?: true]},
     {Aiur.BuildOrder.GraphProjection, [runtime_config?: true]},
-    Aiur.Events.IdGenerator,
+    {Aiur.Events.IdGenerator, [floor_files: &Aiur.IdFloorSources.floor_files/0, legacy_counter_files: &Aiur.IdFloorSources.legacy_counter_files/0]},
     {Aiur.Events.Exchange, [name: Aiur.Events.Exchange]},
+    Aiur.PostDeployChecklist,
     Aiur.Events.BranchRefStore,
     Aiur.GitHub.OpenIssueSnapshot,
     Aiur.GitHub.ResourceStore,
@@ -64,13 +66,17 @@ defmodule Aiur.BuildOrder.ComponentTest do
     {Aiur.DecisionMetrics.Writer, [path: @metrics_path]},
     Aiur.DecisionMetrics,
     Aiur.RecentMergeStore,
+    {Aiur.StartTrigger.ProgressStore,
+     [seed: &Aiur.CIApprovalStore.load/0, reader: &Aiur.GitHub.BlockerProgress.approval/2, identity: &Aiur.GitHub.BlockerProgress.identity/1, repo: &Aiur.GitHub.Config.repo/0]},
     Aiur.Webhooks.DeliveryLog,
     Aiur.GitHub.CodeOwners,
     {Registry, [keys: :unique, name: Aiur.Events.SubscriptionStoreRegistry]},
     Aiur.Events.SubscriptionStoreSupervisor,
     Aiur.DecisionAttention,
     Aiur.OperatorWaitLog,
+    Aiur.Orchestrator.OptimisticLedger,
     Aiur.Orchestrator.TrackedSet,
+    Aiur.Orchestrator.SnapshotCache,
     Aiur.Orchestrator.SnapshotStore,
     Aiur.Orchestrator.SnapshotPublisher,
     Aiur.CurrentRunMembership.Store,
@@ -105,7 +111,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.ExecutorListener,
     AiurWeb.ControlCenterCache,
     AiurWeb.FinancialData.Supervisor,
-    Aiur.HttpServer,
+    {Aiur.HttpServer, dashboard_pages?: true},
     Aiur.Opencode.TokenRegistry,
     Aiur.Opencode.ActiveTurns,
     Aiur.Opencode.PaneSupervisor,
@@ -122,7 +128,15 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.AgentList.App,
     Aiur.AgentList.Input,
     Aiur.LauncherWatchdog,
-    Aiur.BackgroundCpu
+    Aiur.BackgroundCpu,
+    Aiur.Experiments.Store,
+    Aiur.Experiments.Capture,
+    Aiur.Experiments.Checkpointer,
+    {Aiur.Experiments.Auto, [recording?: true]},
+    Aiur.BuildOrder.Features.LabelProjection,
+    Aiur.LandingWatch,
+    Aiur.Experiments.Auto.Notifier,
+    Aiur.Experiments.Auto.WindowManager
   ]
 
   setup do
@@ -145,7 +159,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
 
     without_dashboard =
       @foreground
-      |> Enum.reject(&(&1 in [AiurWeb.ControlCenterCache, AiurWeb.FinancialData.Supervisor, Aiur.HttpServer]))
+      |> Enum.reject(&(&1 in [AiurWeb.ControlCenterCache, AiurWeb.FinancialData.Supervisor, {Aiur.HttpServer, dashboard_pages?: true}]))
       |> Enum.map(fn
         {Aiur.OpenTicketSource, _} -> {Aiur.OpenTicketSource, poll_on_start: false}
         spec -> spec
@@ -162,7 +176,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
   end
 
   test "application composition names only the declared build-order facade" do
-    source = File.read!(Path.expand("../../../lib/aiur.ex", __DIR__))
+    source = File.read!(Path.expand("../../../lib/aiur/application/children.ex", __DIR__))
     assert Regex.scan(~r/Aiur\.BuildOrder\.[A-Za-z.]+/, source) == [["Aiur.BuildOrder.Component"]]
     assert source =~ "Aiur.TicketContext.child_specs(:early, opts)"
     assert source =~ "Aiur.TicketContext.child_specs(:late, opts)"

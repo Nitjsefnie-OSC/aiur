@@ -8,7 +8,19 @@ defmodule Aiur.Tracker do
   @type open_issue_label_map :: %{String.t() => %{labels: [String.t()], updated_at: DateTime.t() | nil}}
   @type open_issue_labels_result :: {:ok, open_issue_label_map(), integer()} | :none | {:error, :unsupported}
   @type ticket_pull_request_result ::
-          {:ok, nil | %{required(:state) => :open | :closed, required(:merged?) => boolean(), optional(:number) => pos_integer(), optional(:version) => String.t() | nil}} | {:error, term()}
+          {:ok,
+           nil
+           | %{
+               required(:state) => :open | :closed,
+               required(:merged?) => boolean(),
+               optional(:number) => pos_integer(),
+               optional(:version) => String.t() | nil,
+               optional(:head_ref) => String.t() | nil,
+               optional(:head_sha) => String.t() | nil,
+               optional(:base_ref) => String.t() | nil,
+               optional(:merge_commit_sha) => String.t() | nil
+             }}
+          | {:error, term()}
   @type issue_closure_result :: {:ok, %{open?: boolean(), state_reason: String.t() | nil}} | {:error, term()}
 
   @doc "Reads native prerequisite IDs, failing closed on unsupported trackers."
@@ -37,6 +49,13 @@ defmodule Aiur.Tracker do
     else
       {:error, :unsupported}
     end
+  end
+
+  @doc "Lists open issues remotely to renew `open_issue_labels/1`; it selects no dispatch candidates."
+  @spec refresh_open_issue_labels() :: :ok | {:error, term()}
+  def refresh_open_issue_labels do
+    tracker = adapter()
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :refresh_open_issue_labels, 0), do: tracker.refresh_open_issue_labels(), else: {:error, :unsupported}
   end
 
   @doc "Reads a ticket's delivered PR evidence without a remote request; unsupported adapters return nil."

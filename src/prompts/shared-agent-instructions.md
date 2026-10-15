@@ -1,3 +1,7 @@
+## Manual-only acceptance checks
+
+When an acceptance step requires a hands-on run your issue workspace cannot perform (for example, a real CLI/TUI smoke or a physical Stream Deck dictation), do not raise an operator decision and do not pause. Finish the automated work, mark the PR ready, and add each exact step to its PR body under `## Local tests` as `Post-deploy check: <exact steps>`. Name any required operator or hardware, such as `Post-deploy check: dictate “start run” and confirm the command appears in the dashboard (operator: physical Stream Deck).` Do not claim the check ran in the workspace.
+
 ## Shared Agent Instructions
 
 You're an Aiur agent working a ticket. The prompt below carries your ticket +
@@ -55,14 +59,19 @@ checks on the current head SHA.
 
 ### Local pre-handoff checks
 
+In the Aiur repository, before opening or updating a PR, run `aiur pre-pr` (or
+`aiurdev pre-pr`) from the branch checkout. Paste its complete result block
+into the PR body; it records the merged `origin/main` SHA and each gate result.
+The command never pushes and refuses a dirty checkout.
+
 For changes in the Aiur repository, before marking the PR ready or handing
 off to CI/review, run all required checks and fix any failures:
 
 - From `src/`: `mise exec -- mix lint` (specs check and Credo strict).
 - From the repository root: `python3 scripts/check-bare-assert-receive.py`.
-- After committing and after every base integration, run the structural gate before marking the PR ready:
+- After committing, before every push and after every base integration, run the structural gate — above all after creating, moving or splitting modules:
   `base="$(git -C "$workspace" rev-parse "origin/$AIUR_BASE_BRANCH")"`, then run
-  `mise exec -- python3 scripts/check-pr-structure.py --base "$base"` (size, docs prose/table, components).
+  `mise exec -- python3 scripts/check-pr-structure.py --base "$base"` (size, docs prose/table, components, bare receives, format, state-writer allowlist).
 
 When a change must touch an oversized text file (over 500 lines), keep that
 file the same length or shorter. Put new code in a new small module and new
@@ -80,6 +89,37 @@ A flaky test blocks CI, not the ticket's implementation. State in the PR
 that the only failure is the known flake, link the flake ticket and CI run,
 then hand back to the Executor without declaring a dependency or pausing
 for the flake fix. Keep the full required-check gate for human review.
+
+### Rework ends in a handoff, even on red CI
+
+When every blocking review finding is addressed and pushed, move the ticket to
+`agent:human-review` — do not stay in `agent:rework` because checks are red.
+First post one PR comment naming the head SHA, the findings addressed, and any
+failing check you believe is inherited from the base, with evidence (for
+example the same check failing on the base head). Inherited red CI is the
+reviewer's call. Fix a failure your own change caused before handing off.
+
+### A queued PR is left alone
+
+A pull request in GitHub's merge queue rejects pushes, and being behind
+`main` there is normal: the queue tests the merge before it lands.
+Never dequeue a queued PR, and never ask the Executor to, in order to update
+its branch. Do not raise a decision or attention about it either. If your
+ticket is not already waiting, move it to `agent:human-review` and end the
+turn; the hand-off gate refuses a PR that is approved at its current head and
+queued only for a real merge conflict.
+
+### Never refresh an approved PR
+
+Once a PR is approved, do not merge or rebase `$AIUR_BASE_BRANCH` into its
+branch unless GitHub reports it `CONFLICTING`
+(`gh pr view --json mergeable,reviewDecision`). The merge queue tests the
+merge, so branch freshness buys nothing, while every push cancels the
+in-flight CI run and can dismiss the approval. A red, cancelled, or missing
+check is never a reason to merge the base: a base merge can restart CI but
+cannot fix it. When the PR is `CONFLICTING`, integrate once and say why in a PR
+comment. The agent `git` guard refuses a push to a PR that is in the merge
+queue unless it is conflicting or has changes requested.
 
 ### Moving the ticket's state (`aiur_set_ticket_state`)
 
@@ -117,7 +157,18 @@ work ordering, so they're worth stating up front:
   needs blocker code. The skill's `stub-then-fetch.md` has the exact provisional
   and integrated `unblocked` emit sequence — follow it rather than guessing the
   event timing from memory.
-- **Resume on explicit unblocked; inspect branch pushes.** A declared blocker's
+- **Optimistic start.** If your prompt has an Optimistic start block, every
+  blocker push is an integration signal: integrate at the next safe checkpoint
+  (WIP committed, no test run in flight). Integrate only direct blockers listed
+  in that block; never merge a grand-blocker's push or a newer integration
+  branch into your still-stacked branch. Updates cascade level by level through
+  direct blocker pushes. Rebase on rewritten history and push
+  with `--force-with-lease`. Keep the PR draft and stacked as the block directs;
+  never mark ready while any blocker PR is unmerged. Load `aiur-agent`
+  [Optimistic start](.claude/skills/aiur-agent/stub-then-fetch.md#optimistic-start-started-on-an-unmerged-blocker)
+  for the canonical loop and park/merge handling.
+- **Resume on explicit unblocked; inspect branch pushes.** For paused
+  dependents, a declared blocker's
   `ticket.N.agent.unblocked` signal, delivered at the mid-turn checkpoint, says
   the dependency is ready to consume. Then load `aiur-agent` and use the latest
   `ticket.N.branch.push` payload only to fetch the actual validated ref (never a
@@ -145,6 +196,8 @@ work ordering, so they're worth stating up front:
 The bare `progress` / `progress.checkin` emits that drive the Executor’s
 agent-list bar are a separate, Executor-facing protocol — see "Progress emits"
 and "Executor check-ins" below, not the skill.
+
+On `ticket.<B>.pr.merged`, a live dependent must follow the aiur-agent dev-loop’s “After the blocker merges: restack” recipe before integrating the base. The daemon restacks only idle dependents.
 
 ### Progress emits — 1-of-10 estimate at phase boundaries
 
@@ -296,3 +349,5 @@ blocker or use focused non-manual tests. Do not retry by copying the repo to
 `/tmp`, cloning another checkout, changing wrapper tmux names, or otherwise
 constructing an alternate harness. Executor-root manual test runs are allowed
 only outside agent turns.
+
+A resumed dependent with `refs/aiur/restack/pending/<branch>` or `refs/aiur/restack/conflict/<branch>` must inspect that receipt and follow the restack recipe before ordinary base integration. The startup hook preserves local divergence and conflict receipts for you to reconcile.

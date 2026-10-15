@@ -13,6 +13,35 @@ defmodule Aiur.BuildOrder.History do
   def child_spec(opts), do: %{id: Keyword.get(opts, :name, __MODULE__), start: {__MODULE__, :start_link, [opts]}, shutdown: 10_000}
   @spec apply([Row.event()], keyword()) :: {:ok, map()} | {:error, term()}
   def apply(events, opts \\ []), do: call(opts, {:apply, events, Keyword.get(opts, :checkpoint)})
+  @spec note_start(String.t() | nil, :label | :dispatch, DateTime.t()) :: :ok
+  def note_start(identifier, source, %DateTime{} = at) when is_binary(identifier) and source in [:label, :dispatch] do
+    case Integer.parse(identifier) do
+      {number, ""} when number > 0 ->
+        field = if source == :label, do: :in_progress_at, else: :dispatched_at
+        GenServer.cast(__MODULE__, {:note_start, %{number: number, observed_at: at, source: :write, fields: %{field => at}}})
+
+      _invalid ->
+        :ok
+    end
+  end
+
+  # An identifier-less issue (or a non-numeric one) has no history row to stamp.
+  def note_start(_identifier, _source, _at), do: :ok
+
+  @impl true
+  def handle_cast({:note_start, event}, state) do
+    case writable(state) do
+      :ok ->
+        rows = merge_event(event, state.rows)
+        changed = Enum.filter(Map.values(rows), &(Map.get(state.rows, &1.number) != &1))
+        {:noreply, commit(state, changed, nil)}
+
+      {:error, reason} ->
+        Logger.warning("aiur_build_history start_refused number=#{event.number} reason=#{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
   @spec flush(keyword()) :: :ok | {:error, term()}
   def flush(opts \\ []), do: call(opts, :flush)
   @spec mark_complete(keyword()) :: :ok | {:error, term()}
@@ -24,6 +53,15 @@ defmodule Aiur.BuildOrder.History do
   @spec rows([pos_integer()], keyword()) :: {:ok, [Row.t()], ProviderHealth.t()} | {:error, ProviderHealth.t()}
   def rows(numbers, opts \\ []) do
     read(opts, &read_rows(&1, numbers))
+    |> read_result()
+  end
+
+  @spec numbers(keyword()) :: {:ok, [pos_integer()], ProviderHealth.t()} | {:error, ProviderHealth.t()}
+  def numbers(opts \\ []) do
+    read(opts, fn table ->
+      health = :ets.lookup_element(table, :__health__, 2)
+      if health.state == :healthy, do: {:ok, :ets.select(table, [{{:"$1", :_}, [{:is_integer, :"$1"}], [:"$1"]}]), health}, else: {:error, health}
+    end)
     |> read_result()
   end
 
@@ -115,7 +153,7 @@ defmodule Aiur.BuildOrder.History do
       rows = Enum.reduce(events, state.rows, &merge_event/2)
       changed = Enum.filter(Map.values(rows), &(Map.get(state.rows, &1.number) != &1))
       state = commit(state, changed, checkpoint)
-      {:reply, {:ok, %{generation: state.health.generation, changed: numbers(changed)}}, state}
+      {:reply, {:ok, %{generation: state.health.generation, changed: row_numbers(changed)}}, state}
     else
       {:error, _reason} = error -> {:reply, error, state}
     end
@@ -155,11 +193,11 @@ defmodule Aiur.BuildOrder.History do
     rows = Enum.reduce(changed_rows, state.rows, &Map.put(&2, &1.number, &1))
     state = %{state | rows: rows, health: health, checkpoints: checkpoints, dirty?: state.dirty? or changed? or checkpoints != state.checkpoints}
     mirror(state, changed_rows)
-    if changed?, do: broadcast(state, numbers(changed_rows))
+    if changed?, do: broadcast(state, row_numbers(changed_rows))
     schedule(state)
   end
 
-  defp numbers(rows), do: Enum.sort(Enum.map(rows, & &1.number))
+  defp row_numbers(rows), do: Enum.sort(Enum.map(rows, & &1.number))
   defp newest(rows, initial), do: Enum.reduce(rows, initial, fn row, acc -> if is_nil(acc) or DateTime.compare(row.observed_at, acc) == :gt, do: row.observed_at, else: acc end)
   defp mirror(state, rows), do: :ets.insert(state.table, [{:__health__, state.health}, {:__checkpoints__, state.checkpoints} | Enum.map(rows, &{&1.number, &1})])
 

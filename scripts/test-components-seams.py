@@ -11,9 +11,19 @@ import tempfile
 REPO = Path(__file__).resolve().parent.parent
 CHECKER = REPO / 'scripts/check-components.py'
 SCHEMA = (REPO / 'components.schema.json').read_text()
-MANIFEST = json.loads((REPO / 'components.json').read_text())
+from components.manifest import read_manifest
+MANIFEST = read_manifest(REPO)
 SELECTED = set(sys.argv[1:])
 RAN = set()
+
+
+
+def lifecycle_writer_seam(manifest):
+    """Find the build-queue lifecycle-writer seam by identity, not list position."""
+    matches = [s for s in manifest['seams'] if s['from'] == 'build-queue'
+               and s['to_module'] == 'Aiur.Orchestrator.TicketTransition' and s.get('allow_forbidden')]
+    assert len(matches) == 1, f'expected one build-queue lifecycle-writer seam, found {len(matches)}'
+    return matches[0]
 
 
 def check(name, source, expected=0, message='', source_component='orchestration',
@@ -25,6 +35,8 @@ def check(name, source, expected=0, message='', source_component='orchestration'
     components = {c['id']: c for c in manifest['components']}
     for component in components.values():
         component['paths'] = []
+        component['status'] = 'core'
+    manifest['features'] = []
     components[source_component]['paths'] = [path]
     components['build-queue']['paths'].append('src/lib/providers/queue.ex')
     components['build-orders']['paths'].append('src/lib/providers/order.ex')
@@ -63,7 +75,7 @@ check('lifecycle_exception_child_module_fails', 'Aiur.Orchestrator.TicketTransit
 check('ordinary_seam_cannot_override_forbid', 'Aiur.Orchestrator.TicketTransition.write_state()', 1,
       'R-forbid build-queue -> Aiur.Orchestrator.TicketTransition:', source_component='build-queue',
       path='src/lib/aiur/build_queue/write_protocol.ex',
-      change=lambda m: m['seams'][-1].pop('allow_forbidden'))
+      change=lambda m: lifecycle_writer_seam(m).pop('allow_forbidden'))
 check('hints_seam_passes', 'Aiur.BuildQueue.Hints.rank("1")', message='R-optional: 0')
 check('claim_probe_behaviour_seam', '@behaviour Aiur.BuildQueue.ClaimProbe', message='R-optional: 0',
       path='src/lib/aiur/orchestrator/other.ex')
@@ -114,5 +126,19 @@ check('unsafe_seam_path_rejected', 'nil', 2, 'expected repository-relative glob'
       change=lambda m: m['seams'][2].update(only_paths=['../escape.ex']))
 check('unknown_port_component_rejected', 'nil', 2, 'unknown component absent',
       change=lambda m: m['ports'][0].update({'from': 'absent'}))
+# Regression guard: the seam lookup must not depend on where the seam sits in the list.
+def _reorder_guard():
+    manifest = copy.deepcopy(MANIFEST)
+    expected = lifecycle_writer_seam(manifest)
+    manifest['seams'].reverse()
+    assert lifecycle_writer_seam(manifest) == expected
+    manifest['seams'].append({'from': 'orchestration', 'to_module': 'Aiur.Fixture.Tail', 'kind': 'reference', 'reason': 'x'})
+    assert lifecycle_writer_seam(manifest) == expected
+
+
+if not SELECTED or 'seam_lookup_is_order_independent' in SELECTED:
+    RAN.add('seam_lookup_is_order_independent')
+    _reorder_guard()
+    print('PASS: seam_lookup_is_order_independent')
 assert not SELECTED - RAN, f'unknown/unexecuted cases: {SELECTED - RAN}'
 print('component seam guard: all cases passed')

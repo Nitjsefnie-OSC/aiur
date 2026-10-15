@@ -41,7 +41,18 @@ defmodule Aiur.BuildQueue.Planner do
     opts = Keyword.merge(input.opts, now_ms: input.now_ms, max_age_ms: Keyword.fetch!(input.opts, :observation_max_age_ms))
     open = for item <- input.items, match?(%Observation{open?: true}, input.observations[item.issue_id]), member?(input.observations[item.issue_id], opts), do: item.issue_id
 
-    %{input: input, opts: opts, cycles: cycles, edges: Enum.group_by(input.edges, & &1.dependent), queues: Map.new(input.queues, &{&1.id, &1}), downstream: Ordering.downstream_open(input.edges, open)}
+    queues = Map.new(input.queues, &{&1.id, &1})
+    triggers = Map.new(input.items, &{&1.issue_id, queues[&1.queue_id].start_trigger || Keyword.get(opts, :start_trigger, :pr_merged)})
+
+    %{
+      triggers: triggers,
+      input: input,
+      opts: opts,
+      cycles: cycles,
+      edges: Enum.group_by(input.edges, & &1.dependent),
+      queues: queues,
+      downstream: Ordering.downstream_open(input.edges, open)
+    }
   end
 
   defp project(item, context) do
@@ -69,7 +80,7 @@ defmodule Aiur.BuildQueue.Planner do
   defp edge_verdict(_edge, %{cycles: {:unknown, cause}}), do: {:unknown, cause}
 
   defp edge_verdict(edge, context) do
-    opts = Keyword.put(context.opts, :cyclic, MapSet.member?(context.cycles, edge.prerequisite))
+    opts = context.opts |> Keyword.put(:cyclic, MapSet.member?(context.cycles, edge.prerequisite)) |> Keyword.put(:trigger, context.triggers[edge.dependent])
 
     case Map.get(Keyword.get(opts, :source_verdicts, %{}), edge.prerequisite) do
       {:unknown, [reason | _]} -> {:unknown, reason}
@@ -101,10 +112,10 @@ defmodule Aiur.BuildQueue.Planner do
         id in unknown
 
       {:dependency_changed_after_start, id} ->
-        Enum.any?(states, &(&1.issue_id == id and &1.state not in [:removed, :completed, :cancelled] and (&1.state == :unknown or &1.verdict != :ready)))
+        not optimistic?(id, context) and Enum.any?(states, &(&1.issue_id == id and &1.state not in [:removed, :completed, :cancelled] and (&1.state == :unknown or &1.verdict != :ready)))
 
       {:merged_issue_open, id} ->
-        not match?(%Observation{open?: false}, context.input.observations[id])
+        strict_prerequisite?(id, context) and not match?(%Observation{open?: false}, context.input.observations[id])
 
       _key ->
         false
@@ -127,10 +138,12 @@ defmodule Aiur.BuildQueue.Planner do
   defp attention_keys(%{state: :promoted_unauthorized, issue_id: id}, _context), do: [{:promoted_unauthorized, id}]
 
   defp attention_keys(%{state: :claimed, verdict: verdict, issue_id: id}, context) when verdict != :ready do
-    if Enum.any?(context.input.items, &(&1.issue_id == id and &1.promoted_at != nil)), do: [{:dependency_changed_after_start, id}], else: []
+    if not optimistic?(id, context) and Enum.any?(context.input.items, &(&1.issue_id == id and &1.promoted_at != nil)), do: [{:dependency_changed_after_start, id}], else: []
   end
 
   defp attention_keys(_state, _context), do: []
+
+  defp optimistic?(id, context), do: MapSet.member?(Keyword.get(context.opts, :optimistic_dependents, MapSet.new()), id)
 
   defp failed_keys(%{state: state}, _context) when state in [:removed, :completed, :cancelled], do: []
 
@@ -144,6 +157,7 @@ defmodule Aiur.BuildQueue.Planner do
 
   defp merged_keys(%{issue_id: id}, context) do
     for edge <- Map.get(context.edges, id, []),
+        context.triggers[id] == :issue_closed,
         observation = context.input.observations[edge.prerequisite],
         observation && observation.open? == true && is_integer(observation.merged_at_ms),
         observation.observed_at_ms <= context.input.now_ms,
@@ -151,6 +165,8 @@ defmodule Aiur.BuildQueue.Planner do
         context.input.now_ms - observation.merged_at_ms >= Keyword.get(context.opts, :merged_open_grace_ms, 600_000),
         do: {:merged_issue_open, edge.prerequisite}
   end
+
+  defp strict_prerequisite?(id, context), do: Enum.any?(context.input.edges, &(&1.prerequisite == id and context.triggers[&1.dependent] == :issue_closed))
 
   defp member?(nil, _opts), do: false
   defp member?(observation, opts), do: "#{Keyword.fetch!(opts, :label_prefix)}:queued" in observation.labels

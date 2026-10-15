@@ -10,9 +10,8 @@ defmodule Aiur.Events.SubscriptionStore do
 
   The runtime state directory (`Aiur.Config.Paths.runtime_state_dir/0`)
   survives a daemon restart; the per-launch log directory where these files
-  used to live does not (#2722). On the first boot after upgrading, this store
-  starts empty, as it previously did on every restart. Legacy subscriptions
-  are never imported; subscriptions saved from that boot onward are durable.
+  used to live does not (#2722). Legacy subscriptions are never imported;
+  subscriptions saved from that boot onward are durable.
 
   ## State shape (on disk)
 
@@ -28,19 +27,8 @@ defmodule Aiur.Events.SubscriptionStore do
         "open_attentions": ["needs-review"]
       }
 
-  ## Per-binding `subscription_created_at_event_id`
-
-  Each binding carries its own event-ID snapshot captured via
-  `Aiur.Events.IdGenerator.peek/0` at the moment the subscription is
-  created. The bootstrap-replay logic uses this floor when the
-  subscription is fresh (`last_seen_event_id` is `nil`) — replay
-  delivers historical events with `id > subscription_created_at_event_id`,
-  not events older than the binding.
-
-  **Why event-ID, not wall-clock**: a timestamp floor would re-deliver
-  events after NTP step-backwards or VM clock drift. An event-ID floor
-  uses the monotonic `IdGenerator` counter, so the floor is unambiguous
-  regardless of system time.
+  Each binding records a monotonic `subscription_created_at_event_id`: fresh
+  bootstrap replay delivers newer IDs, so clock drift cannot replay old events.
 
   ## Registry lookup
 
@@ -57,13 +45,13 @@ defmodule Aiur.Events.SubscriptionStore do
   `terminate/2` flushes pending writes and unsubscribes every binding
   from the Exchange so ETS rows don't accumulate.
   """
-
+  # aiur:event-bus-boundary-member
   use GenServer
 
   require Logger
 
   alias Aiur.Config.Paths
-  alias Aiur.Events.{AgentSubscriptionPolicy, DebugLog, Exchange, IdGenerator, UniversalSubscriptions}
+  alias Aiur.Events.{AgentSubscriptionPolicy, Exchange, HistoryStore, IdGenerator, Trace, UniversalSubscriptions}
   alias Aiur.JsonStore
 
   @state_leaf "subscriptions"
@@ -225,6 +213,17 @@ defmodule Aiur.Events.SubscriptionStore do
     end
   end
 
+  @doc "Bindings mirrored in Registry ETS; safe while the store waits on the Orchestrator."
+  @spec subscriptions(String.t()) :: [subscription()]
+  def subscriptions(identifier) when is_binary(identifier) do
+    case Registry.lookup(@registry, {identifier, :subscriptions}) do
+      [{pid, subscriptions}] -> if Process.alive?(pid), do: subscriptions, else: []
+      [] -> []
+    end
+  rescue
+    ArgumentError -> []
+  end
+
   @doc """
   Open-attention count for one ticket — shared by the CLI agent-list `❗N`
   badge and the OCC-5 fleet-state row. This is a direct Registry ETS lookup,
@@ -254,7 +253,7 @@ defmodule Aiur.Events.SubscriptionStore do
 
   @doc false
   # Provided so tests can stub the enqueue call without invoking the
-  # full orchestrator. Default behaviour: route to Aiur.Orchestrator.
+  # full orchestrator. Default behaviour: route to the configured delivery sink.
   @spec set_enqueue_fn((String.t(), map() -> :ok | {:error, term()}) | nil) :: :ok
   def set_enqueue_fn(fun) when is_function(fun, 2) or is_nil(fun) do
     :persistent_term.put({__MODULE__, :enqueue_fn}, fun)
@@ -267,6 +266,7 @@ defmodule Aiur.Events.SubscriptionStore do
 
     state = %{
       identifier: identifier,
+      delivery: Application.fetch_env!(:aiur, Aiur.Events.Delivery),
       path: path,
       subscribed_to: [],
       last_seen_event_id: nil,
@@ -275,14 +275,12 @@ defmodule Aiur.Events.SubscriptionStore do
       stalled_buffer: []
     }
 
-    # Synchronous load + re-register bindings during init so attach/1
-    # never returns to the caller before the Exchange bindings are
-    # in the routing table. Otherwise a publish between attach/1 and
-    # the binding registration silently drops the event.
+    # Register bindings before attach/1 returns so concurrent events are not lost.
     state = load_persisted(state)
     state = prune_unsafe_manual_subscriptions(state)
     state = register_existing_bindings(state)
     :ok = publish_open_attention_count(state)
+    {:ok, _} = Registry.register(@registry, {identifier, :subscriptions}, state.subscribed_to)
 
     {:ok, state}
   end
@@ -419,15 +417,15 @@ defmodule Aiur.Events.SubscriptionStore do
     topic = Map.get(event, :topic) || Map.get(event, "topic") || "(unknown)"
 
     new_state =
-      case enqueue_event(state.identifier, event) do
+      case enqueue_event(state, event) do
         :ok ->
-          Aiur.IssueLog.record_event(state.identifier, :consumed, event)
-          DebugLog.broadcast(:receive, topic, id: event_id, identifier: state.identifier, body: event)
+          HistoryStore.record(state.identifier, :consumed, event)
+          Trace.trace(:receive, topic, id: event_id, identifier: state.identifier, body: event)
           resolve_stall(state, event_id)
 
         {:error, reason} ->
           if attempt >= @max_stall_attempts or error_kind(reason) == :permanent do
-            emit_dead_letter_alert(state.identifier, event_id, topic, reason, attempt)
+            state.delivery.dead_letter(state.identifier, event_id, topic, reason, attempt)
             resolve_stall(state, event_id)
           else
             next_attempt = attempt + 1
@@ -444,16 +442,16 @@ defmodule Aiur.Events.SubscriptionStore do
   defp process_new_event(state, event, event_id, cursor) do
     topic = Map.get(event, :topic) || Map.get(event, "topic") || "(unknown)"
 
-    case enqueue_event(state.identifier, event) do
+    case enqueue_event(state, event) do
       :ok ->
-        Aiur.IssueLog.record_event(state.identifier, :consumed, event)
-        DebugLog.broadcast(:receive, topic, id: event_id, identifier: state.identifier, body: event)
+        HistoryStore.record(state.identifier, :consumed, event)
+        Trace.trace(:receive, topic, id: event_id, identifier: state.identifier, body: event)
         advance_cursor_inline(state, event_id)
 
       {:error, reason} ->
         case error_kind(reason) do
           :permanent ->
-            emit_dead_letter_alert(state.identifier, event_id, topic, reason, 1)
+            state.delivery.dead_letter(state.identifier, event_id, topic, reason, 1)
             advance_cursor_inline(state, event_id)
 
           :transient ->
@@ -493,22 +491,6 @@ defmodule Aiur.Events.SubscriptionStore do
   defp error_kind({:exit, _}), do: :transient
   defp error_kind({:raised, _}), do: :permanent
   defp error_kind(_), do: :transient
-
-  defp emit_dead_letter_alert(identifier, event_id, topic, reason, attempts) do
-    Logger.warning(
-      "SubscriptionStore(#{identifier}): giving up on event #{inspect(event_id)} " <>
-        "on topic #{topic} after #{attempts} attempt(s): #{inspect(reason)}; " <>
-        "advancing cursor past failed event"
-    )
-
-    _ =
-      Aiur.Alerts.emit_system(
-        "system.subscription_store.event_dead_lettered",
-        reason: "enqueue failed after #{attempts} attempt(s) for event #{inspect(event_id)} on #{topic}: #{inspect(reason)}",
-        needs_attention: true,
-        severity: "warning"
-      )
-  end
 
   defp advance_cursor_inline(state, event_id) when is_integer(event_id) do
     new_cursor = max(state.last_seen_event_id || 0, event_id)
@@ -571,10 +553,10 @@ defmodule Aiur.Events.SubscriptionStore do
     :ok
   end
 
-  defp enqueue_event(identifier, event) do
+  defp enqueue_event(state, event) do
     case :persistent_term.get({__MODULE__, :enqueue_fn}, nil) do
-      fun when is_function(fun, 2) -> call_enqueue_fn(fun, identifier, event)
-      _ -> call_orchestrator_enqueue(identifier, event)
+      fun when is_function(fun, 2) -> call_enqueue_fn(fun, state.identifier, event)
+      _ -> call_enqueue_fn(fn id, event -> state.delivery.enqueue(id, event, %{subscribed_to: state.subscribed_to}) end, state.identifier, event)
     end
   end
 
@@ -586,24 +568,6 @@ defmodule Aiur.Events.SubscriptionStore do
     end
   rescue
     e -> {:error, {:raised, e}}
-  end
-
-  defp call_orchestrator_enqueue(identifier, event) do
-    case Process.whereis(Aiur.Orchestrator) do
-      nil ->
-        {:error, :no_orchestrator}
-
-      pid ->
-        try do
-          case GenServer.call(pid, {:enqueue_event_digest, identifier, event}, 1_000) do
-            :ok -> :ok
-            {:error, _} = err -> err
-            other -> {:error, {:unexpected_return, other}}
-          end
-        catch
-          :exit, reason -> {:error, {:exit, reason}}
-        end
-    end
   end
 
   @impl true
@@ -715,6 +679,9 @@ defmodule Aiur.Events.SubscriptionStore do
       "last_seen_event_id" => state.last_seen_event_id,
       "open_attentions" => state.open_attentions
     })
+
+    _ = Registry.update_value(@registry, {state.identifier, :subscriptions}, fn _ -> state.subscribed_to end)
+    :ok
   rescue
     error ->
       Logger.warning("SubscriptionStore(#{state.identifier}) persist failed: " <> Exception.message(error))

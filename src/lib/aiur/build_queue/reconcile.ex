@@ -1,7 +1,9 @@
 defmodule Aiur.BuildQueue.Reconcile do
   @moduledoc false
 
-  alias Aiur.BuildQueue.{Hints, Model.Observation, NativeObserver, Observer, Planner, PRObserver, Settings, Withdrawal}
+  alias Aiur.BuildQueue.{ClaimProbe, Hints, Model.Observation, NativeObserver, Observer, Ordering, Planner, PRObserver, Sets, Settings, Withdrawal}
+
+  alias Aiur.StartTrigger.ProgressStore
 
   @type plan :: {[Planner.item_state()], [Planner.action()], map(), map(), MapSet.t(String.t()), map(), list()}
 
@@ -16,10 +18,10 @@ defmodule Aiur.BuildQueue.Reconcile do
     input = struct!(Planner.Input, Map.to_list(state.document) ++ [now_ms: state.clock.(), opts: []])
     promoted = Map.new(input.items, &{&1.issue_id, if(&1.promoted_at, do: DateTime.to_unix(&1.promoted_at, :millisecond))})
 
-    latest_markers =
+    latest_label_intents =
       input.intents
       |> Enum.reverse()
-      |> Enum.filter(&(&1.action in [:mark, :unmark]))
+      |> Enum.filter(&(&1.action in [:mark, :unmark, :withdraw]))
       |> Enum.uniq_by(& &1.issue_id)
       |> MapSet.new(& &1.id)
 
@@ -27,45 +29,86 @@ defmodule Aiur.BuildQueue.Reconcile do
       Enum.filter(input.intents, fn intent ->
         recent? = state.reconciles - Map.get(state.intent_reconciles, intent.id, 0) < 2
         outstanding? = promoted[intent.issue_id] != nil and intent.recorded_at_ms >= promoted[intent.issue_id]
-        recent? or MapSet.member?(latest_markers, intent.id) or (intent.action == :withdraw and (outstanding? or MapSet.member?(state.holds, intent.issue_id)))
+        recent? or MapSet.member?(latest_label_intents, intent.id) or (intent.action == :withdraw and (outstanding? or MapSet.member?(state.holds, intent.issue_id)))
       end)
 
     opts = [
+      start_trigger: Settings.start_trigger(state.settings),
       label_prefix: state.settings.tracker.github.label_prefix,
       observation_max_age_ms: Settings.observation_max_age_ms(state.settings),
       withdrawal_holds: state.holds,
+      optimistic_dependents: optimistic_dependents(state.claim_probe),
       source_verdicts: Map.get(state, :source_verdicts, %{}),
       merged_open_grace_ms: state.settings.build_queue.merged_open_grace_seconds * 1000
     ]
 
     {observations, cache} = closures(state, observations)
     input = %{input | opts: opts, observations: observations, intents: intents}
-    {input, cache} = NativeObserver.observe(input, state, cache)
-    {observations, published} = PRObserver.observe(input.observations, %{state | document: %{state.document | edges: input.edges}})
-    input = %{input | observations: observations}
+    {input, cache, published} = enrich_prerequisites(input, state, cache)
     {input, begins} = Withdrawal.prepare(input, state.claim_probe)
     {projections, actions} = Planner.plan(input)
     {projections, begins ++ actions, input.observations, cache, Keyword.fetch!(input.opts, :withdrawal_holds), published, input.edges}
   end
 
-  @spec write_hints([Planner.item_state()], MapSet.t(String.t()), map()) :: true
-  def write_hints(projections, holds, document) do
+  defp optimistic_dependents(probe) do
+    case ClaimProbe.optimistic_records(probe) do
+      {:ok, records} -> MapSet.new(records, & &1["ticket"])
+      {:error, _} -> MapSet.new()
+    end
+  end
+
+  defp enrich_prerequisites(input, state, cache) do
+    # Keep existing PR evidence fixed while selecting native-dependency candidates.
+    {observations, published} = PRObserver.observe(input.observations, state)
+    {input, cache} = NativeObserver.observe(%{input | observations: observations}, state, cache)
+    watch_approvals(input, state)
+    known = MapSet.new(state.document.edges, & &1.prerequisite)
+    new_edges = Enum.reject(input.edges, &MapSet.member?(known, &1.prerequisite))
+    state = %{state | document: %{state.document | edges: new_edges}} |> Map.put(:published_pr_versions, published)
+    {observations, published} = PRObserver.observe(input.observations, state)
+    {%{input | observations: observations}, cache, published}
+  end
+
+  defp watch_approvals(input, state) do
+    queues = Map.new(input.queues, &{&1.id, &1})
+    triggers = Map.new(input.items, &{&1.issue_id, Settings.effective_trigger(queues[&1.queue_id], state.settings)})
+    ids = for edge <- input.edges, triggers[edge.dependent] == :pr_approved, do: edge.prerequisite
+    ProgressStore.watch(Enum.uniq(ids), :pr_approved, observation_max_age_ms: Settings.observation_max_age_ms(state.settings))
+  end
+
+  @spec write_hints([Planner.item_state()], MapSet.t(String.t()), map(), Aiur.Config.Schema.t(), map() | nil) :: true
+  def write_hints(projections, holds, document, settings \\ Aiur.Config.settings!(), observations \\ nil) do
     held_queues = for queue <- document.queues, queue.held, do: queue.id
     persisted = for item <- document.items, item.hold != nil or item.queue_id in held_queues, do: item.issue_id
     holds = MapSet.union(holds, MapSet.new(persisted))
 
+    ranks = critical_ranks(projections, document)
+
     rows =
       for p <- projections,
           p.state not in [:removed, :completed, :cancelled],
-          do: {p.issue_id, hint(p.rank), MapSet.member?(holds, p.issue_id) or p.state == :held or (p.state == :unknown and Hints.held?(p.issue_id))}
+          do:
+            {p.issue_id, hint(p.rank), MapSet.member?(holds, p.issue_id) or p.state == :held or (p.state == :unknown and Hints.held?(p.issue_id)), trigger(p.issue_id, document, settings),
+             elem(Map.get(ranks, p.issue_id, {0, 0}), 0)}
 
     :ets.insert(Hints.table_name(), rows)
     retained = MapSet.new(rows, &elem(&1, 0))
-    for {id, _, _} <- :ets.tab2list(Hints.table_name()), not MapSet.member?(retained, id), do: :ets.delete(Hints.table_name(), id)
-    true
+    for row <- :ets.tab2list(Hints.table_name()), not MapSet.member?(retained, elem(row, 0)), do: :ets.delete(Hints.table_name(), elem(row, 0))
+    Hints.publish_sets(Sets.snapshot(document, projections, settings, observations))
+  end
+
+  defp critical_ranks(projections, document) do
+    open = for p <- projections, p.state not in [:removed, :completed, :cancelled, :unknown], do: p.issue_id
+    Ordering.critical_ranks(Map.get(document, :edges, []), open)
   end
 
   defp hint({downstream, _priority, position, _age, _id}), do: {downstream, position}
+
+  defp trigger(id, document, settings) do
+    item = Enum.find(document.items, &(&1.issue_id == id))
+    queue = item && Enum.find(document.queues, &(&1.id == item.queue_id))
+    if queue, do: Settings.effective_trigger(queue, settings), else: Settings.start_trigger(settings)
+  end
 
   # Prerequisite closure evidence extends a fresh open listing; an unknown listing yields none.
   defp closures(state, observations) do

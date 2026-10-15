@@ -7,6 +7,8 @@ defmodule Aiur.Orchestrator.Lifecycle do
 
   alias Aiur.{AgentPubSub, CIApprovalStore, Config, LiveConversation, PollCadence, ProcessReaper, TestTicketScope}
   alias Aiur.Events.{Exchange, Publisher}
+  alias Aiur.Handoff.Adopter
+  alias Aiur.Handoff.Protection
 
   alias Aiur.Orchestrator.{
     AgentTeardown,
@@ -14,6 +16,7 @@ defmodule Aiur.Orchestrator.Lifecycle do
     CommentWake,
     ControlLifecycleStore,
     DispatchPolicy,
+    EnvelopeResume,
     GlobalPauseStore,
     OrphanedWorkers,
     PauseResume,
@@ -34,12 +37,17 @@ defmodule Aiur.Orchestrator.Lifecycle do
     "ticket.*.pr.review_comment",
     "ticket.*.issue.commented",
     "ticket.*.pr.merged",
+    "ticket.*.pr.closed_unmerged",
+    "ticket.*.pr.reopened",
+    "ticket.*.pr.opened",
     "ticket.*.ci.failed",
     "ticket.*.ci.passed",
     "ticket.*.agent.pause.request",
     "ticket.*.agent.unblocked",
+    "ticket.*.optimistic.integrated",
     "ticket.*.agent.decision.answered",
     "ticket.*.branch.push",
+    "ticket.*.branch.force-push",
     "system.*.branch.push"
   ]
   @empty_agent_totals %{
@@ -81,6 +89,8 @@ defmodule Aiur.Orchestrator.Lifecycle do
   @spec init(keyword(), (term() -> boolean())) :: {:ok, State.t()}
   def init(opts, tracked_issue?) when is_function(tracked_issue?, 1) do
     :ok = TestTicketScope.validate!()
+    :ok = Protection.reset()
+    :ok = ProcessReaper.handoff([])
     # Trap exits so the supervisor's orderly shutdown lands in `terminate/2`,
     # which reaps every running agent's process tree (see `terminate/2`).
     Process.flag(:trap_exit, true)
@@ -125,6 +135,7 @@ defmodule Aiur.Orchestrator.Lifecycle do
       globally_paused: global_pause.globally_paused,
       global_pause: Map.drop(global_pause, [:globally_paused]),
       effective_concurrent_agents: DispatchPolicy.initial_load_envelope_limit(config.agent),
+      load_envelope_state: EnvelopeResume.boot(config.agent),
       next_poll_due_at_ms: now_ms,
       poll_check_in_progress: false,
       poll_frozen: false,
@@ -154,10 +165,10 @@ defmodule Aiur.Orchestrator.Lifecycle do
     # Runner tasks survive an Orchestrator-only restart, but this generation
     # cannot track them. Stop them before startup cleanup or the first poll, so
     # the ticket is redispatched instead of refused as a live session (#2705).
-    state = OrphanedWorkers.stop_untracked_runners(state)
+    state = state |> Adopter.adopt() |> OrphanedWorkers.stop_untracked_runners()
     state = WorkspaceCleanup.start_startup_workspace_cleanup(state, wake?: Keyword.get(opts, :initial_poll?, true))
     RemoteControlMode.cleanup_stray_remote_control_servers()
-    TrackedSet.reset([])
+    TrackedSet.reset(Enum.map(state.running, fn {_id, entry} -> entry.identifier end))
     install_event_tracked_fn(tracked_issue?)
     subscribe_to_orchestrator_topics()
     subscribe_to_prewarm(opts)
@@ -215,7 +226,7 @@ defmodule Aiur.Orchestrator.Lifecycle do
     # crash-restart, and latching the app-lifetime reaper into draining
     # there would kill every agent the restarted orchestrator spawns.
     _ = ProcessReaper.reap([:agent], drain: false)
-    Enum.each(running, fn {_issue_id, entry} -> AgentTeardown.kill_repl_session(entry) end)
+    Enum.each(running, fn {id, entry} -> unless Protection.protected?(id), do: AgentTeardown.kill_repl_session(entry) end)
     discard_unnamed_snapshot(state)
     :ok
   end
