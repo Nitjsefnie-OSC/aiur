@@ -2,8 +2,8 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
   use ExUnit.Case, async: false
   import Aiur.TestSupport.EngineCase
   import Aiur.TestSupport, only: [receive_barrier: 1]
-  alias Aiur.TestSupport.WorkflowFiles
   alias Aiur.TestCleanup
+  alias Aiur.TestSupport.WorkflowFiles
 
   @moduletag :integration
   @tag timeout: 180_000
@@ -118,28 +118,7 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
     report = json_command(["status", "--handoff", "--json"], env)
 
     if incompatible? do
-      assert restart_output =~ "adopted=0 fallback=4"
-      assert report["adopted"] == []
-      assert Enum.map(report["fallback"], & &1["reason"]) == List.duplicate(":schema", 4)
-      for _ <- 1..4, do: wait_event(socket, "mid_turn")
-      after_fallback = agents(env)
-      assert length(after_fallback) == 4
-
-      for agent <- before do
-        resumed = Enum.find(after_fallback, &(&1["identifier"] == agent["identifier"]))
-        refute resumed["provider_pid"] == agent["provider_pid"]
-        assert resumed["session_id"] == agent["session_id"]
-        requests = root |> Path.join("thread-requests.ndjson") |> File.read!() |> String.split("\n", trim: true) |> Enum.map(&Jason.decode!/1)
-
-        assert Enum.any?(
-                 requests,
-                 &(&1["method"] == "thread/resume" and to_string(&1["pid"]) == resumed["provider_pid"] and &1["thread_id"] == String.replace_suffix(agent["session_id"], "-turn-1", ""))
-               )
-
-        refute os_pid_alive?(agent["provider_pid"])
-      end
-
-      complete_agents(env, root, socket, after_fallback)
+      verify_fallback(root, env, socket, before, report, restart_output)
     else
       assert restart_output =~ "adopted=4 fallback=0"
       assert report["fallback"] == []
@@ -173,6 +152,31 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
       assert event["ticket"] == "5"
       assert event["timestamp_ms"] - String.to_integer(added_at) <= 5_000
     end
+  end
+
+  defp verify_fallback(root, env, socket, before, report, restart_output) do
+    assert restart_output =~ "adopted=0 fallback=4"
+    assert report["adopted"] == []
+    assert Enum.map(report["fallback"], & &1["reason"]) == List.duplicate(":schema", 4)
+    for _ <- 1..4, do: wait_event(socket, "mid_turn")
+    after_fallback = agents(env)
+    assert length(after_fallback) == 4
+
+    for agent <- before do
+      resumed = Enum.find(after_fallback, &(&1["identifier"] == agent["identifier"]))
+      refute resumed["provider_pid"] == agent["provider_pid"]
+      assert resumed["session_id"] == agent["session_id"]
+      requests = root |> Path.join("thread-requests.ndjson") |> File.read!() |> String.split("\n", trim: true) |> Enum.map(&Jason.decode!/1)
+
+      assert Enum.any?(
+               requests,
+               &(&1["method"] == "thread/resume" and to_string(&1["pid"]) == resumed["provider_pid"] and &1["thread_id"] == String.replace_suffix(agent["session_id"], "-turn-1", ""))
+             )
+
+      refute os_pid_alive?(agent["provider_pid"])
+    end
+
+    complete_agents(env, root, socket, after_fallback)
   end
 
   defp dispatch_events(root) do
