@@ -54,14 +54,14 @@ defmodule Aiur.Events.BusBoundaryTest do
     (expanded ++ scanned) |> Enum.uniq() |> Enum.sort()
   end
 
-  defp members do
+  defp members(lib \\ @lib) do
     marked_members =
-      @lib
+      lib
       |> Path.join("**/*.ex")
       |> Path.wildcard()
       |> Enum.filter(&member_file?/1)
 
-    Enum.map(marked_members, &Path.relative_to(&1, @lib))
+    Enum.map(marked_members, &Path.relative_to(&1, lib))
   end
 
   defp member_file?(path) do
@@ -71,12 +71,15 @@ defmodule Aiur.Events.BusBoundaryTest do
   end
 
   test "a boundary-member marker discovers a newly added event module" do
-    path = Path.join(@lib, "events/new_boundary_member.ex")
+    lib = Path.join(System.tmp_dir!(), "aiur-boundary-#{System.unique_integer([:positive])}")
+    events = Path.join(lib, "events")
+    File.mkdir_p!(events)
+    path = Path.join(events, "new_boundary_member.ex")
     File.write!(path, "# aiur:event-bus-boundary-member\ndefmodule Aiur.Events.NewBoundaryMember do\nend\n")
 
-    on_exit(fn -> File.rm!(path) end)
+    on_exit(fn -> File.rm_rf!(lib) end)
 
-    assert "events/new_boundary_member.ex" in members()
+    assert "events/new_boundary_member.ex" in members(lib)
   end
 
   test "directory discovery matches the original boundary membership" do
