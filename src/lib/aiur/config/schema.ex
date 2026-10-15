@@ -17,10 +17,10 @@ defmodule Aiur.Config.Schema do
     Compaction,
     Decisions,
     ElevenLabs,
-    Executor,
     EnvResolver,
     Errors,
     Events,
+    Executor,
     Experiments,
     Hooks,
     MergePolicy,
@@ -84,6 +84,7 @@ defmodule Aiur.Config.Schema do
     embeds_one(:webhooks, Webhooks, on_replace: :update, defaults_to_struct: true)
     embeds_one(:elevenlabs, ElevenLabs, on_replace: :update, defaults_to_struct: true)
     embeds_one(:upgrade, Upgrade, on_replace: :update, defaults_to_struct: true)
+    # Keep the Executor sweep settings in the same parsed settings snapshot.
     embeds_one(:executor, Executor, on_replace: :update, defaults_to_struct: true)
   end
 

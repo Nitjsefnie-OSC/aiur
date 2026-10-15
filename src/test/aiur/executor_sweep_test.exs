@@ -1,0 +1,101 @@
+defmodule Aiur.ExecutorSweepTest do
+  use ExUnit.Case, async: true
+
+  alias Aiur.ExecutorSweep
+  alias Aiur.ExecutorSweep.Wake
+
+  test "timer publishes each new finding once" do
+    parent = self()
+    finding = %{kind: "sample", priority: 1, message: "action"}
+
+    assert {:ok, pid} =
+             ExecutorSweep.start_link(
+               name: nil,
+               interval_ms: 60_000,
+               sweep_fun: fn -> [finding] end,
+               publish_fun: fn value -> send(parent, {:finding, value}) end
+             )
+
+    assert_receive {:finding, ^finding}, 1_000
+    send(pid, :sweep)
+    refute_receive {:finding, ^finding}, 50
+    GenServer.stop(pid)
+  end
+
+  test "timer deduplicates a finding as its age changes between sweeps" do
+    parent = self()
+    {:ok, counter} = Agent.start_link(fn -> 0 end)
+
+    assert {:ok, pid} =
+             ExecutorSweep.start_link(
+               name: nil,
+               interval_ms: 60_000,
+               sweep_fun: fn ->
+                 age = Agent.get_and_update(counter, fn value -> {value, value + 1} end)
+                 [%{kind: "unreviewed_human_review_pr", pull_request: 4447, age_ms: age}]
+               end,
+               publish_fun: fn value -> send(parent, {:finding, value}) end
+             )
+
+    assert_receive {:finding, %{age_ms: 0}}, 1_000
+    send(pid, :sweep)
+    refute_receive {:finding, _}, 50
+    GenServer.stop(pid)
+    Agent.stop(counter)
+  end
+
+  test "timer wakes again when the PR head changes under the same finding" do
+    parent = self()
+    {:ok, head} = Agent.start_link(fn -> "head-1" end)
+
+    assert {:ok, pid} =
+             ExecutorSweep.start_link(
+               name: nil,
+               interval_ms: 60_000,
+               sweep_fun: fn -> [%{kind: "unreviewed_human_review_pr", issue_number: 42, pull_request: 77, head_sha: Agent.get(head, & &1)}] end,
+               publish_fun: fn value -> send(parent, {:finding, value}) end
+             )
+
+    assert_receive {:finding, %{head_sha: "head-1"}}, 1_000
+    Agent.update(head, fn _ -> "head-2" end)
+    send(pid, :sweep)
+    assert_receive {:finding, %{head_sha: "head-2"}}, 1_000
+
+    GenServer.stop(pid)
+    Agent.stop(head)
+  end
+
+  test "pure sweep runner accepts local snapshot inputs" do
+    assert [] = ExecutorSweep.findings(snapshot: %{pull_requests: [], tickets: []}, now: ~U[2026-10-15 18:20:00Z])
+  end
+
+  test "timer findings enter the durable Executor wake inbox" do
+    root = Aiur.TestSupport.tmp_root!("aiur-executor-sweep-wake")
+
+    inbox_opts = [
+      name: nil,
+      debounce_ms: 0,
+      path: Path.join(root, "wakes.ndjson"),
+      cursor_path: Path.join(root, "cursor.json"),
+      pending_path: Path.join(root, "pending.json")
+    ]
+
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
+    assert {:ok, inbox} = Aiur.ExecutorWakeInbox.start_link(inbox_opts)
+    finding = %{kind: "unreviewed_human_review_pr", priority: 1, issue_number: 4429, pull_request: 4447, age_ms: 900_000, message: "PR #4447 has waited 15m.", action: "Review it."}
+
+    assert {:ok, sweep} =
+             ExecutorSweep.start_link(
+               name: nil,
+               interval_ms: 60_000,
+               sweep_fun: fn -> [finding] end,
+               publish_fun: &Wake.publish(&1, inbox)
+             )
+
+    assert {:ok, [%{"topic" => "ticket.4429.agent.executor-sweep.finding", "pull_request" => 4447, "needs_attention" => true}]} =
+             Aiur.ExecutorWakeInbox.wait(1_000, inbox)
+
+    GenServer.stop(sweep)
+    GenServer.stop(inbox)
+  end
+end
