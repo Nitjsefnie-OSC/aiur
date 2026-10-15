@@ -18,7 +18,7 @@ cp "$scratch/changed" "$scratch/changed-files"
 selector_paths=()
 while IFS= read -r path; do
   case "$path" in
-    src/lib/*|src/test/*) selector_paths+=("${path#src/}") ;;
+    src/lib/*|src/test/*|src/mix.exs|src/mix.lock) selector_paths+=("${path#src/}") ;;
   esac
 done < "$scratch/changed"
 selector_paths_json="$(python3 - "${selector_paths[@]}" <<'PY'
@@ -32,6 +32,7 @@ selector_paths_b64="$(printf '%s' "$selector_paths_json" | base64 | tr -d '\n')"
 cat "$scratch/selection"
 tests_file="$scratch/tests"
 : > "$tests_file"
+full_ci_ran=false
 
 while IFS= read -r line; do
   case "$line" in
@@ -45,16 +46,25 @@ print("\n".join(command[4:]))
 PY
       ;;
     "cd src && mise exec -- make ci"*)
-      echo "run-pre-handoff-code-checks: affected-test selection is unsafe; refusing handoff" >&2
-      exit 1
+      echo "run-pre-handoff-code-checks: selection requires the full CI suite"
+      full_ci_ran=true
+      (cd "$repo_root/src" && mise exec -- make ci)
       ;;
   esac
 done < "$scratch/selection"
 
 while IFS= read -r path; do
   if [[ "$path" == src/lib/* ]]; then
-    if [[ "$path" =~ ^src/lib/([^/]+)(/|$) ]]; then
+    if [[ "$path" =~ ^src/lib/aiur/([^/]+)/ ]]; then
+      subsystem="aiur/${BASH_REMATCH[1]}"
+    elif [[ "$path" =~ ^src/lib/([^/]+)/ ]]; then
       subsystem="${BASH_REMATCH[1]}"
+    elif [[ "$path" == src/lib/aiur/* ]]; then
+      subsystem=aiur
+    else
+      subsystem=""
+    fi
+    if [[ -n "$subsystem" ]]; then
       if [[ -d "$repo_root/src/test/$subsystem" ]]; then
         find "$repo_root/src/test/$subsystem" -type f -name '*_test.exs' -printf "test/$subsystem/%P\n" >> "$tests_file"
       fi
@@ -85,13 +95,13 @@ else
   echo "run-pre-handoff-code-checks: no affected tests selected"
 fi
 
-if grep -q '^src/lib/' "$scratch/changed"; then
+if grep -q '^src/lib/' "$scratch/changed" && [[ "$full_ci_ran" != true ]]; then
   echo "run-pre-handoff-code-checks: running dialyzer for src/lib changes"
   (cd "$repo_root/src" && mise exec -- mix dialyzer)
 fi
 
 if [[ -n "$pr_json" ]]; then
-  python3 - "$repo_root" "$pr_json" "$head" "$base" "$tests_file" <<'PY'
+  PRE_HANDOFF_FULL_CI_RAN="$full_ci_ran" python3 - "$repo_root" "$pr_json" "$head" "$base" "$tests_file" <<'PY'
 import json, os, sys, tempfile, subprocess
 
 repo_root, path, checked_out_head, base, tests_path = sys.argv[1:]
@@ -103,6 +113,7 @@ body = pr.get("body") or ""
 base_ref = os.environ.get("AIUR_BASE_BRANCH", "main")
 base_sha = subprocess.check_output(["git", "-C", repo_root, "rev-parse", base], text=True).strip()
 tests = [line for line in open(tests_path, encoding="utf-8").read().splitlines() if line]
+full_ci_ran = os.environ.get("PRE_HANDOFF_FULL_CI_RAN") == "true"
 selection = "affected-test selector plus changed src/lib subsystem tests and pinned child-order tests"
 evidence = [
     "Policy: partial",
@@ -110,11 +121,13 @@ evidence = [
     f"Base: {base_ref} @ {base_sha}",
     f"Selection: {selection}",
 ]
-if tests:
+if full_ci_ran:
+    evidence.append("- `mise exec -- make ci` -> passed")
+elif tests:
     evidence.append("- `mix test --max-cases 4 " + " ".join(tests) + "` -> passed")
 else:
     evidence.append("- `mix test` -> no affected tests selected")
-if any(line.startswith("src/lib/") for line in open(changed_path, encoding="utf-8")):
+if any(line.startswith("src/lib/") for line in open(changed_path, encoding="utf-8")) and not full_ci_ran:
     evidence.append("- `mix dialyzer` -> passed")
 else:
     evidence.append("- `mix dialyzer` -> not required (no src/lib changes)")

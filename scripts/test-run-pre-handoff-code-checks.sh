@@ -6,9 +6,9 @@ tmp="$(mktemp -d "${TMPDIR:-/tmp}/pre-handoff-code-checks-test.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
 fixture="$tmp/repo"
-mkdir -p "$fixture/scripts" "$fixture/src/test/aiur" "$tmp/bin"
+mkdir -p "$fixture/scripts" "$fixture/src/test/aiur/github" "$tmp/bin"
 cp "$repo_root/scripts/run-pre-handoff-code-checks.sh" "$fixture/scripts/"
-touch "$fixture/src/test/aiur/foo_test.exs" "$fixture/src/test/aiur/subsystem_test.exs"
+touch "$fixture/src/test/aiur/foo_test.exs" "$fixture/src/test/aiur/github/subsystem_test.exs"
 
 cat > "$tmp/bin/git" <<'GIT'
 #!/usr/bin/env bash
@@ -26,6 +26,10 @@ cat > "$tmp/bin/mix" <<'MIX'
 case "$*" in
   "aiur.affected_tests "*)
     printf 'selector:%s\n' "${AIUR_CI_CHANGED_PATHS_B64:-}" >> "$COMMAND_LOG"
+    if [[ "$CHANGED_PATHS" == *src/test/support/* || "$CHANGED_PATHS" == *src/mix.exs || "$CHANGED_PATHS" == *src/mix.lock ]]; then
+      printf '%s\n' 'cd src && mise exec -- make ci'
+      exit 0
+    fi
     if [[ "$(printf '%s' "${AIUR_CI_CHANGED_PATHS_B64:-}" | base64 --decode)" == '[]' ]]; then
       printf '%s\n' 'cd src && mise exec -- mix test --max-cases 4'
       exit 0
@@ -41,6 +45,10 @@ case "$*" in
     printf 'dialyzer\n' >> "$COMMAND_LOG"
     [[ "${FAIL_DIALYZER:-}" != true ]]
     ;;
+  "make ci")
+    printf 'make-ci\n' >> "$COMMAND_LOG"
+    [[ "${FAIL_FULL_CI:-}" != true ]]
+    ;;
   *) echo "unexpected mix args: $*" >&2; exit 91 ;;
 esac
 MIX
@@ -51,16 +59,22 @@ cat > "$tmp/bin/mise" <<'MISE'
 shift 2
 exec "$@"
 MISE
-chmod +x "$tmp/bin/git" "$tmp/bin/mix" "$tmp/bin/mise" "$fixture/scripts/run-pre-handoff-code-checks.sh"
+cat > "$tmp/bin/make" <<'MAKE'
+#!/usr/bin/env bash
+[[ "$*" == "ci" ]] || exit 93
+printf 'make-ci\n' >> "$COMMAND_LOG"
+[[ "${FAIL_FULL_CI:-}" != true ]]
+MAKE
+chmod +x "$tmp/bin/git" "$tmp/bin/mix" "$tmp/bin/mise" "$tmp/bin/make" "$fixture/scripts/run-pre-handoff-code-checks.sh"
 
 base="$(printf 'a%.0s' {1..40})"
 head="$(printf 'b%.0s' {1..40})"
 run_check() {
-  local name="$1" changed="$2" fail_test="$3" fail_dialyzer="$4" pr_json="${5:-}"
+  local name="$1" changed="$2" fail_test="$3" fail_dialyzer="$4" pr_json="${5:-}" fail_full_ci="${6:-false}"
   : > "$tmp/$name.commands"
   if env BASH_ENV=/dev/null PATH="$tmp/bin:$PATH" TMPDIR="$tmp" COMMAND_LOG="$tmp/$name.commands" \
       CHANGED_PATHS="$changed" HEAD_SHA="$head" BASE_SHA="$base" \
-      FAIL_TEST="$fail_test" FAIL_DIALYZER="$fail_dialyzer" \
+      FAIL_TEST="$fail_test" FAIL_DIALYZER="$fail_dialyzer" FAIL_FULL_CI="$fail_full_ci" \
       bash "$fixture/scripts/run-pre-handoff-code-checks.sh" "$base" ${pr_json:+"$pr_json"} > "$tmp/$name.log" 2>&1; then
     return 0
   else
@@ -68,7 +82,7 @@ run_check() {
   fi
 }
 
-if run_check failing_test src/lib/aiur/foo.ex true false; then
+if run_check failing_test src/lib/aiur/github/foo.ex true false; then
   echo 'test-run-pre-handoff-code-checks: expected failing selected test to refuse handoff' >&2
   exit 1
 fi
@@ -77,7 +91,7 @@ grep -F 'foo test.exs' "$tmp/failing_test.commands" >/dev/null
 grep -F 'subsystem_test.exs' "$tmp/failing_test.commands" >/dev/null
 encoded_paths="$(grep '^selector:' "$tmp/failing_test.commands" | cut -d: -f2-)"
 decoded_paths="$(printf '%s' "$encoded_paths" | base64 --decode)"
-[[ "$decoded_paths" == '["lib/aiur/foo.ex"]' ]]
+[[ "$decoded_paths" == '["lib/aiur/github/foo.ex"]' ]]
 if grep -F 'dialyzer' "$tmp/failing_test.commands" >/dev/null; then
   echo 'test-run-pre-handoff-code-checks: Dialyzer ran after selected tests failed' >&2
   exit 1
@@ -89,11 +103,17 @@ if run_check failing_dialyzer src/lib/aiur/foo.ex false true; then
 fi
 grep -F 'dialyzer' "$tmp/failing_dialyzer.commands" >/dev/null
 
-if ! run_check passing src/lib/aiur/foo.ex false false; then
+if ! run_check passing src/lib/aiur/github/foo.ex false false; then
   cat "$tmp/passing.log" >&2
   echo 'test-run-pre-handoff-code-checks: passing checks were rejected' >&2
   exit 1
 fi
+
+if run_check failing_full_ci src/test/support/foo.ex false false "" true; then
+  echo 'test-run-pre-handoff-code-checks: expected full-suite failure to refuse handoff' >&2
+  exit 1
+fi
+grep -F 'make-ci' "$tmp/failing_full_ci.commands" >/dev/null
 
 if ! run_check script_only scripts/run-pre-handoff-code-checks.sh false false; then
   cat "$tmp/script_only.log" >&2
