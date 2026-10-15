@@ -67,7 +67,7 @@ defmodule AiurWeb.Build.PayloadSchema do
       "order" => list(:string),
       "counts" => nullable({:dictionary, :nonnegative}),
       "history" => object(history()),
-      "sources" => object(sources(), ["open_tickets"]),
+      "sources" => object(sources()),
       "usage" => :usage,
       "daemon" => object(%{"state" => enum(~w(live stale offline unknown)), "heartbeat_at" => nullable(:integer), "observed_at" => nullable(:integer)})
     }
