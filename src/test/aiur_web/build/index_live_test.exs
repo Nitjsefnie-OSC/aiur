@@ -32,12 +32,16 @@ defmodule AiurWeb.Build.IndexLiveTest do
          send(parent, {:index_timer, pid, message, ms})
          make_ref()
        end,
-       daemon_timer: fn _, _, _ -> make_ref() end,
+       daemon_timer: fn _, _, _ ->
+         send(parent, :daemon_ready)
+         make_ref()
+       end,
        daemon_read: &DaemonStub.read_daemon/1,
        clock: &now/0}
     )
 
     assert {:ok, _} = GenServer.call(name, {:window, "Etc/UTC"})
+    receive_barrier(:daemon_ready)
     Application.put_env(:aiur, :build_data_source, {IndexSource, [server: name, usage: UsageStub, freshness: DaemonStub, index_subscribe: fn -> Phoenix.PubSub.subscribe(Aiur.PubSub, topic) end]})
 
     views =
@@ -49,6 +53,16 @@ defmodule AiurWeb.Build.IndexLiveTest do
         assert Payload.validate(snapshot) == :ok
         view
       end
+
+    cut = :sys.get_state(name).generation
+    assert cut >= 2
+
+    for view <- views do
+      generation = :sys.get_state(view.pid).socket.assigns.build_generation
+      send(view.pid, {:build_changes, %{index_generation: cut - 1, now: now(), upsert: [], remove: [], set: %{}}})
+      render(view)
+      assert :sys.get_state(view.pid).socket.assigns.build_generation == generation
+    end
 
     assert_received {:index_read, :all}
     pid = Process.whereis(name)
