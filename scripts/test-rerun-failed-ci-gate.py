@@ -3,6 +3,7 @@
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -26,6 +27,7 @@ class RerunFailedCiGateTest(unittest.TestCase):
         self.assertRegex(workflow, r'actions:\s+write')
         self.assertIn('if: ${{ success() }}', workflow[rerun:])
         self.assertIn('scripts/rerun-failed-ci-gate.py', workflow[rerun:])
+        self.assertIn('GH_TOKEN: ${{ github.token }}', workflow[rerun:])
         self.assertIn('Require latest PR-body check', ci_workflow)
 
     def test_failed_gate_uses_single_job_rerun_endpoint(self):
@@ -74,6 +76,49 @@ class RerunFailedCiGateTest(unittest.TestCase):
                          ('repos/aiur-team/aiur/actions/runs/2/jobs?per_page=100',))
         self.assertEqual(api.call_args_list[2].args,
                          ('repos/aiur-team/aiur/actions/jobs/21/rerun', 'POST'))
+
+    def test_main_without_ci_run_does_not_rerun(self):
+        with patch.object(MODULE, 'current_ci_run', return_value=None):
+            with patch.object(MODULE, 'api') as api:
+                self.assertEqual(MODULE.main(), 0)
+        api.assert_not_called()
+
+    def test_main_waits_for_gate_then_reruns_only_failed_job(self):
+        run = {'id': 45, 'head_sha': 'current-head'}
+        pending = {'jobs': [{'id': 99, 'name': 'ci gate', 'head_sha': 'current-head',
+                             'status': 'in_progress', 'conclusion': None}]}
+        failed = {'jobs': [{'id': 99, 'name': 'ci gate', 'head_sha': 'current-head',
+                            'status': 'completed', 'conclusion': 'failure'}]}
+        with patch.object(MODULE, 'current_ci_run', return_value=run):
+            with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'aiur-team/aiur'}):
+                with patch.object(MODULE, 'api', side_effect=[pending, failed, None]) as api:
+                    with patch.object(MODULE.time, 'sleep') as sleep:
+                        self.assertEqual(MODULE.main(), 0)
+        self.assertEqual(api.call_args_list, [
+            unittest.mock.call('repos/aiur-team/aiur/actions/runs/45/jobs?per_page=100'),
+            unittest.mock.call('repos/aiur-team/aiur/actions/runs/45/jobs?per_page=100'),
+            unittest.mock.call('repos/aiur-team/aiur/actions/jobs/99/rerun', 'POST'),
+        ])
+        sleep.assert_called_once_with(10)
+
+    def test_main_does_not_rerun_green_gate(self):
+        run = {'id': 46, 'head_sha': 'current-head'}
+        green = {'jobs': [{'id': 100, 'name': 'ci gate', 'head_sha': 'current-head',
+                           'status': 'completed', 'conclusion': 'success'}]}
+        with patch.object(MODULE, 'current_ci_run', return_value=run):
+            with patch.dict(os.environ, {'GITHUB_REPOSITORY': 'aiur-team/aiur'}):
+                with patch.object(MODULE, 'api', return_value=green) as api:
+                    self.assertEqual(MODULE.main(), 0)
+        api.assert_called_once_with('repos/aiur-team/aiur/actions/runs/46/jobs?per_page=100')
+
+    def test_main_returns_failure_when_api_errors(self):
+        error = subprocess.CalledProcessError(4, ['gh', 'api'])
+        with patch.dict(os.environ, {
+            'GITHUB_REPOSITORY': 'aiur-team/aiur', 'PR_HEAD': 'current-head',
+        }):
+            with patch.object(MODULE, 'api', side_effect=error):
+                with patch('sys.stderr'):
+                    self.assertEqual(MODULE.main(), 1)
 
     def test_successful_or_pending_gate_is_left_alone(self):
         for status, conclusion in [
