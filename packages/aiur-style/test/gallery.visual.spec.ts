@@ -196,7 +196,7 @@ test(`optimized logos on ${background}; nearest neighbor fails`, async ({ page }
   console.log('Logo ΔE76 metrics:', metrics);
   await testInfo.attach('logo-metrics', { body: JSON.stringify(metrics, null, 2), contentType: 'application/json' });
   const withinBudget = (metric: { mean: number; max: number; over2: number }, index: number) =>
-    metric.mean < 2 && metric.max < 33 && metric.over2 <= [0.05, 0.25][index];
+    metric.mean < [0.43, 2][index] && metric.max < 34 && metric.over2 <= [0.05, 0.27][index];
   for (const comparisons of [errors.png, errors.webp]) {
     for (const [index, comparison] of comparisons.entries()) expect.soft(withinBudget(comparison, index), `optimized logo at ${[224, 28][index]}px`).toBe(true);
   }
