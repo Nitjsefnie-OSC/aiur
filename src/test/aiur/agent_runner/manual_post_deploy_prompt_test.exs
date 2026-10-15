@@ -14,8 +14,8 @@ defmodule Aiur.AgentRunner.ManualPostDeployPromptTest do
 
     dev_loop = File.read!(@agent_dev_loop)
     manual_check = String.split(dev_loop, "## Manual CLI verification before opening a PR", parts: 2) |> List.last()
-    assert manual_check =~ "when the workspace can perform that check"
-    assert manual_check =~ "do not raise a decision or pause for it"
+    assert manual_check =~ "when the workspace can do so"
+    assert manual_check =~ "do not raise a decision or pause"
     assert manual_check =~ "## Local tests"
   end
 end
