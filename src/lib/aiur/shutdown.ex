@@ -28,7 +28,6 @@ defmodule Aiur.Shutdown do
   alias Aiur.Fs
   alias Aiur.Handoff.Protection
   alias Aiur.Opencode.SessionWriterRegistry
-  alias Aiur.Tmux.Socket
 
   @default_cleanup_timeout_ms 5_000
   @default_supervisor_stop_timeout_ms 5_000
@@ -64,7 +63,7 @@ defmodule Aiur.Shutdown do
     safely(fn -> SessionWriterRegistry.delete_all(timeout_ms) end, "delete_all")
     safely(fn -> Aiur.ProcessReaper.reap([:serve], drain: true) end, "reap_serves")
 
-    safely(fn -> Reaper.sweep_own_panes(Keyword.get(opts, :tmux, Socket.agents()), protected_refs: protected_panes()) end, "sweep_repl_panes")
+    safely(fn -> Reaper.sweep_own_panes(Keyword.get(opts, :tmux), protected_refs: protected_panes()) end, "sweep_repl_panes")
     safely(fn -> reap_workspace_agents(Keyword.get(opts, :workspace_reap_opts, [])) end, "reap_workspace_agents")
 
     safely(fn -> truncate_session_tempfile() end, "truncate_tempfile")
@@ -177,7 +176,7 @@ defmodule Aiur.Shutdown do
       # Same `:application_controller` deadlock hazard as `record_workspace_root/1`
       # — this phase also runs after teardown — so it takes the same guarded root.
       case workspace_root(false) do
-        {:ok, root} -> RemoteControl.reap_workspace_agents(root, Keyword.put(opts, :additional_protected_pids, protected_processes()))
+        {:ok, root} -> RemoteControl.reap_workspace_agents(root, Keyword.put(opts, :additional_protected_pids, &protected_processes/0))
         :unavailable -> :ok
       end
     end
@@ -259,3 +258,4 @@ defmodule Aiur.Shutdown do
       Logger.warning("aiur_shutdown phase=#{label} caught=#{inspect({kind, reason})}")
   end
 end
+

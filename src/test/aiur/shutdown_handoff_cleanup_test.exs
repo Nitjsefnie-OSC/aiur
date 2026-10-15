@@ -2,6 +2,7 @@ defmodule Aiur.ShutdownHandoffCleanupTest do
   use Aiur.TestSupport, async: false
 
   alias Aiur.{ProcessTree, Shutdown, Tmux}
+  alias Aiur.Claude.RemoteControl
   alias Aiur.Handoff.Protection
 
   defmodule PaneServer do
@@ -67,6 +68,50 @@ defmodule Aiur.ShutdownHandoffCleanupTest do
     refute ProcessTree.process_alive?(unlisted)
   end
 
+  test "workspace cleanup refreshes protection after each candidate census" do
+    root = Aiur.TestSupport.tmp_root!("handoff-census-root")
+    proc = Aiur.TestSupport.tmp_root!("handoff-census-proc")
+    File.mkdir_p!(root)
+    File.mkdir_p!(proc)
+    fake_process(proc, root, 1)
+    counter = start_supervised!({Agent, fn -> 0 end})
+    parent = self()
+
+    protected = fn ->
+      case Agent.get_and_update(counter, &{&1, &1 + 1}) do
+        0 ->
+          fake_process(proc, root, 2)
+          []
+
+        _ ->
+          [2]
+      end
+    end
+
+    assert :ok =
+             RemoteControl.reap_workspace_agents(root,
+               proc_dir: proc,
+               protected_pids: [],
+               additional_protected_pids: protected,
+               backoff_ms: 0,
+               kill_fun: fn pid ->
+                 send(parent, {:reaped, pid})
+                 File.rm_rf!(Path.join(proc, to_string(pid)))
+               end
+             )
+
+    assert_receive {:reaped, 1}, 1000
+    refute_receive {:reaped, 2}, 30
+    assert File.dir?(Path.join(proc, "2"))
+    assert Agent.get(counter, & &1) >= 2
+  end
+
+  defp fake_process(proc, root, pid) do
+    path = Path.join(proc, to_string(pid))
+    File.mkdir_p!(path)
+    File.ln_s!(Path.join(root, "ticket"), Path.join(path, "cwd"))
+  end
+
   defp protect(agents) do
     Protection.store(self(), %{agents: agents}, MapSet.new(["held"]))
   end
@@ -91,3 +136,4 @@ defmodule Aiur.ShutdownHandoffCleanupTest do
     end
   end
 end
+

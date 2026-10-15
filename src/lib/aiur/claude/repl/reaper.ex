@@ -118,7 +118,9 @@ defmodule Aiur.Claude.Repl.Reaper do
   def sweep_own_panes(tmux \\ Socket.agents()), do: sweep_own_panes(tmux, [])
 
   @doc false
-  @spec sweep_own_panes(GenServer.server(), keyword()) :: :ok
+  @spec sweep_own_panes(GenServer.server() | nil, keyword()) :: :ok
+  def sweep_own_panes(nil, opts), do: sweep_own_panes(Socket.agents(), opts)
+
   def sweep_own_panes(tmux, opts) do
     self_pid = beam_os_pid()
     protected = MapSet.new(Keyword.get(opts, :protected_refs, []))
