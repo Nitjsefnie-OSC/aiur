@@ -88,9 +88,10 @@ def check(base, head):
         if not path:
             continue
         name = path.decode('utf-8', errors='backslashreplace')
+        display_name = name.encode('unicode_escape').decode('ascii')
         for mount in SKILL_MOUNTS:
             if name.startswith(mount):
-                print(f'{name}: new tracked entry under mounted skill path {mount[:-1]} is rejected')
+                print(f'{display_name}: new tracked entry under mounted skill path {mount[:-1]} is rejected')
                 mount_failures += 1
                 break
 
