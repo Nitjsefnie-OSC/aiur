@@ -132,7 +132,9 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.Experiments.Capture,
     Aiur.Experiments.Checkpointer,
     {Aiur.Experiments.Auto, [recording?: true]},
-    Aiur.BuildOrder.Features.LabelProjection
+    Aiur.BuildOrder.Features.LabelProjection,
+    Aiur.Experiments.Auto.Notifier,
+    Aiur.Experiments.Auto.WindowManager
   ]
 
   setup do
