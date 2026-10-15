@@ -2,9 +2,16 @@ defmodule Aiur.Orchestrator.DispatchCycleLiveness do
   @moduledoc false
 
   alias Aiur.Alerts
-  alias Aiur.Orchestrator.State
+  alias Aiur.Orchestrator.{State, StatusReport}
 
   @retry_ms 1_000
+
+  @spec handle_check(State.t(), reference()) :: {:noreply, State.t()}
+  def handle_check(state, token) do
+    state = check(state, token)
+    StatusReport.notify_dashboard(state)
+    {:noreply, state}
+  end
 
   @spec start(State.t()) :: State.t()
   def start(%State{dispatch_cycle_started_monotonic_ms: started} = state) when is_integer(started), do: state

@@ -4,9 +4,7 @@ defmodule Aiur.Orchestrator do
   require Logger
 
   alias Aiur.{Alerts, Issue}
-  alias Aiur.Orchestrator.{AutoSubscriptions, BlockerPropagation, CiLifecycle, CommentPolling, CommentWake, Parking, TicketTransition}
-  alias Aiur.Orchestrator.BuildQueueClaimProbe
-  alias Aiur.Orchestrator.DispatchCycleLiveness
+  alias Aiur.Orchestrator.{AutoSubscriptions, BlockerPropagation, BuildQueueClaimProbe, CiLifecycle, CommentPolling, CommentWake, DispatchCycleLiveness, Parking, TicketTransition}
   alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, EventTopics, HumanReview, Interrupts}
   alias Aiur.Orchestrator.{GlobalPause, Lifecycle, PauseResume, PriorityControl, PushRouting, RetryEngine}
   alias Aiur.Orchestrator.{ReadyForReviewTransitions, RuntimeWatchdog, Slots, State, StatusReport}
@@ -48,13 +46,7 @@ defmodule Aiur.Orchestrator do
   def handle_info({:tick, _tick_token}, state), do: {:noreply, state}
 
   def handle_info(:tick, state), do: if(Map.get(state, :poll_frozen), do: {:noreply, state}, else: Lifecycle.handle_tick(state))
-
-  def handle_info({:dispatch_cycle_liveness_check, token}, %State{} = state) do
-    state = DispatchCycleLiveness.check(state, token)
-    StatusReport.notify_dashboard(state)
-    {:noreply, state}
-  end
-
+  def handle_info({:dispatch_cycle_liveness_check, token}, state), do: DispatchCycleLiveness.handle_check(state, token)
   def handle_info(:propagate_blocker_tick, state), do: {:noreply, BlockerPropagation.flush(state)}
   # Freeze scheduled polls during tests to keep live polling from changing the load envelope.
   def handle_info(:run_poll_cycle, %State{poll_frozen: true} = state), do: {:noreply, state}
