@@ -12,9 +12,10 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_ROW = re.compile(r"^\s*# @config-reference ([a-z][a-z0-9_-]+) ([a-zA-Z0-9_.<>-]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|\s*$")
-CONFIG_KEY = re.compile(r"^\s*# @config-reference ([a-z][a-z0-9_-]+) ([a-zA-Z0-9_.<>-]+)\s*$")
-CONFIG_DETAIL = re.compile(r"^\s*# @config-detail ([a-zA-Z0-9_.<>-]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|\s*$")
+CONFIG_KEYS = r"[a-zA-Z0-9_.<>-]+(?:, [a-zA-Z0-9_.<>-]+)*"
+CONFIG_ROW = re.compile(rf"^\s*# @config-reference ([a-z][a-z0-9_-]+) ({CONFIG_KEYS}) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|\s*$")
+CONFIG_KEY = re.compile(rf"^\s*# @config-reference ([a-z][a-z0-9_-]+) ({CONFIG_KEYS})\s*$")
+CONFIG_DETAIL = re.compile(rf"^\s*# @config-detail ({CONFIG_KEYS}) \| ([^|]+) \| ([^|]+) \| ([^|]+) \|\s*$")
 MARKER = re.compile(r"<!-- generated-reference:([a-z][a-z0-9_-]*) -->")
 TABLE_ROW = re.compile(r"^\|[^\n]*\|$", re.M)
 
@@ -36,24 +37,33 @@ def config_rows(source: str, path: Path | str = "schema") -> dict[str, list[str]
     pending: dict[str, str] = {}
     for line_number, line in enumerate(source.splitlines(), 1):
         if match := CONFIG_ROW.match(line):
-            table, row, kind, default, description = match.groups()
-            tables[table].append(f"| `{row}` | {kind} | {default} | {description} |")
+            table, keys, kind, default, description = match.groups()
+            tables[table].append(f"| {format_keys(keys)} | {kind} | {default} | {description} |")
         elif match := CONFIG_KEY.match(line):
-            table, key = match.groups()
-            if table == "config-configuration-agent-00" and key == "agent.rtk.enabled":
-                continue
-            if key in pending:
-                raise SystemExit(f"{path}:{line_number}: duplicate @config-reference for {key}")
-            pending[key] = table
+            table, keys = match.groups()
+            for key in split_keys(keys):
+                if key in pending:
+                    raise SystemExit(f"{path}:{line_number}: duplicate @config-reference for {key}")
+                pending[key] = table
         elif match := CONFIG_DETAIL.match(line):
-            key, kind, default, description = match.groups()
-            table = pending.pop(key, None)
-            if table is None:
-                raise SystemExit(f"{path}:{line_number}: @config-detail {key} has no matching @config-reference")
-            tables[table].append(f"| `{key}` | {kind} | {default} | {description} |")
+            keys, kind, default, description = match.groups()
+            key_list = split_keys(keys)
+            row_tables = {pending.pop(key, None) for key in key_list}
+            if None in row_tables or len(row_tables) != 1:
+                raise SystemExit(f"{path}:{line_number}: @config-detail {keys} has no matching @config-reference")
+            table = row_tables.pop()
+            tables[table].append(f"| {format_keys(keys)} | {kind} | {default} | {description} |")
     if pending:
         raise SystemExit(f"{path}: missing @config-detail for {', '.join(sorted(pending))}")
     return tables
+
+
+def split_keys(keys: str) -> list[str]:
+    return [key.strip() for key in keys.split(",")]
+
+
+def format_keys(keys: str) -> str:
+    return ", ".join(f"`{key}`" for key in split_keys(keys))
 
 
 def cli_tables() -> dict[str, list[str]]:
@@ -166,19 +176,19 @@ def main() -> int:
         "website/docs-app/reference/cli-options.md",
     ]
     originals = {relative: (ROOT / relative).read_text(encoding="utf-8") for relative in pages}
+    page_prefixes = {
+        "configuration.md": "config-configuration-",
+        "configuration-agent.md": "config-configuration-agent-",
+        "configuration-build-order.md": "config-configuration-build-order-",
+        "merge-policy.md": "config-merge-policy-",
+    }
     for relative in pages:
         path = ROOT / relative
         original = originals[relative]
-        page_tables = {table_id: rows for table_id, rows in tables.items() if table_id.startswith(relative.rsplit("/", 1)[-1].replace(".md", "") + "-")}
-        if relative.endswith("configuration.md"):
-            page_tables = {table_id: rows for table_id, rows in tables.items() if table_id.startswith("config-configuration-")}
-        elif relative.endswith("configuration-agent.md"):
-            page_tables = {table_id: rows for table_id, rows in tables.items() if table_id.startswith("config-configuration-agent-")}
-        elif relative.endswith("configuration-build-order.md"):
-            page_tables = {table_id: rows for table_id, rows in tables.items() if table_id.startswith("config-configuration-build-order-")}
-        elif relative.endswith("merge-policy.md"):
-            page_tables = {table_id: rows for table_id, rows in tables.items() if table_id.startswith("config-merge-policy-")}
-        if relative.endswith("cli.md"):
+        prefix = page_prefixes.get(Path(relative).name)
+        if prefix:
+            page_tables = {table_id: rows for table_id, rows in tables.items() if table_id.startswith(prefix)}
+        elif relative.endswith("cli.md"):
             page_tables = {}
         elif relative.endswith("cli-options.md"):
             page_tables = {"cli-run-options": tables["cli-run-options"]}

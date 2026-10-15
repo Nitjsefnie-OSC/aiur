@@ -46,7 +46,7 @@ defmodule Aiur.CLI.ReferenceOptions do
     {:executor, "aiur --executor",
      "Marks the run as Executor-owned and registers its renewing principal in `executor-roster`. " <>
        "Recording is **not** gated on this flag: every run arms the supervised `executor.#` listener " <>
-       "and wake inbox, so PR-lifecycle, CI and attention records exist for a later agent to replay. " <>
+       "and the wake inbox, so PR-lifecycle, CI and attention records exist for a later agent to replay. " <>
        "What the flag adds is authority — created and deferred Commands are raised as " <>
        "needs-attention alerts only on an Executor-owned run. On startup it also records an " <>
        "informational, retrospective daemon heartbeat gap when the durable lifecycle journal " <>
@@ -61,15 +61,22 @@ defmodule Aiur.CLI.ReferenceOptions do
     {:harness, "aiur --harness NAME", "Legacy parser option; does not change the configured agent harness. Use the workflow agent configuration.", "aiur --harness codex"},
     {:todo, "aiur --todo 142 143", "Requires a running daemon and one or more numeric IDs, with commas also accepted. A stopped daemon exits nonzero.", "aiur --todo 142,143"},
     {:only, "aiur --todo 142 --only",
-     "Queues the named IDs and asks GitHub to remove `agent:todo` from other pending tickets. It is GitHub-only, bounded to 50 cleanup targets, and stops after three consecutive rate-limit failures.",
-     "aiur --todo 142 --only"},
+     "Queues the named IDs and asks GitHub to remove `agent:todo` from other pending tickets. " <>
+       "It is GitHub-only, is bounded to 50 cleanup targets, and stops after three consecutive " <>
+       "rate-limit failures. Removing `agent:todo` from a promoted queue member creates an external " <>
+       "hold, cleared with `aiur queue release`. Cleanup is skipped if a requested ID fails, so the " <>
+       "operation does not silently dequeue work after a bad request.", "aiur --todo 142 --only"},
     {@acknowledgement_switch, "aiur --i-understand-that-this-will-be-running-without-the-usual-guardrails", "Required by the release parser; the launcher inserts it for normal run commands.",
      "aiur run --i-understand-that-this-will-be-running-without-the-usual-guardrails"},
     {:version, "aiur --version",
      "Prints both the release version and shell dispatcher version without contacting or claiming " <>
        "a running daemon. If they differ, update `aiur-cli` before trusting that newer subcommands " <>
        "are available.", "aiur --version"},
-    {:force, "aiur init --force", "Overwrites scaffold files when initializing a repository.", "aiur init --force"},
+    {:force, "aiur init --force",
+     "Recreates generated configuration for the location you choose at the first prompt; picking " <>
+       "repo-local leaves an existing `~/.aiur/config` untouched. `--force` explicitly re-runs setup " <>
+       "choices, including recorded declines. Re-running without it preserves existing scaffold files " <>
+       "and recorded declines.", "aiur init --force"},
     {:unfiled, "aiur --unfiled", "Includes tickets without an issue identifier in supported listing commands.", "aiur --unfiled"},
     {:slugs, "aiur --slugs", "Renders ticket identifiers as tracker slugs where supported.", "aiur --slugs"},
     {:scope, "aiur --scope feature", "Filters a supported ticket listing by scope.", "aiur --scope orchestration"},

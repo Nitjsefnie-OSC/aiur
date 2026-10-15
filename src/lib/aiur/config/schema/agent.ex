@@ -31,7 +31,6 @@ defmodule Aiur.Config.Schema.Rtk do
     # Controls whether the analytics panel reports host-level rtk output
     # savings. This does not enable or disable a host-wide rtk hook; the
     # operator owns that hook and must configure it to exclude `gh`.
-    # @config-reference config-configuration-agent-00 agent.rtk.enabled
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.rtk.enabled | boolean | false | Enables the Agent output compression panel on the analytics page, which reports rtk's host-level output savings when available. Aiur does not install, enable, or disable rtk's hook and does not enforce this setting at agent dispatch. A host-wide rtk hook applies to every agent regardless of this setting; the operator owns the hook and must exclude `gh` (`exclude_commands = ["gh"]` under `[hooks]`), because `gh` in an agent workspace is the GitHub quota guard and rtk must not rewrite it. The analytics panel reports rtk's status, including when its probe detects that `gh` would be rewritten, but cannot disable the hook. At daemon startup Aiur also checks the host hook, independent of this setting, and raises an informational alert when it would rewrite `gh`. |
     field(:enabled, :boolean, default: false)
@@ -58,7 +57,7 @@ defmodule Aiur.Config.Schema.Agent do
 
     # Ordered dispatch preference. Presence enables a backend, the first available entry is the default, and the array is the fallback order when a backend hits a token or usage limit.
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.priority | array | `[]` | Ordered dispatch preference as routes (`backend` or `backend:model`); see the Routes section. A non-empty list replaces the legacy kind and fallback settings. |
+    # @config-reference config-configuration-agent-00 agent.priority | array | `[]` | Ordered dispatch preference, as **routes** (`backend` or `backend:model`); see [Routes in `agent.priority`](#routes-in-agent-priority). Presence makes a backend dispatchable, the first available entry is the default, and limits advance to the next entry until recovery. A non-empty list replaces `agent.kind`, `agent.switch_model_on_ratelimit`, and `backend_configs.<b>.enabled`. |
     field(:priority, {:array, :string}, default: [])
     # Setting #2 (RC opt-in), orthogonal to :kind. Only consulted when the
     # resolved backend is RC-capable. This default is the single flip point
@@ -66,7 +65,7 @@ defmodule Aiur.Config.Schema.Agent do
     # @config-reference config-configuration-agent-00 agent.remote_control | boolean | false | Opts RC-capable backends into remote control. |
     field(:remote_control, :boolean, default: false)
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.relay | boolean | true | Runs local Codex app-server and headless Claude behind a detached relay. `false` uses direct Port transport; remote SSH workers keep their existing transport. |
+    # @config-reference config-configuration-agent-00 agent.relay | boolean | true | Runs local Codex app-server and headless Claude behind a detached relay that retains provider output between controller connections. `false` uses the direct Port transport. Remote SSH workers keep their existing transport; normal stop and the BEAM-death watchdog still reap agents. |
     field(:relay, :boolean, default: true)
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.relay_orphan_timeout_seconds | integer | 1800 | Stops the provider process group after this many seconds without a relay controller. Must be positive. |
@@ -75,6 +74,7 @@ defmodule Aiur.Config.Schema.Agent do
     # max_turns recycle or completed-entry replacement) whose codex thread could
     # not be resumed gets continuation guidance instead of the cold-start prompt,
     # so it does not re-run brainstorm/plan over work that already exists.
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.prior_work_continuation | boolean | true | Lets a resumed ticket continue existing workspace work when policy permits. |
     field(:prior_work_continuation, :boolean, default: true)
     # Lifetime cap on (re)dispatches for one ticket. The per-window thrash
@@ -88,35 +88,41 @@ defmodule Aiur.Config.Schema.Agent do
     # agents on a 16-core host. Explicit config still wins. The load envelope
     # reduces effective concurrency below this ceiling under host pressure.
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.max_concurrent_agents | integer or nil | derived from host capacity | Global simultaneous-agent cap; omitted values derive from measured host scheduler capacity. |
+    # @config-reference config-configuration-agent-00 agent.max_concurrent_agents | integer or nil | derived from host capacity | Global simultaneous-agent cap. When omitted, it derives from the measured host capacity: `schedulers + schedulers / 4` (e.g. 20 on a 16-core host), so the ceiling is calibrated to the box instead of a hard-coded count. Explicit config wins. The adaptive envelope reduces effective concurrency below this ceiling under CPU pressure. |
     field(:max_concurrent_agents, :integer)
     # Per-scheduler runnable-process ceiling for the instantaneous run-queue
     # dispatch gate. nil disables the gate (the 1-minute load gate and envelope
     # still apply); a positive value holds new dispatch while `procs_running`
     # strictly exceeds `run_queue_threshold * schedulers`, catching short CPU
     # bursts the lagging load average smooths out.
-    # @config-reference config-configuration-agent-00 agent.run_queue_threshold | float or nil | nil | Optional per-scheduler runnable ceiling used when CPU PSI is unavailable; null disables it. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.run_queue_threshold | float or nil | nil | Optional per-scheduler runnable ceiling used only when CPU PSI is unavailable. Subtracts CPU niced above the daemon and holds above the scaled ceiling only below 60% reclaimable CPU; null disables it. |
     field(:run_queue_threshold, :float)
     # Fleet-wide cap for agent-launched `mix compile` / `mix test` commands.
     # 0 deliberately disables the gate for Executors who need unrestricted
     # local verification.
-    # @config-reference config-configuration-agent-00 agent.max_concurrent_builds | integer | 4 | Caps local agent Mix verification and browser tests; 0 disables the cap. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.max_concurrent_builds | integer | 4 | Caps local agent Mix verification and browser tests; 0 disables the concurrency cap. Busy or queued builds wait at the build gate without holding fleet dispatch. |
     field(:max_concurrent_builds, :integer, default: 4)
-    # @config-reference config-configuration-agent-00 agent.build_nice | integer | 10 | CPU nice adjustment (0–19) applied to admitted build commands; 0 preserves launch priority. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.build_nice | integer | 10 | CPU nice adjustment (0–19) applied once to admitted build commands and inherited by descendants; 0 preserves launch priority. Nested builds reuse the lease without another adjustment. CPU niced above the daemon receives the existing load/run-queue discount; build capacity still counts it. |
     field(:build_nice, :integer, default: 10)
     # Minimum spacing between local Mix compile/test starts when more than one
     # build may run concurrently. 0 disables start pacing.
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.build_start_stagger_seconds | integer | 0 | Minimum spacing between local Mix build starts; 0 disables pacing. |
     field(:build_start_stagger_seconds, :integer, default: 0)
     # Optional Linux MemAvailable floor shared by normal dispatch and the local
     # Mix build gate. Omitted means memory admission is disabled.
-    # @config-reference config-configuration-agent-00 agent.min_free_memory_mb | integer or nil | nil | Linux MemAvailable floor shared by dispatch and the Mix build gate. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.min_free_memory_mb | integer or nil | nil | Linux `MemAvailable` floor shared by dispatch and the Mix build gate. |
     field(:min_free_memory_mb, :integer)
     # Absolute wall-clock cap (seconds) on how long any one build-gate slot may
     # be held (#2349). The detached lease holder releases the slot at the cap
     # and the daemon raises a needs-attention alert naming the command. 0
     # disables the backstop.
-    # @config-reference config-configuration-agent-00 agent.build_gate_max_hold_seconds | integer | 3600 | Absolute wall-clock cap on a build-gate slot; 0 disables the backstop. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.build_gate_max_hold_seconds | integer | 3600 | Absolute wall-clock cap on how long one build-gate slot may be held. The lease holder releases the slot at the cap and the daemon raises a needs-attention alert naming the command; `0` disables the backstop. |
     field(:build_gate_max_hold_seconds, :integer, default: 3_600)
     # Maximum post-command courtesy window (seconds) the detached holder keeps
     # a slot after the wrapped command exits, gated on a descendant still
@@ -124,7 +130,7 @@ defmodule Aiur.Config.Schema.Agent do
     # goes idle, so this is the *ceiling* for a genuinely-busy descendant, not
     # a per-build hold. 0 disables the courtesy.
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.build_gate_retain_seconds | integer | 120 | Maximum post-command slot window while a descendant still consumes CPU; 0 disables the courtesy. |
+    # @config-reference config-configuration-agent-00 agent.build_gate_retain_seconds | integer | 120 | Maximum post-command window the lease holder keeps a slot after the wrapped command exits, gated on a descendant still consuming CPU. The holder releases the moment the retained tree goes idle, so this bounds only a genuinely-busy descendant (a runaway build), not an adopted idle daemon; `0` disables the courtesy. |
     field(:build_gate_retain_seconds, :integer, default: 120)
     # nil = uncapped (no per-issue turn limit). A YAML value of `none` /
     # `unlimited` (or an absent key) resolves to nil; any present number must
@@ -149,7 +155,7 @@ defmodule Aiur.Config.Schema.Agent do
     # this never caps a long run of real work — unlike `max_turns`, which does.
     # 0 / `nil` disables the bound.
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.max_consecutive_noop_turns | integer | 3 | Consecutive continuation turns with no observable progress before the loop stops; 0 disables the bound. |
+    # @config-reference config-configuration-agent-00 agent.max_consecutive_noop_turns | integer | 3 | Consecutive continuation turns that changed nothing observable (no commit, no push, no working-tree change, no label change, no new input) before the loop stops and raises a needs-attention alert. An open PR is handed to CI wait or human review; so is rework whose head is newer than every blocking review, red CI included; rework with nothing pushed for its review becomes `agent:error`; otherwise the current label is kept. After the first no-op turn the worker parks and waits for a queued ticket event or operator message instead of re-prompting (a pushed rework PR is handed off right away); the count survives the wake, so the bound caps wakes that still change nothing. A productive turn resets the count; 0 disables the bound. The park lasts at most two minutes: on timeout the worker resumes with a normal turn and the surviving count still ends an idle ticket. |
     field(:max_consecutive_noop_turns, :integer, default: 3)
     # @config-reference config-configuration-agent-00 agent.max_retry_attempts | integer | 3 | Failed-turn retry count. |
     field(:max_retry_attempts, :integer, default: 3)
@@ -165,13 +171,15 @@ defmodule Aiur.Config.Schema.Agent do
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.enabled | boolean | backend registry default | Explicitly enables or disables dispatch for the backend. `agent.priority` takes precedence by enabling every backend it names. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.command | string | backend registry command | Overrides the backend command used for model discovery and setup where supported. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.model | string or nil | nil | Selects the backend's default model where the backend accepts a configured model. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-06 agent.backend_configs.<backend>.model_discovery | boolean | true | Set `false` to stop aiur asking this backend for its model list. The curated list and any cached list keep working; aiur just stops refreshing them. |
+    # @config-reference config-configuration-agent-06 agent.backend_configs.<backend>.model_discovery | boolean | true | Set `false` to stop aiur asking this backend for its model list — the catalogue endpoint for an OpenAI-compatible backend, or the CLI's `model/list` for `codex` and `claude`. The curated list and any list already cached keep working; aiur just stops refreshing them. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.default_model | string or nil | backend registry value | Overrides the registry fallback model for an OpenAI-compatible backend; `model` takes precedence. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.base_url | URL string | backend registry value | Overrides the registry endpoint for an OpenAI-compatible backend. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.api_key_env | string | backend registry value | Names the environment variable containing the backend API key. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.management_api_key_env | string or nil | backend registry value | Names the environment variable containing a provider's usage-management API key. |
@@ -187,29 +195,37 @@ defmodule Aiur.Config.Schema.Agent do
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.quirks.openrouter_metadata | boolean | backend registry value | Enables OpenRouter endpoint metadata used for billing attribution. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.quirks.local_concurrency_limit | boolean | backend registry value | Applies aiur's local concurrency slot around backend requests. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.order | array of strings or nil | omitted | Preferred upstream providers, most preferred first. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.ignore | array of strings or nil | omitted | Upstream providers to exclude. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.allow_fallbacks | boolean or nil | omitted | Whether OpenRouter may cross to another upstream within one request. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.sort | string or nil | omitted | `price`, `throughput`, or `latency`. |
-    # @config-reference config-configuration-agent-00 agent.backend_configs | map | `%{}` | Provider-specific configuration, including per-backend settings and credentials. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.backend_configs | map | `%{}` | Provider-specific configuration, including per-backend settings and credentials for OpenAI-compatible backends. A backend listed in `agent.priority` is enabled automatically. |
     field(:backend_configs, :map, default: %{})
-    # @config-reference config-configuration-agent-00 agent.routing | map | `%{}` | Maps complexity levels to backend/model/effort routing. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.routing | map | `%{}` | Maps complexity levels to backend/model/effort routing. A value is one route (`"claude:sonnet"`) or, for `account_selection: headroom`, a list of the routes that level allows (`["claude:sonnet", "codex:gpt-5.5:high"]`). Every other policy and reader uses the list's first route. Claude takes no effort segment: `claude:sonnet:medium` is rejected. |
     field(:routing, :map, default: %{})
     # Derived, never cast: every level's route list when a routing value is a
     # list (`AgentValidation.split_routing_candidates/1`, #3960).
-    # @config-reference config-configuration-agent-00 agent.routing_candidates | map | `%{}` | Read-only routes derived from list values in `agent.routing`. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.routing_candidates | map | `%{}` | Read-only: every level's route list, derived from list values in `agent.routing`. A value set here is ignored. |
     field(:routing_candidates, :map, default: %{})
-    # @config-reference config-configuration-agent-00 agent.accounts | map | `%{}` | Machine-local account names enabled per harness; list order sets preference. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.accounts | map | `%{}` | Machine-local account names enabled per harness, for example `{claude: [default, max]}`. The list is priority order; absent or empty keeps the existing single-account behavior. Claude and Codex use isolated profile directories; Kimi, DeepSeek, and OpenRouter use named API keys; Muse is unsupported. See [accounts by backend](/guide/claude-accounts). |
     field(:accounts, :map, default: %{})
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.account_selection | string | `balance` | Selects an enabled account by weekly utilization, configured order, or remaining usage headroom. |
+    # @config-reference config-configuration-agent-00 agent.account_selection | string | `balance` | Selects an enabled account by lowest weekly utilization (`balance`) or first configured name (`priority`). `headroom` scores every allowed backend **and** account at dispatch and picks the one with the most remaining usage; see [Headroom dispatch](/concepts/headroom-dispatch). Usage-based selection applies to Claude and Codex; API-key account usage is unavailable. |
     field(:account_selection, :string, default: "balance")
     # Headroom dispatch treats a usage reading older than this as unknown (#3960).
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.headroom_reading_max_age_seconds | integer | 1800 | Usage readings older than this score as unknown when using headroom account selection. |
+    # @config-reference config-configuration-agent-00 agent.headroom_reading_max_age_seconds | integer | 1800 | Under `account_selection: headroom`, a usage reading older than this scores as unknown and shows its age; see [Headroom dispatch](/concepts/headroom-dispatch). |
     field(:headroom_reading_max_age_seconds, :integer, default: 1800)
-    # @config-reference config-configuration-agent-00 agent.switch_model_on_ratelimit | array | `[]` | Deprecated fallback order; ignored when `agent.priority` is non-empty. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.switch_model_on_ratelimit | array | `[]` | Deprecated claim-time fallback order; ignored when `agent.priority` is non-empty. |
     field(:switch_model_on_ratelimit, {:array, :string}, default: [])
     # Automatic reroute for an ALREADY-RUNNING agent on `rate_limit_primary`
     # that hits usage_limit_exhausted, reverted at a safe boundary once
@@ -219,9 +235,11 @@ defmodule Aiur.Config.Schema.Agent do
     # Both name a registered backend and the pair is validated below; the
     # defaults preserve the historical codex -> claude reroute. "" on the
     # fallback disables it.
-    # @config-reference config-configuration-agent-00 agent.rate_limit_primary | string | default backend | Deprecated backend watched for automatic rate-limit recovery. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.rate_limit_primary | string | default backend | Deprecated primary backend watched for automatic rate-limit recovery; derived from `agent.priority` when set. |
     field(:rate_limit_primary, :string, default: Aiur.CodingAgent.default_backend())
-    # @config-reference config-configuration-agent-00 agent.rate_limit_fallback | string | `claude` | Deprecated recovery backend; an empty string disables it. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.rate_limit_fallback | string | `claude` | Deprecated automatic recovery backend for an already-running agent; derived from the first eligible `agent.priority` entry after the primary when set; `""` disables it. |
     field(:rate_limit_fallback, :string, default: Aiur.CodingAgent.default_rate_limit_fallback())
     # @config-reference config-configuration-agent-00 agent.complexity_prompts | map | `%{}` | Adds prompt guidance by complexity level. |
     field(:complexity_prompts, :map, default: %{})
@@ -239,48 +257,59 @@ defmodule Aiur.Config.Schema.Agent do
     field(:max_agent_duration_minutes, :integer, default: 60)
     # A CI-wait pause releases its dispatch slot. If no terminal CI event is
     # observed in this window, wake the agent for one recovery check.
-    # @config-reference config-configuration-agent-00 agent.ci_wait_rewake_minutes | positive integer | 5 | Re-wakes a CI-wait agent for one recovery check when no terminal event arrives. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.ci_wait_rewake_minutes | positive integer | 5 | Re-wakes a CI-wait-paused agent for one recovery check when no terminal event arrives. |
     field(:ci_wait_rewake_minutes, :integer, default: 5)
-    # @config-reference config-configuration-agent-00 agent.ci_recovery_enabled | boolean | true | Enables automatic CI recovery reruns; false disables them. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.ci_recovery_enabled | boolean | true | Enables automatic CI recovery reruns; set `false` to disable them. |
     field(:ci_recovery_enabled, :boolean, default: true)
     # @config-reference config-configuration-agent-00 agent.ci_recovery_max_per_poll | positive integer | 5 | Maximum recovery reruns admitted by one CI poll. |
     field(:ci_recovery_max_per_poll, :integer, default: 5)
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.ci_recovery_max_per_hour | positive integer | 20 | Maximum recovery reruns admitted in a rolling hour. |
     field(:ci_recovery_max_per_hour, :integer, default: 20)
     # Linux CPU PSI some avg60 percentages; explicit null disables each.
-    # @config-reference config-configuration-agent-00 agent.max_cpu_pressure | float or nil | 20.0 | Linux CPU PSI some avg60 ceiling in percent; null disables the gate. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.max_cpu_pressure | float or nil | 20.0 | Linux CPU PSI `some avg60` ceiling in percent (greater than 0, at most 100). Holds new dispatch above the ceiling; null disables it. Independent of scheduler count; avg10 is diagnostic and does not gate dispatch. |
     field(:max_cpu_pressure, :float, default: 20.0)
-    # @config-reference config-configuration-agent-00 agent.target_cpu_pressure | float or nil | 10.0 | Adaptive CPU PSI target in percent; null disables adaptive pressure control. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.target_cpu_pressure | float or nil | 10.0 | AIMD target for Linux CPU PSI `some avg60`, in percent (greater than 0, at most 100); null disables it. After 3 fresh above-target samples and the decrease cooldown, floors the reduction at half occupied slots or the recorded safe level, capped at the current envelope. Ramps only below 80% of target. Unavailable samples reset the streak and never count as zero. |
     field(:target_cpu_pressure, :float, default: 10.0)
     # Per-scheduler load settings apply only when CPU PSI is unavailable.
-    # @config-reference config-configuration-agent-00 agent.max_load_average | float or nil | 1.5 | Per-scheduler load ceiling used when CPU PSI is unavailable; null disables it. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.max_load_average | float or nil | 1.5 | Per-scheduler load ceiling used only when CPU PSI is unavailable. Uses CPU corroboration when available, otherwise raw load; null disables it. |
     field(:max_load_average, :float, default: 1.5)
-    # @config-reference config-configuration-agent-00 agent.target_load_average | float or nil | 1.0 | Per-scheduler adaptive target used when CPU PSI is unavailable; null disables it. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.target_load_average | float or nil | 1.0 | Per-scheduler adaptive target used only when CPU PSI is unavailable; null disables it. Keeps the legacy 3-sample decrease streak, cooldown, and below-target recovery. |
     field(:target_load_average, :float, default: 1.0)
-    # @config-reference config-configuration-agent-00 agent.load_resume_max_age_seconds | integer | 21600 | Maximum age in seconds for a host-pressure observation before it is stale. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.load_resume_max_age_seconds | integer | 21600 | Safe occupancy record lifetime; 0 disables resume. Five fresh samples without sustained overload demonstrate a level; reductions lower it. Same scheduler count required. Boot stays at one; the first fresh sample does not widen. |
     field(:load_resume_max_age_seconds, :integer, default: 21_600)
-    # @config-reference config-configuration-agent-00 agent.load_ramp_step | integer | 1 | Per-reconciliation concurrency adjustment while load is recovering. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.load_ramp_step | integer | 1 | Capacity increase below 80% of the PSI target (at or below the load target in fallback). Saved safe levels allow doubling, at most +3, toward that level; above it, fast probing requires below half target before a sustained decrease. |
     field(:load_ramp_step, :integer, default: 1)
-    # @config-reference config-configuration-agent-00 agent.load_cooldown_seconds | integer | 60 | Seconds between successive load-gate reductions. |
+    # @config-reference config-configuration-agent-00 agent.load_cooldown_seconds | integer | 60 | Minimum interval between adaptive capacity reductions. |
     field(:load_cooldown_seconds, :integer, default: 60)
     # nil = derive from schedulers_online/4; 0 disables the runtime synthetic
     # load-generator guard; positive integers cap known generators per agent.
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.synthetic_load_process_cap | integer or nil | derived | Per-agent cap for recognized synthetic load generators; nil derives from scheduler count. |
+    # @config-reference config-configuration-agent-00 agent.synthetic_load_process_cap | integer or nil | nil | Caps synthetic CPU load generators per agent process tree; nil derives `max(1, cores / 4)` and 0 disables the guard. A generator is a known command (`yes`, `stress`, `stress-ng`) or any process seen busy-looping for 10 seconds: runnable and burning CPU with no read/write syscall, no new page fault and no voluntary context switch. Known commands above the cap are killed. A generator that outlives its agent command (its session leader has exited or init adopted it, and its working directory is under `workspace.root`) is flagged regardless of the cap; that orphan scan is skipped when `workspace.root` is the home directory or one of its ancestors. Every kill or first sighting raises a `system.agent.synthetic_load_cap` alert naming the workspace. |
     field(:synthetic_load_process_cap, :integer)
     # false = busy-loop-detected and orphaned generators are reported, not killed.
-    # @config-reference config-configuration-agent-00 agent.synthetic_load_kill_detected | boolean | false | Kills a detected busy-loop or orphaned synthetic load generator when enabled. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.synthetic_load_kill_detected | boolean | false | When false, a busy loop detected by behaviour and any orphaned generator are report-only: logged with pid and command line and alerted once, but left running. Set true to kill them too (busy loops above the cap, orphans outright). |
     field(:synthetic_load_kill_detected, :boolean, default: false)
     # Cap ERTS scheduler threads on agent-spawned Mix BEAMs via
     # ELIXIR_ERL_OPTIONS="+S N:N". ExUnit defaults max_cases to this value, so
     # four bounds every agent test shape without relying on prompt compliance.
-    # @config-reference config-configuration-agent-00 agent.mix_scheduler_cap | integer | 4 | Caps ERTS scheduler threads for agent-launched Mix processes. |
+    # @config-reference config-configuration-agent-00 agent.mix_scheduler_cap | integer | 4 | Caps schedulers in agent-launched Mix BEAMs. |
     field(:mix_scheduler_cap, :integer, default: 4)
     # Saturation sentinel (#1429): a daemon-side recorder that appends
     # VM-internal + host diagnostics to saturation.log once 1-min load crosses
     # the escalation threshold, so a crash under saturation (the sparse
     # `erl_child_setup` dump has no stack) is interpretable. Default on; set
     # false to disable the recorder.
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.saturation_log_enabled | boolean | true | Records host and VM diagnostics when sustained load crosses the saturation threshold. |
     field(:saturation_log_enabled, :boolean, default: true)
     # Minimum seconds a ready-work capacity-starvation condition must persist
@@ -288,20 +317,23 @@ defmodule Aiur.Config.Schema.Agent do
     # raise. The below-target dispatch ramp clears itself within a few poll
     # cycles, so this dwell keeps the intended ramp quiet while a genuine gate
     # that outlives the bound still raises (#2447).
-    # @config-reference config-configuration-agent-00 agent.capacity_starvation_alert_after_seconds | integer | 60 | Seconds ready-work capacity starvation must persist before an alert. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.capacity_starvation_alert_after_seconds | integer | 60 | Minimum seconds a ready-work capacity-starvation condition must persist before `system.dispatch.capacity_starved` / `system.fleet.capacity.starved` raise. The below-target dispatch ramp clears itself within a few poll cycles, so this dwell keeps the intended ramp quiet while a genuine gate that outlives the bound still raises. |
     field(:capacity_starvation_alert_after_seconds, :integer, default: 60)
     # The sliding window over which budget-broker-timeout retries are counted
     # (#2464). The retry rate is the whole signal — the individual retry is
     # uninteresting — and this is how much recent history the rate is measured
     # over. The measured 2026-08-24 fault produced 28 timeouts in ~10 minutes.
-    # @config-reference config-configuration-agent-00 agent.budget_broker_rate_window_seconds | integer | 300 | Sliding window for counting budget-broker timeout retries. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.budget_broker_rate_window_seconds | integer | 300 | The sliding window over which budget-broker-timeout retries are counted for the retry-rate signal. The individual retry is uninteresting; the rate is the signal. |
     field(:budget_broker_rate_window_seconds, :integer, default: 300)
     # The retry count within the window above which the broker counts as
     # degraded. Default sits above an isolated timeout (which must page nobody)
     # while keeping "if the normal rate is zero, almost any sustained rate is
     # worth surfacing". Derived from a measured quiet-period baseline, not
     # guessed — this is the knob an operator tunes from their own baseline.
-    # @config-reference config-configuration-agent-00 agent.budget_broker_degraded_retry_threshold | integer | 5 | Retries in the window above which the budget broker counts as degraded. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.budget_broker_degraded_retry_threshold | integer | 5 | The retry count within the window above which the budget broker counts as degraded. Set from a measured quiet-period baseline — if the normal rate is zero, almost any sustained rate is worth surfacing — and kept above an isolated timeout, which must page nobody. |
     field(:budget_broker_degraded_retry_threshold, :integer, default: 5)
     # How long the degraded retry rate must persist before the single
     # `system.github.budget_broker_degraded` alert raises (#2434/#2449 dwell):
@@ -309,7 +341,8 @@ defmodule Aiur.Config.Schema.Agent do
     # sustained degradation raises exactly once. Kept longer than the rate
     # window so a burst that stops ages out of the window before the dwell
     # completes — the dwell then filters exactly the momentary cases.
-    # @config-reference config-configuration-agent-00 agent.budget_broker_degraded_alert_after_seconds | integer | 600 | Dwell before a degraded budget-broker alert is raised. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.budget_broker_degraded_alert_after_seconds | integer | 600 | How long the degraded budget-broker retry rate must persist before the single `system.github.budget_broker_degraded` alert raises (the dwell): a momentary blip that clears within this bound produces nothing, a sustained degradation raises exactly once. |
     field(:budget_broker_degraded_alert_after_seconds, :integer, default: 600)
 
     embeds_one(:claude, Claude, on_replace: :update, defaults_to_struct: true)

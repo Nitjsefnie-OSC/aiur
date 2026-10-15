@@ -38,6 +38,19 @@ def check_split_config_annotations_pair_across_comments() -> None:
     assert rows == {"config-demo": ["| `feature.enabled` | boolean | false | Controls the feature. |"]}
 
 
+def check_combined_config_annotation_preserves_each_key() -> None:
+    rows = GENERATOR.config_rows(
+        """# @config-reference config-demo feature.name, feature.email
+# @config-detail feature.name, feature.email | string or nil | nil | Shared identity fields. |
+"""
+    )
+    assert rows == {
+        "config-demo": [
+            "| `feature.name`, `feature.email` | string or nil | nil | Shared identity fields. |"
+        ]
+    }
+
+
 def check_incomplete_config_annotations_fail() -> None:
     try:
         GENERATOR.config_rows("# @config-reference config-demo feature.enabled\n", "fixture.ex")
@@ -109,6 +122,7 @@ def check_reference_files_use_union_merge() -> None:
 if __name__ == "__main__":
     check_rows_are_added_and_idempotent()
     check_split_config_annotations_pair_across_comments()
+    check_combined_config_annotation_preserves_each_key()
     check_incomplete_config_annotations_fail()
     check_unannotated_generated_marker_fails()
     check_sibling_rows_union_after_merge()

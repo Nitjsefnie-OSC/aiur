@@ -97,7 +97,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/verify-human-only-merge-ruleset-live.sh
       - name: Structural guards
-        run: python3 scripts/check-bare-assert-receive.py && python3 scripts/check-on-exit-rm-rf.py && python3 scripts/check-config-docs.py && python3 scripts/generate-reference-tables.py --check && node scripts/check-docs-prose.mjs
+        run: python3 scripts/check-bare-assert-receive.py && python3 scripts/check-on-exit-rm-rf.py && python3 scripts/check-config-docs.py && node scripts/check-docs-prose.mjs
       - name: Test rename preflight and plan refresh
         run: make test-rename-preflight && python3 -I scripts/test_plan_refresh.py
       - name: Test config documentation and design extract guards
@@ -183,6 +183,10 @@ jobs:
       - name: Compile with warnings as errors
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: mix compile --warnings-as-errors
+      - name: Check generated reference tables
+        if: ${{ needs.changes.outputs.docs_only != 'true' }}
+        working-directory: .
+        run: python3 scripts/generate-reference-tables.py --check
       - name: Format check
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: make fmt-check
