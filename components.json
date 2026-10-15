@@ -429,6 +429,7 @@
     "components/docs-site.json",
     "components/event-bus.json",
     "components/executor-attention.json",
+    "components/experiment-stats.json",
     "components/experiments.json",
     "components/github-listeners.json",
     "components/github.json",
