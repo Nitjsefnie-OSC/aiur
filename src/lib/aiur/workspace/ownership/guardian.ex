@@ -4,8 +4,8 @@ defmodule Aiur.Workspace.Ownership.Guardian do
   alias Aiur.Handoff.Protection
   alias Aiur.Workspace.HostLock
   alias Aiur.Workspace.Ownership
-  alias Aiur.Workspace.Ownership.{Initializer, Retention, Store}
   alias Aiur.Workspace.Ownership.Guardian.{Provider, Reaper, Receipt}
+  alias Aiur.Workspace.Ownership.{Initializer, Retention, Store}
 
   @reap_retry_ms 1_000
 
