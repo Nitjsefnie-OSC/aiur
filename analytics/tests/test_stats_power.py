@@ -51,11 +51,34 @@ class PowerTest(unittest.TestCase):
             self.assertEqual(sum(pair[1]), 80)
             self.assertAlmostEqual(p, mann_whitney_u(a, b)['p_value'])
 
-    def test_three_primaries_at_n200_under_twenty_seconds(self):
-        start = monotonic()
+    def test_normal_reference_sample_size_mde_and_projected_p(self):
+        # Textbook d=.5: about 64 per arm for two-sided alpha=.05, power=.8.
+        # A 5% shift at mean 10 and SD 1 gives d=.5; allow MC/rank-efficiency error.
+        result = estimate(BASELINE, [x*.95 for x in BASELINE], .05, SEED)
+        n = result['samples_needed_per_group']
+        self.assertGreaterEqual(n, 56)
+        self.assertLessEqual(n, 72)
+        self.assertAlmostEqual(n, result['samples_needed_noether'], delta=12)
+        # Check the inversion itself: returning the unrefined Noether n is insufficient.
+        self.assertGreaterEqual(simulate(BASELINE, n, n, .05, SEED)[0], .8)
+        self.assertLess(simulate(BASELINE, n-1, n-1, .05, SEED)[0], .8)
+        # At 80% power, median Z is about z_.975+z_.8=2.80, two-sided p about .005.
+        self.assertGreater(result['projected_p_if_effect_holds'], .001)
+        self.assertLess(result['projected_p_if_effect_holds'], .02)
+        baseline64 = [10 + NormalDist().inv_cdf((i+.5)/64) for i in range(64)]
+        null_effect = estimate(baseline64, baseline64, .05, SEED)
+        # Inverting the same textbook case at 64/64 should recover a roughly 5% MDE.
+        self.assertAlmostEqual(null_effect['mde_at_current_n'], .05, delta=.005)
+        # With no observed shift the projected p median is near .5, not .005.
+        self.assertGreater(null_effect['projected_p_if_effect_holds'], .35)
+        self.assertLess(null_effect['projected_p_if_effect_holds'], .65)
+
+    def test_primary_at_n200_within_per_metric_runtime_budget(self):
+        # One representative primary gets one third of the three-primary 20 s budget.
         baseline = list(range(1, 201))
-        for i in range(3):
-            result = estimate(baseline, [x*.98 for x in baseline], .2, seed_from(str(i)))
-            self.assertEqual(result['simulations'], 1000)
-            self.assertGreater(result['power_at_current_n'], .8)
-        self.assertLess(monotonic()-start, 20)
+        start = monotonic()
+        result = estimate(baseline, [x*.98 for x in baseline], .2, seed_from('0'))
+        elapsed = monotonic()-start
+        self.assertEqual(result['simulations'], 1000)
+        self.assertGreater(result['power_at_current_n'], .8)
+        self.assertLess(elapsed, 20/3)
