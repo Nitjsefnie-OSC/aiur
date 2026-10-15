@@ -22,8 +22,6 @@ defmodule Aiur.Events.BusBoundaryTest do
     {"events/id_generator.ex", "Aiur.LaunchStateAdoption"} => "C2-T07",
     {"events/subscription_store.ex", "Aiur.Orchestrator"} => "C2-T01",
     {"events/subscription_store.ex", "Aiur.Signal"} => "C2-T01",
-    {"events/debug_log.ex", "Phoenix.PubSub"} => "C2-T05",
-    {"events/debug_log.ex", "Aiur.PubSub"} => "C2-T05",
     # Unassigned: tracker types in the L1 spine; MP-R1 decides (CONTRACT-REQUESTS).
     {"ticket_observation.ex", "Aiur.TrackerIdentity"} => "unassigned",
     {"ticket_observation.ex", "Aiur.OpaqueIdentifier"} => "unassigned"
@@ -88,7 +86,7 @@ defmodule Aiur.Events.BusBoundaryTest do
              Enum.sort(~w(events/exchange.ex events/topic.ex events/publisher.ex events/id_generator.ex
                   events/subscription_store.ex events/subscription_store_supervisor.ex
                   events/universal_subscriptions.ex events/agent_subscription_policy.ex
-                  events/debug_log.ex events/history_store.ex events/trace.ex ticket_observation.ex))
+                  events/history_store.ex events/trace.ex ticket_observation.ex))
   end
 
   defp allowed?(mod) do

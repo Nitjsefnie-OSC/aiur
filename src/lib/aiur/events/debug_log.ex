@@ -20,8 +20,6 @@ defmodule Aiur.Events.DebugLog do
   The renderer maps these to 💬 / 📬 / 📄 respectively.
   """
 
-  # aiur:event-bus-boundary-member
-
   @behaviour Aiur.Events.Trace
   @topic "aiur:events:debug"
 
