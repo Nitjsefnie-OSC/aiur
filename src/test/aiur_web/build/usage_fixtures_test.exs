@@ -1,14 +1,14 @@
 defmodule AiurWeb.Build.UsageFixturesTest do
   use ExUnit.Case, async: true
-  alias Aiur.TestSupport.BuildHome.UsageFixtures
   alias Aiur.BrowserHarness.FixtureBuildControl
+  alias Aiur.TestSupport.BuildHome.UsageFixtures
 
   test "all usage blocks pass the actual payload validator" do
     dir = Path.expand("../../fixtures/build_home/usage", __DIR__)
     for file <- File.ls!(dir), do: assert({:ok, _block} = UsageFixtures.load(Path.rootname(file)))
   end
 
-  test "control rejects unknown names and traversal" do
+  test "control rejects unknown names and traversal (future traversal guard)" do
     for name <- ["missing", "../live"] do
       conn = Plug.Test.conn(:get, "/")
       assert %{status: 404} = FixtureBuildControl.configure(conn, %{"action" => "usage", "name" => name})
