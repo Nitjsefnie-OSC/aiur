@@ -77,9 +77,42 @@ defmodule Aiur.GitHub.CiReadiness do
   @doc false
   @spec dispatch_check(keyword()) :: {:ok, result()} | {:error, term()}
   def dispatch_check(opts) do
-    case cached_result(opts) do
-      %{} = result -> {:ok, result}
-      :unavailable -> check_workflow_presence(opts)
+    case operator_token() do
+      token when is_binary(token) ->
+        opts = Keyword.put(opts, :token, token)
+
+        case cached_result(opts) do
+          %{} = result -> refresh_if_required_checks_changed(result, opts)
+          :unavailable -> check(opts)
+        end
+
+      nil ->
+        opts = Keyword.put(opts, :force_refresh, true)
+
+        case cached_result(opts) do
+          %{} = result -> {:ok, result}
+          :unavailable -> check_workflow_presence(opts)
+        end
+    end
+  end
+
+  defp refresh_if_required_checks_changed(result, opts) do
+    case fetch_required_checks(opts) do
+      {:ok, checks} ->
+        current = checks |> Enum.map(&RepositoryReads.required_check_identity/1) |> Enum.reject(&is_nil/1) |> Enum.uniq() |> Enum.sort_by(&{&1.name, &1.app_id})
+        cached = Map.get(result, :required_check_identities, []) |> Enum.sort_by(&{&1.name, &1.app_id})
+
+        if current == cached, do: {:ok, result}, else: check(opts)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp operator_token do
+    case System.get_env(@operator_token_env) do
+      token when is_binary(token) and token != "" -> token
+      _ -> nil
     end
   end
 
@@ -321,6 +354,10 @@ defmodule Aiur.GitHub.CiReadiness do
   defp format_issue(:no_required_check), do: "no required status check is configured"
   defp format_issue({:required_check_not_produced, checks}), do: "required check is not produced: #{Enum.join(checks, ", ")}"
   defp format_issue({:required_check_integration_not_produced, checks}), do: "required check is pinned to a different GitHub App: #{Enum.join(checks, ", ")}"
+
+  defp format_issue({:unavailable, :ci_readiness_operator_token_required}),
+    do: "inspection unavailable: configure operator-only #{operator_token_env()} to inspect required checks and workflows"
+
   defp format_issue({:unavailable, reason}), do: "inspection unavailable: #{inspect(reason)}"
 
   defp token_authorization_guidance(:classic_pat, organization) do
