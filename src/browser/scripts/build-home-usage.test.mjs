@@ -59,7 +59,7 @@ test('credits distinguish unknown amounts, missing windows keep a visible row', 
   assert.doesNotMatch(s,/<b class="ax-usd">unknown/)
   assert.match(s,/ElevenLabs · renews in 1h 00m/)
   assert.equal((html('onewin').match(/class="ax-ln"/g)??[]).length,2)
-  assert.match(html('onewin'),/not observed/)
+  assert.match(html('onewin'),/<span class="ax-no">not observed<\/span>/)
 })
 test('all payload text is escaped and unknown identity keys use mono fallback', () => {
   const s=html('hostile')
