@@ -2,15 +2,14 @@ defmodule Aiur.Orchestrator do
   @moduledoc "Polls the issue tracker and dispatches repository copies to agent-backed workers."
   use GenServer
   require Logger
-
-  alias Aiur.{Alerts, Issue}
-  alias Aiur.Orchestrator.{AgentTeardown, AutoSubscriptions, BlockerPropagation, CiLifecycle, CommentPolling, CommentWake, Parking}
   alias Aiur.Orchestrator.BuildQueueClaimProbe
+  alias Aiur.Orchestrator.SnapshotStore
+  alias Aiur.Orchestrator.{AgentTeardown, AutoSubscriptions, BlockerPropagation, CiLifecycle, CommentPolling, CommentWake, Parking}
   alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, EventTopics, HumanReview, Interrupts}
   alias Aiur.Orchestrator.{GlobalPause, Lifecycle, PauseResume, PriorityControl, PushRouting, RetryEngine}
   alias Aiur.Orchestrator.{ReadyForReviewTransitions, RuntimeWatchdog, Slots, State, StatusReport}
-  alias Aiur.Orchestrator.SnapshotStore
   alias Aiur.Orchestrator.{TokenAccounting, TrackedSet, TrackerHealth, TrackerTasks, WorkspaceCleanup}
+  alias Aiur.{Alerts, Issue}
 
   alias Aiur.Orchestrator.OperatorMessages, as: OM
   alias Aiur.Orchestrator.RemoteControlMode, as: RC
@@ -26,7 +25,6 @@ defmodule Aiur.Orchestrator do
   @impl true
   def terminate(reason, state), do: Lifecycle.terminate(reason, state)
 
-  # Publisher reads ETS here; a GenServer call back into this process would deadlock.
   @doc false
   @spec issue_tracked?(String.t() | integer() | nil) :: boolean()
   def issue_tracked?(nil), do: false
@@ -661,6 +659,8 @@ defmodule Aiur.Orchestrator do
   def fleet_view(server \\ __MODULE__, timeout, opts \\ []), do: StatusReport.fleet_view(server, timeout, opts)
 
   @impl true
+  def handle_call(:prepare_handoff_snapshot, _from, state), do: Aiur.Handoff.hold_dispatch(state)
+  def handle_call(:cancel_handoff, _from, state), do: Aiur.Handoff.release_dispatch(state)
   def handle_call({:enqueue_event_digest, identifier, event}, _from, state), do: OM.enqueue_event_digest_call(state, identifier, event)
   def handle_call({:enqueue_event_digest, id, event, %{subscribed_to: subs}}, _from, state) when is_list(subs), do: OM.enqueue_event_digest_call(state, id, event, subscribed_to: subs)
 

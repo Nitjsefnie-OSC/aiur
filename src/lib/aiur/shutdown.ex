@@ -22,10 +22,11 @@ defmodule Aiur.Shutdown do
 
   require Logger
 
-  alias Aiur.{AlertLedger, Config}
   alias Aiur.Claude.{RemoteControl, ReplAgent}
   alias Aiur.Fs
+  alias Aiur.Handoff.Protection
   alias Aiur.Opencode.SessionWriterRegistry
+  alias Aiur.{AlertLedger, Config}
 
   @default_cleanup_timeout_ms 5_000
   @default_supervisor_stop_timeout_ms 5_000
@@ -56,8 +57,12 @@ defmodule Aiur.Shutdown do
     safely(fn -> Aiur.ProcessReaper.reap([:agent], drain: true) end, "reap_agents")
     safely(fn -> SessionWriterRegistry.delete_all(timeout_ms) end, "delete_all")
     safely(fn -> Aiur.ProcessReaper.reap([:serve], drain: true) end, "reap_serves")
-    safely(fn -> ReplAgent.sweep_own_panes() end, "sweep_repl_panes")
-    safely(fn -> reap_workspace_agents() end, "reap_workspace_agents")
+
+    unless Protection.active?() do
+      safely(fn -> ReplAgent.sweep_own_panes() end, "sweep_repl_panes")
+      safely(fn -> reap_workspace_agents() end, "reap_workspace_agents")
+    end
+
     safely(fn -> truncate_session_tempfile() end, "truncate_tempfile")
     :ok
   end

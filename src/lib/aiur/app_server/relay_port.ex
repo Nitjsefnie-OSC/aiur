@@ -3,8 +3,8 @@ defmodule Aiur.AppServer.RelayPort do
   use GenServer
   require Logger
 
-  alias Aiur.{AgentEnvironment, Boot, Config, ProcessReaper, ProcessTree}
   alias Aiur.Config.Paths
+  alias Aiur.{AgentEnvironment, Boot, Config, ProcessReaper, ProcessTree}
 
   @spec start(Path.t(), String.t(), list(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start(workspace, command, env, opts \\ []) do
@@ -13,6 +13,18 @@ defmodule Aiur.AppServer.RelayPort do
 
   @spec call(pid(), term()) :: term()
   def call(pid, request), do: GenServer.call(pid, request, 15_000)
+
+  @doc "Reads live relay identity without attaching or advancing its generation."
+  @spec inspect_relay(Path.t()) :: {:ok, map()} | {:error, term()}
+  def inspect_relay(directory) do
+    with {:ok, socket} <- connect_socket(Path.join(directory, "ctl.sock"), 1) do
+      try do
+        with :ok <- send_json(socket, %{op: "hello"}), do: receive_json(socket)
+      after
+        :gen_tcp.close(socket)
+      end
+    end
+  end
 
   @spec attach(Path.t(), pos_integer(), non_neg_integer()) :: {:ok, pid()} | {:error, term()}
   def attach(directory, generation, offset) do
@@ -32,6 +44,13 @@ defmodule Aiur.AppServer.RelayPort do
           value
       end
     end)
+  end
+
+  @doc "Advances the durable controller fence for a successor application boot."
+  @spec next_generation(Path.t()) :: pos_integer()
+  def next_generation(root) do
+    key = {__MODULE__, root, Boot.run_id()}
+    :global.trans({key, self()}, fn -> mint_generation(root, key) end)
   end
 
   defp mint_generation(root, key) do

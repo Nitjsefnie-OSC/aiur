@@ -39,6 +39,26 @@ defmodule Aiur.AppServer.ToolCallLedger do
     end
   end
 
+  @doc "Waits for active executions, then fences unfinished claims as uncertain."
+  @spec quiesce(non_neg_integer(), GenServer.server()) :: :ok
+  def quiesce(timeout_ms, server \\ __MODULE__) do
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    await_quiescent(server, deadline)
+  end
+
+  defp await_quiescent(server, deadline) do
+    expired? = System.monotonic_time(:millisecond) >= deadline
+
+    case GenServer.call(server, {:quiesce, expired?}) do
+      :ok ->
+        :ok
+
+      :busy ->
+        Process.sleep(10)
+        await_quiescent(server, deadline)
+    end
+  end
+
   @impl true
   def init(opts) do
     durable? = Keyword.has_key?(opts, :storage_path) or Keyword.get(opts, :name, __MODULE__) != nil
@@ -53,6 +73,17 @@ defmodule Aiur.AppServer.ToolCallLedger do
   end
 
   @impl true
+  def handle_call({:quiesce, expired?}, _from, state) do
+    running = for {key, {:running, _, token, _, _, _}} <- state.entries, do: {key, token}
+
+    if expired? do
+      next = Enum.reduce(running, state, fn {key, token}, acc -> mark_uncertain(acc, key, token) end)
+      {:reply, :ok, next}
+    else
+      {:reply, if(running == [], do: :ok, else: :busy), state}
+    end
+  end
+
   def handle_call({:claim, key, fingerprint}, from, state) do
     case Map.get(state.entries, key) do
       {:done, ^fingerprint, result} ->
@@ -139,8 +170,9 @@ defmodule Aiur.AppServer.ToolCallLedger do
 
   defp mark_uncertain(state, key, token) do
     case Map.get(state.entries, key) do
-      {:running, fingerprint, ^token, _owner, monitor, waiters} ->
+      {:running, fingerprint, ^token, owner, monitor, waiters} ->
         _ = Storage.put(state.storage, key, {:uncertain, fingerprint})
+        send(owner, {:tool_call_uncertain, key, token})
         Process.demonitor(monitor, [:flush])
         Enum.each(waiters, &GenServer.reply(&1, {:error, :outcome_uncertain}))
 
@@ -154,16 +186,66 @@ defmodule Aiur.AppServer.ToolCallLedger do
   end
 
   defp execute_claim(server, key, token, fun) do
-    result = fun.()
+    caller = self()
+    dictionary = Process.get()
+    {worker, monitor} = spawn_monitor(fn -> execute_worker(caller, token, fun, dictionary) end)
+    await_execution(server, key, token, worker, monitor, dictionary)
+  end
 
-    case GenServer.call(server, {:complete, key, token, result}, :infinity) do
-      :ok -> result
-      {:error, reason} -> {:error, reason}
+  defp await_execution(server, key, token, worker, monitor, dictionary) do
+    receive do
+      {^token, {:ok, result, updated_dictionary}} ->
+        Enum.each(dictionary, fn {name, _value} -> Process.delete(name) end)
+        Enum.each(updated_dictionary, fn {name, value} -> Process.put(name, value) end)
+
+        case GenServer.call(server, {:complete, key, token, result}, :infinity) do
+          :ok -> result
+          {:error, reason} -> {:error, reason}
+        end
+
+      {^token, {:raised, kind, reason, stacktrace}} ->
+        :erlang.raise(kind, reason, stacktrace)
+
+      {:tool_call_uncertain, ^key, ^token} ->
+        Process.exit(worker, :kill)
+        {:error, :outcome_uncertain}
+
+      {:DOWN, ^monitor, :process, ^worker, reason} ->
+        mark_uncertain_safely(server, key, token)
+        {:error, {:tool_execution_exit, reason}}
     end
   catch
     kind, reason ->
       mark_uncertain_safely(server, key, token)
       :erlang.raise(kind, reason, __STACKTRACE__)
+  after
+    Process.demonitor(monitor, [:flush])
+  end
+
+  defp execute_worker(caller, token, fun, dictionary) do
+    worker = self()
+    spawn(fn -> watch_execution(caller, worker) end)
+    Enum.each(dictionary, fn {name, value} -> Process.put(name, value) end)
+
+    result =
+      try do
+        value = fun.()
+        {:ok, value, Process.get()}
+      catch
+        kind, reason -> {:raised, kind, reason, __STACKTRACE__}
+      end
+
+    send(caller, {token, result})
+  end
+
+  defp watch_execution(caller, worker) do
+    owner_monitor = Process.monitor(caller)
+    worker_monitor = Process.monitor(worker)
+
+    receive do
+      {:DOWN, ^owner_monitor, :process, ^caller, _reason} -> Process.exit(worker, :kill)
+      {:DOWN, ^worker_monitor, :process, ^worker, _reason} -> :ok
+    end
   end
 
   defp mark_uncertain_safely(server, key, token) do
