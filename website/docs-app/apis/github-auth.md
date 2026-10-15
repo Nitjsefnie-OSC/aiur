@@ -126,7 +126,7 @@ every request a determined agent could make.
 
 ## Human-review base checks
 
-Human-review state writes compare the open PR with the configured base. Stale heads also read a fresh GraphQL `mergeable` observation for the exact PR head.
+Human-review state writes compare the open PR with the configured base; stale heads also read fresh `mergeable` data for the exact PR head. State-label swaps add the target, revalidate current labels, then remove other state labels. Writes retry short local GitHub budget holds within the bounded wait policy.
 
 Comparisons pin the configured `tracker.base_branch` and exact PR head to SHAs for the assessment; GitHub's lagging PR `baseRefOid` is not used as a freshness pin. Fresh `GET /repos/{owner}/{repo}/compare/{base}...{head}` reads check changes in both directions; rename checks include old and new paths.
 
