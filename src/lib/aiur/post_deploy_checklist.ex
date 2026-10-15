@@ -18,6 +18,9 @@ defmodule Aiur.PostDeployChecklist do
   @spec list(GenServer.server()) :: [map()]
   def list(server \\ __MODULE__), do: GenServer.call(server, :list)
 
+  @spec status(GenServer.server()) :: :ok | {:error, term()}
+  def status(server \\ __MODULE__), do: GenServer.call(server, :status)
+
   @spec mark_done(String.t(), String.t(), GenServer.server()) :: :ok | {:error, term()}
   def mark_done(id, actor, server \\ __MODULE__) when is_binary(id) and is_binary(actor),
     do: GenServer.call(server, {:mark_done, id, actor})
@@ -41,6 +44,8 @@ defmodule Aiur.PostDeployChecklist do
 
   @impl true
   def handle_call(:list, _from, state), do: {:reply, Enum.reverse(state.records), state}
+  def handle_call(:status, _from, %{writable?: true} = state), do: {:reply, :ok, state}
+  def handle_call(:status, _from, state), do: {:reply, {:error, Map.get(state, :error, :store_unavailable)}, state}
 
   def handle_call({:ingest, _event}, _from, %{writable?: false} = state), do: {:reply, {:error, :store_unavailable}, state}
 
@@ -51,7 +56,11 @@ defmodule Aiur.PostDeployChecklist do
 
       entries ->
         {next, changed?} = Enum.reduce(entries, {state.records, false}, &upsert(&1, &2, event))
-        persist_ingest(next, state, changed?)
+
+        case persist(next, state, changed?) do
+          {:ok, next_state} -> {:reply, :ok, next_state}
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
     end
   end
 
@@ -66,7 +75,14 @@ defmodule Aiur.PostDeployChecklist do
         item, changed -> {item, changed}
       end)
 
-    if changed?, do: persist_reply(next, state, true), else: {:reply, {:error, :not_found_or_done}, state}
+    if changed? do
+      case persist(next, state, true) do
+        {:ok, next_state} -> {:reply, :ok, next_state}
+        {:error, reason} -> {:reply, {:error, reason}, state}
+      end
+    else
+      {:reply, {:error, :not_found_or_done}, state}
+    end
   end
 
   @impl true
@@ -78,11 +94,11 @@ defmodule Aiur.PostDeployChecklist do
       entries ->
         {next, changed?} = Enum.reduce(entries, {state.records, false}, &upsert(&1, &2, event))
 
-        case persist_ingest(next, state, changed?) do
-          {:reply, :ok, next_state} ->
+        case persist(next, state, changed?) do
+          {:ok, next_state} ->
             {:noreply, next_state}
 
-          {:reply, {:error, reason}, _state} ->
+          {:error, reason} ->
             Logger.warning("aiur_post_deploy_checklist ingest_failed reason=#{inspect(reason)}")
             {:noreply, state}
         end
@@ -93,29 +109,24 @@ defmodule Aiur.PostDeployChecklist do
       {:noreply, state}
   end
 
-  defp persist_reply(_records, state, false), do: {:reply, :ok, state}
+  defp persist(_records, state, false), do: {:ok, state}
 
-  defp persist_reply(records, state, true) do
+  defp persist(records, state, true) do
     :ok = JsonStore.write!(state.path, records)
-    {:reply, :ok, %{state | records: records}}
+    next_state = %{state | records: records}
+    broadcast(next_state.records)
+    {:ok, next_state}
   rescue
-    error -> {:reply, {:error, Exception.message(error)}, state}
-  end
-
-  defp persist_ingest(records, state, changed?) do
-    case persist_reply(records, state, changed?) do
-      {:reply, :ok, next_state} = reply ->
-        if changed?, do: broadcast(next_state.records)
-        reply
-
-      other ->
-        other
-    end
+    error -> {:error, Exception.message(error)}
   end
 
   defp upsert(entry, {records, changed?}, event) do
     pr = Map.get(event, :pr, %{})
-    repo = get_in(pr, ["head", "repo", "full_name"]) || Map.get(event, :repository) || "unknown/unknown"
+
+    repo =
+      Map.get(event, :repository) || get_in(pr, ["base", "repo", "full_name"]) ||
+        get_in(pr, ["head", "repo", "full_name"]) || "unknown/unknown"
+
     id = "#{repo}##{Map.get(pr, "number", "unknown")}:#{entry.text}"
 
     case Enum.find_index(records, &(&1["id"] == id)) do
@@ -125,6 +136,7 @@ defmodule Aiur.PostDeployChecklist do
           "repository" => repo,
           "pr_number" => Map.get(pr, "number"),
           "pr_url" => safe_pr_url(repo, Map.get(pr, "number")),
+          "pr_author" => get_in(pr, ["user", "login"]),
           "ticket" => ticket_id(event),
           "text" => entry.text,
           "operator" => entry.operator,

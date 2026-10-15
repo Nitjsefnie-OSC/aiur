@@ -19,7 +19,7 @@ defmodule AiurWeb.PostDeployLive do
      |> assign(:tracker_kind, kind(&Aiur.Config.tracker_kind/0, "tracker unavailable"))
      |> assign(:agent_kind, kind(&Aiur.Config.agent_kind/0, "agent unavailable"))
      |> assign(:checks, PostDeployChecklist.list())
-     |> assign(:checklist_error, nil)}
+     |> assign(:checklist_error, checklist_error())}
   end
 
   @impl true
@@ -72,10 +72,11 @@ defmodule AiurWeb.PostDeployLive do
         <p :if={@checks == []}>No post-deploy checks have been recorded.</p>
         <article :for={check <- @checks} id={"post-deploy-#{check["id"]}"} class="bo-state-card">
           <p><strong :if={check["operator"]}>Requires: {check["operator"]}</strong></p>
-          <p>{check["text"]}</p>
-          <p><a :if={check["pr_url"]} href={check["pr_url"]} target="_blank" rel="noreferrer">PR #{check["pr_number"]}</a></p>
+          <p>{display_check_text(check["text"])}</p>
+          <p>Submitted in <a :if={check["pr_url"]} href={check["pr_url"]} target="_blank" rel="noreferrer">PR #{check["pr_number"]}</a><span :if={check["pr_author"]}> by {check["pr_author"]}</span>. Review the linked PR before running this check.</p>
           <p :if={check["done_at"]}>Completed by {check["done_by"]} at {check["done_at"]}</p>
-          <button :if={is_nil(check["done_at"])} type="button" phx-click="post-deploy-done" phx-value-id={check["id"]}>Mark done</button>
+          <button :if={is_nil(check["done_at"]) and @writable} type="button" phx-click="post-deploy-done" phx-value-id={check["id"]}>Mark done</button>
+          <p :if={is_nil(check["done_at"]) and not @writable}>Mark done is unavailable while the dashboard is read-only.</p>
         </article>
       </section>
     </DashboardShell.dashboard_shell>
@@ -87,4 +88,26 @@ defmodule AiurWeb.PostDeployLive do
   rescue
     _error -> fallback
   end
+
+  defp checklist_error do
+    case PostDeployChecklist.status() do
+      :ok -> nil
+      {:error, _reason} -> "Post-deploy checklist storage is unavailable. Existing checks may not be visible or recorded."
+    end
+  rescue
+    _error -> "Post-deploy checklist storage is unavailable. Existing checks may not be visible or recorded."
+  end
+
+  # Sanitizer stores escaped text to protect event digests. Decode that one
+  # storage layer here; HEEx escapes the resulting plain text for this page.
+  defp display_check_text(text) when is_binary(text) do
+    text
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&#39;", "'")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&amp;", "&")
+  end
+
+  defp display_check_text(text), do: text
 end

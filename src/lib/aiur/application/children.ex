@@ -153,6 +153,9 @@ defmodule Aiur.Application.Children do
       BuildOrders.child_specs(:early, opts),
       {Aiur.Events.IdGenerator, floor_files: &Aiur.IdFloorSources.floor_files/0, legacy_counter_files: &Aiur.IdFloorSources.legacy_counter_files/0},
       {Aiur.Events.Exchange, name: Aiur.Events.Exchange},
+      # Subscribe before the orchestrator's immediate first poll so a merge
+      # observed during startup also reaches the durable checklist.
+      Aiur.PostDeployChecklist,
       Aiur.Events.BranchRefStore,
       # Restart-durable GitHub state keyed by resource identity. Starts before
       # the Publisher and before anything that polls or receives, so the first
@@ -284,7 +287,7 @@ defmodule Aiur.Application.Children do
         [Aiur.BackgroundCpu] ++
         Aiur.Experiments.children(recording?) ++
         Auto.child_specs(recording?: recording?) ++
-        BuildOrders.child_specs(:label_projection, opts) ++ [Aiur.PostDeployChecklist]
+        BuildOrders.child_specs(:label_projection, opts)
     )
   end
 
