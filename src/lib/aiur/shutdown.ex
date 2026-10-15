@@ -22,11 +22,11 @@ defmodule Aiur.Shutdown do
 
   require Logger
 
+  alias Aiur.{AlertLedger, Config}
   alias Aiur.Claude.{RemoteControl, ReplAgent}
   alias Aiur.Fs
   alias Aiur.Handoff.Protection
   alias Aiur.Opencode.SessionWriterRegistry
-  alias Aiur.{AlertLedger, Config}
 
   @default_cleanup_timeout_ms 5_000
   @default_supervisor_stop_timeout_ms 5_000

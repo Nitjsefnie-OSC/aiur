@@ -9,8 +9,8 @@ defmodule Aiur.AgentRunner.CheckpointDelivery do
 
   require Logger
 
-  alias Aiur.AgentRunner.Handoff
   alias Aiur.AgentRunner.{EventsDigest, MessageHandler, QueueDrain}
+  alias Aiur.AgentRunner.Handoff
   alias Aiur.Codex.SessionRecovery
   alias Aiur.Commands
   alias Aiur.Issue

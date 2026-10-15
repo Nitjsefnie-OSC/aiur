@@ -3,8 +3,8 @@ defmodule Aiur.AppServer.RelayPort do
   use GenServer
   require Logger
 
-  alias Aiur.Config.Paths
   alias Aiur.{AgentEnvironment, Boot, Config, ProcessReaper, ProcessTree}
+  alias Aiur.Config.Paths
 
   @spec start(Path.t(), String.t(), list(), keyword()) :: {:ok, pid()} | {:error, term()}
   def start(workspace, command, env, opts \\ []) do

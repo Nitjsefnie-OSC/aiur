@@ -3,8 +3,11 @@ defmodule Aiur.AgentRunner.HandoffTest do
 
   import Aiur.Codex.TurnLoopTestSupport, only: [base_state: 0]
   alias Aiur.AgentRunner.Handoff
-  alias Aiur.AppServer.RelayPort
+  alias Aiur.AgentRunner.Handoff.ProviderState
+  alias Aiur.AgentRunner.SessionCleanup
   alias Aiur.AppServer.{Adapter, Transport, TurnLoop}
+  alias Aiur.AppServer.RelayPort
+  alias Aiur.Handoff.Fallback
 
   @tag :tmp_dir
   test "a detached mid-turn provider delivers an offline tool once and finishes after attach", %{tmp_dir: workspace} do
@@ -36,6 +39,7 @@ defmodule Aiur.AgentRunner.HandoffTest do
     assert_receive {:ready, ^runner}, 5_000
     Handoff.hold(runner)
     assert {:ok, record} = Handoff.snapshot(runner)
+    on_exit(fn -> Fallback.stop(record) end)
     assert Handoff.decode(record["turn_state"]).current_turn_id == "turn-1"
     assert record["transport"]["kind"] == "relay"
     Process.exit(runner, :kill)
@@ -44,7 +48,7 @@ defmodule Aiur.AgentRunner.HandoffTest do
     on_exit(fn -> if Process.alive?(session.port), do: Transport.close(session.port) end)
 
     state =
-      Aiur.AgentRunner.Handoff.ProviderState.restore(Handoff.decode(record["turn_state"]),
+      ProviderState.restore(Handoff.decode(record["turn_state"]),
         tool_executor: fn "aiur.echo", %{"offline" => true} ->
           send(parent, :offline_tool)
           %{"success" => true}
@@ -72,7 +76,7 @@ defmodule Aiur.AgentRunner.HandoffTest do
           try do
             TurnLoop.receive_loop(session, Map.merge(base_state(), %{timeout_ms: 5_000, pending_line: ""}))
           after
-            Aiur.AgentRunner.SessionCleanup.stop(session, nil, fn current ->
+            SessionCleanup.stop(session, nil, fn current ->
               Transport.close(current.port)
               send(parent, {:direct_cleaned, self()})
               {:ok, :cleanup_proven}

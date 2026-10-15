@@ -6,8 +6,8 @@ defmodule Aiur.Claude.CodingAgent.Methods do
 
   require Logger
   alias Aiur.AgentRunner.ToolExecutor
-  alias Aiur.AppServer.Rpc.StreamDiagnostics
   alias Aiur.AppServer.{Messages, OperatorDelivery, Rpc, ToolCallIdentity, ToolCallLedger, Transport, TurnState}
+  alias Aiur.AppServer.Rpc.StreamDiagnostics
   alias Aiur.Claude.{AccountMeters, CodingAgent, NotificationPolicy}
 
   @doc false
@@ -136,7 +136,7 @@ defmodule Aiur.Claude.CodingAgent.Methods do
 
     case ToolCallIdentity.resolve(scope, params, tool_name, arguments, session.thread_id) do
       {:ok, identity, fingerprint} ->
-        ToolCallLedger.execute(identity, fingerprint, execute, Map.get(state, :tool_call_ledger, ToolCallLedger))
+        ToolCallLedger.execute_cancellable(identity, fingerprint, execute, Map.get(state, :tool_call_ledger, ToolCallLedger))
 
       {:error, reason} ->
         {:error, reason}

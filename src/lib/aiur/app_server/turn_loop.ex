@@ -4,8 +4,8 @@ defmodule Aiur.AppServer.TurnLoop do
   """
 
   alias Aiur.AgentRunner.Handoff
-  alias Aiur.AppServer.Rpc.StreamDiagnostics
   alias Aiur.AppServer.{Adapter, Interrupts, Messages, OperatorDelivery, Rpc, TurnState}
+  alias Aiur.AppServer.Rpc.StreamDiagnostics
 
   @spec receive_loop(map(), map()) :: term()
   def receive_loop(session, state) do

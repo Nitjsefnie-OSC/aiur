@@ -3,14 +3,14 @@ defmodule Aiur.AgentRunner.SessionLifecycle do
   require Logger
   alias Aiur.Accounts
   alias Aiur.Accounts.UsageReadings
-  alias Aiur.AgentRunner.SessionCleanup
+  alias Aiur.{AgentPubSub, CodingAgent, Config, Issue, ModelDiscovery, ProcessTree, Signal, Tracker}
   alias Aiur.AgentRunner.{CodexUpdateRelay, DispatchSelectionEvent, MessageHandler, ModelLabelRefresh, SessionResume, TurnBudget, TurnLoop}
+  alias Aiur.AgentRunner.SessionCleanup
   alias Aiur.Claude.{DisplayTailer, Telemetry}
   alias Aiur.CodingAgent.HeadroomDispatch
   alias Aiur.LiveConversation.Source
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.Workspace.Ownership
-  alias Aiur.{AgentPubSub, CodingAgent, Config, Issue, ModelDiscovery, ProcessTree, Signal, Tracker}
   @type worker_host :: String.t() | nil
   # The live session's OS-level runtime (REPL pane + agent os pid, or the
   # headless wrapper's bash pid) is owned by this runner task. An

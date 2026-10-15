@@ -1,10 +1,12 @@
 defmodule Aiur.AgentRunner.Handoff do
   @moduledoc "Runner barrier and continuation for a daemon handoff."
 
-  alias Aiur.AgentRunner.{SessionLifecycle, TurnLoop}
   alias Aiur.AgentRunner.Handoff.ProviderState, as: AppHandoff
+  alias Aiur.AgentRunner.{SessionLifecycle, TurnLoop}
+  alias Aiur.AppServer.ProviderTurnLedger
   alias Aiur.AppServer.RelayPort
   alias Aiur.Claude.DisplayTailer
+  alias Aiur.Claude.Repl.Adoption, as: ReplAdoption
   alias Aiur.Claude.Repl.HookTurn
   alias Aiur.Workspace.Ownership.Adoption
   alias Aiur.Workspace.WipPreservation
@@ -164,7 +166,7 @@ defmodule Aiur.AgentRunner.Handoff do
     {%{
        "kind" => "repl",
        "pane_id" => pane,
-       "socket" => Aiur.Claude.Repl.Adoption.socket_name(session),
+       "socket" => ReplAdoption.socket_name(session),
        "hook_spool_offset" => cursor["offset"],
        "os_pid" => session[:os_pid],
        "process_group_id" => session[:process_group_id]
@@ -270,14 +272,14 @@ defmodule Aiur.AgentRunner.Handoff do
   def attach(%{"transport" => %{"kind" => "repl", "socket" => socket}} = record, _generation) do
     session = decode(record["session_state"])
 
-    with {:ok, session} <- Aiur.Claude.Repl.Adoption.rebind(session, socket) do
+    with {:ok, session} <- ReplAdoption.rebind(session, socket) do
       Enum.each(decode(record["queued_frames"]), &send(self(), {:claude_hook, session.identifier, &1}))
       {:ok, session}
     end
   end
 
   defp restore_provider_store(%{backend: "codex"} = session, state) do
-    {:ok, store} = Aiur.AppServer.ProviderTurnLedger.start_store()
+    {:ok, store} = ProviderTurnLedger.start_store()
     if is_map(state), do: Agent.update(store, fn _ -> Map.take(state, [:retired_turn_ids, :anonymous_completion_consumed?]) end)
     Map.put(session, :provider_turn_store, store)
   end

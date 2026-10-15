@@ -5,8 +5,8 @@ defmodule Aiur.Handoff.Adopter do
   alias Aiur.AgentRunner.Handoff, as: Runner
   alias Aiur.AppServer.RelayPort
   alias Aiur.Config.Paths
-  alias Aiur.Handoff.Fallback
   alias Aiur.Handoff.{Compatibility, Record}
+  alias Aiur.Handoff.Fallback
   alias Aiur.Orchestrator.State
 
   @spec adopt(State.t(), keyword()) :: State.t()

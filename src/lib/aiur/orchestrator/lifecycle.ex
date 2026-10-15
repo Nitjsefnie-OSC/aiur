@@ -5,9 +5,10 @@ defmodule Aiur.Orchestrator.Lifecycle do
   Every function runs synchronously inside the orchestrator GenServer process.
   """
 
-  alias Aiur.Events.{Exchange, Publisher}
-  alias Aiur.Handoff.Protection
   alias Aiur.{AgentPubSub, CIApprovalStore, Config, LiveConversation, PollCadence, ProcessReaper, TestTicketScope}
+  alias Aiur.Events.{Exchange, Publisher}
+  alias Aiur.Handoff.Adopter
+  alias Aiur.Handoff.Protection
 
   alias Aiur.Orchestrator.{
     AgentTeardown,
@@ -164,7 +165,7 @@ defmodule Aiur.Orchestrator.Lifecycle do
     # Runner tasks survive an Orchestrator-only restart, but this generation
     # cannot track them. Stop them before startup cleanup or the first poll, so
     # the ticket is redispatched instead of refused as a live session (#2705).
-    state = state |> Aiur.Handoff.Adopter.adopt() |> OrphanedWorkers.stop_untracked_runners()
+    state = state |> Adopter.adopt() |> OrphanedWorkers.stop_untracked_runners()
     state = WorkspaceCleanup.start_startup_workspace_cleanup(state, wake?: Keyword.get(opts, :initial_poll?, true))
     RemoteControlMode.cleanup_stray_remote_control_servers()
     TrackedSet.reset(Enum.map(state.running, fn {_id, entry} -> entry.identifier end))

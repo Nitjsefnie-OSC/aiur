@@ -2,6 +2,7 @@ defmodule Aiur.AgentRunner.HandoffRestorationTest do
   use Aiur.TestSupport
 
   alias Aiur.AgentRunner.{Handoff, SessionLifecycle}
+  alias Aiur.AgentRunner.Handoff.ProviderState
   alias Aiur.Claude.CodingAgent.Methods
   alias Aiur.Claude.DisplayTailer
   alias Aiur.Codex.NotificationPolicy
@@ -15,7 +16,7 @@ defmodule Aiur.AgentRunner.HandoffRestorationTest do
     try do
       for backend <- ["codex", "claude"] do
         original = %{backend: backend, workspace: File.cwd!(), metadata: %{}, clock: &DateTime.utc_now/0}
-        session = original |> Handoff.encode() |> Handoff.decode() |> Map.put(:port, port) |> Aiur.AgentRunner.Handoff.ProviderState.restore_session(issue)
+        session = original |> Handoff.encode() |> Handoff.decode() |> Map.put(:port, port) |> ProviderState.restore_session(issue)
         assert is_function(session.clock, 0)
         assert %DateTime{} = session.clock.()
 

@@ -1,8 +1,8 @@
 defmodule Aiur.Workspace.Ownership.Adoption do
   @moduledoc "Acquires an active lease for an existing local workspace without provisioning it."
 
-  alias Aiur.Workspace.Ownership.{Guardian, Store}
   alias Aiur.Workspace.{HostLock, Ownership}
+  alias Aiur.Workspace.Ownership.{Guardian, Store}
 
   @spec adopt(String.t(), Path.t(), keyword()) :: {:ok, Ownership.lease()} | {:error, term()}
   def adopt(identifier, workspace, opts \\ []) do

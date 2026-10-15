@@ -21,7 +21,7 @@ defmodule Aiur.HandoffTest do
 
     tool =
       Task.async(fn ->
-        ToolCallLedger.execute(
+        ToolCallLedger.execute_cancellable(
           :tool,
           "fingerprint",
           fn ->
@@ -79,6 +79,56 @@ defmodule Aiur.HandoffTest do
     refute_receive :snapshotted, 30
   end
 
+  test "the daemon holds queued turn starts until handoff is cancelled" do
+    server = start_supervised!({Aiur.Orchestrator, initial_poll?: false})
+    identifier = "handoff-queue"
+
+    :sys.replace_state(server, fn state ->
+      {store, _item} = Aiur.AgentQueueStore.enqueue(state.queue_store, Aiur.AgentQueue.operator_message(identifier, "continue"))
+      %{state | queue_store: store}
+    end)
+
+    GenServer.call(server, :prepare_handoff_snapshot)
+    assert :empty = Aiur.Orchestrator.claim_next_queue_item(server, identifier)
+    assert :ok = GenServer.call(server, :cancel_handoff)
+    assert {:ok, item} = Aiur.Orchestrator.claim_next_queue_item(server, identifier)
+    assert item.body.text == "continue"
+  end
+
+  test "an unsupported native backend falls back without preventing a compatible snapshot" do
+    {:ok, ledger} = start_supervised({ToolCallLedger, name: nil})
+    native = %{pid: self(), issue: %Aiur.Issue{id: "native", identifier: "native"}, session_execution: %{backend: "muse"}}
+    compatible = %{pid: self(), issue: %Aiur.Issue{id: "local", identifier: "local"}, session_execution: %{backend: "codex"}}
+    state = %{running: %{"native" => native, "local" => compatible}, retry_attempts: %{}, dispatch_recovery: %{}}
+    {:ok, owner} = start_supervised({Owner, state})
+    dir = Path.join(System.tmp_dir!(), "handoff-native-#{System.unique_integer([:positive])}")
+    parent = self()
+
+    on_exit(fn ->
+      File.rm_rf!(dir)
+      Handoff.reset()
+    end)
+
+    assert {:ok, %{agents: agents}} =
+             Handoff.prepare(
+               orchestrator: owner,
+               ledger: ledger,
+               dir: dir,
+               config_fingerprint: "config",
+               hold: fn _ -> :ok end,
+               snapshot: fn _ ->
+                 send(parent, :snapshot)
+                 {:ok, %{"transport" => %{"kind" => "relay"}}}
+               end
+             )
+
+    assert_receive :snapshot, 1000
+    refute_receive :snapshot, 20
+    assert Enum.find(agents, &(&1["identifier"] == "native"))["fallback_reason"] == "relay_protocol"
+    assert Handoff.protected?("local")
+    refute Handoff.protected?("native")
+  end
+
   test "failed snapshot aborts held runners and releases the dispatch hold" do
     {:ok, ledger} = start_supervised({ToolCallLedger, name: nil})
     state = %{running: %{"1" => %{pid: self(), issue: %Aiur.Issue{id: "1", identifier: "1"}}}}
@@ -106,7 +156,7 @@ defmodule Aiur.HandoffTest do
 
     tool =
       Task.async(fn ->
-        ToolCallLedger.execute(
+        ToolCallLedger.execute_cancellable(
           :slow,
           "same",
           fn ->
@@ -123,9 +173,21 @@ defmodule Aiur.HandoffTest do
     assert_receive {:running, worker}, 1000
     monitor = Process.monitor(worker)
     assert :ok = ToolCallLedger.quiesce(0, ledger)
-    assert {:error, :outcome_uncertain} = ToolCallLedger.execute(:slow, "same", fn -> flunk("executed twice") end, ledger)
+    assert {:error, :outcome_uncertain} = ToolCallLedger.execute_cancellable(:slow, "same", fn -> flunk("executed twice") end, ledger)
     assert {:error, :outcome_uncertain} = Task.await(tool)
     assert_receive {:DOWN, ^monitor, :process, ^worker, :killed}, 1000
+  end
+
+  test "inline and cancellable tool failures retain exception semantics and fence replay" do
+    {:ok, ledger} = start_supervised({ToolCallLedger, name: nil})
+
+    Enum.each([:execute, :execute_cancellable], fn mode ->
+      assert_raise RuntimeError, "tool failed", fn ->
+        apply(ToolCallLedger, mode, [mode, "failure", fn -> raise "tool failed" end, ledger])
+      end
+
+      assert {:error, :outcome_uncertain} = apply(ToolCallLedger, mode, [mode, "failure", fn -> flunk("replayed failed tool") end, ledger])
+    end)
   end
 
   test "tool worker inherits actor context and returns quota increments and deletions" do
@@ -135,7 +197,7 @@ defmodule Aiur.HandoffTest do
     Process.put(:handoff_deleted, true)
 
     assert "ticket" ==
-             ToolCallLedger.execute(
+             ToolCallLedger.execute_cancellable(
                :context,
                "same",
                fn ->

@@ -2,11 +2,11 @@ defmodule Aiur.Claude.Repl.Adoption do
   @moduledoc false
 
   alias Aiur.Claude.Repl.Reaper
-  alias Aiur.Tmux.Socket
   alias Aiur.{ProcessReaper, Tmux}
+  alias Aiur.Tmux.Socket
 
   @spec socket_name(map()) :: String.t() | nil
-  def socket_name(session), do: Aiur.Tmux.Socket.name(session.tmux)
+  def socket_name(session), do: Socket.name(session.tmux)
 
   @spec rebind(map(), String.t() | nil) :: {:ok, map()} | {:error, term()}
   def rebind(session, socket) do

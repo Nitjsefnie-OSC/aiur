@@ -33,6 +33,12 @@ defmodule Aiur.Handoff do
   @spec dispatch_held?() :: boolean()
   def dispatch_held?, do: Process.get({__MODULE__, :dispatch_hold}, false)
 
+  @doc false
+  @spec claim_or_empty(map(), (-> term())) :: term()
+  def claim_or_empty(state, claim) do
+    if dispatch_held?(), do: {:reply, :empty, state}, else: claim.()
+  end
+
   @spec active?() :: boolean()
   defdelegate active?(), to: Protection
   @spec reset() :: :ok
@@ -100,7 +106,7 @@ defmodule Aiur.Handoff do
     snapshot = Keyword.get(opts, :snapshot, &RunnerHandoff.snapshot/1)
 
     Enum.reduce_while(entries, {:ok, []}, fn {id, entry}, {:ok, agents} ->
-      case snapshot.(entry.pid) do
+      case snapshot_agent(entry, snapshot) do
         {:ok, agent} ->
           state = GenServer.call(server, :prepare_handoff_snapshot, 65_000)
           entry = Map.get(state.running, id, entry)
@@ -122,6 +128,13 @@ defmodule Aiur.Handoff do
           {:halt, {:error, {id, reason}}}
       end
     end)
+  end
+
+  defp snapshot_agent(entry, snapshot) do
+    case get_in(entry, [:session_execution, :backend]) do
+      backend when backend in [nil, "codex", "claude", "claude-repl"] -> snapshot.(entry.pid)
+      backend -> {:ok, %{"backend" => backend, "workspace" => entry[:workspace_path], "transport" => %{"kind" => "unsupported"}, "fallback_reason" => "relay_protocol"}}
+    end
   end
 
   defp json_value(%DateTime{} = value), do: DateTime.to_iso8601(value)
