@@ -8,12 +8,13 @@ defmodule Aiur.BuildOrder.IndexBenchTest do
     # Measure steady-state work after loading the projector modules.
     assert {:ok, _warm} = assemble(parts([row(1)]))
 
-    for count <- [1_400, 10_000] do
+    for count <- [1_400, 10_000], kind <- [:history, :open] do
       p = parts(for n <- 1..count, do: row(n, %{end: DateTime.add(~U[2026-10-07 12:00:00Z], -div(n, 50) * 86_400)}))
+      p = if kind == :open, do: put_in(parts(), [:open, Access.key(:tickets)], Enum.map(1..count, &open/1)), else: p
       {microseconds, {:ok, index}} = :timer.tc(fn -> assemble(p) end)
       bytes = :erts_debug.flat_size(index) * :erlang.system_info(:wordsize)
       page = Index.window(index, "America/Los_Angeles", now())
-      IO.puts("INDEX_BENCH tickets=#{count} assemble_ms=#{microseconds / 1_000} index_bytes=#{bytes} page_rows=#{length(page.sections.hist)}")
+      IO.puts("INDEX_BENCH kind=#{kind} tickets=#{count} assemble_ms=#{microseconds / 1_000} index_bytes=#{bytes} page_rows=#{length(page.sections.hist)}")
       assert map_size(index.all) == count
       if count == 1_400, do: assert(microseconds <= 250_000)
     end

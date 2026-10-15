@@ -8,6 +8,7 @@ defmodule Aiur.BuildOrder.Index do
   @spec assemble(map(), keyword()) :: {:ok, map()} | {:error, atom()}
   def assemble(parts, opts \\ []) do
     with {:ok, general} <- Catalogue.general(parts) do
+      parts = Map.put(parts, :resolved_history, Map.merge(Rows.open_history(parts), Rows.history(parts)))
       now = Keyword.get(opts, :now, System.system_time(:millisecond))
       {all, undated} = Rows.build(parts, general)
       catalogue = Catalogue.build(parts, general, all, now)

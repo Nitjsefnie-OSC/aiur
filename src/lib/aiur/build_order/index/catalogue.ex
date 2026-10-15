@@ -43,7 +43,7 @@ defmodule Aiur.BuildOrder.Index.Catalogue do
   defp historic_status(_), do: :unknown
 
   defp fact(parts, row) do
-    historic = Map.get(Rows.history(parts), row.num, :missing)
+    historic = Map.get(parts.resolved_history, row.num, :missing)
 
     progress = if is_integer(row.pct), do: {:known, row.pct}, else: {:unknown, :progress}
     FeatureStats.fact(historic, Map.fetch!(@statuses, row.status), progress)
