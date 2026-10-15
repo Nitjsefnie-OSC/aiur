@@ -92,8 +92,10 @@ defmodule Aiur.Experiments.Auto.WindowManager do
     result
   end
 
-  defp sample_status(spec) do
-    if function_exported?(Experiments, :sample_status, 1), do: Function.capture(Experiments, :sample_status, 1).(spec), else: :unavailable
+  defp sample_status(spec), do: sample_status(Experiments, spec)
+
+  defp sample_status(provider, spec) do
+    if function_exported?(provider, :sample_status, 1), do: Function.capture(provider, :sample_status, 1).(spec), else: :unavailable
   rescue
     _error -> :unavailable
   catch
