@@ -79,7 +79,7 @@ defmodule Aiur.BuildQueue.CompetingWritersTest do
     assert item("2").override == nil
   end
 
-  test "queue add withdraws pre-existing todo from an unclaimed list item with unmet prerequisites" do
+  test "queue add with after withdraws pre-existing todo from an unclaimed list item with unmet prerequisites" do
     change_document(fn document -> %{document | items: Enum.reject(document.items, &(&1.issue_id == "2")), edges: [], intents: []} end)
     labels("2", ["agent:todo"])
     pid = server()
@@ -99,6 +99,21 @@ defmodule Aiur.BuildQueue.CompetingWritersTest do
 
     assert labels_for("2") == ~w(agent:queued agent:todo)
     assert projection(pid, "2").state == :overridden
+  end
+
+  test "after add clears a pre-existing todo and leaves the item waiting on its prerequisite" do
+    change_document(fn document -> %{document | items: Enum.reject(document.items, &(&1.issue_id == "2")), edges: [], intents: []} end)
+    labels("2", ["agent:todo"])
+    pid = server()
+    reconcile(pid)
+
+    assert :ok = GenServer.call(pid, {:mutate, {:add, ["2"], [queue: "Q", after: "1"]}})
+    reconcile(pid)
+    reconcile(pid)
+
+    assert labels_for("2") == ["agent:queued"]
+    assert {:remove_label, "2", "agent:todo"} in calls()
+    assert projection(pid, "2").state == :waiting
   end
 
   test "marker removal dequeues item and drops edges before replanning its dependent" do
