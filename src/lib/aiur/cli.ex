@@ -5,7 +5,6 @@ defmodule Aiur.CLI do
 
   alias Aiur.CLI.{Banner, ReferenceOptions, RuntimeDeps, Subcommands, Usage}
   alias Aiur.Workflow
-  @acknowledgement_switch :i_understand_that_this_will_be_running_without_the_usual_guardrails
   @repo "aiur-team/aiur"
   @version Mix.Project.config()[:version]
   @git_rev String.trim(
@@ -14,43 +13,6 @@ defmodule Aiur.CLI do
                _ -> ""
              end
            )
-  @switches [
-    {@acknowledgement_switch, :boolean},
-    logs_root: :string,
-    port: :integer,
-    host: :string,
-    version: :boolean,
-    interactive: :boolean,
-    headless: :boolean,
-    executor: :boolean,
-    no_dashboard: :boolean,
-    max_agents: :integer,
-    pause: :boolean,
-    force: :boolean,
-    todo: :boolean,
-    only: :boolean,
-    unfiled: :boolean,
-    slugs: :boolean,
-    scope: :string,
-    record: :string,
-    repo: :string,
-    digest: :boolean,
-    body: :string,
-    body_file: :string,
-    urgency: :string,
-    blocking: :boolean,
-    done: :string,
-    note: :string,
-    json: :boolean,
-    open: :boolean,
-    all: :boolean,
-    dir: :string,
-    harness: :string,
-    purge: :boolean
-  ]
-
-  # Reference prose stays beside strict switches; launcher-only flags live in the shell engine.
-
   @type ensure_started_result :: {:ok, [atom()]} | {:error, term()}
   @type deps :: %{
           required(:file_regular?) => (String.t() -> boolean()),
@@ -160,7 +122,7 @@ defmodule Aiur.CLI do
           | {:account_logout, String.t(), String.t(), boolean()}
           | {:error, String.t()}
   def evaluate(args, deps \\ RuntimeDeps.get()) do
-    case OptionParser.parse(args, strict: @switches) do
+    case OptionParser.parse(args, strict: ReferenceOptions.strict_switches()) do
       {opts, positional, []} ->
         cond do
           Subcommands.todo_switch?(opts) -> Subcommands.evaluate_todo(opts, positional)
@@ -176,7 +138,7 @@ defmodule Aiur.CLI do
   @doc false
   @spec reference_options() :: [%{name: atom(), type: atom(), syntax: String.t(), description: String.t(), example: String.t()}]
   def reference_options do
-    ReferenceOptions.from_switches(@switches)
+    ReferenceOptions.options()
   end
 
   defp evaluate_standard([version: true], _positional, _deps), do: {:version, @version}
@@ -320,7 +282,7 @@ defmodule Aiur.CLI do
   end
 
   defp require_guardrails_acknowledgement(opts) do
-    if Keyword.get(opts, @acknowledgement_switch, false) do
+    if Keyword.get(opts, ReferenceOptions.acknowledgement_switch(), false) do
       :ok
     else
       {:error, Banner.acknowledgement()}

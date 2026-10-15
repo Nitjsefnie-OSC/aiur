@@ -2,6 +2,41 @@ defmodule Aiur.CLI.ReferenceOptions do
   @moduledoc false
   @acknowledgement_switch :i_understand_that_this_will_be_running_without_the_usual_guardrails
 
+  @switches [
+    {@acknowledgement_switch, :boolean},
+    logs_root: :string,
+    port: :integer,
+    host: :string,
+    version: :boolean,
+    interactive: :boolean,
+    headless: :boolean,
+    executor: :boolean,
+    no_dashboard: :boolean,
+    max_agents: :integer,
+    pause: :boolean,
+    force: :boolean,
+    todo: :boolean,
+    only: :boolean,
+    unfiled: :boolean,
+    slugs: :boolean,
+    scope: :string,
+    record: :string,
+    repo: :string,
+    digest: :boolean,
+    body: :string,
+    body_file: :string,
+    urgency: :string,
+    blocking: :boolean,
+    done: :string,
+    note: :string,
+    json: :boolean,
+    open: :boolean,
+    all: :boolean,
+    dir: :string,
+    harness: :string,
+    purge: :boolean
+  ]
+
   @switch_docs [
     {:pause, "aiur --pause", "Cold-starts with the global provisioning switch paused.", "aiur --pause"},
     {:max_agents, "aiur --max-agents 6", "Launch-only session cap. It wins over `agent.max_concurrent_agents`; Aiur warns when it exceeds that setting. `status` identifies the active binding.",
@@ -55,10 +90,16 @@ defmodule Aiur.CLI.ReferenceOptions do
   ]
 
   @type option :: %{name: atom(), type: atom(), syntax: String.t(), description: String.t(), example: String.t()}
-  @spec from_switches(keyword()) :: [option()]
-  def from_switches(switches) do
+  @spec acknowledgement_switch() :: atom()
+  def acknowledgement_switch, do: @acknowledgement_switch
+
+  @spec strict_switches() :: keyword()
+  def strict_switches, do: @switches
+
+  @spec options() :: [option()]
+  def options do
     documented = @switch_docs |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.sort()
-    accepted = Keyword.keys(switches) |> Enum.sort()
+    accepted = Keyword.keys(@switches) |> Enum.sort()
 
     if documented != accepted do
       raise("CLI reference metadata does not cover strict switches: #{inspect(accepted -- documented)}")
@@ -68,7 +109,7 @@ defmodule Aiur.CLI.ReferenceOptions do
     |> Enum.uniq_by(fn {_name, syntax, _description, _example} -> syntax end)
     |> Enum.sort_by(fn {_name, syntax, _description, _example} -> String.downcase(syntax) end)
     |> Enum.map(fn {name, syntax, description, example} ->
-      %{name: name, type: Keyword.fetch!(switches, name), syntax: syntax, description: description, example: example}
+      %{name: name, type: Keyword.fetch!(@switches, name), syntax: syntax, description: description, example: example}
     end)
   end
 end
