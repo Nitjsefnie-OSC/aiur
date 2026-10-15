@@ -42,9 +42,7 @@ CI batches and landing require all ruleset checks on PR heads. Startup readiness
 
 Only required checks decide a failure: a red check that nothing requires does not send the ticket to rework. With no required list, every failure still decides.
 
-Ticket CI holds user-cancelled runs pending. Landing watcher classifies failed merge groups from Actions logs. It requeues approved PRs for infrastructure, inherited, and known non-PR failures. Known test failures must match an open flake issue or a base failure in the past day, and the PR must not change that file.
-
-Other failures route the linked ticket to rework with the failed job and run URL. Requeues cap at three per 15 minutes, receive a PR comment, and are counted hourly in landing-watcher status. The watcher also checks attribution and cancels stale groups.
+Ticket CI holds user-cancelled runs pending. Landing watcher classifies failed groups from Actions logs and requeues approved PRs for infra, inherited, or known non-PR failures. Known tests must match an open flake issue or base failure within 24h, and be untouched by the PR. Others route to rework with job/run details. It checks attribution and cancels stale groups.
 
 The agent `git` guard spends one GraphQL read per push of the current branch and refuses the push when that PR is in the merge queue, unless GitHub reports it `CONFLICTING` or changes are requested. A lookup that cannot answer lets the push through.
 
