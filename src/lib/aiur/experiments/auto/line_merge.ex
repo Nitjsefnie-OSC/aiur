@@ -31,13 +31,15 @@ defmodule Aiur.Experiments.Auto.LineMerge do
     with {:ok, details} <- details() do
       details
       |> Enum.filter(&(&1.spec["id"] != id and source?(&1, to_string(line.source)) and &1.spec["status"] == "active" and DateTime.compare(line.at, time(&1)) == :gt))
-      |> Enum.reduce_while(:ok, fn detail, :ok ->
-        case Auto.truncate(detail.spec["id"], line.at, "newer_line") do
-          {:ok, _spec} -> {:cont, :ok}
-          :noop -> {:cont, :ok}
-          error -> {:halt, error}
-        end
-      end)
+      |> Enum.reduce_while(:ok, &close_previous(&1, line.at, &2))
+    end
+  end
+
+  defp close_previous(detail, at, :ok) do
+    case Auto.truncate(detail.spec["id"], at, "newer_line") do
+      {:ok, _spec} -> {:cont, :ok}
+      :noop -> {:cont, :ok}
+      error -> {:halt, error}
     end
   end
 
