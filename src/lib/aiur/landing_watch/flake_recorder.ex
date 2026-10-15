@@ -5,8 +5,6 @@ defmodule Aiur.LandingWatch.FlakeRecorder do
   alias Aiur.LandingWatch.Journal
 
   @labels ["bug", "agent:todo", "priority:1"]
-  @lookup_labels ["bug"]
-  @page_limit 5
 
   @spec record(map(), map(), [pos_integer()], keyword()) :: :ok | {:error, term()}
   def record(failure, run, passed_prs, opts) do
@@ -49,12 +47,18 @@ defmodule Aiur.LandingWatch.FlakeRecorder do
 
   defp find_or_create(owner, repo, token, identity, evidence, opts) do
     request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
-    query = URI.encode_query(%{"state" => "all", "labels" => Enum.join(@lookup_labels, ","), "per_page" => 100})
-    url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/issues?#{query}"
+    query = URI.encode_query(%{"q" => "repo:#{owner}/#{repo} is:issue in:body \"#{marker_hash(identity)}\"", "per_page" => 100})
+    url = "#{Transport.base_url()}/search/issues?#{query}"
 
-    case read_issues(request, token, url, [], 0) do
-      {:ok, issues} -> resolve_issue(issues, identity, evidence, request, token, owner, repo)
-      {:error, _} = error -> error
+    case request.(%{method: :get, url: url, token: token, caller: "landing_watch_flake_search"}) do
+      {:ok, %{status: 200, body: %{"items" => issues}}} when is_list(issues) ->
+        resolve_issue(issues, identity, evidence, request, token, owner, repo)
+
+      {:ok, response} ->
+        {:error, Errors.github_status_error(response)}
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -70,26 +74,6 @@ defmodule Aiur.LandingWatch.FlakeRecorder do
     case comment(number, evidence, request, token, owner, repo) do
       :ok -> {:ok, number}
       {:error, _} = error -> error
-    end
-  end
-
-  defp read_issues(_request, _token, _url, _acc, @page_limit), do: {:error, :flake_issue_list_too_large}
-
-  defp read_issues(request, token, url, acc, page) do
-    case request.(%{method: :get, url: url, token: token, caller: "landing_watch_flake_issues"}) do
-      {:ok, %{status: 200, body: issues} = response} when is_list(issues) ->
-        next = Transport.parse_next_page_url(Map.get(response, :headers, []))
-
-        case next do
-          nil -> {:ok, acc ++ issues}
-          next_url -> read_issues(request, token, next_url, acc ++ issues, page + 1)
-        end
-
-      {:ok, response} ->
-        {:error, Errors.github_status_error(response)}
-
-      {:error, _} = error ->
-        error
     end
   end
 
@@ -131,7 +115,8 @@ defmodule Aiur.LandingWatch.FlakeRecorder do
     |> Enum.join("\n")
   end
 
-  defp marker(identity), do: "<!-- aiur-flake-key: #{Base.encode16(:crypto.hash(:sha256, identity), case: :lower)} -->"
+  defp marker(identity), do: "<!-- aiur-flake-key: #{marker_hash(identity)} -->"
+  defp marker_hash(identity), do: Base.encode16(:crypto.hash(:sha256, identity), case: :lower)
 
   defp emit(evidence, issue, opts) do
     emitter = Keyword.get(opts, :alert_emitter, &Aiur.Alerts.emit_system/2)

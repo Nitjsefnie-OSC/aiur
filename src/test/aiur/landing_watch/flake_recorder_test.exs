@@ -11,7 +11,17 @@ defmodule Aiur.LandingWatch.FlakeRecorderTest do
 
     request = fn
       %{method: :get, url: url} ->
-        if String.contains?(url, "state=all") and String.contains?(url, "labels="), do: {:ok, %{status: 200, body: []}}, else: flunk("unexpected GET #{url}")
+        parsed = URI.parse(url)
+        query = URI.decode_query(parsed.query || "")
+
+        if parsed.path == "/search/issues" and query["per_page"] == "100" and
+             query["q"] =~ "repo:test-org/test-repo is:issue in:body" and
+             query["q"] =~ Base.encode16(:crypto.hash(:sha256, "ExampleTest :: sometimes fails"), case: :lower) and
+             not Map.has_key?(query, "labels") do
+          {:ok, %{status: 200, body: %{"items" => []}}}
+        else
+          flunk("expected bounded identity search, got #{url}")
+        end
 
       %{method: :post, url: url, body: body} ->
         if String.contains?(url, "/issues/") do
@@ -59,11 +69,16 @@ defmodule Aiur.LandingWatch.FlakeRecorderTest do
 
     request = fn
       %{method: :get, url: url} ->
-        if String.contains?(url, "state=all") and String.contains?(url, "labels=bug") and
-             not String.contains?(url, "agent%3Atodo") do
-          {:ok, %{status: 200, body: [existing]}}
+        parsed = URI.parse(url)
+        query = URI.decode_query(parsed.query || "")
+
+        if parsed.path == "/search/issues" and query["per_page"] == "100" and
+             query["q"] =~ "repo:test-org/test-repo is:issue in:body" and
+             query["q"] =~ Base.encode16(:crypto.hash(:sha256, identity), case: :lower) and
+             not Map.has_key?(query, "labels") do
+          {:ok, %{status: 200, body: %{"items" => [existing], "total_count" => 1}}}
         else
-          flunk("unexpected GET #{url}")
+          flunk("expected bounded identity search, got #{url}")
         end
 
       %{method: :post, url: url, body: body} ->
