@@ -136,7 +136,8 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.BuildOrder.Features.LabelProjection,
     Aiur.LandingWatch,
     Aiur.Experiments.Auto.Notifier,
-    Aiur.Experiments.Auto.WindowManager
+    Aiur.Experiments.Auto.WindowManager,
+    Aiur.LandingWatch.QuarantineLifter
   ]
 
   setup do
