@@ -42,13 +42,22 @@ defmodule Aiur.BuildOrder.Index.Rows do
 
   @spec open_rows(map()) :: [map()]
   def open_rows(%{open: %{status: status, tickets: tickets}}) when status in [:available, :stale] do
-    for ticket <- tickets, {num, ""} <- [Integer.parse(ticket.identifier)], num > 0 do
+    for ticket <- tickets, is_binary(ticket.identifier), is_binary(ticket.title), {num, ""} <- [Integer.parse(ticket.identifier)], num > 0 do
       cx = Metadata.parse(ticket.labels).complexity
       %{num: num, id: to_string(num), sec: "nq", status: "open", ord: num, title: ticket.title, created: SourceFreshness.ms(ticket.created_at), cx: known(cx), pts: known(FeatureStats.points(cx))}
     end
   end
 
   def open_rows(_), do: []
+
+  @spec open_history(map()) :: map()
+  def open_history(%{open: %{status: status, tickets: tickets}}) when status in [:available, :stale] do
+    for ticket <- tickets, is_binary(ticket.identifier), {number, ""} <- [Integer.parse(ticket.identifier)], number > 0, into: %{} do
+      {number, %Row{number: number, title: ticket.title, labels: ticket.labels, labels_complete: true, created_at: ticket.created_at, lifecycle: %Aiur.BuildOrder.Lifecycle{state: :open}}}
+    end
+  end
+
+  def open_history(_), do: %{}
 
   defp rows(%{rows: rows}) when is_map(rows), do: Map.values(rows)
   defp rows(%{rows: rows}) when is_list(rows), do: rows
@@ -105,7 +114,11 @@ defmodule Aiur.BuildOrder.Index.Rows do
       pr: pr(row)
     }
 
-    base |> Map.merge(timing) |> Map.merge(Edges.to_payload(edges, producer.num)) |> Map.merge(producer) |> Map.update!(:created, &SourceFreshness.ms/1)
+    base |> Map.merge(timing) |> Map.merge(Edges.to_payload(edges, producer.num)) |> Map.merge(producer) |> Map.update!(:created, &SourceFreshness.ms/1) |> align_dependencies()
+  end
+
+  defp align_dependencies(row) do
+    %{row | dep_states: Map.new(row.deps, &{&1, Map.get(row.dep_states, &1, "unknown")})}
   end
 
   defp membership(parts, number) do

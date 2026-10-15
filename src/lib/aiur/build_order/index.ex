@@ -53,6 +53,20 @@ defmodule Aiur.BuildOrder.Index do
   @spec safe_read(atom(), (-> term())) :: term()
   defdelegate safe_read(part, fun), to: Parts, as: :safe
 
+  @doc false
+  @spec planning_context(map(), MapSet.t()) :: map()
+  def planning_context(parts, active) do
+    prefix =
+      case parts[:settings] do
+        {:ok, settings} -> settings.tracker.github.label_prefix
+        _ -> "agent"
+      end
+
+    history = %{rows: Map.merge(Rows.open_history(parts), Rows.history(parts))}
+    nq = safe_read(:not_queued, fn -> Aiur.BuildOrder.NotQueued.build(parts[:open], parts[:queue], active: active, label_prefix: prefix) end)
+    %{history_snapshot: {:ok, history}, todo_label: prefix <> ":todo", not_queued: nq}
+  end
+
   @spec subscribe_sources() :: :ok | {:error, term()}
   def subscribe_sources do
     subscribers = [

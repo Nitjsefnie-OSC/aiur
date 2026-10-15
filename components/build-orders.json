@@ -28,7 +28,6 @@
     "Aiur.BuildOrder.History",
     "Aiur.BuildOrder.History.Timing",
     "Aiur.BuildOrder.Index",
-    "Aiur.BuildOrder.Index.Rows",
     "Aiur.BuildOrder.Metadata",
     "Aiur.BuildOrder.ProgressRenderer",
     "Aiur.BuildOrder.ProviderHealth",
