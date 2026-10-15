@@ -3,6 +3,13 @@
   "directory_published": false,
   "seams": [
     {
+      "from": "orchestration",
+      "to_module": "Aiur.Orchestrator.TicketTransition",
+      "kind": "reference",
+      "only_paths": ["src/lib/aiur/landing_watch.ex"],
+      "reason": "#4457: approved PR failures route through the single ticket lifecycle state writer"
+    },
+    {
       "from": "control-cli",
       "to_module": "Aiur.FeatureCLI",
       "kind": "reference",
