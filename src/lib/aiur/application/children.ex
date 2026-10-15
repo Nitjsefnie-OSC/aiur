@@ -5,6 +5,7 @@ defmodule Aiur.Application.Children do
 
   alias Aiur.BuildOrder.Component, as: BuildOrders
   alias Aiur.Config, as: AiurConfig
+  alias Aiur.Experiments.Auto
   alias Aiur.GitHub.{BlockerProgress, Config}
 
   @doc """
@@ -28,16 +29,28 @@ defmodule Aiur.Application.Children do
     interactive_cli? = Keyword.fetch!(opts, :interactive_cli?)
     headless? = Keyword.fetch!(opts, :headless?)
     dashboard? = Keyword.fetch!(opts, :dashboard?)
-    tailscale_funnel? = Keyword.get_lazy(opts, :tailscale_funnel?, &AiurConfig.server_tailscale_funnel?/0)
+
+    tailscale_funnel? =
+      Keyword.get_lazy(opts, :tailscale_funnel?, &AiurConfig.server_tailscale_funnel?/0)
+
     telemetry? = Keyword.get(opts, :telemetry?, true)
-    executor_mode? = Keyword.get(opts, :executor_mode?, Application.get_env(:aiur, :executor_mode, false))
-    ls_remote_ticker? = Keyword.get(opts, :ls_remote_ticker?, Application.get_env(:aiur, :ls_remote_ticker_enabled?, true))
+
+    executor_mode? =
+      Keyword.get(opts, :executor_mode?, Application.get_env(:aiur, :executor_mode, false))
+
+    ls_remote_ticker? =
+      Keyword.get(
+        opts,
+        :ls_remote_ticker?,
+        Application.get_env(:aiur, :ls_remote_ticker_enabled?, true)
+      )
 
     # Always true for a real run. The unit-test singleton turns it off so the
     # shared app process does not hold a VM-wide inbox and listener that every
     # case would then contend on; cases that exercise recording supervise their
     # own pair against their own isolated state directory.
-    recording? = Keyword.get(opts, :recording?, Application.get_env(:aiur, :executor_recording?, true))
+    recording? =
+      Keyword.get(opts, :recording?, Application.get_env(:aiur, :executor_recording?, true))
 
     recording_children = recording_children(recording?)
 
@@ -191,7 +204,11 @@ defmodule Aiur.Application.Children do
       {Aiur.DecisionMetrics.Writer, path: Aiur.DecisionMetrics.metrics_file()},
       Aiur.DecisionMetrics,
       Aiur.RecentMergeStore,
-      {Aiur.StartTrigger.ProgressStore, seed: &Aiur.CIApprovalStore.load/0, reader: &BlockerProgress.approval/2, identity: &BlockerProgress.identity/1, repo: &Config.repo/0},
+      {Aiur.StartTrigger.ProgressStore,
+       seed: &Aiur.CIApprovalStore.load/0,
+       reader: &BlockerProgress.approval/2,
+       identity: &BlockerProgress.identity/1,
+       repo: &Config.repo/0},
       Aiur.Webhooks.DeliveryLog,
       Aiur.GitHub.CodeOwners,
       {Registry, keys: :unique, name: Aiur.Events.SubscriptionStoreRegistry},
@@ -216,10 +233,13 @@ defmodule Aiur.Application.Children do
       BuildOrders.child_specs(:history, opts),
       Aiur.TicketContext.child_specs(:late, opts),
       BuildOrders.child_specs(:late, opts),
-      {Aiur.OpenTicketSource, poll_on_start: Application.get_env(:aiur, :open_ticket_poll?, dashboard?)},
+      {Aiur.OpenTicketSource,
+       poll_on_start: Application.get_env(:aiur, :open_ticket_poll?, dashboard?)},
       # View-state cadence reconciles the pack-status writer; starts after its timerless sources so its first tick never races boot fill.
       BuildOrders.child_specs(:view_state_sweep, opts),
-      {Aiur.Orchestrator, name: Aiur.Orchestrator, initial_poll?: Application.get_env(:aiur, :orchestrator_initial_poll?, true)},
+      {Aiur.Orchestrator,
+       name: Aiur.Orchestrator,
+       initial_poll?: Application.get_env(:aiur, :orchestrator_initial_poll?, true)},
       Aiur.BuildQueue.child(recording?),
       Aiur.DecisionExpiry,
       Aiur.CurrentRunMembership.Reconciler,
@@ -245,7 +265,11 @@ defmodule Aiur.Application.Children do
       executor_principal_child(recording?, executor_mode?),
       # Dashboard supervision is independent of terminal attachment/headless
       # mode. Aiur.HttpServer retains its own bind and credential guards.
-      dashboard_children(dashboard?, Keyword.get(opts, :dashboard_pages?, true), tailscale_funnel?),
+      dashboard_children(
+        dashboard?,
+        Keyword.get(opts, :dashboard_pages?, true),
+        tailscale_funnel?
+      ),
       Aiur.Opencode.TokenRegistry,
       Aiur.Opencode.ActiveTurns,
       # Chat-pane machinery — UI-only, never read by a headless run.
@@ -262,13 +286,21 @@ defmodule Aiur.Application.Children do
     ]
     |> List.flatten()
     |> Enum.reject(&is_nil/1)
-    |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu] ++ Aiur.Experiments.children(recording?) ++ BuildOrders.child_specs(:label_projection, opts) ++ [Aiur.PostDeployChecklist])
+    |> Kernel.++(
+      cli_children ++
+        [Aiur.BackgroundCpu] ++
+        Aiur.Experiments.children(recording?) ++
+        Auto.child_specs(recording?: recording?) ++
+        BuildOrders.child_specs(:label_projection, opts) ++ [Aiur.PostDeployChecklist]
+    )
   end
 
   defp maybe_ls_remote_ticker(enabled?) when enabled? in [nil, false], do: nil
   defp maybe_ls_remote_ticker(_enabled?), do: Aiur.Events.LsRemoteTicker
 
-  defp recording_children(true), do: [Aiur.Executor.Claims, Aiur.ExecutorWakeInbox, Aiur.ExecutorListener]
+  defp recording_children(true),
+    do: [Aiur.Executor.Claims, Aiur.ExecutorWakeInbox, Aiur.ExecutorListener]
+
   defp recording_children(false), do: []
 
   defp executor_principal_child(true, true), do: Aiur.Executor.Principal
