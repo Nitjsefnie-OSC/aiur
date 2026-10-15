@@ -48,12 +48,23 @@ defmodule Aiur.LandingWatch.FlakeRecorderTest do
     journal = temp_path("flake-comment")
     identity = "ExampleTest :: retries"
     marker = "<!-- aiur-flake-key: #{Base.encode16(:crypto.hash(:sha256, identity), case: :lower)} -->"
-    existing = %{"number" => 301, "body" => marker <> "\n\nold evidence"}
+
+    existing = %{
+      "number" => 301,
+      "body" => marker <> "\n\nold evidence",
+      "labels" => [%{"name" => "bug"}, %{"name" => "agent:in-progress"}]
+    }
+
     failure = %{module: "ExampleTest", name: "retries", job: "unit tests", excerpt: "runner exited early"}
 
     request = fn
       %{method: :get, url: url} ->
-        if String.contains?(url, "state=all") and String.contains?(url, "labels="), do: {:ok, %{status: 200, body: [existing]}}, else: flunk("unexpected GET #{url}")
+        if String.contains?(url, "state=all") and String.contains?(url, "labels=bug") and
+             not String.contains?(url, "agent%3Atodo") do
+          {:ok, %{status: 200, body: [existing]}}
+        else
+          flunk("unexpected GET #{url}")
+        end
 
       %{method: :post, url: url, body: body} ->
         if String.contains?(url, "/issues/301/comments") do

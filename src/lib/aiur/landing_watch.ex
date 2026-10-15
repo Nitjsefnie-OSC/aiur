@@ -163,8 +163,14 @@ defmodule Aiur.LandingWatch do
   defp hydrate_run(run, opts) do
     if run["status"] == "completed" and run["conclusion"] in ["failure", "timed_out", "startup_failure"] and is_integer(run["run_id"]) do
       case Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2).(run["run_id"], opts) do
-        {:ok, jobs} -> {:ok, Map.put(run, "jobs", Enum.filter(jobs, &(&1["name"] == run["name"])))}
-        {:error, reason} -> {:error, {:required_check_job_evidence_unavailable, run["name"], reason}}
+        {:ok, jobs} ->
+          {:ok,
+           run
+           |> Map.put("workflow_jobs", jobs)
+           |> Map.put("jobs", Enum.filter(jobs, &(&1["name"] == run["name"])))}
+
+        {:error, reason} ->
+          {:error, {:required_check_job_evidence_unavailable, run["name"], reason}}
       end
     else
       {:ok, run}
@@ -220,7 +226,12 @@ defmodule Aiur.LandingWatch do
   defp request_infra_reruns(observation, runs, opts) do
     failed = Enum.filter(runs, &(Map.get(&1, "conclusion") in ["cancelled", "failure", "timed_out", "startup_failure"]))
 
-    Enum.reduce(failed, :ok, &rerun_if_ok(&1, &2, observation, opts))
+    now = Keyword.get(opts, :now_ms, System.system_time(:millisecond))
+
+    case Journal.reserve_rerun(observation.number, observation.head, now, opts) do
+      :ok -> Enum.reduce(failed, :ok, &rerun_if_ok(&1, &2, observation, opts))
+      {:error, reason} -> normalize_recovery_result(handle_rerun_error(observation, reason, opts))
+    end
   end
 
   defp rerun_if_ok(_run, {:error, _} = error, _observation, _opts), do: error
@@ -275,12 +286,10 @@ defmodule Aiur.LandingWatch do
     end
   end
 
-  defp rerun_one(observation, run, opts) do
+  defp rerun_one(_observation, run, opts) do
     id = Map.get(run, "run_id")
-    now = Keyword.get(opts, :now_ms, System.system_time(:millisecond))
 
     with true <- is_integer(id) and id > 0,
-         :ok <- Journal.reserve_rerun(observation.number, observation.head, now, opts),
          {:ok, _} <- Keyword.get(opts, :rerun_fun, &CIRecovery.rerun/2).(id, opts) do
       :ok
     else

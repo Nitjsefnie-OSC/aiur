@@ -5,6 +5,7 @@ defmodule Aiur.LandingWatch.FlakeRecorder do
   alias Aiur.LandingWatch.Journal
 
   @labels ["bug", "agent:todo", "priority:1"]
+  @lookup_labels ["bug"]
   @page_limit 5
 
   @spec record(map(), map(), [pos_integer()], keyword()) :: :ok | {:error, term()}
@@ -48,7 +49,7 @@ defmodule Aiur.LandingWatch.FlakeRecorder do
 
   defp find_or_create(owner, repo, token, identity, evidence, opts) do
     request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
-    query = URI.encode_query(%{"state" => "all", "labels" => Enum.join(@labels, ","), "per_page" => 100})
+    query = URI.encode_query(%{"state" => "all", "labels" => Enum.join(@lookup_labels, ","), "per_page" => 100})
     url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/issues?#{query}"
 
     case read_issues(request, token, url, [], 0) do

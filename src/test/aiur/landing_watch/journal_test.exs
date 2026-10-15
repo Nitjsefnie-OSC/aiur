@@ -33,4 +33,17 @@ defmodule Aiur.LandingWatch.JournalTest do
     assert {:ok, state} = Journal.state(opts)
     assert Map.has_key?(state, "flakes")
   end
+
+  test "merge-group run claims dedupe completed runs and can be released after an error" do
+    path = Path.join(System.tmp_dir!(), "landing-run-journal-#{System.unique_integer([:positive])}.json")
+    on_exit(fn -> File.rm(path) end)
+    opts = [journal_path: path]
+
+    assert {:ok, :new} = Journal.claim_merge_group_run(42, opts)
+    assert {:ok, :already_claimed} = Journal.claim_merge_group_run(42, opts)
+    assert :ok = Journal.retain_current_heads([%{number: 9, head: "head-9"}], opts)
+    assert {:ok, :already_claimed} = Journal.claim_merge_group_run(42, opts)
+    assert :ok = Journal.release_merge_group_run(42, opts)
+    assert {:ok, :new} = Journal.claim_merge_group_run(42, opts)
+  end
 end

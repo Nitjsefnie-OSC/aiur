@@ -85,6 +85,33 @@ defmodule Aiur.LandingWatch.Journal do
     update(opts, fn state -> {:ok, Map.put(state, "flakes", Map.delete(Map.get(state, "flakes", %{}), identity))} end)
   end
 
+  @spec claim_merge_group_run(pos_integer(), keyword()) :: {:ok, :new | :already_claimed} | {:error, term()}
+  def claim_merge_group_run(run_id, opts \\ []) when is_integer(run_id) and run_id > 0 do
+    update(opts, fn state ->
+      runs = Map.get(state, "merge_group_runs", %{})
+      run_key = Integer.to_string(run_id)
+
+      if Map.has_key?(runs, run_key) do
+        {:ok, state, :already_claimed}
+      else
+        runs =
+          runs
+          |> Map.put(run_key, System.system_time(:millisecond))
+          |> Enum.sort_by(&elem(&1, 1), :desc)
+          |> Enum.take(500)
+          |> Map.new()
+
+        {:ok, Map.put(state, "merge_group_runs", runs), :new}
+      end
+    end)
+  end
+
+  @spec release_merge_group_run(pos_integer(), keyword()) :: :ok | {:error, term()}
+  def release_merge_group_run(run_id, opts \\ []) when is_integer(run_id) and run_id > 0 do
+    run_key = Integer.to_string(run_id)
+    update(opts, fn state -> {:ok, Map.put(state, "merge_group_runs", Map.delete(Map.get(state, "merge_group_runs", %{}), run_key))} end)
+  end
+
   @spec retain_current_heads([map()], keyword()) :: :ok | {:error, term()}
   def retain_current_heads(observations, opts \\ [])
 
@@ -93,7 +120,7 @@ defmodule Aiur.LandingWatch.Journal do
 
     if Enum.all?(keys, &is_binary/1) do
       retained = MapSet.new(keys)
-      update(opts, fn state -> {:ok, Map.filter(state, fn {entry_key, _} -> entry_key == "flakes" or MapSet.member?(retained, entry_key) end)} end)
+      update(opts, fn state -> {:ok, Map.filter(state, fn {entry_key, _} -> entry_key in ["flakes", "merge_group_runs"] or MapSet.member?(retained, entry_key) end)} end)
     else
       :ok
     end

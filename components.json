@@ -106,12 +106,12 @@
       "to_module": "Aiur.GitHub.Transport",
       "kind": "reference",
       "only_paths": [
-        "src/lib/aiur/orchestrator/merge_attribution.ex",
         "src/lib/aiur/landing_watch.ex",
         "src/lib/aiur/landing_watch/attribution.ex",
         "src/lib/aiur/landing_watch/flake_recorder.ex",
         "src/lib/aiur/landing_watch/merge_groups.ex",
-        "src/lib/aiur/landing_watch/observer.ex"
+        "src/lib/aiur/landing_watch/observer.ex",
+        "src/lib/aiur/orchestrator/merge_attribution.ex"
       ],
       "reason": "#3777: merge tracker task resolves missing GitHub merger attribution through the governed transport"
     },
@@ -279,49 +279,65 @@
       "from": "orchestration",
       "to_module": "Aiur.Events.GithubCIPoller.Evaluation",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/landing_watch/classifier.ex"],
+      "only_paths": [
+        "src/lib/aiur/landing_watch/classifier.ex"
+      ],
       "reason": "#4457: classify approved-head checks using the existing required-check verdict policy"
     },
     {
       "from": "orchestration",
       "to_module": "Aiur.GitHub.AgentMarker",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/landing_watch/flake_recorder.ex"],
+      "only_paths": [
+        "src/lib/aiur/landing_watch/flake_recorder.ex"
+      ],
       "reason": "#4457: stamp idempotency markers on deduplicated flake issue comments"
     },
     {
       "from": "orchestration",
       "to_module": "Aiur.GitHub.CIRecovery",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/landing_watch.ex", "src/lib/aiur/landing_watch/merge_groups.ex"],
+      "only_paths": [
+        "src/lib/aiur/landing_watch.ex",
+        "src/lib/aiur/landing_watch/merge_groups.ex"
+      ],
       "reason": "#4457: reuse governed CI jobs and bounded failed-job recovery"
     },
     {
       "from": "orchestration",
       "to_module": "Aiur.GitHub.FailureEvidence",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/landing_watch/merge_groups.ex"],
+      "only_paths": [
+        "src/lib/aiur/landing_watch/merge_groups.ex"
+      ],
       "reason": "#4457: classify merge-group failures against required test evidence"
     },
     {
       "from": "orchestration",
       "to_module": "Aiur.GitHub.HumanReviewGate",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/landing_watch.ex"],
+      "only_paths": [
+        "src/lib/aiur/landing_watch.ex"
+      ],
       "reason": "#4457: recheck the latest approval at the observed pull request head"
     },
     {
       "from": "orchestration",
       "to_module": "Aiur.PrMerge.Queue",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/landing_watch.ex", "src/lib/aiur/landing_watch/merge_groups.ex"],
+      "only_paths": [
+        "src/lib/aiur/landing_watch.ex",
+        "src/lib/aiur/landing_watch/merge_groups.ex"
+      ],
       "reason": "#4457: enqueue eligible reviewed heads through the shared GitHub queue mutation"
     },
     {
       "from": "control-cli",
       "to_module": "Aiur.PrMerge.Queue",
       "kind": "reference",
-      "only_paths": ["src/lib/aiur/pr_merge.ex"],
+      "only_paths": [
+        "src/lib/aiur/pr_merge.ex"
+      ],
       "reason": "#4457: PR merge command reuses the shared GitHub merge-queue mutation"
     }
   ],

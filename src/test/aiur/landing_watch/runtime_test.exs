@@ -22,7 +22,7 @@ defmodule Aiur.LandingWatch.RuntimeTest do
     assert {:error, :invalid_observations} = LandingWatch.poll(observe_fun: fn _ -> :bad end)
   end
 
-  test "approved human-review PR with cancelled needs reruns failed jobs once" do
+  test "approved human-review PR reruns gate failure caused by cancelled upstream jobs" do
     path = journal_path()
     parent = self()
     observation = approved_observation()
@@ -33,7 +33,19 @@ defmodule Aiur.LandingWatch.RuntimeTest do
                approved_fun: fn _, _ -> {:ok, true} end,
                required_checks_fun: fn _ -> {:ok, [%{name: "ci gate", app_id: nil}]} end,
                ci_status_fun: fn _, _ -> {:ok, %{check_runs: [failed_gate()], commit_status: %{"state" => "success", "statuses" => []}}} end,
-               jobs_fun: fn 99, _ -> {:ok, [%{"name" => "ci gate", "conclusion" => "failure", "steps" => [%{"conclusion" => "cancelled"}]}]} end,
+               jobs_fun: fn 99, _ ->
+                 {:ok,
+                  [
+                    %{"name" => "test", "conclusion" => "cancelled", "steps" => [], "started_at" => "2026-10-14T19:04:38Z", "completed_at" => "2026-10-14T19:04:38Z"},
+                    %{
+                      "name" => "ci gate",
+                      "conclusion" => "failure",
+                      "steps" => [%{"name" => "Setup", "conclusion" => "success"}, %{"name" => "Require the event's selected jobs", "conclusion" => "failure"}],
+                      "started_at" => "2026-10-14T19:34:47Z",
+                      "completed_at" => "2026-10-14T19:34:54Z"
+                    }
+                  ]}
+               end,
                rerun_fun: fn 99, _ ->
                  send(parent, :rerun)
                  {:ok, %{}}
@@ -56,6 +68,38 @@ defmodule Aiur.LandingWatch.RuntimeTest do
                journal_path: path,
                now_ms: 1_000_000
              )
+  end
+
+  test "infra reruns reserve the per-head budget once for all failed runs in a poll" do
+    path = journal_path()
+    parent = self()
+    observation = approved_observation()
+    second_run = failed_gate() |> Map.put("id", 51) |> Map.put("run_id", 100)
+
+    assert :ok =
+             LandingWatch.process(
+               observation,
+               approved_fun: fn _, _ -> {:ok, true} end,
+               required_checks_fun: fn _ -> {:ok, [%{name: "ci gate", app_id: nil}]} end,
+               ci_status_fun: fn _, _ ->
+                 {:ok, %{check_runs: [failed_gate(), second_run], commit_status: %{"state" => "success", "statuses" => []}}}
+               end,
+               jobs_fun: fn run_id, _ ->
+                 assert run_id in [99, 100]
+                 {:ok, [%{"name" => "ci gate", "conclusion" => "failure", "steps" => [%{"conclusion" => "cancelled"}]}]}
+               end,
+               rerun_fun: fn run_id, _ ->
+                 send(parent, {:rerun, run_id})
+                 {:ok, %{}}
+               end,
+               journal_path: path,
+               now_ms: 1_000_000
+             )
+
+    assert_received {:rerun, 99}
+    assert_received {:rerun, 100}
+    refute_received {:rerun, _}
+    assert %{"17:head-sha" => %{"rerun_count" => 1, "last_rerun_at" => 1_000_000}} = Jason.decode!(File.read!(path))
   end
 
   test "real required job failure routes linked ticket to rework" do

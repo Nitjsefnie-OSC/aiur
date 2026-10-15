@@ -32,4 +32,33 @@ defmodule Aiur.LandingWatch.ClassifierTest do
     refute Classifier.infrastructure_run?(%{"conclusion" => "cancelled", "jobs" => []})
     refute Classifier.infrastructure_run?(%{"conclusion" => "failure", "jobs" => []})
   end
+
+  test "ci gate failure caused by cancelled upstream jobs is infrastructure" do
+    run = %{
+      "name" => "ci gate",
+      "conclusion" => "failure",
+      "jobs" => [
+        %{
+          "name" => "ci gate",
+          "conclusion" => "failure",
+          "steps" => [%{"name" => "Setup", "conclusion" => "success"}, %{"name" => "Require the event's selected jobs", "conclusion" => "failure"}],
+          "started_at" => "2026-10-14T19:34:47Z",
+          "completed_at" => "2026-10-14T19:34:54Z"
+        }
+      ],
+      "workflow_jobs" => [
+        %{"name" => "test", "conclusion" => "cancelled", "steps" => [], "started_at" => "2026-10-14T19:04:38Z", "completed_at" => "2026-10-14T19:04:38Z"},
+        %{
+          "name" => "ci gate",
+          "conclusion" => "failure",
+          "steps" => [%{"name" => "Setup", "conclusion" => "success"}, %{"name" => "Require the event's selected jobs", "conclusion" => "failure"}],
+          "started_at" => "2026-10-14T19:34:47Z",
+          "completed_at" => "2026-10-14T19:34:54Z"
+        }
+      ]
+    }
+
+    assert Classifier.infrastructure_run?(run)
+    refute Classifier.infrastructure_run?(put_in(run, ["workflow_jobs", Access.at(0), "conclusion"], "failure"))
+  end
 end

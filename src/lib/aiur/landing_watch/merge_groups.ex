@@ -124,8 +124,27 @@ defmodule Aiur.LandingWatch.MergeGroups do
     failures = Enum.filter(runs, &(&1["conclusion"] == "failure" and is_integer(&1["id"])))
 
     Enum.reduce(failures, :ok, fn run, result ->
-      if result == :ok, do: process_failed_group(run, runs, observations, base, opts), else: result
+      if result == :ok, do: process_claimed_failed_group(run, runs, observations, base, opts), else: result
     end)
+  end
+
+  defp process_claimed_failed_group(run, runs, observations, base, opts) do
+    case Journal.claim_merge_group_run(run["id"], opts) do
+      {:ok, :already_claimed} -> :ok
+      {:ok, :new} -> process_new_failed_group(run, runs, observations, base, opts)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp process_new_failed_group(run, runs, observations, base, opts) do
+    case process_failed_group(run, runs, observations, base, opts) do
+      :ok ->
+        :ok
+
+      {:error, _} = error ->
+        _ = Journal.release_merge_group_run(run["id"], opts)
+        error
+    end
   end
 
   defp process_failed_group(run, runs, observations, base, opts) do

@@ -16,10 +16,10 @@
     "src/lib/aiur/global_config_startup.ex",
     "src/lib/aiur/open_ticket_source.ex",
     "src/lib/aiur/open_ticket_source/**",
+    "src/lib/aiur/pr_merge/queue.ex",
     "src/lib/aiur/webhooks/delivery_mode.ex",
     "src/lib/aiur/webhooks/mode_table.ex",
-    "src/priv/github_budget.py",
-    "src/lib/aiur/pr_merge/queue.ex"
+    "src/priv/github_budget.py"
   ],
   "facades": [
     "Aiur.AllowedContributors",
@@ -52,8 +52,10 @@
     "Aiur.GitHub.CredentialHeadroom",
     "Aiur.GitHub.CycleFetchCache",
     "Aiur.GitHub.Errors",
+    "Aiur.GitHub.FailureEvidence",
     "Aiur.GitHub.GraphQLCost",
     "Aiur.GitHub.HostCommand",
+    "Aiur.GitHub.HumanReviewGate",
     "Aiur.GitHub.IssueDependencies",
     "Aiur.GitHub.IssueRelationships",
     "Aiur.GitHub.IssueState",
@@ -83,11 +85,9 @@
     "Aiur.GlobalConfigStartup",
     "Aiur.OpenTicketSource",
     "Aiur.OpenTicketSource.Snapshot",
+    "Aiur.PrMerge.Queue",
     "Aiur.Webhooks.DeliveryMode",
-    "Aiur.Webhooks.ModeTable",
-    "Aiur.GitHub.FailureEvidence",
-    "Aiur.GitHub.HumanReviewGate",
-    "Aiur.PrMerge.Queue"
+    "Aiur.Webhooks.ModeTable"
   ],
   "requires": [
     "config",

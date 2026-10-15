@@ -36,12 +36,24 @@ defmodule Aiur.LandingWatch.Classifier do
   def infrastructure_run?(run) when is_map(run) do
     conclusion = Map.get(run, "conclusion")
     jobs = Map.get(run, "jobs", [])
+    workflow_jobs = Map.get(run, "workflow_jobs", [])
 
     conclusion == "startup_failure" or
-      (conclusion != "cancelled" and is_list(jobs) and jobs != [] and Enum.all?(jobs, &infrastructure_job?/1))
+      (conclusion != "cancelled" and is_list(jobs) and jobs != [] and Enum.all?(jobs, &infrastructure_job?/1)) or
+      cancelled_gate_dependencies?(run, workflow_jobs)
   end
 
   def infrastructure_run?(_), do: false
+
+  defp cancelled_gate_dependencies?(%{"name" => "ci gate", "conclusion" => "failure"}, jobs) when is_list(jobs) and jobs != [] do
+    upstream = Enum.reject(jobs, &(&1["name"] == "ci gate"))
+    cancelled = Enum.filter(upstream, &(&1["conclusion"] == "cancelled"))
+    real_failures = Enum.filter(upstream, &(&1["conclusion"] == "failure"))
+
+    cancelled != [] and real_failures == [] and Enum.all?(cancelled, &infrastructure_job?/1)
+  end
+
+  defp cancelled_gate_dependencies?(_, _), do: false
 
   defp infrastructure_job?(job) do
     steps = Map.get(job, "steps", [])

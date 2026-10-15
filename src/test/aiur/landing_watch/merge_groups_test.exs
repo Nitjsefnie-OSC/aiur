@@ -56,7 +56,7 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/42/cancel"}
   end
 
-  test "the stale-run census queries active statuses without scanning completed history" do
+  test "the stale-run census queries active and completed statuses separately" do
     parent = self()
     historical = Enum.map(1..501, &%{"id" => &1, "event" => "merge_group", "status" => "completed", "head_branch" => "gh-readonly-queue/main/pr-#{&1}-old"})
 
@@ -89,6 +89,7 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     assert Enum.any?(urls, &String.contains?(&1, "status=in_progress"))
     assert Enum.any?(urls, &String.contains?(&1, "status=waiting"))
     assert Enum.any?(urls, &String.contains?(&1, "status=requested"))
+    assert Enum.any?(urls, &String.contains?(&1, "status=completed"))
     assert_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/900/cancel"}
     refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/501/cancel"}
   end
@@ -141,6 +142,80 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
              )
 
     assert_received {:flake, %{module: "ExampleTest", name: "flakes", job: "test", excerpt: "assertion expected :ok, got :error"}, 101, [17]}
+  end
+
+  test "a completed failed run is fetched once across repeated polls" do
+    parent = self()
+    journal = Path.join(System.tmp_dir!(), "landing-watch-run-journal-#{System.unique_integer([:positive])}.json")
+    on_exit(fn -> File.rm(journal) end)
+    failed = group_run(111, "failure", "pr-17-a")
+    passed = group_run(112, "success", "pr-17-b")
+
+    request = fn %{method: :get, url: url} ->
+      runs = if String.contains?(url, "status=completed"), do: [failed, passed], else: []
+      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    end
+
+    options = [
+      base_branch: "main",
+      request_fun: request,
+      journal_path: journal,
+      live_observations_fun: fn _, _ -> {:ok, []} end,
+      jobs_fun: fn id, _ ->
+        send(parent, {:jobs, id})
+        {:ok, [%{"name" => "test", "conclusion" => if(id == 111, do: "failure", else: "success"), "check_run_url" => "https://api.github.com/repos/o/r/check-runs/901"}]}
+      end,
+      annotations_fun: fn id, _ ->
+        send(parent, {:annotations, id})
+        {:ok, [%{"title" => "aiur-test-failure", "message" => "new-failure :: ExampleTest :: flakes", "annotation_level" => "failure"}]}
+      end,
+      flake_recorder: fn _, _, _, _ -> :ok end
+    ]
+
+    assert :ok = MergeGroups.cancel_stale([], options)
+    assert_received {:jobs, 111}
+    assert_received {:annotations, 901}
+    assert_received {:jobs, 112}
+
+    assert :ok = MergeGroups.cancel_stale([], options)
+    refute_received {:jobs, _}
+    refute_received {:annotations, _}
+  end
+
+  test "a processing error releases the completed-run claim for the next poll" do
+    parent = self()
+    journal = Path.join(System.tmp_dir!(), "landing-watch-retry-journal-#{System.unique_integer([:positive])}.json")
+    on_exit(fn -> File.rm(journal) end)
+    failed = group_run(121, "failure", "pr-17-a")
+    calls = :atomics.new(1, [])
+
+    request = fn %{method: :get, url: url} ->
+      runs = if String.contains?(url, "status=completed"), do: [failed], else: []
+      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    end
+
+    options = [
+      base_branch: "main",
+      request_fun: request,
+      journal_path: journal,
+      live_observations_fun: fn _, _ -> {:ok, []} end,
+      jobs_fun: fn 121, _ ->
+        send(parent, :jobs_requested)
+
+        if :atomics.add_get(calls, 1, 1) == 1 do
+          {:error, :temporary_failure}
+        else
+          {:ok, [%{"name" => "test", "conclusion" => "failure", "check_run_url" => "https://api.github.com/repos/o/r/check-runs/902"}]}
+        end
+      end,
+      annotations_fun: fn _, _ -> {:ok, []} end,
+      flake_recorder: fn _, _, _, _ -> :ok end
+    ]
+
+    assert {:error, _} = MergeGroups.cancel_stale([], options)
+    assert_received :jobs_requested
+    assert :ok = MergeGroups.cancel_stale([], options)
+    assert_received :jobs_requested
   end
 
   test "a recorded merge-group flake re-enqueues the dropped approved PR once" do
