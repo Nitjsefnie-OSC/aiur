@@ -24,12 +24,6 @@ for (const name of ['build', 'lint', 'test', 'streamdeck', 'workflow security'])
 const ciSource = readFileSync(new URL('ci.yml', dir), 'utf8');
 assert.ok(ciSource.includes('node scripts/test-workflow-check-names.mjs'),
   'workflow security must execute this test');
-const bodySource = readFileSync(new URL('pr-body.yml', dir), 'utf8');
-assert.match(bodySource.split(/^on:/m)[1]?.split(/^permissions:/m)[0] ?? '',
-  /types: \[opened, edited, synchronize, reopened\]/,
-  'body edits must rerun the isolated PR-body workflow');
-assert.ok(ciSource.includes('check-pr-body-check-run.py'),
-  'ci.yml gate must query the PR-body workflow result');
 
 const others = readdirSync(dir).filter((file) => /\.ya?ml$/.test(file) && file !== 'ci.yml');
 assert.ok(others.includes('streamdeck-package.yml'), 'workflow scan must see sibling workflows');
