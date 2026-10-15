@@ -158,12 +158,18 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
     if sinks == [] do
       {:ok, []}
     else
-      ["compile", "export", "runtime"]
-      |> Enum.reduce_while({:ok, []}, &reduce_xref_label(&1, &2, root, sinks))
-      |> case do
-        {:ok, sources} -> {:ok, Enum.uniq(sources)}
-        error -> error
+      with {:ok, sources} <- xref_sources(root, sinks) do
+        {:ok, Enum.uniq(sources)}
       end
+    end
+  end
+
+  defp xref_sources(root, sinks) do
+    ["compile", "export", "runtime"]
+    |> Enum.reduce_while({:ok, []}, &reduce_xref_label(&1, &2, root, sinks))
+    |> case do
+      {:ok, sources} -> {:ok, Enum.uniq(sources)}
+      error -> error
     end
   end
 

@@ -34,6 +34,42 @@ defmodule Mix.Tasks.Aiur.AffectedTestsTest do
              "tests" => ["src/test/engine_test.exs"]
            }
   end
+
+  test "large xref source expansions are bounded and direct test callers are retained" do
+    changed = ["src/lib/aiur/build_queue/read_model.ex"]
+    source_callers = for index <- 1..405, do: "src/lib/aiur/caller_#{index}.ex"
+    test_caller = "src/test/aiur/orchestrator/queue_set_next_test.exs"
+    root = Aiur.TestSupport.tmp_root!("affected-xref-budget")
+    File.mkdir_p!(Path.join(root, "src/test/aiur/build_queue"))
+    File.mkdir_p!(Path.join(root, "src/test/aiur/orchestrator"))
+    File.write!(Path.join(root, "src/test/aiur/build_queue/read_model_test.exs"), "")
+    File.write!(Path.join(root, test_caller), "")
+
+    original_shell = Process.get(:mix_shell)
+
+    try do
+      Enum.each(source_callers, fn source ->
+        test_path = String.replace_prefix(source, "src/lib/", "src/test/") |> String.replace_suffix(".ex", "_test.exs")
+        File.mkdir_p!(Path.dirname(Path.join(root, test_path)))
+        File.write!(Path.join(root, test_path), "")
+      end)
+
+      assert {:scoped, selected} =
+               Aiur.AffectedTests.select(changed,
+                 base_dir: root,
+                 dependent_sources: source_callers,
+                 reference_tests: [test_caller]
+               )
+
+      assert "src/test/aiur/build_queue/read_model_test.exs" in selected
+      assert test_caller in selected
+      assert "src/test/aiur/build_queue/read_model_test.exs" in selected
+      assert length(selected) <= 2
+    after
+      Process.put(:mix_shell, original_shell)
+      Aiur.TestCleanup.rm_rf!(root)
+    end
+  end
 end
 
 defmodule Mix.Tasks.Aiur.AffectedTests.ChangedPathsTest do

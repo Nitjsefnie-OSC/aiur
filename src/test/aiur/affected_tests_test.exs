@@ -63,6 +63,62 @@ defmodule Aiur.AffectedTestsTest do
            ) == {:scoped, ["src/test/aiur/caller_test.exs"]}
   end
 
+  test "maps #4447 changed projection and xref callers to exact-map tests" do
+    root = Aiur.TestSupport.tmp_root!("affected-xref-module-directory")
+    caller_test = Path.join(root, "src/test/aiur/orchestrator/ci_lifecycle/failure_test.exs")
+    unrelated_test = Path.join(root, "src/test/aiur/orchestrator/ci_lifecycle/transitions_test.exs")
+    File.mkdir_p!(Path.dirname(caller_test))
+    File.write!(caller_test, "")
+    File.write!(unrelated_test, "")
+
+    try do
+      assert AffectedTests.select(
+               ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"],
+               base_dir: root,
+               dependent_sources: ["src/lib/aiur/orchestrator/ci_lifecycle/poll.ex"]
+             ) ==
+               {:scoped,
+                Enum.sort([
+                  "src/test/aiur/orchestrator/ci_lifecycle/failure_test.exs",
+                  "src/test/aiur/orchestrator/ci_lifecycle/transitions_test.exs"
+                ])}
+    after
+      Aiur.TestCleanup.rm_rf!(root)
+    end
+  end
+
+  test "maps #4593 changed queue modules and xref callers to exact-count tests" do
+    root = Aiur.TestSupport.tmp_root!("affected-queue-xref-directory")
+    waiting = Path.join(root, "src/test/aiur/build_queue/set_waiting_test.exs")
+    queue_set = Path.join(root, "src/test/aiur/orchestrator/queue_set_next_test.exs")
+    read_model = Path.join(root, "src/lib/aiur/build_queue/read_model.ex")
+    File.mkdir_p!(Path.dirname(waiting))
+    File.mkdir_p!(Path.dirname(queue_set))
+    File.mkdir_p!(Path.dirname(read_model))
+    File.write!(waiting, "")
+    File.write!(queue_set, "alias Aiur.BuildQueue.ReadModel")
+    File.write!(read_model, "defmodule Aiur.BuildQueue.ReadModel do\nend\n")
+
+    try do
+      assert {:scoped, tests} =
+               AffectedTests.select(
+                 [
+                   "src/lib/aiur/build_queue/read_model.ex",
+                   "src/lib/aiur/build_queue/server.ex"
+                 ],
+                 base_dir: root,
+                 dependent_sources: ["src/lib/aiur/orchestrator/queue_set_slots.ex", "src/lib/aiur/build_queue_cli.ex"]
+               )
+
+      assert tests == [
+               "src/test/aiur/build_queue/set_waiting_test.exs",
+               "src/test/aiur/orchestrator/queue_set_next_test.exs"
+             ]
+    after
+      Aiur.TestCleanup.rm_rf!(root)
+    end
+  end
+
   test "includes tests found by deleted-reference scanning" do
     assert AffectedTests.select(["src/lib/aiur/github/reply.ex"],
              exists?: fn _ -> true end,
