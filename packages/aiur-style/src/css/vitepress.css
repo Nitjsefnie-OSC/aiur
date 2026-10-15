@@ -45,12 +45,6 @@ html.dark,
   --vp-local-search-bg: var(--aiur-color-bg);
 }
 
-.VPButton {
-  border-radius: var(--aiur-radius-pill);
-  font-family: var(--aiur-font-body);
-  font-weight: 500;
-}
-
 /* VitePress's unlayered reset masks base.css's layered ring. */
 .VPButton:focus-visible {
   outline: 2px solid var(--aiur-color-focus);
@@ -75,8 +69,8 @@ html.dark,
 }
 
 .VPButton.brand[aria-pressed="true"] {
-  background: var(--aiur-color-fill-pressed);
-  color: var(--aiur-color-on-fill);
+  --vp-button-brand-bg: var(--aiur-color-fill-pressed);
+  --vp-button-brand-hover-bg: var(--aiur-color-fill-pressed);
 }
 
 .VPButton:disabled,
@@ -87,12 +81,15 @@ html.dark,
 
 .VPButton.brand:disabled,
 .VPButton.brand[aria-disabled="true"] {
-  background: var(--aiur-color-fill);
-  color: var(--aiur-color-on-fill);
+  --vp-button-brand-bg: var(--aiur-color-fill);
+  --vp-button-brand-hover-bg: var(--aiur-color-fill);
+  --vp-button-brand-active-bg: var(--aiur-color-fill);
 }
 
 .VPButton.alt:disabled,
 .VPButton.alt[aria-disabled="true"] {
-  background: transparent;
-  color: var(--aiur-color-muted);
+  --vp-button-alt-hover-bg: transparent;
+  --vp-button-alt-active-bg: transparent;
+  --vp-button-alt-hover-text: var(--aiur-color-muted);
+  --vp-button-alt-active-text: var(--aiur-color-muted);
 }
