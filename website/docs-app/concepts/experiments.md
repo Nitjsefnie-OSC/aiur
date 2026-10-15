@@ -488,3 +488,13 @@ Telemetry uses the shared windowed reader: 32 MiB scanned, 10,000 records and
 4 MiB retained across sources. Known outside ranges are skipped. Retained boots
 without a range index remain eligible; missing, malformed or truncated evidence
 marks telemetry incomplete instead of implying a complete history.
+
+## Reports and labels
+
+Contracts live under `src/priv/experiments/schema/`. `aiur experiments preregister <id> --file prereg.json` assigns server time and `post_hoc` after results reads. Repeating registration requires a JSON `reason`; amendments preserve the original and flag post-hoc changes.
+
+Labels, weakest first: `not-enough-data`, `underpowered`, `inconclusive`, `no-effect-detected`, `significant`. An analyst may weaken engine labels with a reason, never strengthen them. Overall labels derive from primaries; chips show n, effect and CI, with unavailable values explicit.
+
+Every event ID appears once. High/`noted` confounders require `confounded`; sensitivity needs a linked analysis. Snapshot hashes and registration must match. Summary verdicts need numbers; below planned n, confirmatory becomes interim.
+
+Reports include deviations, design/sample balance, results, confounders, sensitivity, threats, recommendation and reproduction.

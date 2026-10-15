@@ -3,7 +3,25 @@ defmodule Aiur.Experiments.Store do
   use GenServer
   require Logger
 
-  alias Aiur.Experiments.{AnalysisInput, Catalog, Checkpoint, Evaluation, Journal, Paths, Persistence, Reader, Registration, Schema, Snapshot, SnapshotPersistence, Spec, WindowData, WindowEvents}
+  alias Aiur.Experiments.{
+    AnalysisInput,
+    Catalog,
+    Checkpoint,
+    Evaluation,
+    Journal,
+    Paths,
+    Persistence,
+    Reader,
+    Registration,
+    ReportRecords,
+    Schema,
+    Snapshot,
+    SnapshotPersistence,
+    Spec,
+    WindowData,
+    WindowEvents
+  }
+
   alias Aiur.Experiments.Auto.WindowTransition
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -61,6 +79,14 @@ defmodule Aiur.Experiments.Store do
   end
 
   def handle_call({:window_spec, id}, _from, state), do: {:reply, Reader.spec(id), state}
+
+  def handle_call({:put_preregistration, id, attrs}, _from, state) do
+    {:reply, ReportRecords.preregister(id, attrs, DateTime.utc_now()), state}
+  end
+
+  def handle_call({:record_results_read, id}, _from, state) do
+    {:reply, ReportRecords.record_results_read(id, DateTime.utc_now()), state}
+  end
 
   def handle_call({:events_snapshot, id, snapshot, refresh?}, _from, state) do
     {:reply, WindowEvents.freeze(id, snapshot, refresh?), state}

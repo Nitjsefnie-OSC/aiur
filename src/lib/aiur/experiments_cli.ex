@@ -3,6 +3,7 @@ defmodule Aiur.ExperimentsCLI do
   alias Aiur.{Experiments, JSONSafe}
 
   @switches [
+    contract_json: :string,
     status: :string,
     kind: :string,
     json: :boolean,
@@ -18,6 +19,7 @@ defmodule Aiur.ExperimentsCLI do
     reason: :string
   ]
   @allowed %{
+    preregister: [:contract_json, :json],
     events: [:json, :refresh],
     freeze: [:window, :reason, :json],
     metrics: [:json],
@@ -44,6 +46,13 @@ defmodule Aiur.ExperimentsCLI do
     if flags[:status] in [nil, "draft", "active", "concluded", "abandoned", "report_due", "reported", "cancelled"] and flags[:kind] in [nil, "before_after", "ab"],
       do: result(Experiments.list(filters), flags, :list),
       else: usage(flags)
+  end
+
+  defp dispatch(:preregister, flags, [id]) do
+    case decode_attributes(flags[:contract_json] || "") do
+      {:ok, attrs} -> result(Experiments.put_preregistration(id, attrs), flags, :preregister)
+      error -> result(error, flags, :preregister)
+    end
   end
 
   defp dispatch(:metrics, flags, []), do: result({:ok, Experiments.metric_catalog()}, flags, :metrics)
@@ -179,6 +188,8 @@ defmodule Aiur.ExperimentsCLI do
     IO.puts(Jason.encode!(Map.delete(data, "frozen_snapshot"), pretty: true))
     if data["frozen_snapshot"], do: print_snapshot(data["frozen_snapshot"])
   end
+
+  defp print_human(_data, :preregister), do: IO.puts("pre-registration stored")
 
   defp print_human(data, :freeze), do: print_snapshot(data)
 
