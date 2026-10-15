@@ -75,6 +75,7 @@ R-optional	Aiur.GitHub.LocalHold	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51f
 R-optional	Aiur.GitHub.MergeQueue	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
 R-optional	Aiur.GitHub.Quota	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
 R-optional	Aiur.GitHub.ResourceStore	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
+R-optional	Aiur.GitHub.ResourceFetch	#4496: use conditional resource reads to avoid repeated billable landing-watch CI requests
 R-optional	Aiur.GitHub.ReviewThreads	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
 R-optional	Aiur.GitHub.StatePolicy	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
 R-optional	Aiur.GitHub.Tracker	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
@@ -94,3 +95,4 @@ R-optional	Aiur.Tmux	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
 R-optional	Aiur.Tmux.Socket	#3843 socket-aware REPL pane operations preserve the existing tmux dependency during server isolation
 R-optional	Aiur.Webhooks	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
 R-optional	Aiur.Webhooks.IntervalPolicy	baseline 22b2fa407c5d4218d25d63b1aa17472aeca51fb4
+R-private	Aiur.GitHub.ResourceFetch	#4496: use conditional resource reads to avoid repeated billable landing-watch CI requests
