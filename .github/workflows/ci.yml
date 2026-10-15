@@ -118,6 +118,8 @@ jobs:
         run: bash .claude/skills/aiur-run/scripts/tests/executor-cli-check_test.sh && bash .claude/skills/aiur-run/scripts/tests/check-stack-order_test.sh
       - name: Test file size gate
         run: bash scripts/test-check-file-size.sh
+      - name: Test skill mount workspace merges
+        run: python3 scripts/test-prepare-skill-mount-merge.py
       - name: Set up Bun
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
       - name: File size gate

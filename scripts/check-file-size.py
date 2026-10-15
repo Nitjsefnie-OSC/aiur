@@ -2,6 +2,7 @@
 """Prevent new oversized text files and growth of existing debt using Git blobs."""
 
 import argparse
+import os
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -15,7 +16,8 @@ LOCKFILE_REGEN = {
     'package-lock.json': ['npm', 'install', '--package-lock-only', '--ignore-scripts'],
     'bun.lock': ['bun', 'install', '--lockfile-only'],
 }
-SKILL_MOUNTS = ('.claude/skills', '.codex/skills', '.agents/skills')
+SKILL_MOUNTS = ('.codex/skills', '.agents/skills')
+CLAUDE_SKILLS = '.claude/skills'
 
 
 def git(*args):
@@ -94,6 +96,14 @@ def check(base, head):
                 print(f'{display_name}: tracked change under mounted skill path {mount} is rejected')
                 mount_failures += 1
                 break
+        else:
+            if name == CLAUDE_SKILLS or name.startswith(CLAUDE_SKILLS + '/'):
+                before = tree_entry(base, path)
+                after = tree_entry(head, path)
+                symlink = before == '120000' or after == '120000'
+                if symlink:
+                    print(f'{display_name}: tracked symlink under mounted skill path {CLAUDE_SKILLS} is rejected')
+                    mount_failures += 1
 
     before, after = trees(base, head)
     failures = mount_failures
@@ -120,6 +130,20 @@ def check(base, head):
             print(f'{name}: base {previous} -> head {current} (limit {LIMIT})')
             failures += 1
     return int(bool(failures))
+
+
+def tree_entry(revision, path):
+    result = subprocess.run(
+        ['git', 'ls-tree', '-z', revision, '--', os.fsdecode(path)],
+        check=True, capture_output=True,
+    ).stdout
+    for entry in result.split(b'\0'):
+        if not entry:
+            continue
+        metadata, name = entry.split(b'\t', 1)
+        if name == path:
+            return metadata.split(b' ', 1)[0].decode('ascii')
+    return None
 
 
 def main():
