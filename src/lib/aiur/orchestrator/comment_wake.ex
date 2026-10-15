@@ -688,11 +688,7 @@ defmodule Aiur.Orchestrator.CommentWake do
           OperatorMessages.enqueue_event_digest_item(state, identifier, [event], event)
 
         if changes_requested_review?(event) do
-          if Map.get(running_entry.issue, :state) == "rework" do
-            protected_state
-          else
-            maybe_write_active_review_rework(protected_state, running_entry, issue_number, source, event, attempt)
-          end
+          maybe_write_active_review_rework(protected_state, running_entry, issue_number, source, event, attempt)
         else
           issue_key = rework_issue_key(running_entry, issue_number)
 
@@ -709,6 +705,9 @@ defmodule Aiur.Orchestrator.CommentWake do
         end
     end
   end
+
+  defp maybe_write_active_review_rework(state, %{issue: %Issue{state: "rework"}}, _issue_number, _source, _event, _attempt),
+    do: state
 
   defp maybe_write_active_review_rework(state, running_entry, issue_number, source, event, attempt) do
     issue_key = rework_issue_key(running_entry, issue_number)
