@@ -7,6 +7,7 @@ defmodule AiurWeb.Build.IndexLiveTest do
     def read(_, _), do: %{state: "unavailable", observed_at: nil, reason: "fixture"}
     def subscribe(_), do: :ok
   end
+
   defmodule DaemonStub do
     def read_daemon(_), do: %{state: "live", heartbeat_at: 1, observed_at: 2}
   end
@@ -16,21 +17,37 @@ defmodule AiurWeb.Build.IndexLiveTest do
     initial = parts() |> put_in([:planned, :rows], [plan_row(12)])
     agent = start_supervised!({Agent, fn -> initial end})
     name = __MODULE__.Index
-    start_supervised!({Index, name: name, subscribe: fn -> :ok end,
-      read: fn dirty, _, _ -> send(parent, {:index_read, dirty}); Agent.get(agent, & &1) end,
-      timer: fn pid, message, ms -> send(parent, {:index_timer, pid, message, ms}); make_ref() end,
-      daemon_timer: fn _, _, _ -> make_ref() end, daemon_read: &DaemonStub.read_daemon/1,
-      clock: &Aiur.TestSupport.BuildHome.IndexParts.now/0})
+
+    start_supervised!(
+      {Index,
+       name: name,
+       subscribe: fn -> :ok end,
+       read: fn dirty, _, _ ->
+         send(parent, {:index_read, dirty})
+         Agent.get(agent, & &1)
+       end,
+       timer: fn pid, message, ms ->
+         send(parent, {:index_timer, pid, message, ms})
+         make_ref()
+       end,
+       daemon_timer: fn _, _, _ -> make_ref() end,
+       daemon_read: &DaemonStub.read_daemon/1,
+       clock: &Aiur.TestSupport.BuildHome.IndexParts.now/0}
+    )
+
     assert {:ok, _} = GenServer.call(name, {:window, "Etc/UTC"})
     Application.put_env(:aiur, :build_data_source, {IndexSource, [server: name, usage: UsageStub, freshness: DaemonStub]})
-    views = for _ <- 1..4 do
-      {:ok, view, _} = live(build_conn(), "/build")
-      render_async(view)
-      render_hook(view, "build-resync", %{})
-      assert_reply(view, snapshot)
-      assert Payload.validate(snapshot) == :ok
-      view
-    end
+
+    views =
+      for _ <- 1..4 do
+        {:ok, view, _} = live(build_conn(), "/build")
+        render_async(view)
+        render_hook(view, "build-resync", %{})
+        assert_reply(view, snapshot)
+        assert Payload.validate(snapshot) == :ok
+        view
+      end
+
     assert_received {:index_read, :all}
     pid = Process.whereis(name)
     :erlang.trace(pid, true, [:receive])
@@ -45,6 +62,7 @@ defmodule AiurWeb.Build.IndexLiveTest do
     state = :sys.get_state(pid)
     assert_received {:index_read, _}
     refute_received {:index_read, _}
+
     for view <- views do
       render(view)
       assert_push_event(view, "build-diff", diff)
@@ -58,10 +76,12 @@ defmodule AiurWeb.Build.IndexLiveTest do
       render(view)
       assert :sys.get_state(view.pid).socket.assigns.build_generation == generation
     end
+
     previous = Enum.map(views, &:sys.get_state(&1.pid).socket.assigns.build_generation)
     Process.exit(pid, :kill)
     receive_barrier({:index_read, :all})
     assert {:ok, _} = GenServer.call(name, {:window, "Etc/UTC"})
+
     for {view, generation} <- Enum.zip(views, previous) do
       render(view)
       assert_push_event(view, "build-diff", gap)

@@ -11,8 +11,10 @@ defmodule Aiur.BuildOrder.IndexTest do
     p = put_in(p, [:features], {:ok, %{features: %{"pag" => feature}, owners: %{7 => %{feature: "pag", epic: "f-pag", joined_at: r.created_at}}, also: %{}, health: health()}})
     assert {:ok, index} = assemble(p)
     t = index.all["7"]
+
     assert Map.take(t, [:sec, :status, :pct, :type, :cx, :pts, :feature, :epic, :pr]) ==
-      %{sec: "hist", status: "done", pct: 100, type: "bug", cx: 2, pts: 2, feature: "pag", epic: "f-pag", pr: %{num: 233, state: "merged"}}
+             %{sec: "hist", status: "done", pct: 100, type: "bug", cx: 2, pts: 2, feature: "pag", epic: "f-pag", pr: %{num: 233, state: "merged"}}
+
     assert t.start == now() and t.end == now() and t.start_src == "label"
     assert t.agent == %{model: "codex", name: nil, effort: "high", state: nil}
     assert t.deps_missing == 0
@@ -27,19 +29,25 @@ defmodule Aiur.BuildOrder.IndexTest do
     assert {:ok, index} = assemble(p)
     assert map_size(index.all) == 3
     assert index.all["12"].sec == "now"
+
     for {_id, row} <- index.all do
       assert row.epic == "unsorted"
       assert row.feature == nil and row.also == []
     end
+
     context = Index.resolver_context(p, 13)
     assert context.owning_feature == :unknown and context.override == :unknown
     assert Aiur.BuildOrder.Epic.resolve(context, %{general: general(), features: :unknown}).source == "unknown"
   end
 
   test "preserves closure causes and unknown title, model and complexity" do
-    p = parts([row(1, %{lifecycle: %Lifecycle{state: :closed, state_reason: :not_planned}}),
-      row(2, %{title: :unknown, lifecycle: %Lifecycle{state: :closed, state_reason: :duplicate}}),
-      row(3, %{lifecycle: %Lifecycle{state: :closed, state_reason: :unknown}})])
+    p =
+      parts([
+        row(1, %{lifecycle: %Lifecycle{state: :closed, state_reason: :not_planned}}),
+        row(2, %{title: :unknown, lifecycle: %Lifecycle{state: :closed, state_reason: :duplicate}}),
+        row(3, %{lifecycle: %Lifecycle{state: :closed, state_reason: :unknown}})
+      ])
+
     assert {:ok, index} = assemble(p)
     assert index.all["1"].status == "not_planned"
     for id <- ~w(2 3), do: assert(index.all[id].status == "closed")
@@ -114,7 +122,7 @@ defmodule Aiur.BuildOrder.IndexTest do
     diff = Index.diff(old, new)
     assert Enum.map(diff.upsert, & &1.id) == ~w(12 640)
     assert diff.remove == ["41"]
-    assert diff.set == %{counts: new.counts}
+    assert diff.set == %{}
     assert Index.diff(new, new) == %{upsert: [], remove: [], set: %{}}
   end
 end

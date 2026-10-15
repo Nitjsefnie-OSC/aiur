@@ -8,18 +8,27 @@ defmodule AiurWeb.Build.IndexServerTest do
   setup do
     Core.subscribe()
     parent = self()
-    opts = [name: nil, subscribe: fn -> :ok end,
+
+    opts = [
+      name: nil,
+      subscribe: fn -> :ok end,
       read: fn dirty, _previous, _opts ->
         send(parent, {:read_started, self(), dirty})
+
         receive do
           {:return, parts} -> parts
           :crash -> exit(:killed_read)
         end
       end,
-      timer: fn pid, message, ms -> send(parent, {:timer, pid, message, ms}); make_ref() end,
+      timer: fn pid, message, ms ->
+        send(parent, {:timer, pid, message, ms})
+        make_ref()
+      end,
       daemon_timer: fn _pid, _, _ -> make_ref() end,
       daemon_read: fn _ -> %{state: "live", heartbeat_at: 1, observed_at: 2} end,
-      clock: &now/0]
+      clock: &now/0
+    ]
+
     pid = start_supervised!({Index, opts})
     receive_barrier({:read_started, worker, :all})
     :erlang.trace(pid, true, [:receive])
@@ -51,11 +60,13 @@ defmodule AiurWeb.Build.IndexServerTest do
     refute Map.has_key?(change, :sections)
     refute Map.has_key?(change.set, :usage)
     refute_received {:build_changes, _}
+
     for subscriber <- subscribers do
       assert {:message_queue_len, count} = Process.info(subscriber, :message_queue_len)
       assert count <= 1
       send(subscriber, :stop)
     end
+
     refute_received {:trace, _, :call, {:persistent_term, :put, _}}
   end
 
@@ -111,11 +122,14 @@ defmodule AiurWeb.Build.IndexServerTest do
 
   defp subscriber do
     parent = self()
-    pid = spawn_link(fn ->
-      Core.subscribe()
-      send(parent, {:subscribed, self()})
-      receive do: (:stop -> :ok)
-    end)
+
+    pid =
+      spawn_link(fn ->
+        Core.subscribe()
+        send(parent, {:subscribed, self()})
+        receive do: (:stop -> :ok)
+      end)
+
     receive_barrier({:subscribed, ^pid})
     pid
   end
@@ -124,6 +138,7 @@ defmodule AiurWeb.Build.IndexServerTest do
     receive_barrier({:trace, ^pid, :receive, {_ref, %{settings: _settings}}})
     :sys.get_state(pid)
   end
+
   defp drain_changes do
     receive do
       {:build_changes, _} -> drain_changes()

@@ -11,21 +11,33 @@ defmodule AiurWeb.Build.IndexSourceTest do
       %{state: "live", heartbeat_at: 1, observed_at: 2}
     end
   end
+
   defmodule UsageSpy do
     def read(:locked, _opts), do: AiurWeb.Build.Usage.read(:locked)
+
     def read({:ok, _context}, opts) do
       send(opts[:test_pid], :usage_loaded)
       %{state: "unavailable", observed_at: nil, reason: "test_meter"}
     end
+
     def subscribe(:locked), do: :ok
     def subscribe({:ok, _}), do: send(self(), :usage_subscribed) && :ok
   end
 
   test "snapshot uses the real index, carries generation and validates without protected usage" do
     Core.subscribe()
-    pid = start_supervised!({Index, name: nil, subscribe: fn -> :ok end, read: fn _, _, _ -> parts([row(7, %{title: "<img src=x onerror=alert(1)>"})]) end,
-      daemon_read: fn _ -> %{state: "live", heartbeat_at: 1, observed_at: 2} end,
-      daemon_timer: fn _, _, _ -> make_ref() end, clock: &now/0})
+
+    pid =
+      start_supervised!(
+        {Index,
+         name: nil,
+         subscribe: fn -> :ok end,
+         read: fn _, _, _ -> parts([row(7, %{title: "<img src=x onerror=alert(1)>"})]) end,
+         daemon_read: fn _ -> %{state: "live", heartbeat_at: 1, observed_at: 2} end,
+         daemon_timer: fn _, _, _ -> make_ref() end,
+         clock: &now/0}
+      )
+
     opts = [server: pid, financial: :locked, usage: UsageSpy, freshness: FreshnessSpy, test_pid: self()]
     assert :ok = IndexSource.subscribe(opts)
     assert {:ok, snapshot} = IndexSource.snapshot(opts)
@@ -48,8 +60,16 @@ defmodule AiurWeb.Build.IndexSourceTest do
   end
 
   test "authorized usage is loaded and subscribed in the caller only" do
-    pid = start_supervised!({Index, name: nil, subscribe: fn -> :ok end, read: fn _, _, _ -> parts() end,
-      daemon_read: fn _ -> %{state: "unknown", heartbeat_at: nil, observed_at: nil} end, daemon_timer: fn _, _, _ -> make_ref() end})
+    pid =
+      start_supervised!(
+        {Index,
+         name: nil,
+         subscribe: fn -> :ok end,
+         read: fn _, _, _ -> parts() end,
+         daemon_read: fn _ -> %{state: "unknown", heartbeat_at: nil, observed_at: nil} end,
+         daemon_timer: fn _, _, _ -> make_ref() end}
+      )
+
     opts = [server: pid, financial: {:ok, :context}, usage: UsageSpy, freshness: FreshnessSpy, test_pid: self()]
     assert :ok = IndexSource.subscribe(opts)
     assert {:ok, snapshot} = IndexSource.snapshot(opts)
@@ -66,11 +86,16 @@ defmodule AiurWeb.Build.IndexSourceTest do
   test "missing and slow index reads become bounded source errors" do
     assert IndexSource.snapshot(server: __MODULE__.Missing) == {:error, :index_not_running}
     parent = self()
-    pid = spawn_link(fn ->
-      receive do
-        {:'$gen_call', _from, _message} -> send(parent, :call_seen); receive(do: (:stop -> :ok))
-      end
-    end)
+
+    pid =
+      spawn_link(fn ->
+        receive do
+          {:"$gen_call", _from, _message} ->
+            send(parent, :call_seen)
+            receive(do: (:stop -> :ok))
+        end
+      end)
+
     assert IndexSource.snapshot(server: pid, timeout: 1) == {:error, :timeout}
     receive_barrier(:call_seen)
     send(pid, :stop)
