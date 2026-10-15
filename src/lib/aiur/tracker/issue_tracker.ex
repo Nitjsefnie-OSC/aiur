@@ -22,6 +22,7 @@ defmodule Aiur.Tracker.IssueTracker do
   @callback fetch_issue_states_by_ids_conditional([String.t()], map()) ::
               {:ok, [term()], map()} | {:error, term()} | {:error, term(), map()}
   @callback create_comment(String.t(), String.t()) :: :ok | {:error, term()}
+  @callback create_issue(map(), keyword()) :: {:ok, map()} | {:error, term()}
   @callback fetch_classified_issue_comments(String.t() | integer()) :: {:ok, [map()]} | {:error, term()}
   @callback update_issue_state(String.t(), String.t()) :: :ok | {:error, term()}
   @callback update_issue_state(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
@@ -33,6 +34,7 @@ defmodule Aiur.Tracker.IssueTracker do
   @callback code_host() :: module() | nil
 
   @optional_callbacks config_module: 0,
+                      create_issue: 2,
                       code_host: 0,
                       ticket_pull_request: 1,
                       blocked_by: 1,

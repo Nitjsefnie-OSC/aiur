@@ -1,7 +1,7 @@
 defmodule Aiur.Experiments do
   @moduledoc "Versioned experiment specs and their durable audit trail."
 
-  alias Aiur.Experiments.{Arms, Capture, Catalog, Checkpointer, Evaluator, Journal, Paths, Reader, Schema, Store, WindowEvents}
+  alias Aiur.Experiments.{AnalysisRequests, Arms, Capture, Catalog, Checkpointer, Evaluator, Journal, Paths, Reader, Schema, Store, WindowEvents}
 
   @spec metric_catalog() :: map()
   def metric_catalog, do: Catalog.load()
@@ -94,6 +94,23 @@ defmodule Aiur.Experiments do
 
   @spec create(map(), keyword()) :: {:ok, Aiur.Experiments.Spec.t()} | {:error, term()}
   def create(attrs, opts \\ []), do: mutate({:create, attrs, opts})
+
+  @spec request_analysis(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def request_analysis(id, mode, opts \\ []), do: mutate({:analysis_request, id, mode, opts})
+
+  @spec analysis_requests(String.t()) :: {:ok, [map()]} | {:error, term()}
+  def analysis_requests(id) do
+    with {:ok, _spec, _read_only?} <- Reader.spec(id), {:ok, rows} <- AnalysisRequests.history(id), do: {:ok, AnalysisRequests.latest(rows)}
+  end
+
+  @spec attach_analysis_ticket(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def attach_analysis_ticket(id, request_id, ticket), do: mutate({:analysis_request_update, :attach_ticket, id, request_id, ticket})
+
+  @spec fulfill_analysis_request(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def fulfill_analysis_request(id, request_id, submission), do: mutate({:analysis_request_update, :fulfill, id, request_id, submission})
+
+  @spec cancel_analysis_request(String.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def cancel_analysis_request(id, request_id, reason), do: mutate({:analysis_request_update, :cancel, id, request_id, reason})
 
   @spec freeze(String.t(), String.t() | nil, keyword()) :: {:ok, map()} | {:error, term()}
   def freeze(id, window \\ nil, opts \\ []) do

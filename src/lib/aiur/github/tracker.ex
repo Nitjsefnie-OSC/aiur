@@ -25,6 +25,10 @@ defmodule Aiur.GitHub.Tracker do
   alias Aiur.TestTicketScope
 
   @impl Aiur.Tracker.IssueTracker
+  @spec create_issue(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def create_issue(attrs, opts), do: Aiur.GitHub.IssueCreation.create(attrs, opts)
+
+  @impl Aiur.Tracker.IssueTracker
   @spec blocked_by(String.t()) :: {:ok, [String.t()]} | {:error, term()}
   def blocked_by(issue_id) do
     with {:ok, {owner, repo}} <- Transport.parse_repo(),

@@ -3,7 +3,25 @@ defmodule Aiur.Experiments.Store do
   use GenServer
   require Logger
 
-  alias Aiur.Experiments.{AnalysisInput, Catalog, Checkpoint, Evaluation, Journal, Paths, Persistence, Reader, Registration, Schema, Snapshot, SnapshotPersistence, Spec, WindowData, WindowEvents}
+  alias Aiur.Experiments.{
+    AnalysisInput,
+    AnalysisRequests,
+    Catalog,
+    Checkpoint,
+    Evaluation,
+    Journal,
+    Paths,
+    Persistence,
+    Reader,
+    Registration,
+    Schema,
+    Snapshot,
+    SnapshotPersistence,
+    Spec,
+    WindowData,
+    WindowEvents
+  }
+
   alias Aiur.Experiments.Auto.WindowTransition
 
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -34,6 +52,11 @@ defmodule Aiur.Experiments.Store do
   end
 
   @impl true
+  def handle_call({:analysis_request, id, mode, opts}, _from, state), do: {:reply, AnalysisRequests.request(id, mode, opts), state}
+
+  def handle_call({:analysis_request_update, action, id, request_id, value}, _from, state) when action in [:attach_ticket, :fulfill, :cancel],
+    do: {:reply, apply(AnalysisRequests, action, [id, request_id, value]), state}
+
   def handle_call({:create, attrs, opts}, from, state) do
     case create(attrs, opts, state) do
       {:new, spec} -> Evaluation.start(state, from, fn -> prepare_create(spec, opts, state.catalog_context) end, &commit_create(&1, opts, state))

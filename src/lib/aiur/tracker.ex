@@ -111,6 +111,13 @@ defmodule Aiur.Tracker do
     adapter().create_comment(issue_id, body)
   end
 
+  @doc "Creates an issue with its initial labels in the same write."
+  @spec create_issue(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def create_issue(attrs, opts \\ []) do
+    tracker = adapter()
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :create_issue, 2), do: tracker.create_issue(attrs, opts), else: {:error, :unsupported}
+  end
+
   @spec update_issue_state(String.t(), String.t()) :: :ok | {:error, term()}
   def update_issue_state(issue_id, state_name) do
     adapter().update_issue_state(issue_id, state_name)
