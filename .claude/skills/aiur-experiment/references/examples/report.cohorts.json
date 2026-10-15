@@ -16,7 +16,7 @@
     "events_snapshot_hash": "events-cohorts-fixture",
     "preregistration_hash": "9fd6b0c0ab05eaf0cdc3bc5b4ab501d515427e0adbd361ff4baa6540fe099f03"
   },
-  "summary": "Each backend cohort contains 40 tickets, below planned n=60. The Codex-minus-Claude median difference is -2 ms with 95% CI [-5, 1], p=0.2. This interim result is inconclusive and cannot support a backend recommendation.",
+  "summary": "Each backend cohort contains 40 tickets, below planned n=60. The Codex-minus-Claude median difference is -2 ms with 95% CI [-5, 1], p=0.2. At n=40 per cohort, this interim result is inconclusive and cannot support a backend recommendation.",
   "preregistration": {
     "record": {
       "schema_version": "preregistration.v1",

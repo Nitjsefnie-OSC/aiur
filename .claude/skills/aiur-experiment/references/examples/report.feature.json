@@ -204,7 +204,8 @@
     "why": "40 tickets per window with a 50 percent capacity drop cannot isolate the feature",
     "condition": "A new registered comparison holds capacity constant",
     "next_analysis": {
-      "kind": "none"
+      "kind": "none",
+      "value": null
     }
   },
   "reproduce": {
