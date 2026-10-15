@@ -261,8 +261,9 @@ have duplicated all nine.
 
 ### 3a. Sweep the landing path every pass
 
-Also list open decisions on every pass; the wake stream can miss one. Use
-`aiur commands --filter open --json`. Any blocking decision older than 15
+Also list open decisions on every pass; the wake stream can miss one. Use the
+`aiur-run` [decision sweep](../aiur-run/references/decision-sweep.md), which
+reads the real JSON shape and age fields. Any blocking decision older than 15
 minutes is a finding: answer it or escalate it within the mandate, and record
 its age in the pass log. Surface newly opened decisions immediately as well.
 

@@ -324,9 +324,8 @@ moved), and say plainly when one is `stalled` or `expired`. Recommend; do not
 revoke a live peer's claim yourself. `aiur executor-revoke <id>` is the
 operator's decision.
 
-**Arm the wake monitor before you dispatch anything.** This is a launch step,
-not later advice. The daemon holds the real event-bus subscription (28
-bindings); **the Executor does not.** Events are projected to a file —
+**Arm the wake monitor before dispatch.** The daemon holds the real event-bus
+subscription (28 bindings); **the Executor does not.** Events are projected to a file —
 `~/.aiur/repo/<owner>/<repo>/executor/<repo>.executor.wakes.ndjson`, with the read
 position in `<repo>.executor.wakes.cursor.json`. `<repo>` is the sanitized final
 segment of the tracker project identity (`Paths.repo_name/0`; for example,
@@ -566,19 +565,9 @@ configuration cannot widen this trust boundary.
 
 Handle each Command when the daemon listener delivers it (via the
 needs-attention alert) or when you read it with `aiur commands <decision-id>`.
-The listener remains the primary command path. As a backstop, every wake-monitor
-cycle must also list open blocking decisions; wakes can be missed without a
-listener failure. Report decisions that are new or older than 15 minutes, and
-handle each under the decision rules below. This sweep supplements replay after
-a restart; it does not replace event handling.
-
-```bash
-"$AIUR_CMD" commands --filter open --json
-```
-
-Compare each decision's creation time with the current time. Surface newly
-opened decisions immediately and report the age of any still-open blocking
-decision at least 15 minutes old; do not wait for another wake.
+The listener remains the primary command path. As a backstop, sweep decisions
+every `executor-wait` cycle; use [`references/open-decisions-sweep.sh`](references/open-decisions-sweep.sh)
+to list open decisions and report new ones or blockers at least 15 minutes old.
 
 Use contextual judgment for every Command, never a rules table or a hardcoded
 allowlist of command types. Answer directly only when the requested choice is
