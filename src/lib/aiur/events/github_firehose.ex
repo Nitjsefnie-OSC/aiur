@@ -436,16 +436,27 @@ defmodule Aiur.Events.GithubFirehose do
   defp post_deploy_checks(body) when is_binary(body) do
     body
     |> String.split("\n")
-    |> Enum.flat_map(fn line ->
-      case Regex.run(~r/^\s*(?:[-*]\s*)?Post-deploy check:\s*(\S.*)$/i, String.trim(line)) do
-        [_, text] -> [String.slice(text, 0, 2_000)]
-        _ -> []
+    |> Enum.reduce({false, []}, fn line, {in_local_tests?, checks} ->
+      cond do
+        Regex.match?(~r/^\s*##\s+Local tests\s*$/i, line) -> {true, checks}
+        Regex.match?(~r/^\s*[#]{1,6}\s+/, line) -> {false, checks}
+        in_local_tests? and length(checks) < 20 -> {true, post_deploy_check_line(line) ++ checks}
+        in_local_tests? -> {true, checks}
+        true -> {false, checks}
       end
     end)
-    |> Enum.take(20)
+    |> elem(1)
+    |> Enum.reverse()
   end
 
   defp post_deploy_checks(_body), do: []
+
+  defp post_deploy_check_line(line) do
+    case Regex.run(~r/^\s*(?:[-*]\s*)?Post-deploy check:\s*(\S.*)$/i, String.trim(line)) do
+      [_, text] -> [String.slice(text, 0, 2_000)]
+      _ -> []
+    end
+  end
 
   # GitHub's Events API emits sparse merge notifications as action=merged.
   # Retain the older closed+merged form for replay compatibility.

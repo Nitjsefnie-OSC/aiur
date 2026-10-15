@@ -102,7 +102,8 @@ defmodule Aiur.Events.GithubFirehoseTest do
                  "action" => "merged",
                  "pull_request" => %{
                    "number" => 7,
-                   "body" => "## Local tests\nPost-deploy check: run the real TUI and verify the rendered message",
+                   "body" =>
+                     "#### Summary\nPost-deploy check: ignore the example\n## Local tests\nPost-deploy check: run the real TUI and verify the rendered message\n#### Docs\nPost-deploy check: ignore this too",
                    "head" => %{"ref" => "aiur/7"}
                  }
                }
