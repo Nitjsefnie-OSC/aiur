@@ -5,6 +5,7 @@ import { decide } from './protocol.js';
 import { acceptSnapshot, applyDiff } from './store.js';
 import { fromServer, flushURL } from './url.js';
 import './clock.js';
+import './layout.js';
 import './offline.js';
 
 export function writeOwnData() {
