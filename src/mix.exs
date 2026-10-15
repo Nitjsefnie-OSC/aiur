@@ -207,9 +207,24 @@ defmodule Aiur.MixProject do
       aiur: [
         applications: [aiur: :permanent],
         include_executables_for: [:unix],
-        steps: [:assemble, &Aiur.MixProject.copy_cli_launcher/1]
+        steps: [:assemble, &Aiur.MixProject.copy_analytics/1, &Aiur.MixProject.copy_cli_launcher/1]
       ]
     ]
+  end
+
+  @doc "Copies runtime analytics tools, libraries and schemas without tests or bytecode."
+  def copy_analytics(release) do
+    source = Path.expand("../analytics", __DIR__)
+    target = Path.join(release.path, "analytics")
+    File.rm_rf!(target)
+    File.mkdir_p!(target)
+
+    for entry <- File.ls!(source), entry in ["lib", "schema"] or (File.regular?(Path.join(source, entry)) and Path.extname(entry) == "") do
+      File.cp_r!(Path.join(source, entry), Path.join(target, entry))
+    end
+
+    for path <- Path.wildcard(Path.join(target, "**/__pycache__")) ++ Path.wildcard(Path.join(target, "**/*.pyc")), do: File.rm_rf!(path)
+    release
   end
 
   # The escript build is retained as a fallback path that does not

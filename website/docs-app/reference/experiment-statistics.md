@@ -2,6 +2,19 @@
 
 `analytics/experiment-stats` computes an offline, generic experiment result using Python 3's standard library. The pure facade is `analytics.stats.analyze(snapshot, spec, annotations)`. It reads no clock, network or environment. Metric names have no statistical meaning.
 
+## Running it yourself
+
+Aiur releases include `analytics/` beside `bin/` and `lib/`. From any working directory, run the release's tool against a frozen experiment directory:
+
+```sh
+/path/to/release/analytics/experiment-stats --experiment-dir /path/to/experiment
+/path/to/release/analytics/experiment-stats --experiment-dir /path/to/experiment --check
+```
+
+Results live in that experiment's `result.json`; `--check` verifies its stored body without rewriting it. Python 3 must be on `PATH`. Missing Python makes daemon recomputation unavailable with `statistics unavailable: python3 not found`.
+
+The daemon resolves tools in this order: explicit caller override, tracked repository checkout, bundled release, current directory. It logs the first resolved directory once. Its runner serializes recomputations, uses `nice -n 10` and kills the tool after 120 seconds; failures leave orchestration running. Callers decide when to request recomputation.
+
 ## Frozen inputs and CLI
 
 ```sh
@@ -45,7 +58,7 @@ Censored durations are temporarily excluded with `censoring_ignored` and per-gro
 
 ## Correction and labels
 
-Pre-registered primaries use Holm correction. Other metrics use Benjamini–Hochberg and carry `exploratory`. An `added_at` later than the spec's `frozen_at` (or X2 `registered_at`) makes a listed primary exploratory, with a warning. With no primaries the overall result says “no pre-registered primary”.
+Pre-registered primaries use Holm correction at `alpha`. Other metrics use Benjamini–Hochberg at `fdr_q` (defaults to `alpha`) and carry `exploratory`. An `added_at` later than the spec's `frozen_at` (or X2 `registered_at`) makes a listed primary exploratory, with a warning. With no primaries the overall result says “no pre-registered primary”.
 
 Guarded hypotheses remain in the correction family as p=1 but report no test.
 
