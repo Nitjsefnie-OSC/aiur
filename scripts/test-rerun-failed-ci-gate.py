@@ -16,13 +16,17 @@ SPEC.loader.exec_module(MODULE)
 class RerunFailedCiGateTest(unittest.TestCase):
     def test_body_workflow_retries_only_after_validation_on_body_events(self):
         workflow = (Path(__file__).parents[1] / '.github/workflows/pr-body.yml').read_text()
+        ci_workflow = (Path(__file__).parents[1] / '.github/workflows/ci.yml').read_text()
         self.assertIn('types: [opened, edited, synchronize, reopened]', workflow)
+        self.assertIn('types: [opened, synchronize, reopened, ready_for_review]', ci_workflow)
+        self.assertNotIn('types: [opened, edited, synchronize', ci_workflow)
         validation = workflow.index('name: Check PR body and local-test evidence')
         rerun = workflow.index('name: Re-run only a failed ci gate')
         self.assertLess(validation, rerun)
         self.assertRegex(workflow, r'actions:\s+write')
         self.assertIn('if: ${{ success() }}', workflow[rerun:])
         self.assertIn('scripts/rerun-failed-ci-gate.py', workflow[rerun:])
+        self.assertIn('Require latest PR-body check', ci_workflow)
 
     def test_failed_gate_uses_single_job_rerun_endpoint(self):
         job = {'id': 71, 'head_sha': 'head', 'status': 'completed', 'conclusion': 'failure'}
