@@ -158,7 +158,7 @@ defmodule Aiur.TestSupport.BuildGateFixtures do
     status=$?
 
     if ((status == 0)) && [[ ${AIUR_TEST_DELAY_OWNER_MV:-0} == 1 ]] &&
-      [[ $destination == */slot-1.owner ]]; then
+      [[ $destination == */slot-1.owner ]] && ((count == 3)); then
       sleep "${AIUR_TEST_DELAY_OWNER_MV_SECONDS:-0.2}"
     fi
 

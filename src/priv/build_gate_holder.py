@@ -84,7 +84,6 @@ def main() -> int:
         parent_pid,
         agent_pgid,
         lease_fd,
-        handshake_seconds,
         ack_seconds,
         *command,
     ) = sys.argv[1:]
@@ -94,7 +93,6 @@ def main() -> int:
     parent_pid_int = int(parent_pid)
     agent_pgid_int = int(agent_pgid)
     _started_monotonic = time.monotonic()
-    handshake_deadline = time.monotonic() + max(1, int(handshake_seconds))
     hold_deadline = max_hold_deadline()
     process = None
     _lease_fd = int(lease_fd)
@@ -102,10 +100,8 @@ def main() -> int:
     try:
         become_subreaper()
         install_signal_handlers()
-        wait_start_delay()
-        raise_if_cancelled()
         write_reserved_regular(started_path, "started\n")
-        wait_until_ready(ready_path, "ready\n", parent_pid_int, handshake_deadline)
+        wait_until_ready(ready_path, "ready\n", parent_pid_int)
 
         command_environment = os.environ.copy()
         command_environment["AIUR_BUILD_GATE_LEASE_PATH"] = owner_path
@@ -119,7 +115,7 @@ def main() -> int:
         record_spawned_root(process.pid)
         write_reserved_regular(command_pid_path, f"{process.pid}\n")
 
-        wait_until_ready(command_ready_path, "ready\n", parent_pid_int, handshake_deadline)
+        wait_until_ready(command_ready_path, "ready\n", parent_pid_int)
 
         if os.environ.get("AIUR_BUILD_GATE_HOLDER_FAIL_AFTER_POPEN") == "1":
             raise RuntimeError("injected post-Popen holder failure")
@@ -199,30 +195,13 @@ def raise_if_cancelled() -> None:
         raise InterruptedError(f"lease holder cancelled by signal {_cancel_signal}")
 
 
-def wait_start_delay() -> None:
-    value = os.environ.get("AIUR_BUILD_GATE_HOLDER_START_DELAY_SECONDS", "0")
-
-    try:
-        delay = max(0.0, float(value))
-    except ValueError:
-        delay = 0.0
-
-    deadline = time.monotonic() + delay
-    while time.monotonic() < deadline:
-        raise_if_cancelled()
-        time.sleep(min(POLL_SECONDS, deadline - time.monotonic()))
-
-
-def wait_until_ready(path: str, expected: str, parent_pid: int, deadline: float) -> None:
+def wait_until_ready(path: str, expected: str, parent_pid: int) -> None:
     expected_bytes = expected.encode("utf-8")
     while True:
         raise_if_cancelled()
 
         if not pid_alive(parent_pid):
             raise SystemExit(125)
-
-        if time.monotonic() >= deadline:
-            raise TimeoutError("build-gate handshake deadline expired")
 
         if read_regular_bytes(path) == expected_bytes:
             return

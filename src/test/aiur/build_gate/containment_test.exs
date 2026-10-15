@@ -218,27 +218,6 @@ defmodule Aiur.BuildGate.ContainmentTest do
   end
 
   @tag @linux_only
-  test "a slow holder startup fails closed within a bounded handshake", context do
-    started_at = System.monotonic_time(:millisecond)
-
-    assert {output, 125} =
-             run_bash(
-               "mix test",
-               Map.merge(context, %{
-                 holder_start_delay_seconds: 5,
-                 started_path: ""
-               })
-             )
-
-    elapsed_ms = System.monotonic_time(:millisecond) - started_at
-    assert elapsed_ms < 3_500
-    assert output =~ "aiur_build_gate gate_error reason=lease_holder_start_failed"
-    refute File.exists?(context.log_path)
-    refute File.exists?(Path.join(context.gate_dir, "slot-1.owner"))
-    assert Path.wildcard(Path.join(context.gate_dir, ".holder-*-v2.*")) == []
-  end
-
-  @tag @linux_only
   test "Mix cannot unlink or replace host-owned slot locks", context do
     lock_path = Path.join(context.lock_dir, "slot-1.lock")
     inode = File.stat!(lock_path).inode

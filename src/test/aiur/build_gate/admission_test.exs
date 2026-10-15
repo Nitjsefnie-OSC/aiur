@@ -125,7 +125,7 @@ defmodule Aiur.BuildGate.AdmissionTest do
     write_controlled_mv!(Path.join(context.bin_dir, "mv"), real_mv)
 
     delayed_context =
-      Map.merge(context, %{delay_owner_publication: true, owner_publication_delay_seconds: 3})
+      Map.merge(context, %{delay_owner_publication: true, owner_publication_delay_seconds: 11})
 
     assert {output, 0} = run_bash("mix compile", delayed_context)
     assert output =~ "aiur_build_gate acquired slot=1"
@@ -146,8 +146,8 @@ defmodule Aiur.BuildGate.AdmissionTest do
     second = Task.async(fn -> run_bash("mix compile", context) end)
     wait_for_queue_entry!(context.gate_dir)
 
-    assert {_first_output, 0} = Task.await(first, 30_000)
-    assert {second_output, 0} = Task.await(second, 30_000)
+    assert {_first_output, 0} = Task.await(first, 5_000)
+    assert {second_output, 0} = Task.await(second, 5_000)
     assert second_output =~ "aiur_build_gate queued"
     assert second_output =~ "aiur_build_gate acquired slot=1"
     assert File.read!(context.log_path) == "test\ncompile\n"
