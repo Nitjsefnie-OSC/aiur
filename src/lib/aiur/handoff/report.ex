@@ -10,8 +10,8 @@ defmodule Aiur.Handoff.Report do
   @spec latest(keyword()) :: {:ok, map()} | :none | {:error, term()}
   def latest(opts \\ []) do
     case Aiur.JsonStore.read(Record.path(opts) <> ".consumed") do
-      {:ok, nil} -> :none
-      {:ok, record} when is_map(record) -> {:ok, from_record(record)}
+      {:ok, %{"completed_at" => completed_at} = record} when is_binary(completed_at) -> {:ok, from_record(record)}
+      {:ok, _record} -> :none
       {:error, reason} -> {:error, reason}
     end
   end

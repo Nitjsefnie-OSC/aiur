@@ -143,6 +143,7 @@ defmodule AiurEngineKeepAgentsTest do
         kill_beams_matching() { echo BEAM_STOP; }
         reap_workspace_cwd_from_file() { echo WRONG_SWEEP; }
         reap_aiur_agents() { echo WRONG_REAP; }
+        AIUR_SESSION_PREFIX=keep-agents-unit
         AIUR_RESTART_HANDOFF_ID=keep-test
         cmd_stop
         """,

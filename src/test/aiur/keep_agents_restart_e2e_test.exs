@@ -131,7 +131,7 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
         assert adopted["provider_pid_after"] == agent["provider_pid"]
         assert adopted["session_id_before"] == agent["session_id"]
         assert adopted["session_id_after"] == agent["session_id"]
-        assert os_pid_alive?(agent["provider_pid"])
+        assert os_pid_alive?(agent["provider_pid"]), diagnostics(root)
       end
 
       # No lifecycle dispatch or tracker claim-release writes during adoption.

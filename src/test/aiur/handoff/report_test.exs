@@ -41,6 +41,27 @@ defmodule Aiur.Handoff.ReportTest do
     assert text =~ "__AIUR_CONTROL_EXIT__:1"
   end
 
+  @tag :tmp_dir
+  test "a matching consumed record is unavailable until its outcome is complete", %{tmp_dir: dir} do
+    file = Record.path(dir: dir) <> ".consumed"
+    record = %{"handoff_id" => "publishing", "written_at" => "2026-10-15T10:00:00.000Z"}
+    Aiur.JsonStore.write!(file, record)
+
+    assert :none = Report.latest(dir: dir)
+    assert capture_io(fn -> CLI.report(dir: dir, json: true) end) == "null\n__AIUR_CONTROL_EXIT__:0\n"
+    output = capture_io(fn -> CLI.report(dir: dir, expected_id: "publishing", wait_ms: 0) end)
+    assert output =~ "adoption_report_timeout"
+    assert output =~ "__AIUR_CONTROL_EXIT__:1"
+    refute output =~ "adopted=0"
+
+    outcome = [%{"identifier" => "1", "status" => "adopted", "provider_pid_after" => "123", "session_id_after" => "kept-session"}]
+    Aiur.JsonStore.write!(file, Map.merge(record, %{"completed_at" => "2026-10-15T10:00:02.000Z", "outcome" => outcome}))
+    assert {:ok, %{adopted: ^outcome, gap_ms: 2000}} = Report.latest(dir: dir)
+    completed = capture_io(fn -> CLI.report(dir: dir, expected_id: "publishing", wait_ms: 0) end)
+    assert completed =~ "1 adopted pid=123 session=kept-session"
+    assert completed =~ "__AIUR_CONTROL_EXIT__:0"
+  end
+
   test "unavailable gap stays unknown instead of claiming zero downtime" do
     report = Report.from_record(%{"handoff_id" => "legacy", "outcome" => []})
     assert report.gap_ms == nil
