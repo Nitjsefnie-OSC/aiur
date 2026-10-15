@@ -205,6 +205,11 @@ Distinguish three things that present identically as "the fleet is idle":
 Resolve a bottleneck when it can be done without adding much complexity. Do not
 invent work.
 
+When a feature looks starved, inspect the focus feature's GitHub `blocked_by`
+critical path and its open blocking decisions before changing queue ranks or
+holds. A downstream ticket waiting on a real prerequisite is not a queue-rank
+problem.
+
 **When the bottleneck is review, the remedy is parallel review, not fewer
 agents.** A queue that is growing with nothing approved is the Executor's own
 throughput ceiling, and it is the most common steady-state bottleneck once the
@@ -255,6 +260,11 @@ of ten tickets recovered this way already had one; a blanket re-dispatch would
 have duplicated all nine.
 
 ### 3a. Sweep the landing path every pass
+
+Also list open decisions on every pass; the wake stream can miss one. Use
+`aiur commands --filter open --json`. Any blocking decision older than 15
+minutes is a finding: answer it or escalate it within the mandate, and record
+its age in the pass log. Surface newly opened decisions immediately as well.
 
 The path from "approved" to "merged" is where finished work goes to wait unseen.
 On 2026-10-14 the Executor found **24 approved PRs** sitting on a red `ci gate`

@@ -566,10 +566,19 @@ configuration cannot widen this trust boundary.
 
 Handle each Command when the daemon listener delivers it (via the
 needs-attention alert) or when you read it with `aiur commands <decision-id>`.
-The listener is the primary command path: do not poll or sweep the decision
-store to discover newly created Commands. The listener's replay after a
-restart provides the missed-event backstop; the ordinary monitoring cadence
-remains a health audit, not a second command inbox.
+The listener remains the primary command path. As a backstop, every wake-monitor
+cycle must also list open blocking decisions; wakes can be missed without a
+listener failure. Report decisions that are new or older than 15 minutes, and
+handle each under the decision rules below. This sweep supplements replay after
+a restart; it does not replace event handling.
+
+```bash
+"$AIUR_CMD" commands --filter open --json
+```
+
+Compare each decision's creation time with the current time. Surface newly
+opened decisions immediately and report the age of any still-open blocking
+decision at least 15 minutes old; do not wait for another wake.
 
 Use contextual judgment for every Command, never a rules table or a hardcoded
 allowlist of command types. Answer directly only when the requested choice is
