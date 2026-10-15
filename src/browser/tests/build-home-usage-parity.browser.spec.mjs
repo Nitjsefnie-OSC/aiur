@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { PARITY_VIEWPORTS, openParityPair, expectDesignParity, applyAllowlist } from '../support/design-parity.mjs'
+import { PARITY_VIEWPORTS, openParityPair, expectDesignParity } from '../support/design-parity.mjs'
 
 // The board and shell are still being ported; compare the complete usage region.
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) for (const palette of ['aiur','gruvbox']) for (const count of [2,4,7]) {
@@ -9,16 +9,18 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
       await expect(pair.product.locator('.ax-usage')).toBeVisible()
       if (count !== 4) expect((await pair.product.request.get(`/build-control/usage?name=n${count}`)).status()).toBe(200)
       await expect(pair.product.locator('.ax-usage')).toHaveClass(new RegExp(`n${count} `))
-      await applyAllowlist(pair,pair.cell)
-      for (const side of ['design','product']) {
-        await pair[side].evaluate(async () => {
-          await document.fonts.ready
-          document.body.style.background='var(--bg)'
-          document.querySelectorAll('.sidenav, .ax-top').forEach(e => e.style.visibility='hidden')
-          document.getAnimations().forEach(a => Number.isFinite(a.effect?.getComputedTiming().endTime) ? a.finish() : a.cancel())
-          const host=document.querySelector('#bd-usage'), r=host.getBoundingClientRect()
-          host.style.transform=`translate(${Math.round(r.x)-r.x}px, ${Math.round(r.y)-r.y}px)`
-        })
+      const widths = {}
+      for (const side of ['design','product']) widths[side] = await pair[side].locator('#build-root').evaluate(el => ({
+        width: el.getBoundingClientRect().width,
+        containerName: getComputedStyle(el).containerName
+      }))
+      await test.info().attach('usage-container-widths', { body: JSON.stringify({ viewport: viewport.viewport.width, ...widths }), contentType: 'application/json' })
+      if (theme === 'dark' && palette === 'aiur' && count === 2) console.info('usage bd container widths', JSON.stringify({ viewport: viewport.viewport.width, ...widths }))
+      for (const side of ['design','product']) expect(widths[side].containerName).toBe('bd')
+      expect(widths.product.width).toBe(widths.design.width)
+      if (viewport.viewport.width === 1024) for (const side of ['design','product']) {
+        expect(widths[side].width).toBeGreaterThan(460)
+        expect(widths[side].width).toBeLessThanOrEqual(820)
       }
       await expectDesignParity(pair,{name:`usage-n${count}`,region:'#bd-usage'})
     } finally { await pair.close() }
