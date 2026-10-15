@@ -102,6 +102,13 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
     for _ <- 1..4, do: wait_event(socket, "mid_turn")
     before = agents(env)
     assert length(before) == 4
+
+    identities =
+      Map.new(before, fn agent ->
+        assert {:ok, identity} = Aiur.ProcessIdentity.resolve(String.to_integer(agent["provider_pid"]))
+        {agent["provider_pid"], identity}
+      end)
+
     lifecycle_before = dispatch_events(root)
     assert Enum.sort(Enum.map(lifecycle_before, & &1["attributes"]["ticket"])) == ~w(1 2 3 4)
     tracker_before = read(Path.join(root, "tracker.log"))
@@ -131,7 +138,7 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
         assert adopted["provider_pid_after"] == agent["provider_pid"]
         assert adopted["session_id_before"] == agent["session_id"]
         assert adopted["session_id_after"] == agent["session_id"]
-        assert os_pid_alive?(agent["provider_pid"]), diagnostics(root)
+        assert Aiur.ProcessIdentity.resolve(String.to_integer(agent["provider_pid"])) == {:ok, identities[agent["provider_pid"]]}, diagnostics(root)
       end
 
       # No lifecycle dispatch or tracker claim-release writes during adoption.
