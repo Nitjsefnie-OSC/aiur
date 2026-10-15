@@ -69,7 +69,7 @@ jobs:
           otp-version: '28'
           elixir-version: '1.19.5'
       - name: Guard workflow triggers, action pins and PR body rollout
-        run: bash scripts/test-workflow-security.sh && python3 scripts/test-check-pr-body.py && python3 scripts/test-rerun-failed-ci-gate.py && python3 scripts/test-check-pr-body-check-run.py && python3 scripts/check-hot-list-format.py && python3 scripts/test-hot-list-format.py && python3 scripts/test-shared-list-merges.py
+        run: bash scripts/test-workflow-security.sh && python3 scripts/test-check-pr-body.py && python3 scripts/test-rerun-failed-ci-gate.py && python3 scripts/test-check-pr-body-check-run.py && python3 scripts/test-hot-list-format.py && python3 scripts/test-shared-list-merges.py && bash scripts/test-pre-handoff-guards.sh
       - name: Test legacy Stream Deck nightly cleanup
         run: node scripts/test-cleanup-legacy-streamdeck-nightlies.mjs
       - name: Test human-only merge ruleset verifier
@@ -97,7 +97,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/verify-human-only-merge-ruleset-live.sh
       - name: Structural guards
-        run: if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then gh api "repos/$GITHUB_REPOSITORY/pulls/${{ github.event.pull_request.number }}" > "$RUNNER_TEMP/pr-evidence.json" && scripts/pre-handoff-guards "$RUNNER_TEMP/pr-evidence.json" "${{ github.event.pull_request.base.sha }}"; else python3 scripts/check-bare-assert-receive.py && python3 scripts/check-on-exit-rm-rf.py; fi && python3 scripts/check-config-docs.py && node scripts/check-docs-prose.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AIUR_PR_NUMBER: ${{ github.event.pull_request.number }}
+          AIUR_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          AIUR_MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          AIUR_PUSH_BEFORE: ${{ github.event.before }}
+        run: scripts/run-pre-handoff-guards.sh
       - name: Test rename preflight and plan refresh
         run: make test-rename-preflight && python3 -I scripts/test_plan_refresh.py
       - name: Test config documentation and design extract guards
@@ -120,25 +126,6 @@ jobs:
         run: bash scripts/test-check-file-size.sh
       - name: Set up Bun
         uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
-      - name: File size gate
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_BASE: ${{ github.event.pull_request.base.sha }}
-          MERGE_BASE: ${{ github.event.merge_group.base_sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-        run: |
-          case "$EVENT_NAME" in
-            pull_request|merge_group) base="${PR_BASE:-$MERGE_BASE}" ;;
-            push)
-              base="$PUSH_BEFORE"
-              if [[ "$base" =~ ^0+$ ]]; then base="$(git rev-parse HEAD^1)"; fi ;;
-            workflow_dispatch)
-              upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null || echo origin/main)"
-              base="$(git merge-base HEAD "$upstream")" ;;
-            *) echo "Unsupported file size gate event: $EVENT_NAME" >&2; exit 1 ;;
-          esac
-          test -n "$base"
-          python3 scripts/check-file-size.py --base "$base"
   build:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'true' }}
