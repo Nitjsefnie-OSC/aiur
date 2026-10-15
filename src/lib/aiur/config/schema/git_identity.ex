@@ -7,6 +7,10 @@ defmodule Aiur.Config.Schema.GitIdentity do
   embedded_schema do
     # Unset fields fall back to the `tracker.github.bot_account` login; see
     # `Aiur.AgentEnvironment.GitIdentity`.
+    # @config-reference config-configuration-agent-00 agent.git_identity.name
+    # @config-detail agent.git_identity.name | string or nil | nil | Commit author and committer name for agent workspaces. |
+    # @config-reference config-configuration-agent-00 agent.git_identity.email
+    # @config-detail agent.git_identity.email | string or nil | nil | Commit author and committer email for agent workspaces. |
     field(:name, :string)
     field(:email, :string)
   end

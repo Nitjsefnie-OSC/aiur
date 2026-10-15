@@ -61,6 +61,8 @@ defmodule Aiur.Config.Schema.PricingPolicy do
 
   @primary_key false
   embedded_schema do
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.pricing_policy.avoid_peak_pricing | boolean | `true` | Routes around peak-pricing windows through `agent.priority`; false follows the list exactly and never changes spend reporting. Unknown windows fail toward not rerouting. `mix aiur.pricing_window` shows the current window and next boundary. |
     field(:avoid_peak_pricing, :boolean, default: true)
   end
 
