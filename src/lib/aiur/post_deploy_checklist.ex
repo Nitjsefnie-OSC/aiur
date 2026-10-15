@@ -67,21 +67,22 @@ defmodule Aiur.PostDeployChecklist do
   def handle_call({:mark_done, _id, _actor}, _from, %{writable?: false} = state), do: {:reply, {:error, :store_unavailable}, state}
 
   def handle_call({:mark_done, id, actor}, _from, state) do
-    at = DateTime.utc_now() |> DateTime.to_iso8601()
+    case Enum.find(state.records, &(&1["id"] == id)) do
+      nil ->
+        {:reply, {:error, :not_found}, state}
 
-    {next, changed?} =
-      Enum.map_reduce(state.records, false, fn
-        %{"id" => ^id, "done_at" => nil} = item, _changed -> {Map.merge(item, %{"done_at" => at, "done_by" => actor}), true}
-        item, changed -> {item, changed}
-      end)
+      %{"done_at" => done_at} = _item when is_binary(done_at) ->
+        {:reply, :ok, state}
 
-    if changed? do
-      case persist(next, state, true) do
-        {:ok, next_state} -> {:reply, :ok, next_state}
-        {:error, reason} -> {:reply, {:error, reason}, state}
-      end
-    else
-      {:reply, {:error, :not_found_or_done}, state}
+      item ->
+        at = DateTime.utc_now() |> DateTime.to_iso8601()
+        updated = Map.merge(item, %{"done_at" => at, "done_by" => actor})
+        next = [updated | Enum.reject(state.records, &(&1["id"] == id))]
+
+        case persist(next, state, true) do
+          {:ok, next_state} -> {:reply, :ok, next_state}
+          {:error, reason} -> {:reply, {:error, reason}, state}
+        end
     end
   end
 
@@ -99,13 +100,13 @@ defmodule Aiur.PostDeployChecklist do
             {:noreply, next_state}
 
           {:error, reason} ->
-            Logger.warning("aiur_post_deploy_checklist ingest_failed reason=#{inspect(reason)}")
+            Logger.error("aiur_post_deploy_checklist ingest_failed pr=#{inspect(get_in(event, [:pr, "number"]))} reason=#{inspect(reason)}")
             {:noreply, state}
         end
     end
   rescue
     error ->
-      Logger.warning("aiur_post_deploy_checklist ingest_failed error=#{Exception.message(error)}")
+      Logger.error("aiur_post_deploy_checklist ingest_failed pr=#{inspect(get_in(event, [:pr, "number"]))} error=#{Exception.message(error)}")
       {:noreply, state}
   end
 

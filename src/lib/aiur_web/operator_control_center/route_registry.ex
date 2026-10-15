@@ -47,17 +47,6 @@ defmodule AiurWeb.OperatorControlCenter.RouteRegistry do
       active_actions: [:analytics]
     },
     %{
-      id: :post_deploy,
-      label: "Post-deploy",
-      icon: "✓",
-      description: "Manual checks from merged pull requests.",
-      path: "/post-deploy",
-      type: :live,
-      owner: :post_deploy,
-      availability: :available,
-      active_actions: [:post_deploy]
-    },
-    %{
       id: :streamdeck,
       label: "Streamdeck+",
       nav_label: "Streamdeck",

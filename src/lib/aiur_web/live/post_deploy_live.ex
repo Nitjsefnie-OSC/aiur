@@ -15,7 +15,7 @@ defmodule AiurWeb.PostDeployLive do
      socket
      |> DashboardShell.mount()
      |> AwaitingCommands.mount(connected?(socket))
-     |> assign(:current_route, RouteRegistry.current_route(:post_deploy))
+     |> assign(:current_route, post_deploy_route())
      |> assign(:tracker_kind, kind(&Aiur.Config.tracker_kind/0, "tracker unavailable"))
      |> assign(:agent_kind, kind(&Aiur.Config.agent_kind/0, "agent unavailable"))
      |> assign(:checks, PostDeployChecklist.list())
@@ -87,6 +87,20 @@ defmodule AiurWeb.PostDeployLive do
     fun.() |> to_string()
   rescue
     _error -> fallback
+  end
+
+  defp post_deploy_route do
+    %{
+      id: :post_deploy,
+      label: "Post-deploy",
+      icon: "✓",
+      description: "Manual checks from merged pull requests.",
+      path: "/post-deploy",
+      type: :live,
+      owner: :post_deploy,
+      availability: :available,
+      active_actions: [:post_deploy]
+    }
   end
 
   defp checklist_error do

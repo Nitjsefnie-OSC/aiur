@@ -4,8 +4,8 @@ defmodule Aiur.PostDeployChecklistTest do
   alias Aiur.Events.Exchange
   alias Aiur.PostDeployChecklist
 
-  test "records merged PR checks once and keeps completion across restart" do
-    dir = Path.join(System.tmp_dir!(), "post-deploy-#{System.unique_integer([:positive])}")
+  @tag :tmp_dir
+  test "records merged PR checks once and keeps completion across restart", %{tmp_dir: dir} do
     path = Path.join(dir, "checks.json")
     exchange = start_supervised!({Exchange, name: nil}, id: :post_deploy_exchange)
     Phoenix.PubSub.subscribe(Aiur.PubSub, "post_deploy_checks")
@@ -35,6 +35,7 @@ defmodule Aiur.PostDeployChecklistTest do
     assert is_nil(check["done_at"])
 
     assert :ok = PostDeployChecklist.mark_done(check["id"], "executor", :post_deploy_test)
+    assert :ok = PostDeployChecklist.mark_done(check["id"], "retrying-executor", :post_deploy_test)
     assert [%{"done_by" => "executor", "done_at" => done_at}] = PostDeployChecklist.list(:post_deploy_test)
     assert_receive {:post_deploy_checks_updated, [%{"done_by" => "executor", "done_at" => ^done_at}]}, 500
     assert {:ok, %DateTime{}, 0} = DateTime.from_iso8601(done_at)
@@ -42,32 +43,28 @@ defmodule Aiur.PostDeployChecklistTest do
     stop_supervised!(:post_deploy_test)
     start_supervised!({PostDeployChecklist, name: :post_deploy_recovered, path: path, exchange: exchange}, id: :post_deploy_recovered)
     assert [%{"done_by" => "executor", "done_at" => ^done_at, "text" => "dictate start run and confirm the dashboard shows it"}] = PostDeployChecklist.list(:post_deploy_recovered)
-
-    File.rm_rf!(dir)
   end
 
-  test "ignores merged PRs without post-deploy lines" do
-    dir = Path.join(System.tmp_dir!(), "post-deploy-empty-#{System.unique_integer([:positive])}")
+  @tag :tmp_dir
+  test "ignores merged PRs without post-deploy lines", %{tmp_dir: dir} do
     exchange = start_supervised!({Exchange, name: nil}, id: :post_deploy_empty_exchange)
     start_supervised!({PostDeployChecklist, name: :post_deploy_empty, path: Path.join(dir, "checks.json"), exchange: exchange}, id: :post_deploy_empty)
 
     assert Exchange.publish("ticket.42.pr.closed_unmerged", %{topic: "ticket.42.pr.closed_unmerged", pr: %{"body" => "Post-deploy check: do something"}}, exchange) == 0
     assert :ok = PostDeployChecklist.ingest(%{pr: %{"body" => "## Local tests\n- `mix test` -> passed"}}, :post_deploy_empty)
     assert PostDeployChecklist.list(:post_deploy_empty) == []
-    File.rm_rf!(dir)
   end
 
-  test "reports unreadable persisted state and uses the base repository for forked PRs" do
-    dir = Path.join(System.tmp_dir!(), "post-deploy-invalid-#{System.unique_integer([:positive])}")
+  @tag :tmp_dir
+  test "reports unreadable persisted state and uses the base repository for forked PRs", %{tmp_dir: dir} do
     path = Path.join(dir, "checks.json")
     File.mkdir_p!(dir)
     File.write!(path, "not-json")
     start_supervised!({PostDeployChecklist, name: :post_deploy_invalid, path: path, subscribe?: false})
     assert {:error, _reason} = PostDeployChecklist.status(:post_deploy_invalid)
     assert PostDeployChecklist.list(:post_deploy_invalid) == []
-    File.rm_rf!(dir)
 
-    path = Path.join(System.tmp_dir!(), "post-deploy-fork-#{System.unique_integer([:positive])}.json")
+    path = Path.join(dir, "fork-checks.json")
     exchange = start_supervised!({Exchange, name: nil}, id: :post_deploy_fork_exchange)
     start_supervised!({PostDeployChecklist, name: :post_deploy_fork, path: path, exchange: exchange}, id: :post_deploy_fork)
 
@@ -82,7 +79,5 @@ defmodule Aiur.PostDeployChecklistTest do
 
     assert [%{"repository" => "upstream/project", "pr_author" => "contributor", "pr_url" => "https://github.com/upstream/project/pull/12"}] =
              PostDeployChecklist.list(:post_deploy_fork)
-
-    File.rm!(path)
   end
 end
