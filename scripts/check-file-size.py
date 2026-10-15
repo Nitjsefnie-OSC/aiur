@@ -15,6 +15,7 @@ LOCKFILE_REGEN = {
     'package-lock.json': ['npm', 'install', '--package-lock-only', '--ignore-scripts'],
     'bun.lock': ['bun', 'install', '--lockfile-only'],
 }
+SKILL_MOUNTS = ('.claude/skills/', '.codex/skills/', '.agents/skills/')
 
 
 def git(*args):
@@ -79,8 +80,22 @@ def trees(base, head):
 
 
 def check(base, head):
+    changed = subprocess.check_output(
+        ['git', '-C', str(Path.cwd()), 'diff', '--diff-filter=ACRT', '--name-only', '-z', base, head]
+    ).split(b'\0')
+    mount_failures = 0
+    for path in changed:
+        if not path:
+            continue
+        name = path.decode('utf-8', errors='backslashreplace')
+        for mount in SKILL_MOUNTS:
+            if name.startswith(mount):
+                print(f'{name}: new tracked entry under mounted skill path {mount[:-1]} is rejected')
+                mount_failures += 1
+                break
+
     before, after = trees(base, head)
-    failures = 0
+    failures = mount_failures
     for path, current in sorted(after.items()):
         previous = before.get(path, 0)
         name = path.decode('utf-8', errors='backslashreplace')

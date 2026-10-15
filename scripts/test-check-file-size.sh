@@ -84,6 +84,10 @@ with tempfile.TemporaryDirectory(prefix='file-size-', dir=os.environ.get('TMPDIR
         ('empty count', {'file': b''}, {'file': lines(501)}, 1, 'base 0 -> head 501'),
         ('CRLF', {}, {'file': b'x\r\n' * 500}, 0, 'file: 500 lines'),
         ('unusual path', {}, {'tab\tline\nfile': lines(501)}, 1, 'tab\\tline\\nfile: base 0 -> head 501'),
+        ('Claude skill mount', {}, {'.claude/skills/aiur-agent/references/new.md': lines(1)}, 1, 'mounted skill path .claude/skills is rejected'),
+        ('Codex skill mount', {}, {'.codex/skills/aiur-agent': b'../.claude/skills/aiur-agent\n'}, 1, 'mounted skill path .codex/skills is rejected'),
+        ('Muse skill mount', {}, {'.agents/skills/new-skill/SKILL.md': lines(1)}, 1, 'mounted skill path .agents/skills is rejected'),
+        ('existing mounted skill edit', {'.claude/skills/aiur-agent/SKILL.md': lines(1)}, {'.claude/skills/aiur-agent/SKILL.md': lines(2)}, 0, ''),
     ]
     for title, before, after, expected, snippet in cases:
         for path in repo.iterdir():
