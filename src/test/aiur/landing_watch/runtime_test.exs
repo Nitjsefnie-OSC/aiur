@@ -123,6 +123,69 @@ defmodule Aiur.LandingWatch.RuntimeTest do
     assert_received {:rework, 17, [%{name: "ci gate"}]}
   end
 
+  test "unlinked approved PR is skipped while linked PRs route and the poll succeeds" do
+    parent = self()
+    linked = approved_observation()
+    unlinked = put_in(approved_observation().rest["head"]["ref"], "executor/skill-meta-landing-sweep")
+    failed = failed_gate()
+
+    assert :ok =
+             LandingWatch.poll(
+               observe_fun: fn _ -> {:ok, [unlinked, linked]} end,
+               queue_reconcile_fun: fn _, _ -> :ok end,
+               approved_fun: fn _, _ -> {:ok, true} end,
+               required_checks_fun: fn _ -> {:ok, [%{name: "ci gate", app_id: nil}]} end,
+               ci_status_fun: fn _, _ -> {:ok, %{check_runs: [failed], commit_status: %{"state" => "success", "statuses" => []}}} end,
+               jobs_fun: fn _, _ ->
+                 {:ok, [%{"name" => "ci gate", "conclusion" => "failure", "steps" => [%{"conclusion" => "failure"}], "started_at" => "2026-10-14T00:00:00Z", "completed_at" => "2026-10-14T00:00:10Z"}]}
+               end,
+               ticket_state_fun: fn "17", _ -> {:ok, "human-review"} end,
+               transition_fun: fn issue, state, _ ->
+                 send(parent, {:transition, issue, state})
+                 :ok
+               end,
+               journal_path: journal_path()
+             )
+
+    assert_received {:transition, "17", "rework"}
+    refute_received {:transition, _, _}
+  end
+
+  test "unlinked PRs still get infra reruns" do
+    parent = self()
+    unlinked = put_in(approved_observation().rest["head"]["ref"], "executor/skill-meta-landing-sweep")
+    cancelled_jobs = [%{"name" => "ci gate", "conclusion" => "failure", "steps" => [%{"conclusion" => "cancelled"}]}]
+
+    assert :ok =
+             LandingWatch.process(
+               unlinked,
+               approved_fun: fn _, _ -> {:ok, true} end,
+               required_checks_fun: fn _ -> {:ok, [%{name: "ci gate", app_id: nil}]} end,
+               ci_status_fun: fn _, _ -> {:ok, %{check_runs: [failed_gate()], commit_status: %{"state" => "success", "statuses" => []}}} end,
+               jobs_fun: fn _, _ -> {:ok, cancelled_jobs} end,
+               rerun_fun: fn 99, _ ->
+                 send(parent, :rerun)
+                 {:ok, %{}}
+               end,
+               journal_path: journal_path()
+             )
+
+    assert_received :rerun
+  end
+
+  test "unlinked rework is logged once per PR head" do
+    observation = put_in(approved_observation().rest["head"]["ref"], "executor/skill-meta-landing-sweep")
+    opts = [journal_path: journal_path()]
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert :ok = LandingWatch.rework(observation, [%{name: "CI failure"}], opts)
+        assert :ok = LandingWatch.rework(observation, [%{name: "CI failure"}], opts)
+      end)
+
+    assert length(Regex.scan(~r/landing watcher skipped rework routing for unlinked PR #17 head head-sha/, log)) == 1
+  end
+
   test "a queued ticket can return to rework when its PR conflicts with main" do
     parent = self()
     observation = approved_observation() |> Map.put(:mergeable, "CONFLICTING")
