@@ -59,6 +59,6 @@ export function renderUsage() {
   const find = k => $$('.ax-ln', host).find(line => line.dataset.k === k);
   if (focused && find(focused)) find(focused).focus();
   const line = key && find(key);
-  if (line) show(line); else { axOver = null; hide(); }
+  if (line) show(line); else { axOver = null; hide(); axPop.replaceChildren(); }
 }
 Object.assign(fx, { renderUsage });

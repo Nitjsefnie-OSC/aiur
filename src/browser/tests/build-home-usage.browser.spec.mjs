@@ -116,7 +116,7 @@ test('popover mouse and keyboard, offsets, hide delay, scroll and live diff repl
   await page.clock.resume()
   expect((await page.request.get('/build-control/usage?name=stale')).status()).toBe(200); await expect(pop).toContainText('Observed')
   expect((await page.request.get('/build-control/usage?name=locked')).status()).toBe(200)
-  await expect(pop).toHaveClass('ax-pop'); await expect(page.locator('.ax-ln')).toHaveCount(0)
+  await expect(pop).toHaveClass('ax-pop'); await expect(pop).toBeEmpty(); await expect(page.locator('.ax-ln')).toHaveCount(0)
 })
 test('visible ticks advance labels, preserve unchanged DOM, fit resets and dispose body nodes', async ({ page }) => {
   await paint(page, fixture('unknown'))
