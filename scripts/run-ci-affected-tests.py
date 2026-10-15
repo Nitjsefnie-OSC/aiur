@@ -57,10 +57,19 @@ def run_selector(base):
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
+            pass
+        # The group can outlive its leader (for example, a child that ignores
+        # SIGTERM), so check and kill the group independently before returning.
+        try:
+            os.killpg(process.pid, 0)
+        except ProcessLookupError:
+            pass
+        else:
             try:
                 os.killpg(process.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+        if process.poll() is None:
             process.wait()
         process.stdout.close()
         raise TimeoutError(
