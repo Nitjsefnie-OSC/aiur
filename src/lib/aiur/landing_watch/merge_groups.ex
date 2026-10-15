@@ -2,9 +2,9 @@ defmodule Aiur.LandingWatch.MergeGroups do
   @moduledoc "Cancels active merge-group runs that no longer belong to the live queue."
 
   alias Aiur.Config.TrackerSettings
-  alias Aiur.GitHub.{CIRecovery, Errors, FailureEvidence, Transport}
+  alias Aiur.GitHub.{CIRecovery, Client, Comments, Errors, FailureEvidence, Transport}
   alias Aiur.LandingWatch
-  alias Aiur.LandingWatch.{Attribution, FlakeRecorder, Journal, Observer}
+  alias Aiur.LandingWatch.{Attribution, Journal, MergeFailureClassifier, Observer}
   alias Aiur.PrMerge.Queue
 
   @page_limit 5
@@ -121,7 +121,9 @@ defmodule Aiur.LandingWatch.MergeGroups do
   end
 
   defp process_completed(runs, observations, base, opts) do
-    failures = Enum.filter(runs, &(&1["conclusion"] == "failure" and is_integer(&1["id"])))
+    failures = Enum.filter(runs, &(&1["conclusion"] in ["failure", "cancelled", "timed_out", "startup_failure"] and is_integer(&1["id"])))
+    has_observed_pr? = Enum.any?(failures, fn run -> Enum.any?(pr_numbers(run["head_branch"]), &Enum.any?(observations, fn pr -> pr.number == &1 end)) end)
+    opts = if has_observed_pr?, do: Keyword.put(opts, :recent_main_failure_paths, recent_main_failure_paths(base, opts)), else: opts
 
     Enum.reduce(failures, :ok, fn run, result ->
       if result == :ok, do: process_claimed_failed_group(run, runs, observations, base, opts), else: result
@@ -154,27 +156,229 @@ defmodule Aiur.LandingWatch.MergeGroups do
     end
   end
 
-  defp process_failed_group_for_prs(run, runs, observations, prs, opts) do
+  defp process_failed_group_for_prs(run, _runs, observations, prs, opts) do
     with {:ok, jobs} <- Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2).(run["id"], opts),
-         {:ok, failures} <- test_failures(jobs, opts) do
-      Enum.reduce(failures, :ok, &record_if_flaky(&1, &2, run, runs, prs, observations, opts))
-    end
-  end
-
-  defp record_if_flaky(_failure, {:error, _} = error, _run, _runs, _prs, _observations, _opts), do: error
-
-  defp record_if_flaky(failure, :ok, run, runs, prs, observations, opts) do
-    passed = passed_prs(failure, run, runs, prs, opts)
-    record_and_requeue(failure, run, passed, observations, opts)
-  end
-
-  defp record_and_requeue(_failure, _run, [], _observations, _opts), do: :ok
-
-  defp record_and_requeue(failure, run, passed, observations, opts) do
-    case Keyword.get(opts, :flake_recorder, &FlakeRecorder.record/4).(failure, run, passed, opts) do
-      :ok -> reenqueue_prs(passed, observations, opts)
+         {:ok, {classification, failure}} <- MergeFailureClassifier.classify(run, jobs, observations, classifier_options(prs, opts)) do
+      case classification do
+        :infra -> requeue_group_prs(prs, observations, run, "infrastructure failure", opts)
+        :inherited -> requeue_group_prs(prs, observations, run, "inherited merge-group failure", opts)
+        :known_non_pr -> requeue_group_prs(prs, observations, run, "known non-PR failure", opts)
+        :pr_caused -> route_failed_prs(prs, observations, failure, run, opts)
+      end
+    else
       {:error, _} = error -> error
     end
+  end
+
+  defp classifier_options(prs, opts) do
+    paths_fun = Keyword.get(opts, :changed_paths_fun, fn pr, options -> Client.fetch_pull_request_changed_paths(pr, options) end)
+    log_fun = Keyword.get(opts, :job_log_fun, &job_log/2)
+
+    known_patterns = Keyword.get(opts, :known_failure_patterns, known_failure_patterns(opts))
+    main_paths = Keyword.get(opts, :recent_main_failure_paths, MapSet.new())
+
+    paths_by_pr =
+      Enum.reduce(prs, %{}, fn pr, acc ->
+        case paths_fun.(pr, opts) do
+          {:ok, paths} when is_list(paths) -> Map.put(acc, pr, paths)
+          _ -> Map.put(acc, pr, :unavailable)
+        end
+      end)
+
+    opts
+    |> Keyword.put(:changed_paths_by_pr, paths_by_pr)
+    |> Keyword.put(:changed_paths_fun, fn numbers, _options ->
+      if Enum.any?(numbers, &(paths_by_pr[&1] == :unavailable)), do: {:error, :pull_request_changed_paths_unavailable}, else: {:ok, Enum.flat_map(numbers, &Map.get(paths_by_pr, &1, []))}
+    end)
+    |> Keyword.put(:known_failure_patterns, known_patterns)
+    |> Keyword.put(:failed_on_main_fun, fn path, _ -> is_binary(path) and MapSet.member?(main_paths, path) end)
+    |> Keyword.put(:job_log_fun, log_fun)
+  end
+
+  defp recent_main_failure_paths(base, opts) do
+    case Keyword.get(opts, :recent_main_failure_paths_fun, &fetch_recent_main_failure_paths/2).(base, opts) do
+      {:ok, paths} when is_list(paths) -> MapSet.new(paths)
+      _ -> MapSet.new()
+    end
+  end
+
+  defp fetch_recent_main_failure_paths(base, opts) do
+    with {:ok, {owner, repo}} <- Transport.parse_repo(),
+         {:ok, token} <- Transport.require_token(opts) do
+      since = Keyword.get(opts, :now_ms, System.system_time(:millisecond)) - 24 * 60 * 60_000
+      created = DateTime.from_unix!(since, :millisecond) |> DateTime.to_iso8601()
+      url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{branch: base, event: "push", status: "completed", created: ">=#{created}", per_page: 100})
+      request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
+
+      with {:ok, runs} <- read_pages(request, token, url, [], 0) do
+        {:ok, Enum.flat_map(runs, &failed_main_run_paths(&1, opts)) |> Enum.uniq()}
+      end
+    end
+  end
+
+  defp failed_main_run_paths(%{"conclusion" => conclusion, "id" => id}, opts) when conclusion in ["failure", "timed_out", "startup_failure"] and is_integer(id) do
+    case Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2).(id, opts) do
+      {:ok, jobs} -> Enum.filter(jobs, &(&1["conclusion"] in ["failure", "timed_out", "startup_failure"])) |> Enum.flat_map(&main_failure_job_paths(&1, opts))
+      _ -> []
+    end
+  end
+
+  defp failed_main_run_paths(_, _opts), do: []
+
+  defp main_failure_job_paths(job, opts) do
+    case Keyword.get(opts, :job_log_fun, &job_log/2).(job, opts) do
+      {:ok, log} when is_binary(log) -> extract_test_paths(log)
+      _ -> []
+    end
+  end
+
+  defp extract_test_paths(log) do
+    case Regex.run(~r/(?:^|\s)([\w.\/-]+_test\.exs)(?::\d+)?/m, log, capture: :all_but_first) do
+      [path] -> [path]
+      _ -> []
+    end
+  end
+
+  defp known_failure_patterns(opts) do
+    case Keyword.get(opts, :known_failure_patterns_fun, fn -> FailureEvidence.flake_issues(opts) end).() do
+      {:ok, issues} when is_list(issues) -> Enum.flat_map(issues, &failure_issue_patterns(&1, opts))
+      _ -> []
+    end
+  end
+
+  defp failure_issue_patterns(issue, opts) do
+    [issue["title"] || "", issue["body"] || "" | issue_comments(issue["number"], opts)]
+  end
+
+  defp issue_comments(number, opts) when is_integer(number) do
+    case Client.fetch_issue_comments_conditional(number, opts) do
+      {:ok, comments, _etag} -> Enum.map(comments, &(&1["body"] || ""))
+      _ -> []
+    end
+  end
+
+  defp issue_comments(_number, _opts), do: []
+
+  defp job_log(job, opts) do
+    case job["id"] do
+      id when is_integer(id) ->
+        case CIRecovery.read("/actions/jobs/#{id}/logs", opts) do
+          {:ok, %{"log" => log}} when is_binary(log) -> {:ok, log}
+          {:ok, log} when is_binary(log) -> {:ok, log}
+          {:error, reason} -> {:error, reason}
+          _ -> {:error, :invalid_actions_job_log}
+        end
+
+      _ ->
+        {:error, :missing_actions_job_id}
+    end
+  end
+
+  defp route_failed_prs(_prs, _observations, nil, _run, _opts), do: :ok
+
+  defp route_failed_prs(prs, observations, failure, run, opts) do
+    failures = [failure_to_map(failure)]
+    run_link = run_url(run["id"], opts)
+
+    prs
+    |> Enum.map(&Enum.find(observations, fn observation -> observation.number == &1 end))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.reduce(:ok, &rework_if_ok(&1, &2, failures, run_link, opts))
+  end
+
+  defp failure_to_map(failure), do: %{name: failure.job["name"] || "Failed merge-group test", excerpt: String.slice(failure.log, 0, 500)}
+
+  defp run_url(run_id, opts) do
+    case Keyword.get(opts, :repo_fun, &Transport.parse_repo/0).() do
+      {:ok, {owner, repo}} -> "https://github.com/#{owner}/#{repo}/actions/runs/#{run_id}"
+      _ -> "https://github.com/actions/runs/#{run_id}"
+    end
+  end
+
+  defp rework_if_ok(_pr, {:error, _} = error, _failures, _run_link, _opts), do: error
+  defp rework_if_ok(pr, :ok, failures, run_link, opts), do: LandingWatch.rework(pr, failures, Keyword.put(opts, :run_url, run_link))
+
+  defp requeue_group_prs(numbers, observations, run, reason, opts) do
+    now = Keyword.get(opts, :now_ms, System.system_time(:millisecond))
+    identity = "merge-group-requeue-#{run["id"]}"
+
+    Enum.reduce_while(numbers, :ok, fn number, result -> requeue_number(number, result, observations, run, reason, identity, now, opts) end)
+  end
+
+  defp requeue_number(_number, {:error, _} = error, _observations, _run, _reason, _identity, _now, _opts), do: {:halt, error}
+
+  defp requeue_number(number, :ok, observations, run, reason, identity, now, opts) do
+    case Enum.find(observations, &(&1.number == number)) do
+      nil -> {:cont, :ok}
+      pr -> requeue_observed_pr(pr, number, run, reason, identity, now, opts)
+    end
+  end
+
+  defp requeue_observed_pr(pr, number, run, reason, identity, now, opts) do
+    if eligible_for_group_requeue?(pr, opts) do
+      reserve_and_enqueue(pr, number, run, reason, identity, now, opts)
+    else
+      {:cont, :ok}
+    end
+  end
+
+  defp reserve_and_enqueue(pr, number, run, reason, identity, now, opts) do
+    case Journal.claim_alert(number, pr.head, identity, opts) do
+      {:ok, :already_claimed} -> {:cont, :ok}
+      {:ok, :new} -> requeue_claimed_pr(pr, number, run, reason, identity, now, opts)
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp requeue_claimed_pr(pr, number, run, reason, identity, now, opts) do
+    case Journal.reserve_merge_group_requeue(now, opts) do
+      :ok -> enqueue_and_comment(pr, number, run, reason, identity, opts)
+      {:error, :merge_group_requeue_limit_reached} -> release_claim(number, pr.head, identity, opts, :ok)
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp enqueue_and_comment(pr, number, run, reason, identity, opts) do
+    case enqueue(pr, pr.node_id, pr.head, opts) do
+      {:ok, entry} -> confirm_requeue(pr, entry, number, run, reason, identity, opts)
+      {:error, _} = error -> release_claim(number, pr.head, identity, opts, error)
+    end
+  end
+
+  defp confirm_requeue(pr, entry, number, run, reason, identity, opts) do
+    case Journal.mark_landed(pr.number, pr.head, entry, opts) do
+      :ok ->
+        case comment_requeue(pr, run, reason, opts) do
+          :ok -> {:cont, :ok}
+          {:error, _} = error -> {:halt, error}
+        end
+
+      {:error, _} = error ->
+        release_claim(number, pr.head, identity, opts, error)
+    end
+  end
+
+  defp release_claim(number, head, identity, opts, result) do
+    _ = Journal.release_alert(number, head, identity, opts)
+
+    case result do
+      :ok -> {:halt, :ok}
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp eligible_for_group_requeue?(%{number: number, head: head, merge_queue_entry: nil, auto_merge_request: nil} = pr, opts) do
+    pr.draft? == false and pr.review_decision == "APPROVED" and is_binary(head) and is_binary(pr.node_id) and
+      Keyword.get(opts, :approved_fun, fn _, _ -> {:ok, true} end).(number, opts) == {:ok, true} and
+      Keyword.get(opts, :revalidate_fun, &Observer.revalidate_approved_head/3).(number, head, opts) == :ok and
+      Keyword.get(opts, :attribution_fun, fn ticket -> Attribution.pull_request_clean?(ticket.number, opts) end).(pr) == {:ok, :clean}
+  end
+
+  defp eligible_for_group_requeue?(_pr, _opts), do: false
+
+  defp comment_requeue(pr, run, reason, opts) do
+    body = "Landing watcher requeued this approved PR after merge group run ##{run["id"]} failed due to #{reason}."
+    Keyword.get(opts, :comment_fun, fn number, text, options -> Comments.create_comment(to_string(number), text, options) end).(pr.number, body, opts)
   end
 
   defp run_prs(run, base) do
@@ -190,117 +394,6 @@ defmodule Aiur.LandingWatch.MergeGroups do
 
   defp pr_numbers(_), do: []
 
-  defp test_failures(jobs, opts) do
-    jobs
-    |> Enum.filter(&(&1["conclusion"] == "failure"))
-    |> Enum.reduce_while({:ok, []}, fn job, {:ok, acc} ->
-      case check_run_id(job) do
-        nil -> {:cont, {:ok, acc}}
-        id -> fetch_job_annotations(id, job, acc, opts)
-      end
-    end)
-  end
-
-  defp fetch_job_annotations(id, job, acc, opts) do
-    case Keyword.get(opts, :annotations_fun, &FailureEvidence.annotations/2).(id, opts) do
-      {:ok, annotations} -> {:cont, {:ok, acc ++ annotation_failures(annotations, job["name"] || "unknown job")}}
-      {:error, reason} -> {:halt, {:error, {:merge_group_annotations_unavailable, reason}}}
-    end
-  end
-
-  defp check_run_id(%{"check_run_id" => id}) when is_integer(id), do: id
-
-  defp check_run_id(%{"check_run_url" => url}) when is_binary(url) do
-    case Regex.run(~r{/check-runs/(\d+)\z}, url, capture: :all_but_first) do
-      [id] -> String.to_integer(id)
-      _ -> nil
-    end
-  end
-
-  defp check_run_id(_), do: nil
-
-  defp annotation_failures(annotations, job) do
-    Enum.flat_map(annotations, fn
-      %{"title" => "aiur-test-failure", "message" => message} = annotation when is_binary(message) ->
-        case String.split(message, " :: ", parts: 3) do
-          [class, module, name] when class in ["known-flake", "new-failure"] and module != "" and name != "" ->
-            excerpt = annotation["raw_details"] || annotation["description"] || message
-            [%{module: module, name: name, job: job, excerpt: String.slice(String.trim(to_string(excerpt)), 0, 500)}]
-
-          _ ->
-            []
-        end
-
-      _ ->
-        []
-    end)
-  end
-
-  defp passed_prs(failure, failed_run, runs, prs, opts) do
-    runs
-    |> Enum.filter(fn run ->
-      run["id"] != failed_run["id"] and run["conclusion"] == "success" and
-        Enum.any?(prs, &(&1 in pr_numbers(run["head_branch"]))) and
-        successful_job?(run, failure.job, opts)
-    end)
-    |> Enum.flat_map(&pr_numbers(&1["head_branch"]))
-    |> Enum.filter(&(&1 in prs))
-    |> Enum.uniq()
-  end
-
-  defp successful_job?(run, job_name, opts) do
-    case Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2).(run["id"], opts) do
-      {:ok, jobs} -> Enum.any?(jobs, &(&1["name"] == job_name and &1["conclusion"] == "success"))
-      _ -> false
-    end
-  end
-
-  defp reenqueue_prs(numbers, observations, opts) do
-    Enum.reduce(numbers, :ok, &reenqueue_if_pending(&1, &2, observations, opts))
-  end
-
-  defp reenqueue_if_pending(_number, {:error, _} = error, _observations, _opts), do: error
-
-  defp reenqueue_if_pending(number, :ok, observations, opts) do
-    case Enum.find(observations, &(&1.number == number)) do
-      %{head: head, node_id: node_id, draft?: false, review_decision: "APPROVED", merge_queue_entry: nil, auto_merge_request: nil} = pr ->
-        enqueue_dropped(pr, head, node_id, opts)
-
-      _ ->
-        :ok
-    end
-  end
-
-  defp enqueue_dropped(pr, head, node_id, opts) do
-    identity = "flake-requeue"
-
-    with true <- is_binary(head) and is_binary(node_id),
-         true <- Keyword.get(opts, :approved_fun, fn _, _ -> {:ok, true} end).(pr.number, opts) == {:ok, true},
-         :ok <- Keyword.get(opts, :revalidate_fun, &Observer.revalidate_approved_head/3).(pr.number, head, opts),
-         {:ok, :clean} <- Keyword.get(opts, :attribution_fun, fn number -> Attribution.pull_request_clean?(number, opts) end).(pr.number),
-         {:ok, :new} <- Journal.claim_alert(pr.number, head, identity, opts),
-         {:ok, entry} <- enqueue(pr, node_id, head, opts),
-         :ok <- Journal.mark_landed(pr.number, head, entry, opts) do
-      :ok
-    else
-      {:ok, :already_claimed} ->
-        :ok
-
-      {:ok, {:ai_attribution, detail}} ->
-        LandingWatch.rework(pr, [%{name: "AI commit attribution", excerpt: detail}], opts)
-
-      false ->
-        :ok
-
-      {:error, reason} ->
-        _ = Journal.release_alert(pr.number, head, identity, opts)
-        {:error, reason}
-
-      _ ->
-        :ok
-    end
-  end
-
   defp enqueue(_pr, node_id, head, opts) do
     case Keyword.get(opts, :enqueue_fun) do
       fun when is_function(fun, 3) -> fun.(node_id, head, opts)
@@ -311,7 +404,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
   defp enqueue_with_github(node_id, head, opts) do
     api = fn "post", "graphql", %{query: query, variables: variables} ->
       with {:ok, token} <- Transport.require_token(opts),
-           do: Transport.github_graphql(Keyword.get(opts, :request_fun, &Transport.default_request_fun/1), token, query, variables, caller: "landing_watch_flake_requeue")
+           do: Transport.github_graphql(Keyword.get(opts, :request_fun, &Transport.default_request_fun/1), token, query, variables, caller: "landing_watch_merge_group_requeue")
     end
 
     Queue.enqueue(api, %{node_id: node_id, head: head})

@@ -106,6 +106,35 @@ defmodule Aiur.LandingWatch.Journal do
     end)
   end
 
+  @spec reserve_merge_group_requeue(integer(), keyword()) :: :ok | {:error, :merge_group_requeue_limit_reached | term()}
+  def reserve_merge_group_requeue(now, opts \\ []) when is_integer(now) do
+    update(opts, fn state ->
+      recent = state |> Map.get("merge_group_requeues", []) |> Enum.filter(&(is_integer(&1) and now >= &1 and now - &1 < 15 * 60_000))
+
+      if length(recent) >= 3 do
+        {:error, :merge_group_requeue_limit_reached}
+      else
+        {:ok, Map.put(state, "merge_group_requeues", [now | recent]), :ok}
+      end
+    end)
+  end
+
+  @spec merge_group_requeues_by_hour(keyword()) :: {:ok, %{optional(String.t()) => non_neg_integer()}} | {:error, term()}
+  def merge_group_requeues_by_hour(opts \\ []) do
+    with {:ok, state} <- state(opts) do
+      counts =
+        state
+        |> Map.get("merge_group_requeues", [])
+        |> Enum.filter(&is_integer/1)
+        |> Enum.frequencies_by(fn timestamp ->
+          hour = div(timestamp, 3_600_000) * 3_600_000
+          DateTime.from_unix!(hour, :millisecond) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+        end)
+
+      {:ok, counts}
+    end
+  end
+
   @spec release_merge_group_run(pos_integer(), keyword()) :: :ok | {:error, term()}
   def release_merge_group_run(run_id, opts \\ []) when is_integer(run_id) and run_id > 0 do
     run_key = Integer.to_string(run_id)
@@ -120,7 +149,7 @@ defmodule Aiur.LandingWatch.Journal do
 
     if Enum.all?(keys, &is_binary/1) do
       retained = MapSet.new(keys)
-      update(opts, fn state -> {:ok, Map.filter(state, fn {entry_key, _} -> entry_key in ["flakes", "merge_group_runs"] or MapSet.member?(retained, entry_key) end)} end)
+      update(opts, fn state -> {:ok, Map.filter(state, fn {entry_key, _} -> entry_key in ["flakes", "merge_group_runs", "merge_group_requeues"] or MapSet.member?(retained, entry_key) end)} end)
     else
       :ok
     end
