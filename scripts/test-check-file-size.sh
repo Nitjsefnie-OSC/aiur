@@ -282,3 +282,4 @@ with tempfile.TemporaryDirectory(prefix='file-size-', dir=os.environ.get('TMPDIR
     run(fixture, 2, '--json requires --census', '--json')
     print('PASS: census symlink exclusion, text transition and invalid arguments')
 PY
+python3 "$repo_root/scripts/test-prepare-skill-mount-merge.py"
