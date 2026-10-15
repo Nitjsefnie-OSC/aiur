@@ -48,7 +48,7 @@ for event in merge_group push push_zero workflow_dispatch schedule; do
   ! grep -F 'scripts/check-pr-body.py' "$tmp/$event.log" >/dev/null
 done
 for event in pull_request merge_group push push_zero workflow_dispatch schedule; do
-  for guard in check-on-exit-rm-rf.py check-bare-assert-receive.py check-hot-list-format.py check-file-size.py; do
+  for guard in check-on-exit-rm-rf.py check-bare-assert-receive.py check-browser-smoke-shards.mjs check-hot-list-format.py check-file-size.py; do
     grep -F "scripts/$guard" "$tmp/$event.log" >/dev/null
   done
 done
