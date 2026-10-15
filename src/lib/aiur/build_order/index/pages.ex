@@ -5,7 +5,7 @@ defmodule Aiur.BuildOrder.Index.Pages do
   @spec window(map(), String.t(), integer()) :: map()
   def window(index, zone, now) do
     {rows, history} = page(index, nil, zone, 2)
-    sections = Map.new(~w(now plan nq), fn sec -> {String.to_atom(sec), index.all |> Map.values() |> Enum.filter(&(&1.sec == sec)) |> Enum.sort_by(&{&1.ord, &1.id})} end)
+    sections = Map.new(~w(now plan nq)a, fn sec -> {sec, index.all |> Map.values() |> Enum.filter(&(&1.sec == Atom.to_string(sec))) |> Enum.sort_by(&{&1.ord, &1.id})} end)
     index |> Map.take(@blocks) |> Map.merge(%{now: now, sections: Map.put(sections, :hist, rows), history: history})
   end
 
