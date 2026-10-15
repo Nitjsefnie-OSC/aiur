@@ -161,6 +161,21 @@ defmodule Aiur.AgentGitHubGuard.GraphqlAndPagination1Test do
     end
   end
 
+  test "a timed-out command cannot leave descendants holding its output pipes", context do
+    timeout = System.find_executable("timeout") || flunk("timeout executable is required for this Linux-only guard test")
+    child = Path.join(context.state_path, "pipe-holder.sh")
+
+    File.mkdir_p!(context.state_path)
+    File.write!(child, "#!/bin/sh\nsleep 60\n")
+    File.chmod!(child, 0o755)
+
+    started_at = System.monotonic_time(:millisecond)
+    assert {_output, 124} = run_timed_command_bounded(timeout, "0.2", child, [])
+    elapsed_ms = System.monotonic_time(:millisecond) - started_at
+
+    assert elapsed_ms < 5_000
+  end
+
   test "pr view consumes the graphql actor ceiling, not the core one", context do
     broker = AgentGitHubGuard.budget_broker_path(context.workspace)
     key = "a" <> String.duplicate("0", 63)
@@ -191,7 +206,7 @@ defmodule Aiur.AgentGitHubGuard.GraphqlAndPagination1Test do
     assert {"ok\n", 0} = run_guard(context, ["pr", "view", "1670"], graphql_env)
 
     assert {_output, 124} =
-             System.cmd(timeout, ["0.2", context.wrapper, "pr", "view", "1670"],
+             run_timed_command(timeout, "0.2", context.wrapper, ["pr", "view", "1670"],
                env:
                  guard_env(context) ++
                    [
@@ -248,7 +263,7 @@ defmodule Aiur.AgentGitHubGuard.GraphqlAndPagination1Test do
     assert {"ok\n", 0} = run_guard(context, ["search", "repos", "state:open"], search_env)
 
     assert {_output, 124} =
-             System.cmd(timeout, ["0.2", context.wrapper, "search", "repos", "state:open"],
+             run_timed_command(timeout, "0.2", context.wrapper, ["search", "repos", "state:open"],
                env:
                  guard_env(context) ++
                    [

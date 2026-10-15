@@ -42,6 +42,15 @@ defmodule Aiur.AgentGitHubGuardTestSupport do
     System.cmd(context.wrapper, args, env: env, stderr_to_stdout: true)
   end
 
+  def run_timed_command(timeout, seconds, command, args, opts \\ []) do
+    run_timed_command_bounded(timeout, seconds, command, args, opts)
+  end
+
+  def run_timed_command_bounded(timeout, seconds, command, args, opts \\ []) do
+    script = "setsid \"$1\" \"$2\" & child=$!; sleep \"$3\"; kill -KILL -- -\"$child\" 2>/dev/null || true; wait \"$child\"; exit 124"
+    System.cmd("sh", ["-c", script, "sh", "setsid", timeout, seconds, command | args], Keyword.merge([stderr_to_stdout: true], opts))
+  end
+
   # The same script run from outside `.aiur-runtime/bin` and without the agent
   # workspace marker: this is how the Executor invokes it, with full authority.
   #
