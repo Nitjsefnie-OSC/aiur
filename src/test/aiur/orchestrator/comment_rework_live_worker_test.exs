@@ -65,23 +65,24 @@ defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
     state = base_state(ticket)
     event = review_event(ticket)
 
-    CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event)
+    updated = CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event)
 
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 2_000
-    assert [digest] = AgentQueueStore.list_pending(state.queue_store, @issue_number)
+    assert [digest] = AgentQueueStore.list_pending(updated.queue_store, @issue_number)
     assert digest.category == :coordination_event
     assert digest.body.events == [event]
   end
 
   test "an already-rework held worker gets a new review without a state transition" do
     ticket = issue("rework")
+    Application.put_env(:aiur, :memory_tracker_issues, [ticket])
     state = base_state(ticket)
     event = review_event(ticket)
 
-    CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event)
+    updated = CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event)
 
     refute_received {:memory_tracker_state_update, @issue_number, "rework"}
-    assert [digest] = AgentQueueStore.list_pending(state.queue_store, @issue_number)
+    assert [digest] = AgentQueueStore.list_pending(updated.queue_store, @issue_number)
     assert digest.body.events == [event]
   end
 end

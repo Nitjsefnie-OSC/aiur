@@ -673,13 +673,6 @@ defmodule Aiur.Orchestrator.CommentWake do
     end
   end
 
-  # The third running-entry shape, and the one the other two branches do not
-  # cover: an entry that is present but not `:deactivated`. A worker that has
-  # just finished its turn leaves `control.status: :completed` here, and a ticket
-  # that has bounced `human-review` → `ci-wait` → `human-review` keeps its entry
-  # across the round trip — so a reviewer's `--request-changes` landing in either
-  # window routes through this function rather than the idle writer or the
-  # `:deactivated` reactivation path (#2814).
   defp protect_active_comment_delivery(state, running_entry, issue_number, source, event, attempt) do
     cond do
       not trusted_comment_event?(event) ->
@@ -695,7 +688,11 @@ defmodule Aiur.Orchestrator.CommentWake do
           OperatorMessages.enqueue_event_digest_item(state, identifier, [event], event)
 
         if changes_requested_review?(event) do
-          maybe_write_active_review_rework(protected_state, running_entry, issue_number, source, event, attempt)
+          if Map.get(running_entry.issue, :state) == "rework" do
+            protected_state
+          else
+            maybe_write_active_review_rework(protected_state, running_entry, issue_number, source, event, attempt)
+          end
         else
           issue_key = rework_issue_key(running_entry, issue_number)
 
@@ -757,20 +754,6 @@ defmodule Aiur.Orchestrator.CommentWake do
     )
   end
 
-  # A gate refusal on the running-entry path used to be the quietest outcome in
-  # the whole comment-wake chain: no label write, no retry, no log line, no
-  # alert. What the operator saw was a ticket that simply stayed in
-  # `agent:human-review` after a formal `--request-changes` review, with nothing
-  # anywhere naming a decision.
-  #
-  # Refusals that are *correct* readings of a comment that is not a change
-  # request stay as quiet as they were: an untrusted author, a bot review-pass
-  # comment, an approved pull request, a review that predates the head, a plain
-  # conversation comment on a ticket whose threads are clear. What must never be
-  # quiet is a live `CHANGES_REQUESTED` review that produced no rework write — by
-  # construction a reviewer asked for a change and the ticket did not move, the
-  # review will never be delivered again, and an operator is the only thing that
-  # can release it.
   defp emit_idle_comment_refusal(issue_number, reason) when reason in [:parked, :unlabeled_issue, :no_open_pr, :rework_attempt_limit_reached] do
     remedy =
       case reason do
@@ -1575,7 +1558,7 @@ defmodule Aiur.Orchestrator.CommentWake do
     end
   end
 
-  defp apply_active_comment_protection(state, result, {attempt, event, issue_number, source}) do
+  defp apply_active_comment_protection({result, state}, {attempt, event, issue_number, source}) do
     case result do
       :ok ->
         state

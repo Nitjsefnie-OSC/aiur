@@ -829,13 +829,6 @@ Failed CI in `agent:human-review` routes to rework when that head already passed
 CI or the head changed. An inherited failure on a dismissed head remains held;
 the existing test-only one-poll retry still applies.
 
-The `pull_request_review` webhook and review-submission poll both publish
-`ticket.<id>.pr.review_comment`, which routes through `CommentWake` to the
-rework transition. After posting a review, verify that the ticket moved to
-`agent:rework` and that its worker received the review. If either is missing,
-investigate the review state, trusted author and open-PR gate; do not relabel by
-hand.
-
 Alerts persist across daemon restarts and tokens (full-history scan, #1231), so
 the `ACTIONABLE` list keeps naming long-merged tickets. Check timestamps before
 acting and trust the top state table over the alert list.
@@ -1199,11 +1192,8 @@ that the production files conflict while every test file auto-merges cleanly, so
 the resolver sees no markers and inherits a mutually unsatisfiable suite. Ask
 explicitly for a merge-order recommendation.
 
-The daemon moves a ticket to `agent:rework` automatically when a trusted,
-current-head `CHANGES_REQUESTED` review lands, including while its worker is
-still running. Verify the transition and that the review reached the worker's
-event digest. Do not relabel by hand; investigate a missing transition through
-the review state, trusted author and open-PR gate (see the rework note above).
+Verify a current-head `CHANGES_REQUESTED` review moved the ticket to
+`agent:rework` and reached its worker. Do not relabel by hand.
 
 ### Merge mechanics
 
