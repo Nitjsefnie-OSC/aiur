@@ -173,7 +173,11 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
 
     assert Enum.find_index(mods, &(&1 == Projection)) > Enum.find_index(mods, &(&1 == Features))
     assert Enum.find_index(mods, &(&1 == Projection)) > Enum.find_index(mods, &(&1 == History))
-    assert List.last(mods) == Projection
+
+    assert Enum.find_index(mods, &(&1 == Projection)) <
+             Enum.find_index(mods, &(&1 == Aiur.PostDeployChecklist))
+
+    assert List.last(mods) == Aiur.PostDeployChecklist
     refute Projection in Component.child_specs(:label_projection, recording?: false)
   end
 end
