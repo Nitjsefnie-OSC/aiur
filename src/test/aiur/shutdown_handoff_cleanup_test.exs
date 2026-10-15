@@ -1,9 +1,9 @@
 defmodule Aiur.ShutdownHandoffCleanupTest do
   use Aiur.TestSupport, async: false
 
-  alias Aiur.{ProcessTree, Shutdown, Tmux}
   alias Aiur.Claude.RemoteControl
   alias Aiur.Handoff.Protection
+  alias Aiur.{ProcessTree, Shutdown, Tmux}
 
   defmodule PaneServer do
     use GenServer
