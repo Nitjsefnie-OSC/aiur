@@ -10,7 +10,7 @@ defmodule Aiur.Experiments do
   def observations(refs, window, context \\ %{}), do: Evaluator.observations(refs, window, context)
 
   @spec children(boolean()) :: [module()]
-  def children(recording?), do: if(child(recording?), do: [Store, Capture, Checkpointer], else: [])
+  def children(recording?), do: if(child(recording?), do: [Store, Capture, Checkpointer, Aiur.Experiments.StatsRunner], else: [])
 
   @spec window_children(boolean()) :: [module()]
   def window_children(recording?), do: if(child(recording?), do: [Aiur.Experiments.Auto.Notifier, Aiur.Experiments.Auto.WindowManager], else: [])
