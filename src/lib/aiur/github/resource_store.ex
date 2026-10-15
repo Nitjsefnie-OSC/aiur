@@ -304,14 +304,14 @@ defmodule Aiur.GitHub.ResourceStore do
     :issue,
     :issue_labels,
     :pr_review_thread,
-    # Complete selection families shared by the GraphQL pollers and webhook
-    # deltas. They deliberately exclude strict review/merge verdict fields.
     :pr_review_threads,
     :ci_contexts,
+    :commit_ci_check_runs,
+    :commit_ci_status,
+    :landing_merge_group_runs,
     :ci_failure_digest,
     :main_watch,
     :flake_issues,
-    # Endpoint reads — the identity a conditional request validator belongs to.
     :issue_comments,
     :pr_issue_comments,
     # The two repo-wide comment streams. `Aiur.Orchestrator.CommandScan` used to

@@ -2,7 +2,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
   @moduledoc "Cancels active merge-group runs that no longer belong to the live queue."
 
   alias Aiur.Config.TrackerSettings
-  alias Aiur.GitHub.{CIRecovery, Errors, FailureEvidence, Transport}
+  alias Aiur.GitHub.{CIRecovery, Errors, FailureEvidence, ResourceFetch, ResourceStore, Transport}
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.{Attribution, FlakeRecorder, Journal, Observer}
   alias Aiur.PrMerge.Queue
@@ -16,8 +16,8 @@ defmodule Aiur.LandingWatch.MergeGroups do
     with {:ok, base} <- base_branch(opts),
          {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts),
-         {:ok, runs} <- active_runs(owner, repo, token, opts),
-         {:ok, completed} <- completed_runs(owner, repo, token, opts),
+         {:ok, runs} <- active_runs(owner, repo, base, token, opts),
+         {:ok, completed} <- completed_runs(owner, repo, base, token, opts),
          {:ok, fresh_observations} <- live_observations(observations, opts) do
       with :ok <- process_completed(completed, fresh_observations, base, opts),
            {:ok, reconciled_observations} <- live_observations(fresh_observations, opts) do
@@ -96,14 +96,16 @@ defmodule Aiur.LandingWatch.MergeGroups do
     end
   end
 
-  defp active_runs(owner, repo, token, opts) do
+  defp active_runs(owner, repo, base, token, opts) do
     request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
 
     ["queued", "in_progress", "waiting", "requested"]
     |> Enum.reduce_while({:ok, []}, fn status, {:ok, acc} ->
       url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{event: "merge_group", per_page: 100, status: status})
 
-      case read_pages(request, token, url, [], 0) do
+      context = %{request: request, token: token, owner: owner, repo: repo, base: base, status: status}
+
+      case read_pages(context, url, [], 0) do
         {:ok, runs} -> {:cont, {:ok, acc ++ runs}}
         {:error, _} = error -> {:halt, error}
       end
@@ -114,10 +116,11 @@ defmodule Aiur.LandingWatch.MergeGroups do
     end
   end
 
-  defp completed_runs(owner, repo, token, opts) do
+  defp completed_runs(owner, repo, base, token, opts) do
     request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
     url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{event: "merge_group", per_page: 100, status: "completed"})
-    read_pages(request, token, url, [], 0)
+    context = %{request: request, token: token, owner: owner, repo: repo, base: base, status: "completed"}
+    read_pages(context, url, [], 0)
   end
 
   defp process_completed(runs, observations, base, opts) do
@@ -317,17 +320,38 @@ defmodule Aiur.LandingWatch.MergeGroups do
     Queue.enqueue(api, %{node_id: node_id, head: head})
   end
 
-  defp read_pages(_request, _token, _url, _acc, @page_limit), do: {:error, :merge_group_run_list_too_large}
+  defp read_pages(_context, _url, _acc, @page_limit),
+    do: {:error, :merge_group_run_list_too_large}
 
-  defp read_pages(request, token, url, acc, page) do
-    case request.(%{method: :get, url: url, token: token, caller: "landing_watch_merge_group_runs"}) do
+  defp read_pages(context, url, acc, page) do
+    key = ResourceStore.key(:landing_merge_group_runs, context.owner, context.repo, "#{context.base}:#{context.status}:#{page}")
+    fetcher = fn fetch_opts -> fetch_run_page(context.request, context.token, url, fetch_opts) end
+
+    with {:ok, %{"workflow_runs" => runs, "next" => next}, _meta} <-
+           ResourceFetch.need(key, fetcher, freshness: ResourceFetch.decision(), reason: "landing merge-group runs") do
+      runs = Enum.filter(runs, &(&1["event"] == "merge_group"))
+
+      case next do
+        nil -> {:ok, acc ++ runs}
+        next_url -> read_pages(context, next_url, acc ++ runs, page + 1)
+      end
+    end
+  end
+
+  defp fetch_run_page(request, token, url, fetch_opts) do
+    call = %{method: :get, url: url, token: token, caller: "landing_watch_merge_group_runs"}
+    call = if is_binary(fetch_opts[:etag]), do: Map.put(call, :etag, fetch_opts[:etag]), else: call
+
+    case request.(call) do
       {:ok, %{status: 200, body: %{"workflow_runs" => runs}} = response} when is_list(runs) ->
-        runs = Enum.filter(runs, &(&1["event"] == "merge_group"))
+        body = %{"workflow_runs" => runs, "next" => Transport.parse_next_page_url(Map.get(response, :headers, []))}
+        {:ok, body, Transport.header(Map.get(response, :headers, []), "etag")}
 
-        case Transport.parse_next_page_url(Map.get(response, :headers, [])) do
-          nil -> {:ok, acc ++ runs}
-          next -> read_pages(request, token, next, acc ++ runs, page + 1)
-        end
+      {:ok, %{status: 200}} ->
+        {:error, :invalid_merge_group_run_list}
+
+      {:ok, %{status: 304} = response} ->
+        {:not_modified, response_etag(response, fetch_opts)}
 
       {:ok, %{status: _} = response} ->
         {:error, Errors.github_status_error(response)}
@@ -336,6 +360,9 @@ defmodule Aiur.LandingWatch.MergeGroups do
         {:error, Errors.classify_error({:error, reason})}
     end
   end
+
+  defp response_etag(response, fetch_opts),
+    do: Transport.header(Map.get(response, :headers, []), "etag") || fetch_opts[:etag]
 
   defp base_branch(opts) do
     case Keyword.fetch(opts, :base_branch) do

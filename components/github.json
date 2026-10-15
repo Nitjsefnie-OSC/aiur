@@ -67,6 +67,7 @@
     "Aiur.GitHub.OpenIssueSnapshot",
     "Aiur.GitHub.PollSnapshots",
     "Aiur.GitHub.PullRequests",
+    "Aiur.GitHub.PullRequests.CommitCiStatus",
     "Aiur.GitHub.Quota",
     "Aiur.GitHub.ReadCache",
     "Aiur.GitHub.RequestOrigin",
