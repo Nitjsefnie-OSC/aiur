@@ -98,13 +98,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp reconcile_issue(%State{} = state, %Issue{identifier: identifier} = issue, live_identifiers, opts)
        when is_binary(identifier) do
     cond do
-      approved_and_armed?(state, issue) ->
-        {:ok, resolve_release_failure(state, issue, opts), issue}
-
-      DispatchPolicy.state_slug(issue.state) != "in-progress" ->
-        {:ok, resolve_release_failure(state, issue, opts), issue}
-
-      not Map.has_key?(state.orphaned_claim_since, identifier) ->
+      not recoverable_claim?(state, issue, identifier) ->
         {:ok, resolve_release_failure(state, issue, opts), issue}
 
       not Observation.expired?(state, issue, opts) ->
@@ -133,6 +127,11 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
 
     is_map(projection) and Map.get(projection, :review_decision) == "APPROVED" and
       (is_map(Map.get(projection, :auto_merge_request)) or is_map(Map.get(projection, :merge_queue_entry)))
+  end
+
+  defp recoverable_claim?(state, issue, identifier) do
+    DispatchPolicy.state_slug(issue.state) == "in-progress" and not approved_and_armed?(state, issue) and
+      Map.has_key?(state.orphaned_claim_since, identifier)
   end
 
   # Positive current-generation liveness. A live Task pid protects its claim; a

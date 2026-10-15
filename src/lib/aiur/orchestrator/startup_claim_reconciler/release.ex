@@ -129,7 +129,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
     target = CiLifecycle.ci_target_for_issue(issue)
     projection = if match?(%Aiur.Orchestrator.State{}, state), do: get_in(state.ci_lifecycle, [:poll_cache, target])
 
-    if is_map(projection) and Map.get(projection, :review_decision, "APPROVED") == "APPROVED" and
+    if is_map(projection) and Map.get(projection, :review_decision) == "APPROVED" and
          (is_map(Map.get(projection, :auto_merge_request)) or is_map(Map.get(projection, :merge_queue_entry))),
        do: "ci-wait"
   end
