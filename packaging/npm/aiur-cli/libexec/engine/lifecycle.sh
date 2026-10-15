@@ -380,7 +380,8 @@ verify_restart_build() {
 }
 
 cmd_restart() {
-  local skip_build=0 keep_agents=0 arg AIUR_RESTART_HANDOFF_ID="" aiur_restart_start_attempted=0
+  local skip_build=0 keep_agents=0 arg
+  AIUR_RESTART_HANDOFF_ID="" aiur_restart_start_attempted=0
   local run_args=()
 
   # Refuse a stale config before stopping a healthy daemon. dispatch_run also
