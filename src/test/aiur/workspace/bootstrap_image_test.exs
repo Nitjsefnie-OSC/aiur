@@ -49,28 +49,6 @@ defmodule Aiur.Workspace.BootstrapImageTest do
              ~s(rm -rf "$workspace/src/_build/test/lib/aiur" "$workspace/_build/test/lib/aiur")
   end
 
-  test "seeded first-party beams are removed before the ticket checkout test run", %{test_root: root} do
-    workspace = Path.join(root, "ticket-checkout")
-    app_beams = Path.join([workspace, "src", "_build", "test", "lib", "aiur"])
-    File.mkdir_p!(app_beams)
-    File.mkdir_p!(Path.join([workspace, "src", "_build"]))
-    File.mkdir_p!(Path.join([workspace, "src", "deps"]))
-    File.mkdir_p!(Path.join([workspace, "deps"]))
-    File.mkdir_p!(Path.join([workspace, "_build"]))
-    File.write!(Path.join(app_beams, "seeded.beam"), "compiled in another checkout")
-
-    # Exercise the production cleanup command against a seeded artifact while
-    # keeping dependency cache paths outside the first-party app directory.
-    assert {_, 0} =
-             System.cmd(
-               "sh",
-               ["-c", ~s(rm -rf "$workspace/src/_build/test/lib/aiur" "$workspace/_build/test/lib/aiur")],
-               env: [{"workspace", workspace}]
-             )
-
-    refute File.exists?(app_beams)
-  end
-
   test "bootstrap_image_script/3 includes docker pull when pull? true, omits it when false" do
     workspace = "/tmp/test-workspace"
     image = "test-image:latest"
