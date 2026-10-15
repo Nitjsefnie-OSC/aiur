@@ -19,7 +19,7 @@ Aiur ships Agent Skills under `.claude/skills/`, with shared links for Codex und
 
 These three skills, together with the complete pinned Compound Engineering set, are installed in every ticket workspace under `<workspace>/.claude/skills/`. Aiur exposes that canonical copy to Codex through `<workspace>/.codex/skills/` and to Muse through `<workspace>/.agents/skills/`; both paths are symlinks.
 
-The Codex turn sandbox makes `.agents/` and `.codex/` writable so Git can replace tracked skill links during a base merge. The installed skill files live in `.claude/skills/`. CI rejects newly tracked entries under these mounted skill paths because worker copies may already occupy them as untracked files.
+The Codex turn sandbox makes `.agents/` and `.codex/` writable so Git can replace tracked skill links during a base merge. The installed skill files live in `.claude/skills/`. CI rejects tracked changes under these mounted skill paths because worker copies may already occupy them as untracked files.
 
 Muse loads workspace skills and rules only when `agent.backend_configs.muse.trust_workspace` is explicitly enabled.
 

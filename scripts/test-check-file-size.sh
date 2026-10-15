@@ -6,6 +6,7 @@ python3 - "$repo_root" <<'PY'
 from pathlib import Path
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -87,11 +88,17 @@ with tempfile.TemporaryDirectory(prefix='file-size-', dir=os.environ.get('TMPDIR
         ('Claude skill mount', {}, {'.claude/skills/aiur-agent/references/new.md': lines(1)}, 1, 'mounted skill path .claude/skills is rejected'),
         ('Codex skill mount', {}, {'.codex/skills/aiur-agent': b'../.claude/skills/aiur-agent\n'}, 1, 'mounted skill path .codex/skills is rejected'),
         ('Muse skill mount', {}, {'.agents/skills/new-skill/SKILL.md': lines(1)}, 1, 'mounted skill path .agents/skills is rejected'),
-        ('existing mounted skill edit', {'.claude/skills/aiur-agent/SKILL.md': lines(1)}, {'.claude/skills/aiur-agent/SKILL.md': lines(2)}, 0, ''),
+        ('exact mount root', {}, {'.claude/skills': b'../skills\n'}, 1, 'mounted skill path .claude/skills is rejected'),
+        ('existing mounted skill edit', {'.claude/skills/aiur-agent/SKILL.md': lines(1)}, {'.claude/skills/aiur-agent/SKILL.md': lines(2)}, 1, 'tracked change under mounted skill path .claude/skills is rejected'),
+        ('existing mounted skill deletion', {'.agents/skills/old/SKILL.md': lines(1)}, {'.agents/skills/old/SKILL.md': None}, 1, 'tracked change under mounted skill path .agents/skills is rejected'),
     ]
     for title, before, after, expected, snippet in cases:
         for path in repo.iterdir():
-            if path.is_file() or path.is_symlink():
+            if path.name == '.git':
+                continue
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
                 path.unlink()
         write(repo, before)
         base = commit(repo)
