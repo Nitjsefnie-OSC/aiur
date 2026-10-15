@@ -32,6 +32,10 @@ defmodule Aiur.TestQuarantineTest do
              ExUnit.Filters.eval([], TestQuarantine.filters(entries), %{module: :"Aiur.Core.AgentRunnerCheckpointQueueTest"}, :test)
   end
 
+  test "the blocking ExUnit run config excludes a listed test by its exact name" do
+    assert {:test, :"test create freezes the baseline and reports its window, count and coverage"} in ExUnit.configuration()[:exclude]
+  end
+
   test "repeated failures in two unrelated pull requests within a day qualify" do
     now = 1_800_000_000_000
 
