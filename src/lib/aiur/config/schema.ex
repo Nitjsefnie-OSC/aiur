@@ -17,6 +17,7 @@ defmodule Aiur.Config.Schema do
     Compaction,
     Decisions,
     ElevenLabs,
+    Executor,
     EnvResolver,
     Errors,
     Events,
@@ -83,6 +84,7 @@ defmodule Aiur.Config.Schema do
     embeds_one(:webhooks, Webhooks, on_replace: :update, defaults_to_struct: true)
     embeds_one(:elevenlabs, ElevenLabs, on_replace: :update, defaults_to_struct: true)
     embeds_one(:upgrade, Upgrade, on_replace: :update, defaults_to_struct: true)
+    embeds_one(:executor, Executor, on_replace: :update, defaults_to_struct: true)
   end
 
   @spec parse(map()) :: {:ok, %__MODULE__{}} | {:error, {:invalid_workflow_config, String.t()}}
@@ -194,6 +196,7 @@ defmodule Aiur.Config.Schema do
     |> validate_raw_non_negative_integer(attrs, "executor_takeover_first_alert_hours")
     |> validate_raw_non_negative_integer(attrs, "executor_takeover_continuous_alert_hours")
     |> cast_embed(:tracker, with: &Tracker.changeset/2)
+    |> cast_embed(:executor, with: &Executor.changeset/2)
     |> cast_embed(:polling, with: &Polling.changeset/2)
     |> cast_embed(:workspace, with: &Workspace.changeset/2)
     |> cast_embed(:worker, with: &Worker.changeset/2)
