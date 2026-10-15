@@ -37,7 +37,7 @@ defmodule AiurWeb.Build.Freshness do
 
   @spec read_daemon(keyword()) :: map()
   def read_daemon(opts \\ []) do
-    orchestrator = Keyword.get(opts, :orchestrator, Endpoint.config(:orchestrator) || Orchestrator)
+    orchestrator = Keyword.get_lazy(opts, :orchestrator, fn -> Endpoint.config(:orchestrator) || Orchestrator end)
     timeout = Keyword.get_lazy(opts, :timeout, fn -> PollCadence.snapshot_tolerance_ms(Endpoint.config(:snapshot_timeout_ms) || 15_000, class: :dispatch) end)
     daemon(Orchestrator.dashboard_snapshot(orchestrator, timeout), System.os_time(:millisecond))
   end
