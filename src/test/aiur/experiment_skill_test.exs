@@ -6,6 +6,7 @@ defmodule Aiur.ExperimentSkillTest do
   @repo_root Path.expand("../../..", __DIR__)
   @skill Path.join(@repo_root, ".claude/skills/aiur-experiment")
   @references ~w(workflow preregistration confounder-review statistics threats-to-validity report-template)
+  @examples ~w(README.md report.feature.json report.feature.evidence.json report.cohorts.json report.cohorts.evidence.json)
 
   test "installs the analyst and every reference into a consumer workspace" do
     workspace = Aiur.TestSupport.tmp_root!("experiment-skill")
@@ -15,7 +16,9 @@ defmodule Aiur.ExperimentSkillTest do
     assert :ok = AgentSkills.install(workspace)
     installed = Path.join(workspace, ".claude/skills/aiur-experiment")
 
-    for file <- ["SKILL.md", "agents/openai.yaml"] ++ Enum.map(@references, &"references/#{&1}.md") do
+    files = ["SKILL.md", "agents/openai.yaml"] ++ Enum.map(@references, &"references/#{&1}.md") ++ Enum.map(@examples, &"references/examples/#{&1}")
+
+    for file <- files do
       assert File.read!(Path.join(installed, file)) == File.read!(Path.join(@skill, file))
     end
 

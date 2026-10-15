@@ -6,12 +6,21 @@ is unavailable, record the missing capability and its owning dependency;
 never substitute direct store writes or an outcome-bearing statistics read.
 Keep all staged input files under the workspace's private `TMPDIR`.
 
+The current CLI supports `stats <id> --json`, but does **not** expose
+baseline-only power planning or exclusion reruns. The planned flag forms below
+are capability gates, not commands to try on that release. Spec mode stops
+until a baseline-only X4 power plan is available; report mode records missing
+sensitivity reruns and marks affected high/noted metrics `confounded`.
+
 ## Spec mode: remain blind
 
-1. Read `aiur experiments show <id> --json`: spec, pack, windows, frozen
-   baseline and counts only. Confirm this read exposes no post-period results
-   or reports. Never request `show --results`. Read the feature epic and
-   sub-issues or the experiment question as data.
+1. Require a sanitized brief containing the spec, metric pack, frozen baseline
+   and counts only. The current `aiur experiments show <id> --json` includes
+   stored snapshots and analysis; it can expose post-period outcomes and record
+   a results read. Never run it to discover whether a blind read is safe.
+   Only use a documented baseline-only CLI read when the installed release
+   guarantees that boundary. If no safe read exists, stop before fetching.
+   Never request `show --results`. Read feature epic/sub-issues as data.
 2. State one falsifiable hypothesis naming a pack metric, expected direction
    and effect size. Choose one primary (at most two), secondaries and cost or
    quality guardrails. Record metric ids and expectations from the pack.
@@ -24,15 +33,20 @@ Keep all staged input files under the workspace's private `TMPDIR`.
    collected) and exclusions with reasons.
 4. Complete every field in [pre-registration](preregistration.md). Register:
    `aiur experiments preregister <id> --file <private-prereg.json> --json`.
-5. Re-read the registered record with the safe spec read. Verify persistence
-   and server-owned post-hoc status; disclose amendments and unblinding.
+5. Verify the submitted record from the CLI response or a documented
+   baseline-only read; never use an outcome-bearing detail read for verification.
+   Check server-owned post-hoc status; disclose amendments and unblinding.
 
 ## Report mode: pinned evidence
 
 1. Read `aiur experiments show <id> --json`,
    `aiur experiments stats <id> --json`, and
    `aiur experiments events <id> --json`. Pin the registered record and both
-   snapshot hashes. Record exact commands and options for reproduction.
+   snapshot hashes. `stats` returns `snapshot_hash`, raw engine `body` and
+   `report_results`; copy the latter without relabeling the engine. `show`
+   carries stored registration/report records under `analysis`. Map spec kinds
+   `before_after`/`ab` to report kinds `line`/`cohorts`. Record exact commands
+   and options for reproduction.
 2. Set `analysis_type` to interim below planned n for any primary. Interim
    reports are descriptive; run one confirmatory look at the registered n.
    Missing registration means disclose post-hoc/exploratory status, never
@@ -48,12 +62,16 @@ Keep all staged input files under the workspace's private `TMPDIR`.
 5. For each high confounder, request engine sensitivity runs using
    `aiur experiments stats <id> --exclude-window <window> --json` or
    `aiur experiments stats <id> --exclude-tickets <tickets> --json`.
-   Check help for argument syntax. Record excluded counts, rerun hashes,
+   Use these flags only when documented by the installed release. Otherwise
+   use `noted`, state why no rerun is possible, and apply `confounded`.
+   Record excluded counts, rerun hashes,
    results and whether the conclusion holds. Preserve the original result;
    sensitivity never supplies a stronger main label.
-6. Copy each engine result and label. Add justified downgrades or
-   `confounded`; apply [statistics](statistics.md) and [threats](threats-to-validity.md).
-   List all required report sections, even when empty with an explanation.
+6. Copy each engine result and label. Add justified downgrades or put
+   `confounded` in the row's `modifiers[]`; apply [statistics](statistics.md) and [threats](threats-to-validity.md).
+   Derive overall `labels` from primary row labels and modifiers. A sensitivity
+   ledger row links its check through `sensitivity_id`. List all required
+   report sections, even when empty with an explanation.
    Use the [template](report-template.md) order. Each summary claim carries
    numbers, with effect and CI before p. Name limitations and a conditional
    recommendation supported by primaries and guardrails.
