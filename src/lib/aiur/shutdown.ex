@@ -258,4 +258,3 @@ defmodule Aiur.Shutdown do
       Logger.warning("aiur_shutdown phase=#{label} caught=#{inspect({kind, reason})}")
   end
 end
-

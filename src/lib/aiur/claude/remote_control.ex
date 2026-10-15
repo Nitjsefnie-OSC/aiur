@@ -481,4 +481,3 @@ defmodule Aiur.Claude.RemoteControl do
 
   defp default_projects_dir, do: Path.join([System.user_home!(), ".claude", "projects"])
 end
-

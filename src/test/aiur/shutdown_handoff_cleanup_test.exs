@@ -136,4 +136,3 @@ defmodule Aiur.ShutdownHandoffCleanupTest do
     end
   end
 end
-
