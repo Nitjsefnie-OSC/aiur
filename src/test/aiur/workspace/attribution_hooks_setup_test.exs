@@ -3,6 +3,7 @@ defmodule Aiur.Workspace.AttributionHooksSetupTest do
 
   @hooks_path Path.expand("../../../../.aiur/hooks", __DIR__)
   @installer_path Path.expand("../../../../scripts/install-attribution-hooks", __DIR__)
+  @zero_sha "0000000000000000000000000000000000000000"
 
   test "after_create installs hooks that strip AI trailers and preserve human co-authors" do
     root = Aiur.TestSupport.tmp_root!("attribution-hooks-setup")
@@ -102,6 +103,69 @@ defmodule Aiur.Workspace.AttributionHooksSetupTest do
     {output, 0} = System.cmd("sh", ["-c", "cd \"$1\" && printf '%s' \"$2\" | .git/hooks/pre-push", "sh", workspace, push_input], stderr_to_stdout: true)
     assert output == ""
     assert File.read!(Path.join(workspace, "pre-push-input")) == push_input
+  end
+
+  test "first push ignores attributed commits already on origin HEAD" do
+    root = Aiur.TestSupport.tmp_root!("attribution-hooks-first-push")
+    workspace = attributed_base_repo!(root)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
+
+    git!(workspace, ["switch", "--quiet", "-c", "feature"])
+    File.write!(Path.join(workspace, "change"), "feature\n")
+    git!(workspace, ["add", "change"])
+    git!(workspace, ["commit", "--quiet", "-m", "feature change"])
+    head = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
+
+    {output, 0} = pre_push!(workspace, head, @zero_sha)
+    assert output == ""
+  end
+
+  test "still rejects attribution introduced by a new commit" do
+    root = Aiur.TestSupport.tmp_root!("attribution-hooks-new-commit")
+    workspace = attributed_base_repo!(root)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
+
+    git!(workspace, ["switch", "--quiet", "-c", "feature"])
+    File.write!(Path.join(workspace, "change"), "feature\n")
+    git!(workspace, ["add", "change"])
+    git!(workspace, ["commit", "--quiet", "-m", "feature change"])
+    remote = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
+
+    File.write!(Path.join(workspace, "another-change"), "more feature\n")
+    git!(workspace, ["add", "another-change"])
+    git!(workspace, ["-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "bad commit\n\nCo-authored-by: Claude <noreply@anthropic.com>"])
+    head = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
+
+    {output, 1} = pre_push!(workspace, head, remote)
+    assert output =~ "AI attribution remains in the commit message"
+  end
+
+  defp attributed_base_repo!(root) do
+    workspace = Path.join(root, "workspace")
+    File.mkdir_p!(workspace)
+    git!(workspace, ["init", "--quiet", "-b", "main"])
+    git!(workspace, ["config", "user.name", "Test User"])
+    git!(workspace, ["config", "user.email", "test@example.com"])
+    File.write!(Path.join(workspace, "base"), "base\n")
+    git!(workspace, ["add", "base"])
+    git!(workspace, ["-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "base\n\nCo-authored-by: Claude <noreply@anthropic.com>"])
+    base = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
+    git!(workspace, ["update-ref", "refs/remotes/origin/main", base])
+    git!(workspace, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
+
+    {output, 0} = System.cmd(@installer_path, [workspace], stderr_to_stdout: true)
+    assert output == ""
+    workspace
+  end
+
+  defp pre_push!(workspace, local_sha, remote_sha) do
+    input = "refs/heads/feature #{local_sha} refs/heads/feature #{remote_sha}\n"
+
+    System.cmd(
+      "sh",
+      ["-c", "cd \"$1\" && printf '%s' \"$2\" | .git/hooks/pre-push", "sh", workspace, input],
+      stderr_to_stdout: true
+    )
   end
 
   defp git!(directory, args) do

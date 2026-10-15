@@ -59,7 +59,16 @@ trap 'rm -f "$updates"' EXIT HUP INT TERM
 cat > "$updates"
 while read local_ref local_sha remote_ref remote_sha || [ -n "${local_sha:-}" ]; do
   [ "$local_sha" = "$zero" ] && continue
-  if [ "$remote_sha" = "$zero" ]; then range="$local_sha"; else range="$remote_sha..$local_sha"; fi
+  if [ "$remote_sha" = "$zero" ]; then
+    base_ref=$(git symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null || true)
+    if [ -n "$base_ref" ] && git rev-parse --verify -q "${base_ref}^{commit}" >/dev/null; then
+      range="$base_ref..$local_sha"
+    else
+      range="$local_sha"
+    fi
+  else
+    range="$remote_sha..$local_sha"
+  fi
   for commit in $(git rev-list "$range" 2>/dev/null); do
     if git show -s --format=%B "$commit" | awk '
       {
