@@ -455,13 +455,7 @@ when ready.
 
 ## Manual CLI verification before opening a PR
 
-Before opening the draft PR, run the CLI locally and manually exercise all new
-functionality end-to-end when the workspace can perform that check. If the
-acceptance step requires a hands-on run the workspace cannot perform, follow
-the shared worker instructions: do not raise a decision or pause for it. Finish
-the automated work and add the exact `Post-deploy check: <steps>` line under
-`## Local tests` in the PR body. The Executor runs it after deployment; name
-physical equipment in the step when the operator must use it.
+Run the CLI and exercise new functionality before the draft PR when the workspace can do so. For workspace-inaccessible hands-on checks, do not raise a decision or pause: finish automated work and add `Post-deploy check: <exact steps>` under `## Local tests`; the Executor runs it after deployment. Name required physical equipment.
 
 Manual CLI verification is in addition to the scoped local pre-PR verification
 gate above, not a replacement for it. A PR is not ready for human review until
