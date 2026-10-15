@@ -9,9 +9,10 @@ from .methods import infer
 from .multiplicity import adjust
 from .ranks import min_achievable_p
 from .rng import seed_from
+from .power_result import attach
 from .summary_text import summarize
 
-ENGINE_VERSION = "1.0.0"
+ENGINE_VERSION = "1.1.0"
 
 
 def _metric(metric, groups, annotations, settings, seed):
@@ -83,6 +84,7 @@ def analyze(snapshot, spec, annotations=None):
     for metric in metrics:
         seed = seed_from(experiment_id, metric["id"], "pooled", inputs["snapshot_sha256"])
         results[metric["id"]] = _metric(metric, groups, annotations, settings, seed)
+        attach(results[metric["id"]], metric, groups, settings, snapshot, spec, inputs["snapshot_sha256"])
     for primary, method in ((True, "holm"), (False, "bh")):
         # Guarded hypotheses remain in the family as p=1, but have no test result.
         family = {m["id"]: results[m["id"]].get("p_raw", 1.0)

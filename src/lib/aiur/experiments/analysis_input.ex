@@ -10,11 +10,16 @@ defmodule Aiur.Experiments.AnalysisInput do
 
   @spec prepare(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def prepare(id, opts) do
+    context = Keyword.get(opts, :context, %{})
+    clock = Map.get(context, :clock, &DateTime.utc_now/0)
+    now = if is_function(clock, 0), do: clock.(), else: clock
+    opts = Keyword.put(opts, :context, Map.put(context, :clock, now))
+
     with :ok <- Persistence.writable(id),
          {:ok, spec, false} <- Reader.spec(id),
          {:ok, annotations} <- Journal.read(Paths.file(id, "annotations.ndjson")),
          {:ok, arms} <- Arms.read(id, opts) do
-      {:ok, %{id: id, spec: spec, annotations: annotations, input: build(spec, annotations, arms)}}
+      {:ok, %{id: id, spec: spec, annotations: annotations, input: build(spec, annotations, arms, DateTime.to_iso8601(now))}}
     else
       {:ok, _spec, true} -> {:error, :newer_spec}
       error -> error
@@ -34,8 +39,8 @@ defmodule Aiur.Experiments.AnalysisInput do
     end
   end
 
-  @spec build(map(), [map()], map()) :: map()
-  def build(spec, annotations, arms) do
+  @spec build(map(), [map()], map(), String.t() | nil) :: map()
+  def build(spec, annotations, arms, taken_at \\ nil) do
     rows =
       for {group, arm} <- arms["arms"],
           {metric, evidence} <- arm["metrics"],
@@ -55,6 +60,7 @@ defmodule Aiur.Experiments.AnalysisInput do
       "schema_version" => "aiur.experiment-analysis-input/v1",
       "spec" => spec,
       "registered_at" => spec["registered_at"],
+      "taken_at" => taken_at,
       "annotations" => annotations,
       "rows" => Enum.sort_by(rows, &{&1["metric"], &1["group"], &1["unit_id"], &1["observed_at"]})
     }
