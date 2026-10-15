@@ -91,11 +91,12 @@ with tempfile.TemporaryDirectory(prefix='file-size-', dir=os.environ.get('TMPDIR
         ('new Claude skill source', {}, {'.claude/skills/aiur-agent/references/new.md': lines(1)}, 0, ''),
         ('Claude skill source edit', {'.claude/skills/aiur-agent/SKILL.md': lines(1)}, {'.claude/skills/aiur-agent/SKILL.md': lines(2)}, 0, ''),
         ('Claude skill symlink', {}, {'.claude/skills/aiur-agent': ('symlink', '../installed/aiur-agent')}, 1, 'tracked symlink under mounted skill path .claude/skills is rejected'),
-        ('Codex skill mount', {}, {'.codex/skills/aiur-agent': b'../.claude/skills/aiur-agent\n'}, 1, 'mounted skill path .codex/skills is rejected'),
-        ('Muse skill mount', {}, {'.agents/skills/new-skill/SKILL.md': lines(1)}, 1, 'mounted skill path .agents/skills is rejected'),
+        ('Codex skill mount', {}, {'.codex/skills/new-skill': b'../.claude/skills/new-skill\n'}, 1, 'new tracked entry under mounted skill path .codex/skills is rejected'),
+        ('Muse skill mount', {}, {'.agents/skills/new-skill/SKILL.md': lines(1)}, 1, 'new tracked entry under mounted skill path .agents/skills is rejected'),
         ('exact mount root', {}, {'.claude/skills': ('symlink', '../skills')}, 1, 'tracked symlink under mounted skill path .claude/skills is rejected'),
-        ('existing mounted skill deletion', {'.agents/skills/old/SKILL.md': lines(1)}, {'.agents/skills/old/SKILL.md': None}, 1, 'tracked change under mounted skill path .agents/skills is rejected'),
-        ('rename out of Codex mount', {'.codex/skills/old.md': lines(1)}, {'.codex/skills/old.md': None, 'moved/old.md': lines(1)}, 1, 'tracked change under mounted skill path .codex/skills is rejected'),
+        ('existing mounted skill edit', {'.codex/skills/aiur-agent': b'old target\n'}, {'.codex/skills/aiur-agent': b'new target\n'}, 0, ''),
+        ('existing mounted skill deletion', {'.agents/skills/old/SKILL.md': lines(1)}, {'.agents/skills/old/SKILL.md': None}, 0, ''),
+        ('rename out of Codex mount', {'.codex/skills/old.md': lines(1)}, {'.codex/skills/old.md': None, 'moved/old.md': lines(1)}, 0, ''),
     ]
     for title, before, after, expected, snippet in cases:
         for path in repo.iterdir():
