@@ -236,6 +236,12 @@ defmodule Aiur.Orchestrator.CapacityBinding do
     "dispatch cycle stalled since #{started} at #{stage || "unknown stage"}"
   end
 
+  @spec dispatch_cycle_stalled_label(map()) :: String.t()
+  def dispatch_cycle_stalled_label(%{started_at_ms: started, stage: stage}) when is_integer(started),
+    do: dispatch_cycle_stalled_label(started, stage)
+
+  def dispatch_cycle_stalled_label(_detail), do: "dispatch cycle stalled"
+
   @doc """
   A slot-free, unconstrained fleet's effective ceiling provenance.
 

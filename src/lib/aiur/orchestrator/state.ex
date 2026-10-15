@@ -281,9 +281,7 @@ defmodule Aiur.Orchestrator.State do
     decision_store_unavailable_alert_active: false,
     decision_store_unavailable_alert_resolution_emitted: false,
     dependency_circular_wait: %{},
-    # Fleet aggregate for tickets carrying more than one `agent:*` state label (`contradictory_state_label_tickets`
-    # maps issue id -> %{identifier, labels, since_ms}; `contradictory_state_label_alert_active` latches the single
-    # fleet alert until the set clears). Kept on State so the orchestrator is the single writer and `aiur alerts`/`aiur status` can read it back (#2366).
+    # Fleet aggregate for contradictory `agent:*` labels; State keeps the orchestrator the single writer (#2366).
     contradictory_state_label_tickets: %{},
     contradictory_state_label_alert_active: false,
     running: %{},
@@ -295,9 +293,7 @@ defmodule Aiur.Orchestrator.State do
     claimed: MapSet.new(),
     dispatch_recovery: @default_dispatch_recovery,
     retry_attempts: %{},
-    # In-flight comment-rework timers keyed by `{issue_key, source_key}`, so superseded retries can be cancelled
-    # and so `terminate/2` never leaves a timer firing into a dead orchestrator's
-    # successor — see `Aiur.Orchestrator.CommentWake`.
+    # In-flight comment-rework timers are cancellable and cannot fire into a successor.
     comment_rework_retries: %{},
     auto_resume: %{},
     released_claims: %{},
@@ -315,18 +311,13 @@ defmodule Aiur.Orchestrator.State do
     github_comments_since: nil,
     github_comment_etags: %{},
     github_comment_issue_updated_at: %{},
-    # Conditional issue-list cache owned by the asynchronous comment poll.
-    # Keeping it separate prevents a late completion from replacing the newer
-    # cache written by synchronous CI/candidate fetching in the same cycle.
+    # Separate conditional comment cache prevents late completion replacing newer synchronous fetches.
     github_comment_issue_list_cache: %{},
-    # In-flight marker for the asynchronous comment poll. The pid and monitor
-    # let lifecycle shutdown reap the poll and its owned descendants.
+    # The pid and monitor let lifecycle shutdown reap the asynchronous comment poll.
     github_comment_poll: nil,
-    # Tickets named by review-thread webhooks. A poll claims this set when it
-    # starts; hints arriving during that poll stay here for the follow-up.
+    # Review-thread webhook hints arriving during a poll stay queued for its follow-up.
     github_comment_reconcile_targets: MapSet.new(),
-    # At most one delayed reconcile wake is live. Its token fences stale timer
-    # messages after a later GitHub backoff extends the due time.
+    # One delayed reconcile wake; its token fences stale timers after GitHub backoff.
     github_comment_reconcile_timer: nil,
     last_comment_poll_started_at_ms: nil,
     last_ci_poll_started_at_ms: nil,
@@ -338,10 +329,7 @@ defmodule Aiur.Orchestrator.State do
     globally_paused: false,
     blocked_ticket_ids: nil,
     global_pause: %{paused_at: nil, source: nil},
-    # `{issue_identifier, recent_merge_id}` pairs already reconciled by
-    # `Aiur.Orchestrator.MergedTicketReconciler`, so a retained merge record
-    # cannot close the same ticket twice — a ticket reopened for rework must
-    # win over the merge that closed it before.
+    # Reconciled merge receipts prevent retained records from closing a reopened ticket.
     merged_ticket_reconciliations: MapSet.new(),
     # `{{issue_identifier, recent_merge_id}, reason}` signatures already alerted on, so a
     # permanently failing transition raises its attention once instead of once per poll.
@@ -530,7 +518,6 @@ defmodule Aiur.Orchestrator.State do
 
   @spec alive?(term()) :: boolean()
   defdelegate alive?(name), to: Aiur.Orchestrator.State.ProcessLiveness
-
   @spec maybe_put_runtime_value(term(), term(), term()) :: term()
   def maybe_put_runtime_value(running_entry, _key, nil), do: running_entry
 
@@ -675,7 +662,6 @@ defmodule Aiur.Orchestrator.State do
   end
 
   defp valid_conversation_source?(_source), do: false
-
   defp valid_runtime_session?(nil), do: true
 
   defp valid_runtime_session?("session:" <> digest) do
@@ -756,7 +742,6 @@ defmodule Aiur.Orchestrator.State do
   end
 
   def active_running_entry?(_entry), do: false
-
   @spec paused_running_entry?(term()) :: boolean()
   def paused_running_entry?(entry) when is_map(entry) do
     (get_in(entry, [:control, :status]) || :working) == :paused
@@ -968,7 +953,6 @@ defmodule Aiur.Orchestrator.State do
   end
 
   def effective_runtime_seconds(_entry, _now), do: 0
-
   # --- Rework-attempt bound (#2422) ------------------------------------------
   #
   # The same head SHA must not re-enter `agent:rework` more than

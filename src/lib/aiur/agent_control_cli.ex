@@ -572,11 +572,7 @@ defmodule Aiur.AgentControlCLI do
 
   defp capacity_binding_label({:stale_poll, %{age_seconds: age}}), do: "dispatch poll stale (#{age}s ago)"
 
-  defp capacity_binding_label({:dispatch_cycle_stalled, %{started_at_ms: started, stage: stage}}) when is_integer(started),
-    do: CapacityBinding.dispatch_cycle_stalled_label(started, stage)
-
-  defp capacity_binding_label({:dispatch_cycle_stalled, _}), do: "dispatch cycle stalled"
-
+  defp capacity_binding_label({:dispatch_cycle_stalled, detail}), do: CapacityBinding.dispatch_cycle_stalled_label(detail)
   defp capacity_binding_label({:awaiting_dispatch, %{ceiling: ceiling}}), do: "awaiting dispatch; ceiling: #{ceiling}"
   defp capacity_binding_label({:config_cap, _detail}), do: "config max_concurrent_agents"
   defp capacity_binding_label({:envelope, %{} = detail}), do: EnvelopeResume.label(detail)
@@ -589,8 +585,7 @@ defmodule Aiur.AgentControlCLI do
   defp capacity_binding_label({:ticket_supply, _detail}), do: "ticket supply"
   defp capacity_binding_label({:session_cap, _detail}), do: "session max_concurrent_agents"
 
-  # Every admission measurement is rendered with the age of the sample it came
-  # from; otherwise old readings look current beside the live LOAD line (#2527).
+  # Include sample age so old admission readings do not look current (#2527).
   defp capacity_binding_label({:admission, hold}),
     do: admission_detail(hold) <> admission_sample_age(hold)
 
