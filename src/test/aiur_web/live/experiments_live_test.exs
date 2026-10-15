@@ -79,7 +79,7 @@ defmodule AiurWeb.ExperimentsLiveTest do
 
   test "stored analysis supplies guarded index and detail evidence and refreshes" do
     populated()
-    analysis = "test/aiur/experiments/fixtures/page_analysis.json" |> File.read!() |> Jason.decode!() |> Map.fetch!("body")
+    analysis = "test/aiur/experiments/fixtures/results/page_analysis.json" |> File.read!() |> Jason.decode!() |> Map.fetch!("body")
     state = Application.fetch_env!(:aiur, :experiment_live_fixture)
     state = update_in(state, [:details, "first"], fn {:ok, detail} -> {:ok, Map.put(detail, :analysis, analysis)} end)
     Application.put_env(:aiur, :experiment_live_fixture, state)

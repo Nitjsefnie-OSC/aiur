@@ -76,7 +76,7 @@ defmodule AiurWeb.Experiments.MetricsTest do
   end
 
   defp rows(name), do: name |> fixture() |> format()
-  defp fixture(name), do: Path.expand("../../aiur/experiments/fixtures/page_#{name}.json", __DIR__) |> File.read!() |> Jason.decode!() |> Map.fetch!("body")
+  defp fixture(name), do: Path.expand("../../aiur/experiments/fixtures/results/page_#{name}.json", __DIR__) |> File.read!() |> Jason.decode!() |> Map.fetch!("body")
   defp format(body), do: Metrics.rows(%{"metrics" => Enum.map(Map.keys(body["metrics"]), &%{"ref" => &1})}, body, %{})
 
   defp custom(result),

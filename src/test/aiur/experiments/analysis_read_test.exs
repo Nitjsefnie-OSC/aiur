@@ -61,7 +61,7 @@ defmodule Aiur.Experiments.AnalysisReadTest do
     end
   end
 
-  defp body(id), do: fixture("page_analysis")["body"] |> Map.put("experiment_id", id)
+  defp body(id), do: fixture("results/page_analysis")["body"] |> Map.put("experiment_id", id)
   defp fixture(name), do: Path.expand("fixtures/#{name}.json", __DIR__) |> File.read!() |> Jason.decode!()
   defp write(directory, value), do: File.write!(Path.join(directory, "result.json"), Jason.encode!(value))
 end
