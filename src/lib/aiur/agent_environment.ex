@@ -443,7 +443,7 @@ defmodule Aiur.AgentEnvironment do
       "export GH_CONFIG_DIR=#{Aiur.Shell.escape(AgentGitHubGuard.gh_config_dir(workspace))}\n" <>
       "export AIUR_AGENT_QUOTA_STATE_PATH=#{Aiur.Shell.escape(AgentGitHubGuard.quota_dir(workspace))}\n" <>
       "export AIUR_AGENT_WORKSPACE=#{Aiur.Shell.escape(workspace)}\n" <>
-      remote_github_budget_exports() <>
+      Aiur.TestRunIsolation.remote_github_budget_exports() <>
       "unset AIUR_GITHUB_BUDGET_KEY\n" <>
       publication_credential_export(opts) <>
       __MODULE__.GitIdentity.export_prefix(opts) <>
@@ -466,25 +466,6 @@ defmodule Aiur.AgentEnvironment do
   end
 
   def workspace_env_export_prefix(_, _opts), do: ""
-
-  defp remote_github_budget_exports do
-    case {System.get_env("AIUR_DEV_TEST_TICKET_IDS"), System.get_env("AIUR_DEV_TEST_RUN_ID")} do
-      {scope, run_id} when is_binary(scope) and scope != "" ->
-        run_id =
-          if is_binary(run_id) and Regex.match?(~r/\Aaiur-test-budget\.[A-Za-z0-9_-]+\z/, run_id),
-            do: run_id,
-            else: "unbound-#{System.unique_integer([:positive])}"
-
-        "export AIUR_GITHUB_BUDGET_ROOT=\"$HOME/.aiur/test-sandboxes/#{run_id}/github-budget\"\n" <>
-          "export AIUR_GITHUB_CREDENTIAL_FILE=\"$AIUR_GITHUB_BUDGET_ROOT/agent-token\"\n"
-
-      _ordinary_run ->
-        "export AIUR_GITHUB_BUDGET_ROOT='~/.aiur/github-budget'\n" <>
-          "AIUR_GITHUB_BUDGET_ROOT=\"$HOME/${AIUR_GITHUB_BUDGET_ROOT#\\~/}\"\nexport AIUR_GITHUB_BUDGET_ROOT\n" <>
-          "export AIUR_GITHUB_CREDENTIAL_FILE='~/.aiur/github-budget/agent-token'\n" <>
-          "AIUR_GITHUB_CREDENTIAL_FILE=\"$HOME/${AIUR_GITHUB_CREDENTIAL_FILE#\\~/}\"\nexport AIUR_GITHUB_CREDENTIAL_FILE\n"
-    end
-  end
 
   defp publication_credential_key(opts) do
     %Credential{id: "primary", kind: :machine_user, identity: publication_credential_identity(opts)}
