@@ -51,7 +51,7 @@ jobs:
     if: ${{ !cancelled() && needs.changes.result == 'success' }}
     name: workflow security
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       pull-requests: write
@@ -63,11 +63,11 @@ jobs:
       - name: Disclose rerun attempt
         if: ${{ github.run_attempt > 1 }}
         run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
-      - name: Set up Elixir for evidence and classifier tests
-        uses: erlef/setup-beam@e6d7c94229049569db56a7ad5a540c051a010af9 # v1.20.4
+      - uses: ./.github/actions/setup-elixir
+      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          otp-version: '28'
-          elixir-version: '1.19.5'
+          path: src/_build/dev/*.plt*
+          key: ${{ runner.os }}-plt-${{ hashFiles('src/mix.lock') }}
       - name: Guard workflow triggers, action pins and PR body rollout
         run: bash scripts/test-workflow-security.sh && python3 scripts/test-check-pr-body.py && python3 scripts/test-rerun-failed-ci-gate.py && python3 scripts/test-check-pr-body-check-run.py && python3 scripts/test-hot-list-format.py && python3 scripts/test-shared-list-merges.py && node scripts/test-check-browser-smoke-shards.mjs && bash scripts/test-pre-handoff-guards.sh && bash scripts/test-run-pre-handoff-code-checks.sh
       - name: Test legacy Stream Deck nightly cleanup

@@ -30,6 +30,10 @@ assert.ok(structuralStep.includes('GH_TOKEN: ${{ github.token }}'),
   'structural guards must authenticate gh api');
 assert.ok(securityJob.includes('pull-requests: write'),
   'workflow security updates Local tests evidence on same-repository PRs');
+assert.ok(securityJob.includes('uses: ./.github/actions/setup-elixir'),
+  'workflow security installs mise and project dependencies before handoff checks');
+assert.ok(securityJob.includes('path: src/_build/dev/*.plt*'),
+  'workflow security caches Dialyzer PLTs');
 assert.ok(structuralStep.includes('run: scripts/run-pre-handoff-guards.sh'),
   'all event types must use the shared guard runner');
 

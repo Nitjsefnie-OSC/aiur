@@ -15,6 +15,8 @@ if [[ ! -s "$scratch/changed" ]]; then
 fi
 cp "$scratch/changed" "$scratch/changed-files"
 
+# Keep mix aiur.affected_tests as the canonical xref/module-caller selector;
+# subsystem directories below are the additional coverage required by #4585.
 selector_paths=()
 while IFS= read -r path; do
   case "$path" in
@@ -48,7 +50,7 @@ PY
     "cd src && mise exec -- make ci"*)
       echo "run-pre-handoff-code-checks: selection requires the full CI suite"
       full_ci_ran=true
-      (cd "$repo_root/src" && mise exec -- make ci)
+      (cd "$repo_root/src" && timeout --signal=TERM --kill-after=60s 45m mise exec -- make ci)
       ;;
   esac
 done < "$scratch/selection"
@@ -92,14 +94,14 @@ elif [[ -s "$tests_file" ]]; then
   sort -u "$tests_file" -o "$tests_file"
   mapfile -t tests < "$tests_file"
   echo "run-pre-handoff-code-checks: running selected tests (${#tests[@]} files)"
-  (cd "$repo_root/src" && mise exec -- mix test --max-cases 4 "${tests[@]}")
+  (cd "$repo_root/src" && timeout --signal=TERM --kill-after=60s 20m mise exec -- mix test --max-cases 4 "${tests[@]}")
 else
   echo "run-pre-handoff-code-checks: no affected tests selected"
 fi
 
 if grep -q '^src/lib/' "$scratch/changed" && [[ "$full_ci_ran" != true ]]; then
   echo "run-pre-handoff-code-checks: running dialyzer for src/lib changes"
-  (cd "$repo_root/src" && mise exec -- mix dialyzer)
+  (cd "$repo_root/src" && timeout --signal=TERM --kill-after=60s 15m mise exec -- mix dialyzer)
 fi
 
 if [[ -n "$pr_json" ]]; then
@@ -116,7 +118,7 @@ base_ref = os.environ.get("AIUR_BASE_BRANCH", "main")
 base_sha = subprocess.check_output(["git", "-C", repo_root, "rev-parse", base], text=True).strip()
 tests = [line for line in open(tests_path, encoding="utf-8").read().splitlines() if line]
 full_ci_ran = os.environ.get("PRE_HANDOFF_FULL_CI_RAN") == "true"
-selection = "affected-test selector plus changed src/lib subsystem tests and pinned child-order tests"
+selection = "#4602 mix aiur.affected_tests xref/module callers, plus #4585 subsystem and pinned child-order tests"
 evidence = [
     "Policy: partial",
     f"Tested head: {head}",
