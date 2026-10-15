@@ -182,7 +182,7 @@ The Elixir examples below apply only to Aiur's Elixir core.
    (``- `command` -> result``). Record actual failures/blockers and refresh after
    every push. Validate with `mix pr_body.check --file <body>`; reviewers compare
    the head and selection against the diff. Never replace evidence with checkboxes.
-   Before marking the PR ready or handing off to CI/review, run all required checks and fix any failures:
+   Before marking the PR ready or handing off to CI/review, run all required checks and fix failures. Also run `scripts/pre-handoff-guards <PR_JSON_FILE> <BASE_SHA>` with fresh PR JSON and its base SHA; CI and the command consume `scripts/pre-handoff-guards.list`. In tests, use `Aiur.TestCleanup.rm_rf!/1` instead of bare `File.rm_rf` or `File.rm_rf!`, including inside `on_exit`:
 
    - From `src/`: `mise exec -- mix lint` (specs check and Credo strict).
    - From the repository root: `python3 scripts/check-bare-assert-receive.py`.
