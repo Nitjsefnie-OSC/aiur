@@ -119,9 +119,10 @@ test('popover mouse and keyboard, offsets, hide delay, scroll and live diff repl
   await expect(pop).toHaveClass('ax-pop'); await expect(pop).toBeEmpty(); await expect(page.locator('.ax-ln')).toHaveCount(0)
 })
 test('visible ticks advance labels, preserve unchanged DOM, fit resets and dispose body nodes', async ({ page }) => {
-  await paint(page, fixture('unknown'))
-  // No time-dependent API rows: this block really stays unchanged for the tick.
-  await page.evaluate(() => { state.ctx.snap.usage.apis=[]; usage.renderUsage(); window.originalUsage=document.querySelector('.ax-usage') })
+  const stable=fixture('unknown'); stable.apis=[]
+  stable.providers[0].session.reset_at=NOW+(22*24*60+90)*60000
+  await paint(page,stable)
+  await page.evaluate(() => { window.originalUsage=document.querySelector('.ax-usage') })
   await page.clock.runFor(30000)
   expect(await page.evaluate(() => originalUsage === document.querySelector('.ax-usage'))).toBe(true)
   const u = fixture('unknown'); u.providers[0].session.reset_at = NOW+120000

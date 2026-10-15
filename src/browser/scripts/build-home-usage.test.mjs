@@ -80,3 +80,9 @@ test('empty counts, locked privacy and unavailable cause render explicit states'
   assert.match(html('unavailable'),/Usage unavailable.*The usage source failed/)
   assert.match(stripHTML({state:'unavailable',reason:'mystery'},now),/Reason unknown/)
 })
+
+test('before the first snapshot usage leaves the dead-render host untouched', async () => {
+  const {resetState}=await import('../../priv/static/build-home/state.js')
+  const {renderUsage}=await import('../../priv/static/build-home/usage.js')
+  resetState(); assert.doesNotThrow(renderUsage)
+})
