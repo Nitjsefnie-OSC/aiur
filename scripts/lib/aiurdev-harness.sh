@@ -206,6 +206,11 @@ if [ "$test_single" -eq 1 ] || [ "$test3_mode" -eq 1 ]; then
   fi
 
   export AIUR_DEV_TEST_TICKET_IDS="$test_scope_ids"
+  AIUR_GITHUB_BUDGET_DIR="$(mktemp -d "${TMPDIR:-/tmp}/aiur-test-budget.XXXXXX")" || {
+    echo "❌ could not create isolated GitHub budget directory" >&2
+    exit 1
+  }
+  export AIUR_GITHUB_BUDGET_DIR
 
   # GitHub's label index is eventually consistent — wait until the pinned
   # tickets show under agent:todo (or fall through after 30s) so the
@@ -236,7 +241,7 @@ if [ "$test3_mode" -eq 1 ]; then
   pid_file="$repo_root/.aiur-test3-timer.pid"
   if [ -r "$pid_file" ]; then
     prior_pid="$(cat "$pid_file" 2>/dev/null || true)"
-    { [ -n "$prior_pid" ] && kill -0 "$prior_pid" 2>/dev/null && kill "$prior_pid" 2>/dev/null; } || true
+    { [ -n "$prior_pid" ] && kill -0 -- "-$prior_pid" 2>/dev/null && kill -- "-$prior_pid" 2>/dev/null; } || true
     rm -f "$pid_file"
   fi
   timer="$repo_root/scripts/aiur-test3-timer"

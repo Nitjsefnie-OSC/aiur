@@ -38,6 +38,55 @@ defmodule Aiur.TestTicketScope do
 
   def allowed_identifier?(_identifier), do: allowed_ids!() == :all
 
+  @spec with_write_scope(map(), (-> term())) :: term()
+  def with_write_scope(request, fun), do: with(:ok <- allow_write?(request), do: fun.())
+
+  @doc "Whether an outgoing GitHub state mutation is inside the active test scope."
+  @spec allow_write?(map()) :: :ok | {:error, {:outside_test_ticket_scope, String.t()}}
+  def allow_write?(%{method: method, url: url} = request)
+      when method in [:post, :patch, :put, :delete] and is_binary(url) do
+    case System.get_env(@env) do
+      nil ->
+        :ok
+
+      ids when is_binary(ids) and ids != "" ->
+        allow_scoped_write(request, resource_number(url))
+
+      _invalid_scope ->
+        {:error, {:outside_test_ticket_scope, "unknown"}}
+    end
+  end
+
+  def allow_write?(%{method: method, url: url}) when method in [:post, :patch, :put, :delete] and is_binary(url),
+    do: {:error, {:outside_test_ticket_scope, "unknown"}}
+
+  def allow_write?(_request), do: :ok
+
+  defp allow_scoped_write(%{method: :post, url: url}, _resource) do
+    if installation_token_request?(url), do: :ok, else: deny_write("unknown")
+  end
+
+  defp allow_scoped_write(_request, {:ok, :issue, number}) do
+    if allowed_identifier?(number), do: :ok, else: deny_write(number)
+  end
+
+  defp allow_scoped_write(_request, _resource), do: deny_write("unknown")
+
+  defp deny_write(identifier), do: {:error, {:outside_test_ticket_scope, identifier}}
+
+  defp installation_token_request?(url) do
+    Regex.match?(~r{\Ahttps://api\.github\.com/app/installations/[1-9][0-9]*/access_tokens\z}, url)
+  end
+
+  defp resource_number(url) do
+    case Regex.run(~r{/repos/[^/]+/[^/]+/(issues|pulls)(?:/([^/?]+))?(?:/|\?|$)}, url, capture: :all_but_first) do
+      ["issues", number] when is_binary(number) -> if(Regex.match?(~r/\A[1-9][0-9]*\z/, number), do: {:ok, :issue, number}, else: :invalid)
+      ["pulls", _number] -> :invalid
+      ["issues"] -> :invalid
+      _ -> :invalid
+    end
+  end
+
   defp identifier(%{identifier: identifier}) when is_binary(identifier), do: identifier
   defp identifier(%{identifier: identifier}) when is_integer(identifier), do: Integer.to_string(identifier)
   defp identifier(_issue), do: nil

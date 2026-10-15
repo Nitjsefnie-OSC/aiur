@@ -171,17 +171,32 @@ cmd_stop() {
   ERL_EPMD_ADDRESS="${ERL_EPMD_ADDRESS:-127.0.0.1}"
   export RELEASE_NODE ERL_EPMD_ADDRESS
   resolve_control_identity_from_records
+  load_aiur_instance_record "$(aiur_instance_record_path)" >/dev/null 2>&1 || true
 
   local workspace_root_file agent_pidfile
   workspace_root_file="$(workspace_root_file_from_instance_record 2>/dev/null || true)"
   agent_pidfile="$(agent_pidfile_from_instance_record 2>/dev/null || true)"
+
+  # The --test3 timing poller is a launcher-owned child, not part of the BEAM
+  # tree. Stop it with its daemon so no detached GitHub polling survives.
+  local test_ticket_ids="${AIUR_DEV_TEST_TICKET_IDS:-${AIUR_RECORD_TEST_TICKET_IDS:-}}"
+  if [ "$test_ticket_ids" != "" ]; then
+    local timer_pid_file="${AIUR_CONTROL_CALLER_ROOT:-$AIUR_PROJECT_ROOT}/.aiur-test3-timer.pid"
+    local timer_pid
+    if [ -r "$timer_pid_file" ]; then
+      timer_pid="$(cat "$timer_pid_file" 2>/dev/null || true)"
+      if [[ "$timer_pid" =~ ^[0-9]+$ ]]; then
+        kill -- "-$timer_pid" 2>/dev/null || true
+      fi
+      rm -f "$timer_pid_file" 2>/dev/null || true
+    fi
+  fi
 
   local tmux_bin
   tmux_bin="$(command -v tmux || true)"
   local session="${AIUR_ADOPTED_TMUX_SESSION:-${AIUR_SESSION_PREFIX}-${USER:-user}${AIUR_INSTANCE_KEY:+-$AIUR_INSTANCE_KEY}-default}"
   local socket="${AIUR_ADOPTED_TMUX_SOCKET:-${AIUR_SESSION_PREFIX}-${USER:-user}${AIUR_INSTANCE_KEY:+-$AIUR_INSTANCE_KEY}}"
 
-  load_aiur_instance_record "$(aiur_instance_record_path)" >/dev/null 2>&1 || true
   local AIUR_AGENT_TMUX_SOCKET="${AIUR_RECORD_AGENT_SOCKET:-${socket}-agents}"
   local has_session=0
   if [ -n "$tmux_bin" ] && "$tmux_bin" -L "$socket" has-session -t "$session" 2>/dev/null || { [ -n "$tmux_bin" ] && "$tmux_bin" -L "$AIUR_AGENT_TMUX_SOCKET" has-session 2>/dev/null; }; then

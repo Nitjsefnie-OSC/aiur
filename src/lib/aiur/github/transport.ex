@@ -114,11 +114,10 @@ defmodule Aiur.GitHub.Transport do
   members had different visibility would need the credential in the cache key.
   """
   @spec default_request_fun(map()) :: {:ok, map()} | {:error, term()}
-  def default_request_fun(%{token: token} = req) when is_binary(token) do
-    req |> QueueCost.tag() |> CredentialSelector.assign() |> do_request()
-  end
+  def default_request_fun(req), do: Aiur.TestTicketScope.with_write_scope(req, fn -> do_default_request(req) end)
 
-  def default_request_fun(req), do: req |> QueueCost.tag() |> do_request()
+  defp do_default_request(%{token: token} = req) when is_binary(token), do: req |> QueueCost.tag() |> CredentialSelector.assign() |> do_request()
+  defp do_default_request(req), do: req |> QueueCost.tag() |> do_request()
 
   defp do_request(%{method: :get, url: url, token: token} = req) do
     headers =

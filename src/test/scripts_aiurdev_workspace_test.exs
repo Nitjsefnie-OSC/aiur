@@ -4,6 +4,8 @@ defmodule ScriptsAiurdevWorkspaceTest do
 
   import Aiur.TestSupport.AiurdevCase
 
+  alias Aiur.TestSupport.AiurdevCase
+
   test "agent workspace --test is blocked before reset, clear, stop, or launch" do
     root = fake_agent_repo(334)
     home = sandbox_home()
@@ -232,6 +234,38 @@ defmodule ScriptsAiurdevWorkspaceTest do
     assert out =~ "XDG_RUNTIME_DIR: #{sandbox_root}/runtime"
     assert File.read!(trace) =~ "AIUR_BG_STATE_DIR: #{sandbox_root}/state"
     refute out =~ "ENGINE_ARGS: --port 0"
+  end
+
+  test "stop kills the test3 timer recorded under the checkout" do
+    root = fake_repo()
+    home = sandbox_home()
+    timer = Path.join(root, ".aiur-test3-timer.pid")
+    sleep = System.find_executable("sleep") |> String.to_charlist()
+    timer_port = Port.open({:spawn_executable, sleep}, [:binary, :exit_status, args: [~c"30"]])
+    {:os_pid, timer_pid} = Port.info(timer_port, :os_pid)
+    File.write!(timer, "#{timer_pid}\n")
+
+    engine = Path.join([root, "packaging", "npm", "aiur-cli", "libexec", "aiur-engine.sh"])
+    lifecycle = Path.join([Path.dirname(engine), "engine", "lifecycle.sh"])
+    File.mkdir_p!(Path.dirname(lifecycle))
+
+    source =
+      File.read!(
+        Path.expand(
+          "../packaging/npm/aiur-cli/libexec/engine/lifecycle.sh",
+          Path.dirname(AiurdevCase.script())
+        )
+      )
+
+    source = String.replace(source, "cmd_stop() {", "cmd_stop() {\n  AIUR_PROJECT_ROOT=#{root}\n  AIUR_RECORD_TEST_TICKET_IDS=99,100,101\n", global: false)
+    File.write!(lifecycle, source)
+    File.write!(engine, "#!/usr/bin/env bash\nsource #{lifecycle}\ncmd_stop\n")
+    File.chmod!(engine, 0o755)
+
+    {_, 0} = System.cmd("bash", [engine], env: [{"HOME", home}], stderr_to_stdout: true)
+
+    refute File.exists?(timer)
+    assert_receive {^timer_port, {:exit_status, _status}}, 1_000
   end
 
   # --- checkout targeting -----------------------------------------------------

@@ -1,0 +1,153 @@
+defmodule Aiur.GitHub.TestTicketScopeTest do
+  use Aiur.TestSupport
+
+  alias Aiur.GitHub.{Budget, Transport}
+
+  setup do
+    previous_scope = System.get_env("AIUR_DEV_TEST_TICKET_IDS")
+    previous_budget = System.get_env("AIUR_GITHUB_BUDGET_DIR")
+    previous_app_budget = Application.get_env(:aiur, :github_budget_dir)
+    previous_req_options = Application.get_env(:aiur, :github_transport_test_options)
+    System.put_env("AIUR_DEV_TEST_TICKET_IDS", "99,100,101")
+    Application.put_env(:aiur, :github_transport_test_options, plug: {Req.Test, __MODULE__})
+
+    on_exit(fn ->
+      restore_env("AIUR_DEV_TEST_TICKET_IDS", previous_scope)
+      restore_env("AIUR_GITHUB_BUDGET_DIR", previous_budget)
+      restore_application_env(:github_budget_dir, previous_app_budget)
+      restore_application_env(:github_transport_test_options, previous_req_options)
+    end)
+
+    :ok
+  end
+
+  test "rejects tracker and PR writes outside the sandbox ticket set" do
+    Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.resp(conn, 200, "{}") end)
+
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Transport.default_request_fun(%{
+               method: :post,
+               url: "https://api.github.com/repos/owner/repo/actions/runs/123/cancel",
+               token: "token",
+               body: %{}
+             })
+
+    assert {:error, {:outside_test_ticket_scope, "3379"}} =
+             Transport.default_request_fun(%{
+               method: :patch,
+               url: "https://api.github.com/repos/owner/repo/issues/3379",
+               token: "token",
+               body: %{"labels" => ["agent:rework"]}
+             })
+
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Transport.default_request_fun(%{
+               method: :post,
+               url: "https://api.github.com/repos/owner/repo/pulls/3780/reviews",
+               token: "token",
+               body: %{"event" => "REQUEST_CHANGES"}
+             })
+
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Transport.default_request_fun(%{
+               method: :put,
+               url: "https://api.github.com/repos/owner/repo/pulls/99/merge",
+               token: "token",
+               body: %{"merge_method" => "squash"}
+             })
+  end
+
+  test "allows GitHub App installation token exchange without tracker writes" do
+    Req.Test.stub(__MODULE__, fn conn -> Plug.Conn.resp(conn, 201, "{}") end)
+
+    assert {:ok, %{status: 201}} =
+             Transport.default_request_fun(%{
+               method: :post,
+               url: "https://api.github.com/app/installations/123/access_tokens",
+               token: "jwt",
+               body: %{}
+             })
+  end
+
+  test "LandingWatch rework cannot write outside the sandbox tickets" do
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(test_pid, :out_of_scope_tracker_write_reached_http)
+      Plug.Conn.resp(conn, 200, "{}")
+    end)
+
+    observation = %{number: 12, head: "sha", rest: %{"head" => %{"ref" => "aiur/3379-test"}}}
+
+    assert {:error, {:outside_test_ticket_scope, "3379"}} =
+             Aiur.LandingWatch.rework(observation, [%{name: "failing check"}],
+               ticket_state_fun: fn "3379", _opts -> {:ok, "human-review"} end,
+               transition_fun: fn "3379", "rework", opts ->
+                 assert opts[:writer] == :landing_watch
+
+                 Transport.default_request_fun(%{
+                   method: :patch,
+                   url: "https://api.github.com/repos/owner/repo/issues/3379",
+                   token: "token",
+                   body: %{"labels" => ["agent:rework"]}
+                 })
+               end,
+               alert_emitter: fn _topic, _opts -> :ok end
+             )
+
+    refute_receive :out_of_scope_tracker_write_reached_http, 50
+  end
+
+  test "allows writes to pinned sandbox tickets" do
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(test_pid, :sandbox_write_reached_http)
+      Plug.Conn.resp(conn, 200, "{}")
+    end)
+
+    assert {:ok, %{status: 200}} =
+             Transport.default_request_fun(%{
+               method: :patch,
+               url: "https://api.github.com/repos/owner/repo/issues/99",
+               token: "token",
+               body: %{"labels" => ["agent:rework"]}
+             })
+
+    assert_receive :sandbox_write_reached_http, 1000
+  end
+
+  test "routes scoped budget state outside the live budget" do
+    previous_budget = System.get_env("AIUR_GITHUB_BUDGET_DIR")
+    live_budget = Path.join(System.tmp_dir!(), "live-budget-must-not-win")
+    Application.put_env(:aiur, :github_budget_dir, live_budget)
+    sandbox_dir = Path.join(System.tmp_dir!(), "aiur-test-budget-#{System.unique_integer([:positive])}")
+    System.put_env("AIUR_GITHUB_BUDGET_DIR", sandbox_dir)
+
+    assert Budget.state_dir() == sandbox_dir
+    refute Budget.state_dir() == live_budget
+
+    System.delete_env("AIUR_GITHUB_BUDGET_DIR")
+    assert String.starts_with?(Budget.state_dir(), System.tmp_dir!())
+    refute Budget.state_dir() == live_budget
+
+    restore_env("AIUR_GITHUB_BUDGET_DIR", previous_budget)
+  end
+
+  test "ordinary runs keep write access" do
+    System.delete_env("AIUR_DEV_TEST_TICKET_IDS")
+
+    assert Aiur.TestTicketScope.allow_write?(%{method: :patch, url: "https://api.github.com/repos/owner/repo/issues/3379"}) == :ok
+  end
+
+  test "unscoped write endpoints fail closed" do
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Aiur.TestTicketScope.allow_write?(%{method: :post, url: "https://api.github.com/repos/owner/repo/issues"})
+
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Aiur.TestTicketScope.allow_write?(%{method: :post, url: "https://api.github.com/repos/owner/repo/git/refs"})
+  end
+
+  defp restore_application_env(key, nil), do: Application.delete_env(:aiur, key)
+  defp restore_application_env(key, value), do: Application.put_env(:aiur, key, value)
+end
