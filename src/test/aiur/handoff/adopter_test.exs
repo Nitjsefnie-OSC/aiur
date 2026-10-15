@@ -71,8 +71,8 @@ defmodule Aiur.Handoff.AdopterTest do
     assert_receive {:stopped, "one"}, 1000
     assert_receive {:stopped, "two"}, 1000
     assert_receive {:alert, "system.handoff.incompatible"}, 1000
-    assert_receive {:alert, "system.restart.handoff.completed"}
-    assert_receive {:alert, "system.restart.handoff.fallback"}
+    assert_received {:alert, "system.restart.handoff.completed"}
+    assert_received {:alert, "system.restart.handoff.fallback"}
     refute_receive {:alert, _}, 20
     assert {:ok, %{"outcome" => outcomes}} = Aiur.JsonStore.read(Record.path(dir: dir) <> ".consumed")
     assert Enum.map(outcomes, & &1["reason"]) == [":schema", ":schema"]
