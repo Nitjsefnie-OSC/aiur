@@ -34,7 +34,6 @@ class PrBodyCheckRunTest(unittest.TestCase):
         self.assertIn('commits/head/check-runs?per_page=100', run.call_args.args[0][2])
 
     def test_missing_pr_body_run_is_rejected(self):
-        completed = subprocess.CompletedProcess([], 0, 'null', '')
         with patch.object(MODULE, 'latest_check', return_value=None):
             with patch('sys.stderr') as stderr:
                 self.assertEqual(MODULE.main(), 1)
