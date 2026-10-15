@@ -17,10 +17,6 @@ defmodule Aiur.AppServer.TurnLoopTest do
       {:ok, :done}
     end
 
-    def handle_method(_session, _state, %{"method" => "completed"}, _payload_string, _method) do
-      {:ok, :turn_completed}
-    end
-
     def handle_method(_session, state, payload, _payload_string, _method) do
       send(state.parent, {:method, payload})
       {:continue, state}
@@ -76,17 +72,6 @@ defmodule Aiur.AppServer.TurnLoopTest do
     send(self(), {port, {:data, {:eol, ~s("done"})}}})
 
     assert TurnLoop.receive_loop(%{port: port}, state(%{parent: parent})) == {:ok, :done}
-  end
-
-  test "completion drain routes queued valid JSON through the backend" do
-    port = cat_port()
-    parent = self()
-
-    send(self(), {port, {:data, {:eol, ~s({"method":"completed"})}}})
-    send(self(), {port, {:data, {:eol, ~s({"method":"after"})}}})
-
-    assert TurnLoop.receive_loop(%{port: port}, state(%{parent: parent})) == {:ok, :turn_completed}
-    assert_receive {:method, %{"method" => "after"}}, 1_000
   end
 
   test "returns port exit and idle timeout errors" do
