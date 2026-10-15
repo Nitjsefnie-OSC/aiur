@@ -31,7 +31,7 @@ defmodule AiurWeb.ExperimentsLive do
   @impl true
   def handle_info({:experiments_changed, id}, socket) do
     socket = load_index(socket)
-    socket = if id == :all or id == socket.assigns.selected_id, do: load_detail(socket, socket.assigns.selected_id), else: socket
+    socket = if is_nil(socket.assigns.selected_id) or id == :all or id == socket.assigns.selected_id, do: load_detail(socket, socket.assigns.selected_id), else: socket
     {:noreply, socket}
   end
 
@@ -62,6 +62,11 @@ defmodule AiurWeb.ExperimentsLive do
             <.link :for={item <- @items} patch={"/experiments/" <> URI.encode(item.id, &URI.char_unreserved?/1)} class="exp-link" aria-current={if @detail && @detail.id == item.id, do: "page"}>
               <strong>{item.title}</strong>
               <span class="exp-chips"><span class="exp-chip">{item.kind_label}</span><span class="exp-chip">{item.status}</span></span>
+              <span :for={metric <- Enum.take(item.metrics, 3)} class="exp-headline">
+                {metric.label}: {metric.change} · {metric.direction} · {metric.sample}
+                <span :if={metric.guarded?} class="exp-chip">not enough data</span>
+                <span :for={label <- metric.labels} class="exp-chip">{label}</span>
+              </span>
             </.link>
           </nav>
           <section class="exp-detail" aria-label="Experiment detail">
@@ -87,11 +92,21 @@ defmodule AiurWeb.ExperimentsLive do
               </dl>
               <p :if={@detail.pack_changed_since_freeze?} class="exp-notice">Metric pack definitions changed since this evidence was frozen.</p>
               <h3>Metric summary</h3>
-              <p class="exp-notice" data-empty-reason="evidence_pending">Analysis evidence is not available yet.</p>
-              <table :if={@detail.metric_specs != []} class="exp-table">
+              <p :if={@detail.metrics == []} class="exp-notice" data-empty-reason="evidence_pending">Analysis evidence is not available yet.</p>
+              <table :if={@detail.metrics == [] and @detail.metric_specs != []} class="exp-table">
                 <caption>Registered metrics</caption>
                 <thead><tr><th scope="col">Metric</th><th scope="col">Unit</th><th scope="col">Expected direction</th><th scope="col">Evidence</th></tr></thead>
                 <tbody><tr :for={metric <- @detail.metric_specs}><td data-label="Metric">{metric["label"] || metric["ref"]}</td><td data-label="Unit">{metric["unit"] || "Unknown unit"}</td><td data-label="Expected direction">{metric["direction"]}</td><td data-label="Evidence">Unavailable</td></tr></tbody>
+              </table>
+              <table :if={@detail.metrics != []} class="exp-table">
+                <caption>Metric evidence</caption>
+                <thead><tr><th scope="col">Metric</th><th scope="col">Group summary and n</th><th scope="col">Change and samples</th><th scope="col">Contrast and interval</th><th scope="col">p-value and test</th><th scope="col">Effect</th></tr></thead>
+                <tbody><tr :for={metric <- @detail.metrics}>
+                  <td data-label="Metric">{metric.label} ({metric.unit})<span :for={label <- metric.labels} class="exp-chip">{label}</span></td>
+                  <td data-label="Groups"><div :for={group <- metric.groups}>{group.name}: {group.center_label} {group.center}, IQR {group.spread}, n {group.n}</div></td>
+                  <td data-label="Change">{metric.change} · {metric.direction} · {metric.sample}<span :if={metric.guarded?}>not enough data</span></td>
+                  <td data-label="Contrast and interval">{metric.contrast} · {metric.interval}</td><td data-label="p-value and test">{metric.p} {metric.tests}</td><td data-label="Effect">{metric.effect}</td>
+                </tr></tbody>
               </table>
               <div id="exp-charts"></div>
               <div id="exp-report"></div>

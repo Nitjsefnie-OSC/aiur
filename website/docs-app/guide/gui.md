@@ -206,3 +206,7 @@ errors are shown explicitly.
 
 Frozen baseline details include the revision, capture time, Aiur version and
 SHA-256 hash. A warning identifies metric packs that changed since the freeze.
+
+When a frozen analysis `result.json` is present in an experiment directory, the
+page shows its group summaries, sample counts and analyst labels. Below the
+analysis minimum, interval, p-value and effect cells say **not enough data**.

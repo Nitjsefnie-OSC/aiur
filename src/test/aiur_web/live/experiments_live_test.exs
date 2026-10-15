@@ -76,6 +76,34 @@ defmodule AiurWeb.ExperimentsLiveTest do
     assert render(view) =~ "Evidence unavailable"
   end
 
+  test "stored analysis supplies guarded index and detail evidence and refreshes" do
+    populated()
+    analysis = "test/aiur/experiments/fixtures/page_analysis.json" |> File.read!() |> Jason.decode!() |> Map.fetch!("body")
+    state = Application.fetch_env!(:aiur, :experiment_live_fixture)
+    state = update_in(state, [:details, "first"], fn {:ok, detail} -> {:ok, Map.put(detail, :analysis, analysis)} end)
+    Application.put_env(:aiur, :experiment_live_fixture, state)
+    {:ok, view, html} = live(build_conn(), "/experiments/first")
+    assert has_element?(view, ".exp-index a", "n 4/10")
+    assert has_element?(view, ".exp-index a", "analyst: confounded")
+    assert has_element?(view, ".exp-table", "not enough data (n 4 of 10)")
+    assert has_element?(view, ".exp-table", "before: median 100.06")
+    refute has_element?(view, "[data-empty-reason=evidence_pending]")
+    copy = html |> Floki.parse_document!() |> Floki.find("#experiments-page") |> Floki.text()
+    refute copy =~ ~r/\b(?:win|better|worse|regress\w*|improv\w*)\b/i
+    populated()
+    send(view.pid, {:experiments_changed, "first"})
+    assert has_element?(view, "[data-empty-reason=evidence_pending]")
+    refute has_element?(view, ".exp-index a", "n 4/10")
+  end
+
+  test "default desktop detail refreshes on facade change" do
+    populated()
+    {:ok, view, _html} = live(build_conn(), "/experiments")
+    populated("Updated default detail")
+    send(view.pid, {:experiments_changed, "first"})
+    assert render(view) =~ "Updated default detail"
+  end
+
   test "index chooses first detail without changing the mobile index URL" do
     populated()
     {:ok, view, _html} = live(build_conn(), "/experiments")
@@ -126,7 +154,7 @@ defmodule AiurWeb.ExperimentsLiveTest do
   defp populated(hypothesis \\ "A registered hypothesis") do
     spec = "test/aiur/experiments/fixtures/valid_line.json" |> File.read!() |> Jason.decode!() |> Map.fetch!("spec")
     summaries = for {id, title} <- [{"first", "First"}, {"second", "Second"}], do: %{id: id, title: title, status: "active", created_at: "2026-10-09T00:00:00Z"}
-    details = Map.new(summaries, fn row -> {row.id, {:ok, %{spec: Map.merge(spec, %{"id" => row.id, "title" => row.title, "hypothesis" => hypothesis}), phase: :collecting}}} end)
+    details = Map.new(summaries, fn row -> {row.id, {:ok, %{spec: Map.merge(spec, %{"id" => row.id, "title" => row.title, "hypothesis" => hypothesis, "min_samples" => 10}), phase: :collecting}}} end)
     fixture(list: {:ok, summaries}, details: details)
   end
 

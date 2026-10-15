@@ -43,6 +43,14 @@ test('desktop experiment index selects and navigates between registered experime
   await assertNoDocumentOverflow(page)
 })
 
+test('stored evidence shows guarded samples and analyst attribution', async ({ page }) => {
+  await openExperiments(page)
+  await expect(indexLinks(page).first()).toContainText('n 4/10')
+  await expect(indexLinks(page).first()).toContainText('not enough data')
+  await expect(indexLinks(page).first()).toContainText('analyst: confounded')
+  await expect(page.getByRole('table', { name: 'Metric evidence' })).toContainText('not enough data (n 4 of 10)')
+})
+
 test('phone experiment list and detail keep touch targets reachable without overflow', async ({ browser }) => {
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,

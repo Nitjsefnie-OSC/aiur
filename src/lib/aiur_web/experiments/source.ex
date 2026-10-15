@@ -5,15 +5,17 @@ defmodule AiurWeb.Experiments.Source do
 
   @spec index() :: {:ok, [map()]} | {:error, :store_unreadable}
   def index do
+    catalog = facade().metric_catalog().metrics
+
     case facade().list() do
-      {:ok, summaries} -> summaries |> Enum.reduce_while({:ok, []}, &hydrate/2) |> order()
+      {:ok, summaries} -> summaries |> Enum.reduce_while({:ok, []}, &hydrate(&1, &2, catalog)) |> order()
       {:error, _reason} -> {:error, :store_unreadable}
     end
   end
 
-  defp hydrate(summary, {:ok, items}) do
+  defp hydrate(summary, {:ok, items}, catalog) do
     case facade().fetch(summary.id) do
-      {:ok, detail} -> {:cont, {:ok, [ViewModel.index_item(summary, detail) | items]}}
+      {:ok, detail} -> {:cont, {:ok, [ViewModel.index_item(summary, detail, catalog) | items]}}
       {:error, _reason} -> {:halt, {:error, :store_unreadable}}
     end
   end

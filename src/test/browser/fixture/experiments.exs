@@ -25,6 +25,7 @@ defmodule Aiur.BrowserHarness.ExperimentsFixture do
 
     if scenario == "mixed" do
       write_spec(root, "valid_line", "release-speed", "Release delivery speed", "2026-10-09T00:00:00Z", "delivery-speed/start_to_merge")
+      File.cp!(Path.join(@fixtures, "page_analysis.json"), Path.join([root, "release-speed", "result.json"]))
       write_spec(root, "valid_ab", "cohort-speed", "Cohort delivery speed", "2026-10-08T00:00:00Z", "delivery-speed/start_to_merge")
     end
 
@@ -44,7 +45,7 @@ defmodule Aiur.BrowserHarness.ExperimentsFixture do
       |> File.read!()
       |> Jason.decode!()
       |> Map.fetch!("spec")
-      |> Map.merge(%{"id" => id, "title" => title, "created_at" => created_at, "metrics" => [%{"ref" => metric_ref, "direction" => "decrease", "primary" => true}]})
+      |> Map.merge(%{"id" => id, "title" => title, "min_samples" => 10, "created_at" => created_at, "metrics" => [%{"ref" => metric_ref, "direction" => "decrease", "primary" => true}]})
 
     {:ok, validated} = Spec.new(spec)
     directory = Path.join(root, id)

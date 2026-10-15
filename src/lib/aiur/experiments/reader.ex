@@ -63,10 +63,22 @@ defmodule Aiur.Experiments.Reader do
     with {:ok, spec, spec_read_only?} <- spec(id),
          {:ok, journal} <- Journal.read(Paths.file(id, "journal.ndjson")),
          {:ok, annotations} <- Journal.read(Paths.file(id, "annotations.ndjson")),
-         {:ok, snapshots} <- Snapshot.all(id) do
+         {:ok, snapshots} <- Snapshot.all(id),
+         {:ok, analysis} <- Aiur.Experiments.AnalysisResult.read(id, spec) do
       read_only? = spec_read_only? or newer?(journal ++ annotations) or pending_newer?(id)
       changed? = Enum.any?(snapshots, &(&1["packs"] != Snapshot.packs(spec, context)))
-      {:ok, %{spec: spec, phase: phase(spec), journal: Enum.take(journal, -50), annotations: annotations, snapshots: snapshots, pack_changed_since_freeze: changed?, read_only?: read_only?}}
+
+      {:ok,
+       %{
+         spec: spec,
+         phase: phase(spec),
+         journal: Enum.take(journal, -50),
+         annotations: annotations,
+         analysis: analysis,
+         snapshots: snapshots,
+         pack_changed_since_freeze: changed?,
+         read_only?: read_only?
+       }}
     end
   end
 

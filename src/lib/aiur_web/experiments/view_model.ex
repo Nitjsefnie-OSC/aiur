@@ -1,8 +1,8 @@
 defmodule AiurWeb.Experiments.ViewModel do
   @moduledoc "Experiment metadata formatted for display, without computing statistical evidence."
 
-  @spec index_item(map(), map()) :: map()
-  def index_item(summary, detail) do
+  @spec index_item(map(), map(), map()) :: map()
+  def index_item(summary, detail, catalog \\ %{}) do
     spec = Map.get(detail, :spec, %{})
 
     %{
@@ -12,9 +12,9 @@ defmodule AiurWeb.Experiments.ViewModel do
       status: Map.get(summary, :status) || "unknown",
       phase: Map.get(detail, :phase, :unknown),
       created_at: Map.get(summary, :created_at),
-      metrics: [],
+      metrics: AiurWeb.Experiments.Metrics.rows(spec, Map.get(detail, :analysis), catalog),
       labels: [],
-      evidence_state: :pending
+      evidence_state: if(is_map(Map.get(detail, :analysis)), do: :available, else: :pending)
     }
   end
 
@@ -23,7 +23,7 @@ defmodule AiurWeb.Experiments.ViewModel do
     spec = Map.get(detail, :spec, %{})
     summary = Map.new(~w(id title status created_at)a, &{&1, Map.get(spec, Atom.to_string(&1))})
 
-    Map.merge(index_item(summary, detail), %{
+    Map.merge(index_item(summary, detail, catalog), %{
       hypothesis: Map.get(spec, "hypothesis", ""),
       design: Map.get(spec, "design"),
       windows: Map.get(spec, "windows", %{}),
