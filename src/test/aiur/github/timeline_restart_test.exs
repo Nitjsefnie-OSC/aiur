@@ -12,7 +12,7 @@ defmodule Aiur.GitHub.TimelineRestartTest do
 
     on_exit(fn ->
       Application.delete_env(:aiur, :github_resource_store_path)
-      File.rm_rf!(dir)
+      Aiur.TestCleanup.rm_rf!(dir)
     end)
 
     :ok
