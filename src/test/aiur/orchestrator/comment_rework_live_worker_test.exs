@@ -1,7 +1,7 @@
 defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
   use Aiur.TestSupport
 
-  alias Aiur.{AgentQueueStore, Issue}
+  alias Aiur.{AgentQueueStore, AlertFeed, Issue}
   alias Aiur.Orchestrator.{CommentWake, State}
 
   @issue_number "4601"
@@ -13,9 +13,9 @@ defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
         @issue_number => %{
           identifier: @issue_number,
           issue: issue,
-          pid: nil,
+          pid: self(),
           telemetry_attempt_id: "ticket-4601:test",
-          control: %{status: :completed, version: 1}
+          control: %{status: :working, version: 1}
         }
       },
       completed: MapSet.new(),
@@ -71,6 +71,7 @@ defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
     assert [digest] = AgentQueueStore.list_pending(updated.queue_store, @issue_number)
     assert digest.category == :coordination_event
     assert digest.body.events == [event]
+    refute Enum.any?(AlertFeed.list(), &(&1["topic"] == "ticket.#{@issue_number}.agent.attention.dispatch-declined"))
   end
 
   test "an already-rework held worker gets a new review without a state transition" do
