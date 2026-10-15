@@ -1,0 +1,3 @@
+
+> aiur-claude@1.1.0 build
+> tsc && chmod +x dist/index.js

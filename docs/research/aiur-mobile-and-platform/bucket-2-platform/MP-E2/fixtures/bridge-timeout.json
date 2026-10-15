@@ -1,0 +1,33 @@
+{
+  "elapsed_ms": 120076,
+  "response": {
+    "jsonrpc": "2.0",
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "Tool \"approve\" failed: no response from orchestrator within 120000ms"
+        }
+      ],
+      "isError": true
+    },
+    "id": 1
+  },
+  "sent": [
+    {
+      "jsonrpc": "2.0",
+      "id": "aiur-tool-1",
+      "method": "item/tool/call",
+      "params": {
+        "name": "approve",
+        "arguments": {
+          "tool_name": "AskUserQuestion",
+          "input": {
+            "questions": []
+          }
+        },
+        "callId": "0722a567-3997-4985-b1e9-1326ba6ae9ff"
+      }
+    }
+  ]
+}

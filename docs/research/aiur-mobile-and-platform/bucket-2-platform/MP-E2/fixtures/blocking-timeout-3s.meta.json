@@ -1,0 +1,25 @@
+{
+  "args": [
+    "claude",
+    "-p",
+    "Use AskUserQuestion exactly once to ask whether timeout.md should mention red or blue. If it fails, report the tool error and stop without retrying or guessing. If answered, write the answer to timeout.md.",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--permission-mode",
+    "bypassPermissions",
+    "--mcp-config",
+    "/research/MP-E2-C5-T00/mcp-10.json",
+    "--permission-prompt-tool",
+    "mcp__aiurhost__approve",
+    "--max-turns",
+    "3"
+  ],
+  "start": 1792009659.5642366,
+  "end": 1792009667.970828,
+  "elapsed": 8.406591892242432,
+  "exit_code": 0,
+  "profile": "inherited",
+  "MCP_TOOL_TIMEOUT": "3000"
+}

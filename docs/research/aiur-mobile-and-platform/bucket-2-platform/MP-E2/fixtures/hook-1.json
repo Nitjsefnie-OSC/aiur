@@ -1,0 +1,33 @@
+{
+  "observed_at": 1792009523.8192506,
+  "session_id": "e93290be-022b-49dc-ab9b-ff16d59c3f16",
+  "transcript_path": "/research/profile/projects/-home-operator-code-aiur-workspaces-aiur-team-aiur-4451--aiur-runtime-tmp-e2-c5t00-ws/e93290be-022b-49dc-ab9b-ff16d59c3f16.jsonl",
+  "cwd": "/research/MP-E2-C5-T00/ws",
+  "prompt_id": "c717d816-700b-4864-a2a5-f425fc42f246",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Should README.md mention red or blue?",
+        "header": "Color",
+        "options": [
+          {
+            "label": "Red",
+            "description": "Append 'red' to README.md and write it to chosen.txt"
+          },
+          {
+            "label": "Blue",
+            "description": "Append 'blue' to README.md and write it to chosen.txt"
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  },
+  "tool_use_id": "toolu_01E78nNxWxZvmeS9wTG2UYww"
+}

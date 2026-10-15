@@ -1,0 +1,5 @@
+--- src/server.ts
++++ src/server.ts
+@@ -703,0 +704,2 @@
++    args.push("--settings", "/research/MP-E2-C5-T00/settings.json", "--mcp-config", "/research/MP-E2-C5-T00/mcp.json", "--permission-prompt-tool", "mcp__aiurhost__approve");
++

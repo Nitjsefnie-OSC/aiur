@@ -1,0 +1,33 @@
+{
+  "observed_at": 1792010030.5248332,
+  "session_id": "d38f142c-8578-456a-83ac-d1a0bceaf9be",
+  "transcript_path": "/research/MP-E2-C5-T00/profile/projects/-home-operator-code-aiur-workspaces-aiur-team-aiur-4451--aiur-runtime-tmp-e2-c5t00-ws/d38f142c-8578-456a-83ac-d1a0bceaf9be.jsonl",
+  "cwd": "/research/MP-E2-C5-T00/ws",
+  "prompt_id": "fb12a8a2-53e6-4b92-a349-95e4cbb1699d",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Should isolated-multi.md mention red or blue?",
+        "header": "Color",
+        "options": [
+          {
+            "label": "Red",
+            "description": "isolated-multi.md will mention red"
+          },
+          {
+            "label": "Blue",
+            "description": "isolated-multi.md will mention blue"
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  },
+  "tool_use_id": "toolu_01KtHgYRGbnKJcpGyNryqDLd"
+}

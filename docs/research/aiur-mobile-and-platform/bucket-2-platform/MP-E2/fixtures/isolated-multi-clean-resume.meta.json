@@ -1,0 +1,27 @@
+{
+  "args": [
+    "claude",
+    "-p",
+    "",
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
+    "--permission-mode",
+    "bypassPermissions",
+    "--resume",
+    "23f70f62-2309-405f-8a74-ff1df92fd968",
+    "--settings",
+    "/research/MP-E2-C5-T00/settings.json",
+    "--mcp-config",
+    "/research/MP-E2-C5-T00/mcp.json",
+    "--permission-prompt-tool",
+    "mcp__aiurhost__approve"
+  ],
+  "profile": "scratch",
+  "MCP_TOOL_TIMEOUT": null,
+  "start": 1792010176.7506092,
+  "end": 1792010182.462813,
+  "elapsed": 5.712204217910767,
+  "exit_code": 0
+}

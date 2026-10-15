@@ -1,0 +1,33 @@
+{
+  "observed_at": 1792009560.0319233,
+  "session_id": "57364386-acd1-461b-91c4-431725759a49",
+  "transcript_path": "/research/profile/projects/-home-operator-code-aiur-workspaces-aiur-team-aiur-4451--aiur-runtime-tmp-e2-c5t00-ws/57364386-acd1-461b-91c4-431725759a49.jsonl",
+  "cwd": "/research/MP-E2-C5-T00/ws",
+  "prompt_id": "a6532664-b4f3-4c3c-85df-61cf96ce72aa",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Should multi.md mention red or blue?",
+        "header": "Color",
+        "options": [
+          {
+            "label": "Red",
+            "description": "multi.md will mention red."
+          },
+          {
+            "label": "Blue",
+            "description": "multi.md will mention blue."
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  },
+  "tool_use_id": "toolu_011HdugPcqb4RsDiViDYSQeN"
+}

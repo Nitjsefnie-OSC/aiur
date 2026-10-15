@@ -1,0 +1,33 @@
+{
+  "observed_at": 1792009599.8796973,
+  "session_id": "51c39846-a21c-4899-9991-27c599c4d2f5",
+  "transcript_path": "/research/profile/projects/-home-operator-code-aiur-workspaces-aiur-team-aiur-4451--aiur-runtime-tmp-e2-c5t00-ws/51c39846-a21c-4899-9991-27c599c4d2f5.jsonl",
+  "cwd": "/research/MP-E2-C5-T00/ws",
+  "prompt_id": "2cce750e-577c-4671-bf07-5ffc96f1cb7b",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Should multi-pending.md mention red or blue?",
+        "header": "Color",
+        "options": [
+          {
+            "label": "Red",
+            "description": "Write red to multi-pending.md"
+          },
+          {
+            "label": "Blue",
+            "description": "Write blue to multi-pending.md"
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  },
+  "tool_use_id": "toolu_01LdWZadnXKPrqeamZ2YeubC"
+}

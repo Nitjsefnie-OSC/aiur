@@ -1,0 +1,1 @@
+Actual CLI through scratch-patched adapter: question emitted as tool_call, then turn/completed, without deferred result fields.

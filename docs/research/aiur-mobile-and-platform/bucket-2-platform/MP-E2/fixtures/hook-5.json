@@ -1,0 +1,33 @@
+{
+  "observed_at": 1792009687.9707932,
+  "session_id": "6d1c5a79-194b-4fb8-b329-65fcb46dacf9",
+  "transcript_path": "/research/profile/projects/-home-operator-code-aiur-workspaces-aiur-team-aiur-4451--aiur-runtime-tmp-e2-c5t00-ws/6d1c5a79-194b-4fb8-b329-65fcb46dacf9.jsonl",
+  "cwd": "/research/MP-E2-C5-T00/ws",
+  "prompt_id": "3b4645ce-5558-4295-b496-4b36d44c3e22",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "Should adapter.md mention red or blue?",
+        "header": "Color",
+        "options": [
+          {
+            "label": "Red",
+            "description": "adapter.md will mention red."
+          },
+          {
+            "label": "Blue",
+            "description": "adapter.md will mention blue."
+          }
+        ],
+        "multiSelect": false
+      }
+    ]
+  },
+  "tool_use_id": "toolu_01Fw8ucpNyvCxnQVrHRScUT9"
+}
