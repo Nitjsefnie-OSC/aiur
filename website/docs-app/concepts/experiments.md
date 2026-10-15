@@ -276,6 +276,24 @@ miss a wake, but cannot repeat one. A failed latch write publishes nothing and
 is retried on evaluation. Corrupt latches disable notifications and report
 `degraded` through the notifier status; the file is preserved for recovery.
 
+## The Experiment analyst
+
+The [aiur-experiment skill](https://github.com/aiur-team/aiur/tree/main/.claude/skills/aiur-experiment)
+ships into every ticket workspace and supports two modes: blind pre-registration
+(`spec`) and engine-backed analysis (`report`). Analysis tickets publish through
+`experiments preregister` or `experiments report submit`, verify persistence,
+and finish without a code PR.
+
+The analyst reviews every collected event, preserves engine numbers and can
+only downgrade labels or add `confounded`. Worked examples and a shared report
+template ship with the skill. Metric ids, units and direction come from the
+experiment's pack.
+
+Spec mode requires a baseline-only read and X4 power plan; it stops if those
+capabilities are unavailable. The current `show` detail read can expose outcomes,
+and `stats` offers no baseline-only planning or exclusion flags. Reports disclose
+unavailable sensitivity checks and mark high/noted effects `confounded`.
+
 ## Automatic experiments
 
 `experiments.auto` configures version, release and feature lines. The deploy

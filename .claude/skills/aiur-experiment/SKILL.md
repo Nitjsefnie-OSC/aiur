@@ -15,7 +15,7 @@ state to change.
 
 1. **Blind spec.** Read only the spec, metric pack, frozen baseline and sample
    counts in `spec` mode. Never read post-period results, including statistics
-   or previously generated reports. An accidentally unblinded registration is
+   or previously generated reports. Do not call an outcome-bearing `show` to check blindness. An accidentally unblinded registration is
    **post-hoc**: disclose it; never hide the read or claim blindness.
 2. **Every event in the ledger.** In `report` mode give every collected event
    a confounder row, including treatment and irrelevant events. Explain why
@@ -52,8 +52,8 @@ concrete missing contract to the Executor; declare a blocker when an owning
 ticket exists. Do not mark rejected or unverified output done.
 
 After an accepted submit, re-read the stored pre-registration or report via
-the CLI and compare it with the intended document, accounting for documented
-server-owned fields (version, timestamps, post-hoc status and interim rewrite).
+the CLI and compare it with the intended document, using the submit response or a proven baseline-only read in spec mode,
+accounting for documented server-owned fields (version, timestamps, post-hoc status and interim rewrite).
 Record the returned version and Markdown summary in the analysis workpad.
 If the analysis ticket explicitly authorizes completion without human review,
 use `aiur_set_ticket_state({"state": "done"})` and verify the resulting state.
