@@ -35,6 +35,46 @@ class RerunFailedCiGateTest(unittest.TestCase):
                 self.assertTrue(MODULE.rerun_if_failed(job))
         api.assert_called_once_with('repos/aiur-team/aiur/actions/jobs/71/rerun', 'POST')
 
+    def test_current_head_run_and_gate_are_selected_before_rerun(self):
+        runs_response = {
+            'workflow_runs': [
+                {'id': 1, 'name': 'ci', 'head_sha': 'old-head', 'run_number': 90},
+                {'id': 2, 'name': 'ci', 'head_sha': 'current-head', 'run_number': 91},
+                {'id': 3, 'name': 'pr body', 'head_sha': 'current-head', 'run_number': 92},
+                {'id': 4, 'name': 'ci', 'head_sha': 'current-head', 'run_number': 90},
+            ],
+        }
+        jobs_response = {
+            'jobs': [
+                {'id': 10, 'name': 'ci gate', 'head_sha': 'old-head',
+                 'status': 'completed', 'conclusion': 'failure'},
+                {'id': 20, 'name': 'ci gate', 'head_sha': 'current-head',
+                 'status': 'completed', 'conclusion': 'failure'},
+                {'id': 30, 'name': 'lint', 'head_sha': 'current-head',
+                 'status': 'completed', 'conclusion': 'failure'},
+                {'id': 21, 'name': 'ci gate', 'head_sha': 'current-head',
+                 'status': 'completed', 'conclusion': 'failure'},
+            ],
+        }
+        with patch.dict(os.environ, {
+            'GITHUB_REPOSITORY': 'aiur-team/aiur', 'PR_HEAD': 'current-head',
+        }):
+            with patch.object(
+                MODULE, 'api', side_effect=[runs_response, jobs_response, None],
+            ) as api:
+                selected_run = MODULE.current_ci_run()
+                selected_job = MODULE.gate_job(selected_run)
+                self.assertTrue(MODULE.rerun_if_failed(selected_job))
+
+        self.assertEqual(selected_run['id'], 2)
+        self.assertEqual(selected_job['id'], 21)
+        self.assertEqual(api.call_args_list[0].args,
+                         ('repos/aiur-team/aiur/actions/runs?head_sha=current-head&event=pull_request&per_page=100',))
+        self.assertEqual(api.call_args_list[1].args,
+                         ('repos/aiur-team/aiur/actions/runs/2/jobs?per_page=100',))
+        self.assertEqual(api.call_args_list[2].args,
+                         ('repos/aiur-team/aiur/actions/jobs/21/rerun', 'POST'))
+
     def test_successful_or_pending_gate_is_left_alone(self):
         for status, conclusion in [
             ('completed', 'success'), ('completed', 'cancelled'),
