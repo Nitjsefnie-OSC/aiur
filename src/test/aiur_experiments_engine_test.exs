@@ -45,6 +45,17 @@ defmodule AiurExperimentsEngineTest do
     assert error =~ "use --file"
   end
 
+  test "report submit and stats dispatch use the same safe RPC path" do
+    payload = ~s|{"summary":"significant at n=40"}|
+    {output, 0} = run_engine(["experiments", "report", "submit", "latency", "--file", "-"], payload)
+    assert output =~ "verb: :report_submit"
+    assert output =~ Base.encode64("--contract-json=" <> payload)
+    {output, 0} = run_engine(["experiments", "stats", "latency", "--json"])
+    assert output =~ "verb: :stats"
+    assert {error, 64} = run_engine(["experiments", "report", "latency"])
+    assert error =~ "report expects submit"
+  end
+
   test "freeze transports the window, revision reason and JSON option through RPC" do
     args = ["baseline", "--window", "before", "--reason", ~s|$(touch unwanted); "reason"|, "--json"]
     {output, 0} = run_engine(["experiments", "freeze" | args])

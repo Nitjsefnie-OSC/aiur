@@ -13,7 +13,9 @@ defmodule Aiur.Experiments.Store do
     Persistence,
     Reader,
     Registration,
+    ReportAnalysis,
     ReportRecords,
+    ReportSubmission,
     Schema,
     Snapshot,
     SnapshotPersistence,
@@ -79,6 +81,14 @@ defmodule Aiur.Experiments.Store do
   end
 
   def handle_call({:window_spec, id}, _from, state), do: {:reply, Reader.spec(id), state}
+
+  def handle_call({:stats, id}, from, state) do
+    Evaluation.start(state, from, fn -> ReportAnalysis.prepare(id, state.catalog_context) end, fn result -> commit_result(result, &ReportAnalysis.commit/1) end)
+  end
+
+  def handle_call({:put_report, id, report}, from, state) do
+    Evaluation.start(state, from, fn -> ReportSubmission.prepare(id, report, state.catalog_context) end, fn result -> commit_result(result, &ReportSubmission.commit/1) end)
+  end
 
   def handle_call({:put_preregistration, id, attrs}, _from, state) do
     {:reply, ReportRecords.preregister(id, attrs, DateTime.utc_now()), state}

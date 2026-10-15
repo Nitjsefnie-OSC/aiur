@@ -2,7 +2,7 @@ defmodule Aiur.Experiments.ReportContract do
   @moduledoc "Pure report validation against server-owned frozen evidence."
   alias Aiur.Experiments.{ContractSchema, Evidence}
 
-  @computed ~w(n median iqr effect ci95 p p_adjusted family power_at_mde mde_at_n n_needed_per_cohort)
+  @computed ~w(unit direction n median iqr effect ci95 p p_adjusted family power_at_mde mde_at_n n_needed_per_cohort)
   @labels ~w(not-enough-data underpowered inconclusive no-effect-detected significant)
 
   @spec validate(map(), map()) :: {:ok, map(), [String.t()]} | {:error, [map()]}
@@ -45,6 +45,7 @@ defmodule Aiur.Experiments.ReportContract do
       rank(row["label"]) > rank(engine) -> error(path, "label upgrades are forbidden")
       rank(row["label"]) < rank(engine) and String.trim(row["label_reason"]) == "" -> error(path, "downgrade needs label_reason")
       primary? != (row["role"] == "primary") -> error(path, "primary role must match preregistration")
+      row["role"] != context.engine_results[row["metric"]]["role"] -> error(path, "metric role must match preregistration")
       Map.take(row, @computed) != Map.take(context.engine_results[row["metric"]], @computed) -> error(path, "numbers must match recomputed engine")
       true -> []
     end

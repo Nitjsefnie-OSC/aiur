@@ -77,6 +77,29 @@ defmodule Aiur.Experiments.ReportContractTest do
     end
   end
 
+  test "confounder time can be an interval", %{report: report, context: context} do
+    report = put_in(report, ["confounders", Access.at(0), "at"], ["2026-10-10T00:00:00Z", "2026-10-10T01:00:00Z"])
+    assert {:ok, ^report, []} = ReportContract.validate(report, context)
+  end
+
+  test "secondary and guardrail roles cannot be changed by an author", %{report: report, context: context} do
+    for {registered_role, forged_role, field} <- [{"secondary", "guardrail", "secondary_metrics"}, {"guardrail", "exploratory", "guardrail_metrics"}] do
+      registration = Map.put(context.preregistration, field, [%{"id" => "delivery/other", "expected" => "decrease"}])
+      engine_row = hd(report["results"]) |> Map.put("metric", "delivery/other") |> Map.put("role", registered_role)
+      forged = Map.put(engine_row, "role", forged_role)
+
+      context = %{
+        context
+        | preregistration: registration,
+          engine_results: Map.put(context.engine_results, "delivery/other", engine_row),
+          engine_labels: Map.put(context.engine_labels, "delivery/other", "inconclusive")
+      }
+
+      report = report |> put_in(["preregistration", "record"], registration) |> put_in(["header", "preregistration_hash"], Evidence.hash(registration)) |> Map.update!("results", &(&1 ++ [forged]))
+      assert {:error, [%{message: "metric role must match preregistration"}]} = ReportContract.validate(report, context)
+    end
+  end
+
   test "downgrades with reasons and numeric verdict sentences are accepted", %{report: report, context: context} do
     report =
       report |> put_in(["results", Access.at(0), "label"], "underpowered") |> put_in(["results", Access.at(0), "label_reason"], "Power 0.65 below target 0.8") |> Map.put("labels", ["underpowered"])

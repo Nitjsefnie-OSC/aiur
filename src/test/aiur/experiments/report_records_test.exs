@@ -82,6 +82,15 @@ defmodule Aiur.Experiments.ReportRecordsTest do
     end
   end
 
+  test "future spec versions refuse report mutations with typed errors", %{id: id, registration: registration} do
+    path = Paths.file(id, "spec.json")
+    bytes = path |> File.read!() |> Jason.decode!() |> Map.put("schema_version", 2) |> Jason.encode!()
+    File.write!(path, bytes)
+    assert {:error, :store_read_only} = Experiments.put_preregistration(id, registration)
+    assert {:error, :store_read_only} = Experiments.stats(id)
+    assert File.read!(path) == bytes
+  end
+
   test "CLI validates imported registrations and prints actionable errors", %{id: id, registration: registration} do
     assert capture_io(fn -> assert ExperimentsCLI.run(verb: :preregister, argv: [id, "--contract-json", Jason.encode!(registration)]) == 0 end) == "pre-registration stored\n"
     error = capture_io(:stderr, fn -> assert ExperimentsCLI.run(verb: :preregister, argv: [id, "--contract-json", Jason.encode!(registration)]) == 1 end)

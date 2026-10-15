@@ -37,6 +37,10 @@ defmodule Aiur.Experiments.ReportRecords do
 
   @spec writable(String.t()) :: :ok | {:error, term()}
   def writable(id) do
-    with {:ok, _spec, false} <- Reader.spec(id), do: Persistence.writable(id)
+    case Reader.spec(id) do
+      {:ok, _spec, false} -> Persistence.writable(id)
+      {:ok, _spec, true} -> {:error, :store_read_only}
+      error -> error
+    end
   end
 end

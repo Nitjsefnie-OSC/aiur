@@ -1,7 +1,7 @@
 defmodule Aiur.Experiments do
   @moduledoc "Versioned experiment specs and their durable audit trail."
 
-  alias Aiur.Experiments.{Arms, Capture, Catalog, Checkpointer, Evaluator, Journal, Paths, Reader, ReportReads, Schema, Store, WindowEvents}
+  alias Aiur.Experiments.{Arms, Capture, Catalog, Checkpointer, Evaluator, Journal, Paths, Reader, ReportMarkdown, ReportReads, Schema, Store, WindowEvents}
 
   @spec metric_catalog() :: map()
   def metric_catalog, do: Catalog.load()
@@ -139,6 +139,15 @@ defmodule Aiur.Experiments do
       {:error, :not_found}
     end
   end
+
+  @spec stats(String.t()) :: {:ok, map()} | {:error, term()}
+  def stats(id), do: mutate({:stats, id})
+
+  @spec put_report(String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def put_report(id, report), do: mutate({:put_report, id, report})
+
+  @spec report_markdown(map()) :: String.t()
+  def report_markdown(report), do: ReportMarkdown.render(report)
 
   @spec put_preregistration(String.t(), map()) :: {:ok, map()} | {:error, term()}
   def put_preregistration(id, attrs), do: mutate({:put_preregistration, id, attrs})

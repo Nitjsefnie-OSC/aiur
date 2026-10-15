@@ -58,7 +58,7 @@ Censored durations are temporarily excluded with `censoring_ignored` and per-gro
 
 ## Correction and labels
 
-Pre-registered primaries use Holm correction. Other metrics use Benjamini–Hochberg and carry `exploratory`. An `added_at` later than the spec's `frozen_at` (or X2 `registered_at`) makes a listed primary exploratory, with a warning. With no primaries the overall result says “no pre-registered primary”.
+Pre-registered primaries use Holm correction at `alpha`. Other metrics use Benjamini–Hochberg at `fdr_q` (defaults to `alpha`) and carry `exploratory`. An `added_at` later than the spec's `frozen_at` (or X2 `registered_at`) makes a listed primary exploratory, with a warning. With no primaries the overall result says “no pre-registered primary”.
 
 Guarded hypotheses remain in the correction family as p=1 but report no test.
 
