@@ -59,16 +59,22 @@ defmodule Aiur.DispatcherBlockedByCostSupport do
       # Restore only the policy bit and restart polling if this fixture froze
       # an active poller. The old timer was canceled, so simply unfreezing
       # would leave the shared Orchestrator idle indefinitely.
-      :sys.replace_state(orchestrator, fn state ->
-        if original_state.poll_frozen do
-          %{state | poll_frozen: true}
-        else
-          %{state | poll_frozen: false} |> Lifecycle.schedule_tick(0)
-        end
-      end)
+      restore_orchestrator_polling(orchestrator, original_state.poll_frozen)
     end)
 
     :ok
+  end
+
+  defp restore_orchestrator_polling(orchestrator, true) do
+    :sys.replace_state(orchestrator, &%{&1 | poll_frozen: true})
+  end
+
+  defp restore_orchestrator_polling(orchestrator, false) do
+    :sys.replace_state(orchestrator, fn state ->
+      state
+      |> Map.put(:poll_frozen, false)
+      |> Lifecycle.schedule_tick(0)
+    end)
   end
 
   @doc false
