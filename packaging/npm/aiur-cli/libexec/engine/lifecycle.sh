@@ -1,5 +1,4 @@
 # tmux and tmp sweeps, stop and restart. Sourced by aiur-engine.sh.
-
 sweep_dead_tmux_sockets() {
   local tmux_bin
   tmux_bin="$(command -v tmux || true)"
@@ -211,6 +210,7 @@ cmd_stop() {
     echo "aiur: no running aiur node at ${AIUR_RELEASE_NODE}; nothing stopped" >&2
     warn_other_aiur_daemons "$AIUR_RELEASE_NODE"
     print_global_config_control_hint
+    cleanup_test_private_state; rm -f "$(aiur_instance_record_path)" 2>/dev/null || true
     AIUR_STOP_FOUND_NOTHING=1
     return 1
   fi
@@ -262,7 +262,7 @@ cmd_stop() {
   reap_stale_manual_smoke 0
   sweep_dead_tmux_sockets
   sweep_stale_tmp_artifacts
-  rm -f "$(aiur_instance_record_path)" 2>/dev/null || true
+  rm -f "$(aiur_instance_record_path)" 2>/dev/null || true; cleanup_test_private_state
   warn_other_aiur_daemons "$AIUR_RELEASE_NODE"
 }
 

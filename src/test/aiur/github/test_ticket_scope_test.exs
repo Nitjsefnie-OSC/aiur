@@ -1,14 +1,20 @@
 defmodule Aiur.GitHub.TestTicketScopeTest do
   use Aiur.TestSupport
 
-  alias Aiur.GitHub.{Budget, Config, Transport}
+  alias Aiur.AgentGitHubGuard.AgentToken
+  alias Aiur.Config.Paths, as: ConfigPaths
+  alias Aiur.Executor.StatePaths
+  alias Aiur.GitHub.{Budget, Config, TestTicketScopeProjectIdentity, TestTicketScopeTracker, Transport}
+  alias Aiur.Orchestrator.TicketTransition
 
   setup do
     previous_scope = System.get_env("AIUR_DEV_TEST_TICKET_IDS")
     previous_budget = System.get_env("AIUR_GITHUB_BUDGET_DIR")
     previous_app_budget = Application.get_env(:aiur, :github_budget_dir)
     previous_req_options = Application.get_env(:aiur, :github_transport_test_options)
+    sandbox_budget = Path.join(System.tmp_dir!(), "aiur-test-budget-test-#{System.unique_integer([:positive])}")
     System.put_env("AIUR_DEV_TEST_TICKET_IDS", "99,100,101")
+    System.put_env("AIUR_GITHUB_BUDGET_DIR", sandbox_budget)
     Application.put_env(:aiur, :github_transport_test_options, plug: {Req.Test, __MODULE__})
 
     on_exit(fn ->
@@ -16,6 +22,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
       restore_env("AIUR_GITHUB_BUDGET_DIR", previous_budget)
       restore_application_env(:github_budget_dir, previous_app_budget)
       restore_application_env(:github_transport_test_options, previous_req_options)
+      Aiur.TestCleanup.rm_rf!(sandbox_budget)
     end)
 
     :ok
@@ -69,6 +76,35 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
              })
   end
 
+  test "allows GraphQL reads but blocks GraphQL mutations in the sandbox" do
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      send(test_pid, {:graphql_request_reached_http, conn.body_params["query"]})
+      Plug.Conn.resp(conn, 200, "{}")
+    end)
+
+    assert {:ok, %{status: 200}} =
+             Transport.default_request_fun(%{
+               method: :post,
+               url: "https://api.github.com/graphql",
+               token: "token",
+               body: %{"query" => "query Ticket { repository { issue(number: 99) { id } } }"}
+             })
+
+    assert_receive {:graphql_request_reached_http, "query Ticket { repository { issue(number: 99) { id } } }"}, 1_000
+
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Transport.default_request_fun(%{
+               method: :post,
+               url: "https://api.github.com/graphql",
+               token: "token",
+               body: %{"query" => "query Read { viewer { login } } mutation ChangeTicket { addLabelsToLabelable(input: {}) { clientMutationId } }"}
+             })
+
+    refute_receive {:graphql_request_reached_http, _query}, 50
+  end
+
   test "rejects a pinned issue number on another repository or host" do
     other_repository = "someone-else/another-repo"
 
@@ -81,6 +117,9 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
       assert {:error, {:outside_test_ticket_scope, "unknown"}} =
                Aiur.TestTicketScope.with_write_scope(%{method: :patch, url: url}, fn -> :sent end)
     end
+
+    assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+             Aiur.TestTicketScope.allow_write?(%{method: :patch, url: nil})
   end
 
   test "LandingWatch rework cannot write outside the sandbox tickets" do
@@ -88,8 +127,9 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     server = {:global, {__MODULE__, make_ref()}}
 
     Req.Test.stub(__MODULE__, fn conn ->
-      send(test_pid, :out_of_scope_tracker_write_reached_http)
-      Plug.Conn.resp(conn, 200, "{}")
+      if conn.method in ["POST", "PATCH", "PUT", "DELETE"], do: send(test_pid, :out_of_scope_tracker_write_reached_http)
+
+      Plug.Conn.resp(conn, 200, Jason.encode!(%{"state" => "open", "labels" => []}))
     end)
 
     observation = %{number: 12, head: "sha", rest: %{"head" => %{"ref" => "aiur/3379-test"}}}
@@ -107,12 +147,11 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
                      transition_fun: fn "3379", "rework", opts ->
                        assert opts[:writer] == :landing_watch
 
-                       Transport.default_request_fun(%{
-                         method: :patch,
-                         url: tracker_issue_url(3379),
-                         token: "token",
-                         body: %{"labels" => ["agent:rework"]}
-                       })
+                       TicketTransition.write_state(
+                         "3379",
+                         "rework",
+                         Keyword.put(opts, :tracker, TestTicketScopeTracker)
+                       )
                      end,
                      alert_emitter: fn _topic, _opts -> :ok end
                    )
@@ -150,6 +189,28 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
              })
 
     assert_receive :sandbox_write_reached_http, 1000
+
+    assert {:ok, %{status: 200}} =
+             Transport.default_request_fun(%{
+               method: :post,
+               url: "https://api.github.com/repos/#{tracker_repository()}/issues/99/comments",
+               token: "token",
+               body: %{"body" => "test comment"}
+             })
+
+    assert_receive :sandbox_write_reached_http, 1_000
+  end
+
+  test "refuses dependency writes whose body can target another issue" do
+    assert {:error, {:outside_test_ticket_scope, "99"}} =
+             Aiur.TestTicketScope.with_write_scope(
+               %{
+                 method: :post,
+                 url: "https://api.github.com/repos/#{tracker_repository()}/issues/99/dependencies/blocked_by",
+                 body: %{"issue_id" => 123_456_789}
+               },
+               fn -> :sent end
+             )
   end
 
   test "routes scoped budget state outside the live budget" do
@@ -163,10 +224,48 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     refute Budget.state_dir() == live_budget
 
     System.delete_env("AIUR_GITHUB_BUDGET_DIR")
-    assert String.starts_with?(Budget.state_dir(), System.tmp_dir!())
-    refute Budget.state_dir() == live_budget
+    assert_raise ArgumentError, ~r/per-launch sandbox budget directory/, &Budget.state_dir/0
 
     restore_env("AIUR_GITHUB_BUDGET_DIR", previous_budget)
+  end
+
+  test "scoped budget requires the launch-provided unique directory" do
+    previous_budget = System.get_env("AIUR_GITHUB_BUDGET_DIR")
+    System.delete_env("AIUR_GITHUB_BUDGET_DIR")
+
+    assert_raise ArgumentError, ~r/per-launch sandbox budget directory/, &Budget.state_dir/0
+
+    restore_env("AIUR_GITHUB_BUDGET_DIR", previous_budget)
+  end
+
+  test "scoped Executor wakes and agent credentials use private sandbox paths" do
+    previous_state = System.get_env("AIUR_DEV_TEST_STATE_DIR")
+    previous_instance = System.get_env("AIUR_INSTANCE_KEY")
+    previous_decision_dir = Application.get_env(:aiur, :decision_state_dir)
+    previous_executor_state_dir = Application.get_env(:aiur, :executor_state_dir)
+    previous_identity_source = Application.get_env(:aiur, :project_identity_source)
+    state_dir = Path.join(System.tmp_dir!(), "aiur-test-state-test-#{System.unique_integer([:positive])}")
+    System.put_env("AIUR_DEV_TEST_STATE_DIR", state_dir)
+    System.put_env("AIUR_INSTANCE_KEY", "test-instance")
+    Application.put_env(:aiur, :decision_state_dir, Path.join(System.tmp_dir!(), "shared-live-decision-state"))
+    Application.put_env(:aiur, :executor_state_dir, Path.join(System.tmp_dir!(), "shared-live-executor-state"))
+    Application.put_env(:aiur, :project_identity_source, TestTicketScopeProjectIdentity)
+
+    assert StatePaths.dir() == Path.join(state_dir, "executor")
+    assert Path.dirname(StatePaths.wakes_path()) == Path.join(state_dir, "executor")
+    assert String.ends_with?(StatePaths.wakes_path(), ".executor.wakes.ndjson")
+    assert AgentToken.path() == Path.join(Budget.state_dir(), "agent-token")
+    assert {:ok, Path.join([state_dir, "test-instance", "aiur"])} == ConfigPaths.decision_state_dir()
+
+    System.delete_env("AIUR_DEV_TEST_STATE_DIR")
+    assert_raise ArgumentError, ~r/per-launch sandbox state directory/, &StatePaths.dir/0
+    assert {:error, :missing_test_state_dir} == ConfigPaths.decision_state_dir()
+
+    restore_env("AIUR_DEV_TEST_STATE_DIR", previous_state)
+    restore_env("AIUR_INSTANCE_KEY", previous_instance)
+    restore_application_env(:decision_state_dir, previous_decision_dir)
+    restore_application_env(:executor_state_dir, previous_executor_state_dir)
+    restore_application_env(:project_identity_source, previous_identity_source)
   end
 
   test "ordinary runs keep write access" do
@@ -204,6 +303,33 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
       true ->
         Process.sleep(10)
         landing_poll_finished?(server, attempts - 1)
+    end
+  end
+end
+
+defmodule Aiur.GitHub.TestTicketScopeProjectIdentity do
+  @moduledoc false
+
+  def project_identity, do: "aiur-team/aiur"
+end
+
+defmodule Aiur.GitHub.TestTicketScopeTracker do
+  @moduledoc false
+
+  alias Aiur.GitHub.{Config, Transport}
+
+  def update_issue_state(issue_id, state_name, _opts) do
+    request = %{
+      method: :patch,
+      url: "https://api.github.com/repos/#{Config.repo()}/issues/#{issue_id}",
+      token: "test-token",
+      body: %{"state" => state_name}
+    }
+
+    Transport.default_request_fun(request)
+    |> case do
+      {:ok, %{status: status}} when status in 200..299 -> :ok
+      other -> other
     end
   end
 end

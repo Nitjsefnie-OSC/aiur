@@ -13,15 +13,13 @@ defmodule Aiur.GitHub.Budget.StateDir do
     end
   end
 
-  defp sandbox_budget_dir(scope) do
+  defp sandbox_budget_dir(_scope) do
     case System.get_env("AIUR_GITHUB_BUDGET_DIR") do
       path when is_binary(path) and path != "" ->
         Path.expand(path)
 
       _ ->
-        user = System.get_env("USER") || "user"
-        scope_key = :crypto.hash(:sha256, scope) |> Base.encode16(case: :lower)
-        Path.join(System.tmp_dir!(), "aiur-#{user}-test-#{scope_key}/github-budget")
+        raise ArgumentError, "AIUR_GITHUB_BUDGET_DIR must name a per-launch sandbox budget directory"
     end
   end
 

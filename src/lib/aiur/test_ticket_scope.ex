@@ -59,17 +59,28 @@ defmodule Aiur.TestTicketScope do
     end
   end
 
-  def allow_write?(%{method: method, url: url}) when method in [:post, :patch, :put, :delete] and is_binary(url),
+  def allow_write?(%{method: method}) when method in [:post, :patch, :put, :delete],
     do: {:error, {:outside_test_ticket_scope, "unknown"}}
 
   def allow_write?(_request), do: :ok
 
-  defp allow_scoped_write(%{method: :post, url: url}, _resource) do
-    if installation_token_request?(url), do: :ok, else: deny_write("unknown")
-  end
+  defp allow_scoped_write(%{method: method, url: url} = request, resource) do
+    cond do
+      method == :post and installation_token_request?(url) ->
+        :ok
 
-  defp allow_scoped_write(_request, {:ok, :issue, number}) do
-    if allowed_identifier?(number), do: :ok, else: deny_write(number)
+      method == :post and scoped_graphql_read?(request) ->
+        :ok
+
+      dependency_mutation?(request) ->
+        deny_write(resource_identifier(resource))
+
+      match?({:ok, :issue, _number}, resource) and allowed_identifier?(resource_identifier(resource)) ->
+        :ok
+
+      true ->
+        deny_write(resource_identifier(resource))
+    end
   end
 
   defp allow_scoped_write(_request, _resource), do: deny_write("unknown")
@@ -79,6 +90,41 @@ defmodule Aiur.TestTicketScope do
   defp installation_token_request?(url) do
     Regex.match?(~r{\Ahttps://api\.github\.com/app/installations/[1-9][0-9]*/access_tokens\z}, url)
   end
+
+  # GitHub sends GraphQL reads and mutations as POSTs. Reads do not change
+  # tracker state; mutations are denied because their node IDs do not
+  # reliably identify a pinned issue or PR.
+  defp scoped_graphql_read?(%{url: url, body: %{"query" => document}}) when is_binary(document) do
+    with %URI{} = uri <- URI.parse(url),
+         true <- uri.scheme == "https" and uri.host == "api.github.com" and is_nil(uri.userinfo),
+         true <- uri.port in [nil, 443] and uri.path == "/graphql",
+         true <- declared_read_operation?(document) do
+      true
+    else
+      _ -> false
+    end
+  end
+
+  defp scoped_graphql_read?(_request), do: false
+
+  defp dependency_mutation?(%{method: method, url: url}) when method in [:post, :delete] and is_binary(url) do
+    case URI.parse(url) do
+      %URI{path: path} when is_binary(path) -> Regex.match?(~r{/issues/[1-9][0-9]*/dependencies/blocked_by(?:/.*)?\z}, path)
+      _ -> false
+    end
+  end
+
+  defp dependency_mutation?(_request), do: false
+
+  defp declared_read_operation?(document) do
+    leading_trivia_removed = Regex.replace(~r/\A(?:\s|\#[^\n]*(?:\n|\z))*/, document, "")
+
+    (Regex.match?(~r/\Aquery\b/, leading_trivia_removed) or String.starts_with?(leading_trivia_removed, "{")) and
+      not Regex.match?(~r/\bmutation\b/, document)
+  end
+
+  defp resource_identifier({:ok, :issue, number}), do: number
+  defp resource_identifier(_resource), do: "unknown"
 
   defp resource_number(url) do
     with %URI{} = uri <- URI.parse(url),

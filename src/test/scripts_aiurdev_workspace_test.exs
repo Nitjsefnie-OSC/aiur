@@ -257,8 +257,17 @@ defmodule ScriptsAiurdevWorkspaceTest do
       if timer_pid =~ ~r/\A[0-9]+\z/, do: System.cmd("kill", ["-KILL", "--", "-#{timer_pid}"], stderr_to_stdout: true)
     end)
 
+    budget_dir = Path.join(root, "aiur-test-budget.test")
+    state_dir = Path.join(root, "aiur-test-state.test")
+
+    for path <- [budget_dir, state_dir] do
+      File.mkdir_p!(path)
+      File.write!(Path.join(path, ".aiur-test-private"), "99,100,101\n")
+    end
+
     engine = Path.join([root, "packaging", "npm", "aiur-cli", "libexec", "aiur-engine.sh"])
     lifecycle = Path.join([Path.dirname(engine), "engine", "lifecycle.sh"])
+    test_private_state = Path.join([Path.dirname(engine), "engine", "test-private-state.sh"])
     control = Path.join([Path.dirname(engine), "engine", "control.sh"])
     File.mkdir_p!(Path.dirname(lifecycle))
     record = Path.join(root, "sandbox.instance")
@@ -269,6 +278,8 @@ defmodule ScriptsAiurdevWorkspaceTest do
     AIUR_RECORD_SOCKET=aiur-test
     AIUR_RECORD_PROJECT_ROOT=#{root}
     AIUR_RECORD_TEST_TICKET_IDS=99,100,101
+    AIUR_RECORD_GITHUB_BUDGET_DIR=#{budget_dir}
+    AIUR_RECORD_TEST_STATE_DIR=#{state_dir}
     """)
 
     source =
@@ -287,12 +298,23 @@ defmodule ScriptsAiurdevWorkspaceTest do
         )
       )
 
+    private_state_source =
+      File.read!(
+        Path.expand(
+          "../packaging/npm/aiur-cli/libexec/engine/test-private-state.sh",
+          Path.dirname(AiurdevCase.script())
+        )
+      )
+
     File.write!(lifecycle, source)
+    File.write!(test_private_state, private_state_source)
     File.write!(control, control_source)
 
     File.write!(engine, ~s"""
     #!/usr/bin/env bash
+    engine_dir=#{Path.dirname(lifecycle)}
     source #{control}
+    source #{test_private_state}
     source #{lifecycle}
     resolve_release() { :; }
     aiur_resolve_identity() { AIUR_PROJECT_ROOT=#{root}; AIUR_RELEASE_NODE=aiur-test; AIUR_PROJECT_ROOT_SOURCE=cwd; }
@@ -307,6 +329,8 @@ defmodule ScriptsAiurdevWorkspaceTest do
 
     refute File.exists?(timer)
     assert System.cmd("kill", ["-0", timer_pid], stderr_to_stdout: true) |> elem(1) == 1
+    refute File.exists?(budget_dir)
+    refute File.exists?(state_dir)
   end
 
   test "test3 timer launcher waits for delayed PID registration" do

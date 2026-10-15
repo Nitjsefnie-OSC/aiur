@@ -69,6 +69,8 @@ load_aiur_instance_record() {
   AIUR_RECORD_PROJECT_ROOT=""
   AIUR_RECORD_PROJECT_ROOT_SOURCE=""
   AIUR_RECORD_TEST_TICKET_IDS=""
+  AIUR_RECORD_TEST_STATE_DIR=""
+  AIUR_RECORD_GITHUB_BUDGET_DIR=""
   [ -r "$file" ] || return 1
   # Records are written by this engine as KEY=%q lines under the user's state dir.
   # shellcheck disable=SC1090
