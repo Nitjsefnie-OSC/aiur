@@ -123,8 +123,8 @@ defmodule Aiur.Claude.Repl.Reaper do
 
   def sweep_own_panes(tmux, opts) do
     self_pid = beam_os_pid()
-    protected = MapSet.new(Keyword.get(opts, :protected_refs, []))
-    sweep_repl_panes(tmux, fn owner_pid -> owner_pid == self_pid end, protected)
+    protected_refs = Keyword.get(opts, :protected_refs, [])
+    sweep_repl_panes(tmux, fn owner_pid -> owner_pid == self_pid end, protected_refs)
   end
 
   @doc "Generate the default REPL window name embedding this BEAM's os pid."
@@ -147,7 +147,10 @@ defmodule Aiur.Claude.Repl.Reaper do
     end
   end
 
-  defp sweep_repl_panes(tmux, owner_match?, protected \\ MapSet.new()) do
+  @spec sweep_repl_panes(Socket.server(), (integer() -> boolean()), [tuple()]) :: :ok
+  defp sweep_repl_panes(tmux, owner_match?, protected_refs \\ []) do
+    protected = MapSet.new(protected_refs)
+
     case Tmux.list_windows(tmux) do
       {:ok, windows} ->
         windows
