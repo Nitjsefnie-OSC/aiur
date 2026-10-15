@@ -188,7 +188,12 @@ defmodule Aiur.AppServer.RelayPort do
   defp connect_socket(_path, 0), do: {:error, :relay_socket_missing}
 
   defp connect_socket(path, attempts) do
-    case :gen_tcp.connect({:local, String.to_charlist(socket_address(path))}, 0, [:binary, packet: :line, packet_size: 134_217_728, active: false], 1_000) do
+    address = socket_address(path)
+
+    result =
+      if byte_size(address) > 100, do: {:error, :enoent}, else: :gen_tcp.connect({:local, String.to_charlist(address)}, 0, [:binary, packet: :line, packet_size: 134_217_728, active: false], 1_000)
+
+    case result do
       {:error, reason} when reason in [:enoent, :enametoolong] ->
         Process.sleep(20)
         connect_socket(path, attempts - 1)
