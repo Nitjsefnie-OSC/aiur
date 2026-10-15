@@ -53,7 +53,21 @@ real_proc_exclude = if File.dir?("/proc"), do: [], else: [:real_proc]
 # check against the live provider — never a gate, because a gate that needs the
 # internet and someone's API key fails for reasons that have nothing to do with
 # the change under test. Run one with `mix test --only external`.
-ExUnit.start(exclude: [:external, :perf_regression, :quarantine] ++ real_proc_exclude)
+quarantine_path = Path.join(__DIR__, "quarantine.txt")
+
+quarantine_entries =
+  case Aiur.TestQuarantine.read(quarantine_path) do
+    {:ok, entries} -> entries
+    {:error, reason} -> raise "invalid test quarantine list #{quarantine_path}: #{inspect(reason)}"
+  end
+
+quarantine_filters = Aiur.TestQuarantine.filters(quarantine_entries)
+
+if System.get_env("AIUR_RUN_QUARANTINED") == "1" do
+  ExUnit.start(exclude: [:external, :perf_regression, :quarantine] ++ real_proc_exclude)
+else
+  ExUnit.start(exclude: [:external, :perf_regression, :quarantine] ++ real_proc_exclude ++ quarantine_filters)
+end
 
 Code.require_file("support/test_tmp.exs", __DIR__)
 

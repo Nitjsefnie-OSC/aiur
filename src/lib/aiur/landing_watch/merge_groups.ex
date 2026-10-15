@@ -2,10 +2,11 @@ defmodule Aiur.LandingWatch.MergeGroups do
   @moduledoc "Cancels active merge-group runs that no longer belong to the live queue."
 
   alias Aiur.Config.TrackerSettings
-  alias Aiur.GitHub.{CIRecovery, Errors, FailureEvidence, Transport}
+  alias Aiur.GitHub.{CIRecovery, Errors, FailureEvidence, PullRequests, Transport}
   alias Aiur.LandingWatch
-  alias Aiur.LandingWatch.{Attribution, FlakeRecorder, Journal, Observer}
+  alias Aiur.LandingWatch.{Attribution, FlakeRecorder, Journal, Observer, QuarantinePR}
   alias Aiur.PrMerge.Queue
+  alias Aiur.TestQuarantine.Detector
 
   @page_limit 5
 
@@ -165,17 +166,112 @@ defmodule Aiur.LandingWatch.MergeGroups do
 
   defp record_if_flaky(failure, :ok, run, runs, prs, observations, opts) do
     passed = passed_prs(failure, run, runs, prs, opts)
-    record_and_requeue(failure, run, passed, observations, opts)
+
+    with {:ok, candidate} <- detect_repeated_failure(failure, run, prs, opts) do
+      record_and_requeue(failure, run, passed, observations, candidate, opts)
+    end
   end
 
-  defp record_and_requeue(_failure, _run, [], _observations, _opts), do: :ok
+  defp record_and_requeue(_failure, _run, [], _observations, nil, _opts), do: :ok
 
-  defp record_and_requeue(failure, run, passed, observations, opts) do
-    case Keyword.get(opts, :flake_recorder, &FlakeRecorder.record/4).(failure, run, passed, opts) do
+  defp record_and_requeue(failure, run, passed, observations, candidate, opts) do
+    recorder_opts = quarantine_callback(candidate, opts)
+
+    case Keyword.get(opts, :flake_recorder, &FlakeRecorder.record/4).(failure, run, passed, recorder_opts) do
       :ok -> reenqueue_prs(passed, observations, opts)
       {:error, _} = error -> error
     end
   end
+
+  defp quarantine_callback(nil, opts), do: opts
+
+  defp quarantine_callback(candidate, opts) do
+    callback = fn ticket ->
+      open_quarantine_pr(candidate, ticket, opts)
+    end
+
+    Keyword.put(opts, :issue_recorded_fun, callback)
+  end
+
+  defp open_quarantine_pr(candidate, ticket, opts) do
+    claim = "quarantine-pr :: " <> candidate.identity
+
+    case Journal.claim_flake(claim, opts) do
+      {:ok, :already_claimed} -> :ok
+      {:ok, :new} -> publish_quarantine_pr(candidate, ticket, claim, opts)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp publish_quarantine_pr(candidate, ticket, claim, opts) do
+    result = Keyword.get(opts, :quarantine_pr_fun, &QuarantinePR.open/3).(candidate, ticket, opts)
+    if match?({:error, _}, result), do: Journal.release_flake(claim, opts) |> normalize_release(result), else: :ok
+  end
+
+  defp normalize_release(:ok, result), do: result
+  defp normalize_release({:error, reason}, _result), do: {:error, {:quarantine_pr_claim_release_failed, reason}}
+
+  defp detect_repeated_failure(%{path: path} = failure, run, prs, opts) when is_binary(path) do
+    with {:ok, observed_at} <- run_time(run),
+         {:ok, _} <- record_run_observations(failure, run, prs, path, observed_at, opts),
+         {:ok, rows} <- Journal.failure_observations(opts) do
+      identity = "#{failure.module} :: #{failure.name}"
+      rows = Enum.map(rows, &normalize_observation/1)
+
+      Detector.repeated(rows, System.system_time(:millisecond), fn _pr -> {:ok, []} end)
+      |> matching_candidate(identity)
+    end
+  end
+
+  defp detect_repeated_failure(_failure, _run, _prs, _opts), do: {:ok, nil}
+
+  defp record_run_observations(failure, run, prs, path, observed_at, opts) do
+    Enum.reduce_while(prs, {:ok, []}, fn pr, {:ok, acc} ->
+      record_pr_observation(pr, failure, run, path, observed_at, opts, acc)
+    end)
+  end
+
+  defp record_pr_observation(pr, failure, run, path, observed_at, opts, acc) do
+    case changed_paths(pr, opts) do
+      {:ok, paths} when is_list(paths) -> add_observation_if_unrelated(path in paths, pr, failure, run, path, observed_at, opts, acc)
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp add_observation_if_unrelated(true, _pr, _failure, _run, _path, _observed_at, _opts, acc), do: {:cont, {:ok, acc}}
+
+  defp add_observation_if_unrelated(false, pr, failure, run, path, observed_at, opts, acc) do
+    row = observation(failure, pr, run, path, observed_at)
+
+    case Journal.record_failure_observation(row, opts) do
+      :ok -> {:cont, {:ok, [row | acc]}}
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp changed_paths(pr, opts) do
+    Keyword.get(opts, :changed_paths_fun, &PullRequests.fetch_pull_request_changed_paths/2).(pr, opts)
+  end
+
+  defp observation(failure, pr, run, path, at_ms) do
+    %{"identity" => "#{failure.module} :: #{failure.name}", "pr" => pr, "run_url" => run["html_url"], "at_ms" => at_ms, "path" => path}
+  end
+
+  defp normalize_observation(row) do
+    %{identity: row["identity"], pr: row["pr"], run_url: row["run_url"], at_ms: row["at_ms"], path: row["path"]}
+  end
+
+  defp run_time(%{"created_at" => timestamp}) when is_binary(timestamp) do
+    case DateTime.from_iso8601(timestamp) do
+      {:ok, date, _offset} -> {:ok, DateTime.to_unix(date, :millisecond)}
+      _ -> {:error, :invalid_merge_group_timestamp}
+    end
+  end
+
+  defp run_time(_run), do: {:error, :missing_merge_group_timestamp}
+
+  defp matching_candidate({:ok, candidates}, identity), do: {:ok, Enum.find(candidates, &(&1.identity == identity))}
+  defp matching_candidate(error, _identity), do: error
 
   defp run_prs(run, base) do
     branch = Map.get(run, "head_branch", "")
@@ -225,7 +321,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
         case String.split(message, " :: ", parts: 3) do
           [class, module, name] when class in ["known-flake", "new-failure"] and module != "" and name != "" ->
             excerpt = annotation["raw_details"] || annotation["description"] || message
-            [%{module: module, name: name, job: job, excerpt: String.slice(String.trim(to_string(excerpt)), 0, 500)}]
+            [%{module: module, name: name, job: job, path: annotation["path"], excerpt: String.slice(String.trim(to_string(excerpt)), 0, 500)}]
 
           _ ->
             []

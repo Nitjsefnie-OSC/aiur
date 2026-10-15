@@ -273,7 +273,7 @@ defmodule Aiur.Application.Children do
   end
 
   defp landing_watch_children do
-    if AiurConfig.tracker_kind() == "github", do: [Aiur.LandingWatch], else: []
+    if AiurConfig.tracker_kind() == "github", do: [Aiur.LandingWatch, Aiur.LandingWatch.QuarantineLifter], else: []
   end
 
   defp maybe_ls_remote_ticker(enabled?) when enabled? in [nil, false], do: nil
