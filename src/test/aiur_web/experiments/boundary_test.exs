@@ -13,7 +13,7 @@ defmodule AiurWeb.Experiments.BoundaryTest do
     end
   end
 
-  test "scan recognizes forbidden aliases and statistics calls" do
+  test "future guard: scan recognizes forbidden aliases and statistics calls" do
     assert Regex.match?(@forbidden, "alias Aiur.RunTelemetry")
     assert Regex.match?(@forbidden, "Enum.sum(samples)")
   end

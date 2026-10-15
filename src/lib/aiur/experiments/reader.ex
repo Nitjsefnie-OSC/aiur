@@ -1,7 +1,7 @@
 defmodule Aiur.Experiments.Reader do
   @moduledoc false
 
-  alias Aiur.Experiments.{Journal, Paths, Registration, Schema, Snapshot, Spec}
+  alias Aiur.Experiments.{AnalysisResult, Journal, Paths, Registration, Schema, Snapshot, Spec}
 
   @spec json(Path.t()) :: {:ok, map()} | {:error, term()}
   def json(path) do
@@ -64,7 +64,7 @@ defmodule Aiur.Experiments.Reader do
          {:ok, journal} <- Journal.read(Paths.file(id, "journal.ndjson")),
          {:ok, annotations} <- Journal.read(Paths.file(id, "annotations.ndjson")),
          {:ok, snapshots} <- Snapshot.all(id),
-         {:ok, analysis} <- Aiur.Experiments.AnalysisResult.read(id, spec) do
+         {:ok, analysis} <- AnalysisResult.read(id, spec) do
       read_only? = spec_read_only? or newer?(journal ++ annotations) or pending_newer?(id)
       changed? = Enum.any?(snapshots, &(&1["packs"] != Snapshot.packs(spec, context)))
 

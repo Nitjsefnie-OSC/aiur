@@ -1,6 +1,8 @@
 defmodule AiurWeb.Experiments.ViewModel do
   @moduledoc "Experiment metadata formatted for display, without computing statistical evidence."
 
+  alias AiurWeb.Experiments.Metrics
+
   @spec index_item(map(), map(), map()) :: map()
   def index_item(summary, detail, catalog \\ %{}) do
     spec = Map.get(detail, :spec, %{})
@@ -12,7 +14,7 @@ defmodule AiurWeb.Experiments.ViewModel do
       status: Map.get(summary, :status) || "unknown",
       phase: Map.get(detail, :phase, :unknown),
       created_at: Map.get(summary, :created_at),
-      metrics: AiurWeb.Experiments.Metrics.rows(spec, Map.get(detail, :analysis), catalog),
+      metrics: Metrics.rows(spec, Map.get(detail, :analysis), catalog),
       labels: [],
       evidence_state: if(is_map(Map.get(detail, :analysis)), do: :available, else: :pending)
     }
