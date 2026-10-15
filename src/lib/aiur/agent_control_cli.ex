@@ -573,7 +573,7 @@ defmodule Aiur.AgentControlCLI do
   defp capacity_binding_label({:stale_poll, %{age_seconds: age}}), do: "dispatch poll stale (#{age}s ago)"
 
   defp capacity_binding_label({:dispatch_cycle_stalled, %{started_at_ms: started, stage: stage}}) when is_integer(started),
-    do: "dispatch cycle stalled since #{format_monotonic_timestamp(started)} at #{stage || "unknown stage"}"
+    do: CapacityBinding.dispatch_cycle_stalled_label(started, stage)
 
   defp capacity_binding_label({:dispatch_cycle_stalled, _}), do: "dispatch cycle stalled"
 
@@ -618,11 +618,6 @@ defmodule Aiur.AgentControlCLI do
     do: "has not polled yet (ceiling: #{ceiling})"
 
   defp capacity_binding_label({:has_not_polled, _detail}), do: "has not polled yet"
-
-  defp format_monotonic_timestamp(started_at_ms) do
-    elapsed_ms = max(System.monotonic_time(:millisecond) - started_at_ms, 0)
-    DateTime.utc_now() |> DateTime.add(-elapsed_ms, :millisecond) |> DateTime.to_iso8601()
-  end
 
   defp idle_backoff_cause(%{factor: factor}) when is_number(factor),
     do: "no dispatchable demand at last poll; polling.idle_widen_factor=#{factor}"

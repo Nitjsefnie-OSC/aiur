@@ -807,12 +807,19 @@ defmodule Aiur.AgentControlCLITest do
 
     assert stale_output =~ ~r/AGENTS 0\/10 \(binding: run_queue\+cpu contention, .* sampled=600s ago STALE\)/
 
+    dispatch_started_at_ms = System.system_time(:millisecond) - 600_000
+
     :sys.replace_state(pid, fn state ->
-      %{state | dispatch_cycle_stalled?: true, dispatch_cycle_stage: "{:dispatch, \"priority-1\"}", dispatch_cycle_started_at_ms: System.monotonic_time(:millisecond) - 600_000}
+      %{state | dispatch_cycle_stalled?: true, dispatch_cycle_stage: "{:dispatch, \"priority-1\"}", dispatch_cycle_started_at_ms: dispatch_started_at_ms}
     end)
 
     stalled_output = capture_io(fn -> AgentControlCLI.status() end)
     assert stalled_output =~ "AGENTS 0/10 (binding: dispatch cycle stalled since "
+
+    expected_started_at =
+      DateTime.from_unix!(dispatch_started_at_ms, :millisecond) |> DateTime.to_iso8601()
+
+    assert stalled_output =~ expected_started_at
     assert stalled_output =~ "at {:dispatch, \"priority-1\"})"
     refute stalled_output =~ "run_queue+cpu contention"
 

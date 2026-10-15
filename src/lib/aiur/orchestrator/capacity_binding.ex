@@ -230,6 +230,12 @@ defmodule Aiur.Orchestrator.CapacityBinding do
   def short_label({:admission, %{signal: signal}}), do: "admission: #{signal}"
   def short_label({:admission, _hold}), do: "admission"
 
+  @spec dispatch_cycle_stalled_label(integer(), String.t() | nil) :: String.t()
+  def dispatch_cycle_stalled_label(started_at_ms, stage) do
+    started = DateTime.from_unix!(started_at_ms, :millisecond) |> DateTime.to_iso8601()
+    "dispatch cycle stalled since #{started} at #{stage || "unknown stage"}"
+  end
+
   @doc """
   A slot-free, unconstrained fleet's effective ceiling provenance.
 
