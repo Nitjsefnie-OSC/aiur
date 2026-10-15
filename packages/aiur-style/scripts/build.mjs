@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 import fs from 'fs';
-import { buildTokens } from '../src/tokens/build.mjs';
+import { buildTokens, tokens } from '../src/tokens/build.mjs';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { pathToFileURL, fileURLToPath } from 'url';
+import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, '..');
@@ -63,7 +63,6 @@ try {
   console.log(`✓ CSS concatenated to dist/aiur-style.css (${cssFiles.length} files)`);
 
   // VitePress uses .dark even when the host prefers light; derive its bridge from tokens.
-  const { tokens } = await import(pathToFileURL(path.join(distDir, 'tokens.js')));
   const darkTokens = Object.entries(tokens.dark).map(([name, value]) =>
     `    --aiur-${name.replaceAll('.', '-')}: ${value};`).join('\n');
   fs.writeFileSync(path.join(distDir, 'vitepress.css'),

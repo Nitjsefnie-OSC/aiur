@@ -1,7 +1,7 @@
 import DefaultTheme from 'vitepress/theme';
-import 'aiur-style/tokens.css';
-import 'aiur-style/css/base.css';
-import 'aiur-style/vitepress.css';
+import '../../../../../dist/tokens.css';
+import '../../../../../dist/css/base.css';
+import '../../../../../dist/vitepress.css';
 import './fonts.css';
 
 export default DefaultTheme;

@@ -61,6 +61,7 @@ for (const theme of ['light', 'dark']) {
       await expect(button).toHaveCSS('background-color', 'rgb(26, 74, 168)');
       await page.mouse.down();
       await expect(button).toHaveCSS('background-color', 'rgb(22, 62, 140)');
+      await page.mouse.move(0, 0);
       await page.mouse.up();
       await button.evaluate(element => element.setAttribute('aria-pressed', 'true'));
       await expect(button).toHaveCSS('background-color', 'rgb(22, 62, 140)');
