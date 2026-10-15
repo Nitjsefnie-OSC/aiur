@@ -11,6 +11,10 @@ export async function transplant(browser, cell) {
   const pair = { design: await designContext.newPage(), product: await productContext.newPage(), cell,
     close: async () => { await designContext.close(); await productContext.close() } }
   try {
+    // The design fixture starts mock streams for active agents when their
+    // modals open. Keep its timers frozen: reduced-motion changes their cadence
+    // and can otherwise mutate shared progress before the analytics capture.
+    await pair.design.clock.install({ time: FIXTURE_META.now })
     await openHomeState(pair.design, cell)
     pair.allowlist = (await loadAllowlist()).filter(e => e.kind === 'design-style')
     await applyAllowlist(pair, cell)
