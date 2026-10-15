@@ -91,6 +91,7 @@ with tempfile.TemporaryDirectory(prefix='file-size-', dir=os.environ.get('TMPDIR
         ('exact mount root', {}, {'.claude/skills': b'../skills\n'}, 1, 'mounted skill path .claude/skills is rejected'),
         ('existing mounted skill edit', {'.claude/skills/aiur-agent/SKILL.md': lines(1)}, {'.claude/skills/aiur-agent/SKILL.md': lines(2)}, 1, 'tracked change under mounted skill path .claude/skills is rejected'),
         ('existing mounted skill deletion', {'.agents/skills/old/SKILL.md': lines(1)}, {'.agents/skills/old/SKILL.md': None}, 1, 'tracked change under mounted skill path .agents/skills is rejected'),
+        ('rename out of mounted skill path', {'.claude/skills/old.md': lines(1)}, {'.claude/skills/old.md': None, 'moved/old.md': lines(1)}, 1, 'tracked change under mounted skill path .claude/skills is rejected'),
     ]
     for title, before, after, expected, snippet in cases:
         for path in repo.iterdir():

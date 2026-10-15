@@ -81,7 +81,7 @@ def trees(base, head):
 
 def check(base, head):
     changed = subprocess.check_output(
-        ['git', '-C', str(Path.cwd()), 'diff', '--diff-filter=ACDMRT', '--name-only', '-z', base, head]
+        ['git', '-C', str(Path.cwd()), 'diff', '--no-renames', '--diff-filter=ACDMRT', '--name-only', '-z', base, head]
     ).split(b'\0')
     mount_failures = 0
     for path in changed:

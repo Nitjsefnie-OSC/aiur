@@ -153,6 +153,8 @@ defmodule Aiur.Config.SandboxPolicyTest do
       issue_workspace = Path.join(workspace_root, "MT-100")
       configured_root = Path.join(test_root, "configured-extra")
       File.mkdir_p!(issue_workspace)
+      codex_root = Path.join(issue_workspace, ".codex")
+      File.mkdir_p!(codex_root)
       File.mkdir_p!(configured_root)
 
       write_workflow_file!(Workflow.workflow_file_path(),
@@ -182,6 +184,7 @@ defmodule Aiur.Config.SandboxPolicyTest do
                  [
                    configured_root,
                    canonical_issue_workspace,
+                   codex_root,
                    sidecar_roots,
                    Aiur.BuildGate.gate_dir()
                  ]
