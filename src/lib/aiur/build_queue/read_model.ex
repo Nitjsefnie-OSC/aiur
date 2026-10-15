@@ -3,7 +3,6 @@ defmodule Aiur.BuildQueue.ReadModel do
   alias Aiur.BuildQueue.Model.Edge
   alias Aiur.BuildQueue.{Progress, Readiness, SetSummary, Settings}
   alias Aiur.BuildQueue.Sources.{BuildOrder, ProjectionRead}
-  alias Aiur.Orchestrator.DispatchPolicy
 
   @spec build(map()) :: map()
   def build(state) do
@@ -148,8 +147,8 @@ defmodule Aiur.BuildQueue.ReadModel do
   end
 
   @doc "Returns cached-only blocker facts for queue members, with explicit misses."
-  @spec cached_native_blockers(map(), map(), module() | nil) :: map()
-  def cached_native_blockers(document, observations, tracker) do
+  @spec cached_native_blockers(map(), map(), module() | nil, MapSet.t(String.t())) :: map()
+  def cached_native_blockers(document, observations, tracker, terminal_states) do
     build_order_ids =
       for item <- document.items,
           queue = Enum.find(document.queues, &(&1.id == item.queue_id)),
@@ -158,15 +157,15 @@ defmodule Aiur.BuildQueue.ReadModel do
 
     ids = document.items |> Enum.map(& &1.issue_id) |> Enum.uniq() |> Enum.reject(&(&1 in build_order_ids))
 
-    Map.new(ids, &{&1, cached_blocker_result(&1, observations, tracker)})
+    Map.new(ids, &{&1, cached_blocker_result(&1, observations, tracker, terminal_states)})
     |> Map.reject(fn {_id, result} -> result == :skip end)
   end
 
-  defp cached_blocker_result(id, observations, tracker) do
+  defp cached_blocker_result(id, observations, tracker, terminal_states) do
     issue = %Aiur.Issue{id: id, identifier: id, title: "", state: "todo"}
 
     case cached_blocker_fetch(issue, tracker) do
-      {:ok, hydrated} -> {:ok, Enum.map(hydrated.blocked_by, &cached_blocker(&1, observations))}
+      {:ok, hydrated} -> {:ok, Enum.map(hydrated.blocked_by, &cached_blocker(&1, observations, terminal_states))}
       {:error, reason} when reason in [:cache_miss, :unsupported] -> :skip
       {:error, reason} -> {:unknown, reason}
       :skip -> :skip
@@ -179,17 +178,17 @@ defmodule Aiur.BuildQueue.ReadModel do
       else: :skip
   end
 
-  defp cached_blocker(%{identifier: number, state: state}, observations) do
-    terminal = DispatchPolicy.terminal_state_set()
-    open? = not match?(%{open?: false}, Map.get(observations, to_string(number))) and not DispatchPolicy.terminal_issue_state?(state, terminal)
+  defp cached_blocker(%{identifier: number, state: state}, observations, terminal_states) do
+    terminal? = is_binary(state) and MapSet.member?(terminal_states, String.downcase(String.trim(state)))
+    open? = not match?(%{open?: false}, Map.get(observations, to_string(number))) and not terminal?
 
     %{number: String.to_integer(to_string(number)), state: state, open?: open?}
   end
 
-  defp cached_blocker(%{identifier: number}, _observations),
+  defp cached_blocker(%{identifier: number}, _observations, _terminal_states),
     do: %{number: String.to_integer(to_string(number)), state: nil, open?: true}
 
-  defp cached_blocker(_blocker, _observations), do: %{number: nil, state: nil, open?: true}
+  defp cached_blocker(_blocker, _observations, _terminal_states), do: %{number: nil, state: nil, open?: true}
 
   defp build_order_blockers(document, observations) do
     document.edges

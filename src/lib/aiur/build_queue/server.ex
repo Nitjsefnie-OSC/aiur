@@ -385,7 +385,7 @@ defmodule Aiur.BuildQueue.Server do
 
   defp plan(state, observations) do
     {projections, actions, observations, cache, holds, published, edges} = Reconcile.plan(state, observations)
-    native_blockers = ReadModel.cached_native_blockers(state.document, observations, state.tracker)
+    native_blockers = ReadModel.cached_native_blockers(state.document, observations, state.tracker, Settings.terminal_states(state.settings))
     Measurement.record(state, projections)
     {state, health_actions} = AttentionHealth.plan(state, projections)
     actions = health_actions ++ actions
