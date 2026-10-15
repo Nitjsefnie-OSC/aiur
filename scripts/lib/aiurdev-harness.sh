@@ -247,8 +247,7 @@ if [ "$test3_mode" -eq 1 ]; then
   timer="$repo_root/scripts/aiur-test3-timer"
   if [ -x "$timer" ]; then
     echo "⏱  test3 timer started (results append to .aiur-test3-runs.jsonl)" >&2
-    setsid "$timer" "$repo_root" "$(date +%s)" </dev/null >/dev/null 2>&1 &
-    disown 2>/dev/null || true
+    "$script_dir/aiur-test3-start-timer" "$repo_root" "$timer" "$(date +%s)" || exit 1
   fi
 fi
 

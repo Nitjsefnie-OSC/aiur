@@ -9,6 +9,8 @@ defmodule Aiur.TestTicketScope do
 
   @env "AIUR_DEV_TEST_TICKET_IDS"
 
+  alias Aiur.GitHub.Config
+
   @spec validate!() :: :ok
   def validate! do
     _ids = allowed_ids!()
@@ -79,12 +81,36 @@ defmodule Aiur.TestTicketScope do
   end
 
   defp resource_number(url) do
-    case Regex.run(~r{/repos/[^/]+/[^/]+/(issues|pulls)(?:/([^/?]+))?(?:/|\?|$)}, url, capture: :all_but_first) do
-      ["issues", number] when is_binary(number) -> if(Regex.match?(~r/\A[1-9][0-9]*\z/, number), do: {:ok, :issue, number}, else: :invalid)
-      ["pulls", _number] -> :invalid
-      ["issues"] -> :invalid
+    with %URI{} = uri <- URI.parse(url),
+         true <- uri.scheme == "https" and uri.host == "api.github.com" and is_nil(uri.userinfo),
+         true <- uri.port in [nil, 443],
+         path when is_binary(path) <- uri.path,
+         [owner, repository, number] <-
+           Regex.run(~r{\A/repos/([^/]+)/([^/]+)/issues/([1-9][0-9]*)(?:/.*)?\z}, path, capture: :all_but_first),
+         {:ok, {expected_owner, expected_repository}} <- configured_repository(),
+         true <- same_repository?(owner, repository, expected_owner, expected_repository) do
+      {:ok, :issue, number}
+    else
       _ -> :invalid
     end
+  end
+
+  defp configured_repository do
+    case Config.repo() do
+      repo when is_binary(repo) ->
+        case String.split(repo, "/") do
+          [owner, repository] when owner != "" and repository != "" -> {:ok, {owner, repository}}
+          _ -> :error
+        end
+
+      _ ->
+        :error
+    end
+  end
+
+  defp same_repository?(owner, repository, expected_owner, expected_repository) do
+    String.downcase(owner) == String.downcase(expected_owner) and
+      String.downcase(repository) == String.downcase(expected_repository)
   end
 
   defp identifier(%{identifier: identifier}) when is_binary(identifier), do: identifier

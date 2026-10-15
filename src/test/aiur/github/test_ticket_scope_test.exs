@@ -1,7 +1,7 @@
 defmodule Aiur.GitHub.TestTicketScopeTest do
   use Aiur.TestSupport
 
-  alias Aiur.GitHub.{Budget, Transport}
+  alias Aiur.GitHub.{Budget, Config, Transport}
 
   setup do
     previous_scope = System.get_env("AIUR_DEV_TEST_TICKET_IDS")
@@ -27,7 +27,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     assert {:error, {:outside_test_ticket_scope, "unknown"}} =
              Transport.default_request_fun(%{
                method: :post,
-               url: "https://api.github.com/repos/owner/repo/actions/runs/123/cancel",
+               url: "https://api.github.com/repos/#{tracker_repository()}/actions/runs/123/cancel",
                token: "token",
                body: %{}
              })
@@ -35,7 +35,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     assert {:error, {:outside_test_ticket_scope, "3379"}} =
              Transport.default_request_fun(%{
                method: :patch,
-               url: "https://api.github.com/repos/owner/repo/issues/3379",
+               url: tracker_issue_url(3379),
                token: "token",
                body: %{"labels" => ["agent:rework"]}
              })
@@ -43,7 +43,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     assert {:error, {:outside_test_ticket_scope, "unknown"}} =
              Transport.default_request_fun(%{
                method: :post,
-               url: "https://api.github.com/repos/owner/repo/pulls/3780/reviews",
+               url: "https://api.github.com/repos/#{tracker_repository()}/pulls/3780/reviews",
                token: "token",
                body: %{"event" => "REQUEST_CHANGES"}
              })
@@ -51,7 +51,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     assert {:error, {:outside_test_ticket_scope, "unknown"}} =
              Transport.default_request_fun(%{
                method: :put,
-               url: "https://api.github.com/repos/owner/repo/pulls/99/merge",
+               url: "https://api.github.com/repos/#{tracker_repository()}/pulls/99/merge",
                token: "token",
                body: %{"merge_method" => "squash"}
              })
@@ -67,6 +67,20 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
                token: "jwt",
                body: %{}
              })
+  end
+
+  test "rejects a pinned issue number on another repository or host" do
+    other_repository = "someone-else/another-repo"
+
+    for url <- [
+          "https://api.github.com/repos/#{other_repository}/issues/99",
+          "https://attacker.example/repos/#{tracker_repository()}/issues/99",
+          "http://api.github.com/repos/#{tracker_repository()}/issues/99",
+          "https://api.github.com:444/repos/#{tracker_repository()}/issues/99"
+        ] do
+      assert {:error, {:outside_test_ticket_scope, "unknown"}} =
+               Aiur.TestTicketScope.with_write_scope(%{method: :patch, url: url}, fn -> :sent end)
+    end
   end
 
   test "LandingWatch rework cannot write outside the sandbox tickets" do
@@ -95,7 +109,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
 
                        Transport.default_request_fun(%{
                          method: :patch,
-                         url: "https://api.github.com/repos/owner/repo/issues/3379",
+                         url: tracker_issue_url(3379),
                          token: "token",
                          body: %{"labels" => ["agent:rework"]}
                        })
@@ -130,7 +144,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
     assert {:ok, %{status: 200}} =
              Transport.default_request_fun(%{
                method: :patch,
-               url: "https://api.github.com/repos/owner/repo/issues/99",
+               url: tracker_issue_url(99),
                token: "token",
                body: %{"labels" => ["agent:rework"]}
              })
@@ -158,19 +172,24 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
   test "ordinary runs keep write access" do
     System.delete_env("AIUR_DEV_TEST_TICKET_IDS")
 
-    assert Aiur.TestTicketScope.allow_write?(%{method: :patch, url: "https://api.github.com/repos/owner/repo/issues/3379"}) == :ok
+    assert Aiur.TestTicketScope.allow_write?(%{method: :patch, url: tracker_issue_url(3379)}) == :ok
   end
 
   test "unscoped write endpoints fail closed" do
     assert {:error, {:outside_test_ticket_scope, "unknown"}} =
-             Aiur.TestTicketScope.allow_write?(%{method: :post, url: "https://api.github.com/repos/owner/repo/issues"})
+             Aiur.TestTicketScope.allow_write?(%{method: :post, url: "https://api.github.com/repos/#{tracker_repository()}/issues"})
 
     assert {:error, {:outside_test_ticket_scope, "unknown"}} =
-             Aiur.TestTicketScope.allow_write?(%{method: :post, url: "https://api.github.com/repos/owner/repo/git/refs"})
+             Aiur.TestTicketScope.allow_write?(%{method: :post, url: "https://api.github.com/repos/#{tracker_repository()}/git/refs"})
   end
 
   defp restore_application_env(key, nil), do: Application.delete_env(:aiur, key)
   defp restore_application_env(key, value), do: Application.put_env(:aiur, key, value)
+
+  defp tracker_repository, do: Config.repo()
+
+  defp tracker_issue_url(number),
+    do: "https://api.github.com/repos/#{tracker_repository()}/issues/#{number}"
 
   defp landing_poll_finished?(server, attempts) do
     state = Aiur.LandingWatch.state(server)

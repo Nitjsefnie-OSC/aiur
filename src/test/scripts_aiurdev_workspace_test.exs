@@ -240,14 +240,36 @@ defmodule ScriptsAiurdevWorkspaceTest do
     root = fake_repo()
     home = sandbox_home()
     timer = Path.join(root, ".aiur-test3-timer.pid")
-    sleep = System.find_executable("sleep") |> String.to_charlist()
-    timer_port = Port.open({:spawn_executable, sleep}, [:binary, :exit_status, args: [~c"30"]])
-    {:os_pid, timer_pid} = Port.info(timer_port, :os_pid)
-    File.write!(timer, "#{timer_pid}\n")
+    fake_timer = Path.join(root, "test3-timer")
+
+    File.write!(fake_timer, ~S"""
+    #!/usr/bin/env bash
+    echo "$$" > "$1/.aiur-test3-timer.pid"
+    while :; do sleep 1; done
+    """)
+
+    File.chmod!(fake_timer, 0o755)
+    starter = Path.expand("../scripts/aiur-test3-start-timer", Path.dirname(AiurdevCase.script()))
+    {_, 0} = System.cmd("bash", [starter, root, fake_timer, "123"], stderr_to_stdout: true)
+    timer_pid = File.read!(timer) |> String.trim()
+
+    on_exit(fn ->
+      if timer_pid =~ ~r/\A[0-9]+\z/, do: System.cmd("kill", ["-KILL", "--", "-#{timer_pid}"], stderr_to_stdout: true)
+    end)
 
     engine = Path.join([root, "packaging", "npm", "aiur-cli", "libexec", "aiur-engine.sh"])
     lifecycle = Path.join([Path.dirname(engine), "engine", "lifecycle.sh"])
+    control = Path.join([Path.dirname(engine), "engine", "control.sh"])
     File.mkdir_p!(Path.dirname(lifecycle))
+    record = Path.join(root, "sandbox.instance")
+
+    File.write!(record, ~s"""
+    AIUR_RECORD_NODE=aiur-test
+    AIUR_RECORD_SESSION=aiur-test
+    AIUR_RECORD_SOCKET=aiur-test
+    AIUR_RECORD_PROJECT_ROOT=#{root}
+    AIUR_RECORD_TEST_TICKET_IDS=99,100,101
+    """)
 
     source =
       File.read!(
@@ -257,15 +279,62 @@ defmodule ScriptsAiurdevWorkspaceTest do
         )
       )
 
-    source = String.replace(source, "cmd_stop() {", "cmd_stop() {\n  AIUR_PROJECT_ROOT=#{root}\n  AIUR_RECORD_TEST_TICKET_IDS=99,100,101\n", global: false)
+    control_source =
+      File.read!(
+        Path.expand(
+          "../packaging/npm/aiur-cli/libexec/engine/control.sh",
+          Path.dirname(AiurdevCase.script())
+        )
+      )
+
     File.write!(lifecycle, source)
-    File.write!(engine, "#!/usr/bin/env bash\nsource #{lifecycle}\ncmd_stop\n")
+    File.write!(control, control_source)
+
+    File.write!(engine, ~s"""
+    #!/usr/bin/env bash
+    source #{control}
+    source #{lifecycle}
+    resolve_release() { :; }
+    aiur_resolve_identity() { AIUR_PROJECT_ROOT=#{root}; AIUR_RELEASE_NODE=aiur-test; AIUR_PROJECT_ROOT_SOURCE=cwd; }
+    resolve_control_identity_from_records() { :; }
+    aiur_instance_record_path() { printf '%s' #{record}; }
+    cmd_stop
+    """)
+
     File.chmod!(engine, 0o755)
 
     {_, 0} = System.cmd("bash", [engine], env: [{"HOME", home}], stderr_to_stdout: true)
 
     refute File.exists?(timer)
-    assert_receive {^timer_port, {:exit_status, _status}}, 1_000
+    assert System.cmd("kill", ["-0", timer_pid], stderr_to_stdout: true) |> elem(1) == 1
+  end
+
+  test "test3 timer launcher waits for delayed PID registration" do
+    root = fake_repo()
+    timer = Path.join(root, "delayed-timer")
+    pid_file = Path.join(root, ".aiur-test3-timer.pid")
+
+    File.write!(timer, ~S"""
+    #!/usr/bin/env bash
+    sleep 0.2
+    echo "$$" > "$1/.aiur-test3-timer.pid"
+    while :; do sleep 1; done
+    """)
+
+    File.chmod!(timer, 0o755)
+    launcher = Path.expand("../scripts/aiur-test3-start-timer", Path.dirname(AiurdevCase.script()))
+    started_at = System.monotonic_time(:millisecond)
+    {_, 0} = System.cmd("bash", [launcher, root, timer, "123"], stderr_to_stdout: true)
+    elapsed_ms = System.monotonic_time(:millisecond) - started_at
+    timer_pid = File.read!(pid_file) |> String.trim()
+
+    on_exit(fn ->
+      if timer_pid =~ ~r/\A[0-9]+\z/, do: System.cmd("kill", ["-KILL", "--", "-#{timer_pid}"], stderr_to_stdout: true)
+      File.rm(pid_file)
+    end)
+
+    assert elapsed_ms >= 150
+    assert System.cmd("kill", ["-0", timer_pid], stderr_to_stdout: true) |> elem(1) == 0
   end
 
   # --- checkout targeting -----------------------------------------------------
