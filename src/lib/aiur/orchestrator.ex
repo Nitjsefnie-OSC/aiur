@@ -202,8 +202,9 @@ defmodule Aiur.Orchestrator do
     {:noreply, CommentWake.maybe_reactivate_on_comment(state, issue_number, source, event, attempt)}
   end
 
-  def handle_info({:event, %{topic: topic} = event}, state) when is_binary(topic),
-    do: {:noreply, EventTopics.route(state, event)}
+  def handle_info({:event, %{topic: topic} = event}, state) when is_binary(topic) do
+    {:noreply, EventTopics.route(state, event)}
+  end
 
   def handle_info({:github_comments_polled, ref, payload}, state) when is_reference(ref),
     do: {:noreply, CommentPolling.apply_async(state, ref, payload)}
