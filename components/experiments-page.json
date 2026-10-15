@@ -4,8 +4,8 @@
   "layer": 4,
   "kind": "in-app",
   "paths": [
-    "src/lib/aiur_web/live/experiments_live.ex",
     "src/lib/aiur_web/experiments/**",
+    "src/lib/aiur_web/live/experiments_live.ex",
     "src/lib/aiur_web/routes/experiments.ex"
   ],
   "facades": [
@@ -13,10 +13,10 @@
   ],
   "facade_pending": null,
   "requires": [
-    "web-kit",
     "dashboard-ui",
-    "web-shell",
-    "experiments"
+    "experiments",
+    "web-kit",
+    "web-shell"
   ],
   "optional": [],
   "owns": {
@@ -27,15 +27,15 @@
   },
   "prior": [],
   "forbid": [
-    "Aiur.RunTelemetry",
-    "Aiur.RunTelemetry.*",
-    "Aiur.Orchestrator",
-    "Aiur.Orchestrator.*",
+    "Aiur.Experiments.*",
     "Aiur.GitHub",
     "Aiur.GitHub.*",
-    "AiurWeb.OperatorControlCenter.Analytics.Presenter",
+    "Aiur.Orchestrator",
+    "Aiur.Orchestrator.*",
+    "Aiur.RunTelemetry",
+    "Aiur.RunTelemetry.*",
     "AiurWeb.OperatorControlCenter.Analytics.Charts",
-    "Aiur.Experiments.*"
+    "AiurWeb.OperatorControlCenter.Analytics.Presenter"
   ],
   "dependency_kind": "optional",
   "summary": "Displays experiment designs, frozen baselines and stored evidence.",

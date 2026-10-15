@@ -31,11 +31,11 @@
     "commands",
     "conversations",
     "dashboard-ui",
+    "experiments-page",
     "github-listeners",
     "pairing-discovery",
     "streamdeck-server",
-    "voice-stt",
-    "experiments-page"
+    "voice-stt"
   ],
   "owns": {
     "config": [

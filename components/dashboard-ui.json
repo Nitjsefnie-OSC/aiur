@@ -17,13 +17,13 @@
   "facade_pending": "MP-R1-C1-T02",
   "requires": [
     "event-bus",
+    "identity",
     "kernel",
     "orchestration",
     "projections",
     "signal",
     "web-kit",
-    "web-shell",
-    "identity"
+    "web-shell"
   ],
   "optional": [
     "accounting",
