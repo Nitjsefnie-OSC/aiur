@@ -182,11 +182,7 @@ jobs:
         uses: ./.github/actions/setup-elixir
       - name: Compile with warnings as errors
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        run: mix compile --warnings-as-errors
-      - name: Check generated reference tables
-        if: ${{ needs.changes.outputs.docs_only != 'true' }}
-        working-directory: .
-        run: python3 scripts/generate-reference-tables.py --check
+        run: mix compile --warnings-as-errors && python3 ../scripts/generate-reference-tables.py --check
       - name: Format check
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: make fmt-check
