@@ -16,7 +16,7 @@ defmodule Aiur.LandingWatch.MergeFailureClassifier do
 
   defp classification(evidence, run, observations, opts) do
     cond do
-      Enum.any?(evidence, &infra_evidence?/1) -> :infra
+      Enum.any?(evidence, &infra_evidence?(&1, opts)) -> :infra
       Enum.any?(evidence, &inherited_evidence?/1) -> :inherited
       Enum.any?(evidence, &known_non_pr_evidence?(&1, run, observations, opts)) -> :known_non_pr
       true -> :pr_caused
@@ -33,13 +33,33 @@ defmodule Aiur.LandingWatch.MergeFailureClassifier do
     end)
   end
 
-  defp infra_evidence?(%{job: job, log: log}) do
+  defp infra_evidence?(%{job: job, log: log}, opts) do
     conclusion = String.downcase(to_string(job["conclusion"] || ""))
     duration = job["run_duration_ms"] || duration_ms(job)
+    timeout_minutes = job["timeout_minutes"] || get_in(opts, [:timeout_minutes_by_job, job["name"]])
     text = String.downcase(to_string(log))
 
-    conclusion in ["cancelled", "timed_out", "startup_failure"] or duration == 0 or
-      Enum.any?(["runner lost", "runner error", "job was cancelled", "exceeded the maximum execution time", "timed out", "exceeded its 20m bound"], &String.contains?(text, &1))
+    failed_at_start?(conclusion, duration) or runner_error?(text) or timeout_failure?(conclusion, duration, timeout_minutes, text)
+  end
+
+  defp failed_at_start?(conclusion, duration),
+    do: conclusion in ["timed_out", "startup_failure"] or (conclusion == "failure" and duration == 0)
+
+  defp runner_error?(text),
+    do: String.contains?(text, "runner lost") or String.contains?(text, "runner error")
+
+  defp timeout_failure?(conclusion, duration, minutes, text) do
+    explicit_timeout_log?(text) or
+      (conclusion == "cancelled" and timeout_elapsed?(duration, minutes, text))
+  end
+
+  defp timeout_elapsed?(duration, minutes, text) do
+    String.contains?(String.downcase(text), "superseded") or
+      (is_integer(duration) and is_integer(minutes) and minutes > 0 and duration >= minutes * 60_000)
+  end
+
+  defp explicit_timeout_log?(text) do
+    Enum.any?(["exceeded the maximum execution time", "exceeded its 20m bound"], &String.contains?(text, &1))
   end
 
   defp inherited_evidence?(%{job: job, log: log}) do
