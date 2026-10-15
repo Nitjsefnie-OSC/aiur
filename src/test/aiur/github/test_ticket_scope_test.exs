@@ -71,6 +71,7 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
 
   test "LandingWatch rework cannot write outside the sandbox tickets" do
     test_pid = self()
+    server = {:global, {__MODULE__, make_ref()}}
 
     Req.Test.stub(__MODULE__, fn conn ->
       send(test_pid, :out_of_scope_tracker_write_reached_http)
@@ -79,21 +80,41 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
 
     observation = %{number: 12, head: "sha", rest: %{"head" => %{"ref" => "aiur/3379-test"}}}
 
-    assert {:error, {:outside_test_ticket_scope, "3379"}} =
-             Aiur.LandingWatch.rework(observation, [%{name: "failing check"}],
-               ticket_state_fun: fn "3379", _opts -> {:ok, "human-review"} end,
-               transition_fun: fn "3379", "rework", opts ->
-                 assert opts[:writer] == :landing_watch
+    assert {:ok, pid} =
+             Aiur.LandingWatch.start_link(
+               name: server,
+               interval_ms: 60_000,
+               observe_fun: fn _opts -> {:ok, [observation]} end,
+               journal_prune_fun: fn _observations, _opts -> :ok end,
+               process_fun: fn _observation, _opts ->
+                 result =
+                   Aiur.LandingWatch.rework(observation, [%{name: "failing check"}],
+                     ticket_state_fun: fn "3379", _opts -> {:ok, "human-review"} end,
+                     transition_fun: fn "3379", "rework", opts ->
+                       assert opts[:writer] == :landing_watch
 
-                 Transport.default_request_fun(%{
-                   method: :patch,
-                   url: "https://api.github.com/repos/owner/repo/issues/3379",
-                   token: "token",
-                   body: %{"labels" => ["agent:rework"]}
-                 })
+                       Transport.default_request_fun(%{
+                         method: :patch,
+                         url: "https://api.github.com/repos/owner/repo/issues/3379",
+                         token: "token",
+                         body: %{"labels" => ["agent:rework"]}
+                       })
+                     end,
+                     alert_emitter: fn _topic, _opts -> :ok end
+                   )
+
+                 send(test_pid, {:landing_watch_result, result})
+                 result
                end,
-               alert_emitter: fn _topic, _opts -> :ok end
+               queue_reconcile_fun: fn _observations, _opts -> :ok end
              )
+
+    on_exit(fn ->
+      if Process.alive?(pid), do: GenServer.stop(pid)
+    end)
+
+    assert_receive {:landing_watch_result, {:error, {:outside_test_ticket_scope, "3379"}}}, 1_000
+    assert landing_poll_finished?(server, 20)
 
     refute_receive :out_of_scope_tracker_write_reached_http, 50
   end
@@ -150,4 +171,20 @@ defmodule Aiur.GitHub.TestTicketScopeTest do
 
   defp restore_application_env(key, nil), do: Application.delete_env(:aiur, key)
   defp restore_application_env(key, value), do: Application.put_env(:aiur, key, value)
+
+  defp landing_poll_finished?(server, attempts) do
+    state = Aiur.LandingWatch.state(server)
+
+    cond do
+      state.watcher == :unavailable and is_integer(state.last_poll_at_ms) ->
+        true
+
+      attempts == 0 ->
+        false
+
+      true ->
+        Process.sleep(10)
+        landing_poll_finished?(server, attempts - 1)
+    end
+  end
 end
