@@ -3,6 +3,16 @@ Code.require_file("../../support/build_gate_case.ex", __DIR__)
 defmodule Aiur.BuildGate.AdmissionTest do
   use Aiur.TestSupport.BuildGateCase
 
+  defp wait_for_queue_entry!(gate_dir, attempts \\ 500)
+  defp wait_for_queue_entry!(_gate_dir, 0), do: flunk("timed out waiting for a queued build command")
+
+  defp wait_for_queue_entry!(gate_dir, attempts) do
+    if Path.wildcard(Path.join(gate_dir, "queue/lease-v2-*")) == [] do
+      Process.sleep(20)
+      wait_for_queue_entry!(gate_dir, attempts - 1)
+    end
+  end
+
   test "does not inject a shell hook when operators opt out", context do
     assert BuildGate.shell_env(slots: 0, stagger_seconds: 0, min_free_memory_mb: nil) == []
 
@@ -109,6 +119,20 @@ defmodule Aiur.BuildGate.AdmissionTest do
              "test --max-cases 4"
   end
 
+  @tag @linux_only
+  test "publishes the owner when the parent is delayed by CI load", context do
+    real_mv = System.find_executable("mv")
+    write_controlled_mv!(Path.join(context.bin_dir, "mv"), real_mv)
+
+    delayed_context =
+      Map.merge(context, %{delay_owner_publication: true, owner_publication_delay_seconds: 3})
+
+    assert {output, 0} = run_bash("mix compile", delayed_context)
+    assert output =~ "aiur_build_gate acquired slot=1"
+    assert output =~ "aiur_build_gate released slot=1 status=0"
+    refute output =~ "owner_publish_failed"
+  end
+
   test "a non-mix elixir eval passes through the gate with its arguments intact", context do
     assert {output, 0} = run_bash(~s|elixir -e 'IO.puts("ok")'|, context)
     assert output =~ "ok"
@@ -120,10 +144,10 @@ defmodule Aiur.BuildGate.AdmissionTest do
     wait_for_file!(context.started_path)
 
     second = Task.async(fn -> run_bash("mix compile", context) end)
-    assert Task.yield(second, 100) == nil
+    wait_for_queue_entry!(context.gate_dir)
 
-    assert {_first_output, 0} = Task.await(first, 5_000)
-    assert {second_output, 0} = Task.await(second, 5_000)
+    assert {_first_output, 0} = Task.await(first, 30_000)
+    assert {second_output, 0} = Task.await(second, 30_000)
     assert second_output =~ "aiur_build_gate queued"
     assert second_output =~ "aiur_build_gate acquired slot=1"
     assert File.read!(context.log_path) == "test\ncompile\n"

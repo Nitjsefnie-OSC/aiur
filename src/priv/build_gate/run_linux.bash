@@ -35,7 +35,7 @@ aiur_build_gate_run_linux() (
   local command_pid_file="" command_ready_file="" command_status_file="" command_status_ack_file=""
   local holder_ready_file="" holder_started_file=""
   local command_pgid holder_pid parent_pid python_binary retained status
-  local deadline handshake_deadline holder_handshake_seconds=2 holder_ack_seconds=5 slot slot_lock slot_owner slot_fd lock_result owner_pid owner_pgid token result pacing_result
+  local deadline handshake_deadline holder_handshake_seconds=10 holder_ack_seconds=5 slot slot_lock slot_owner slot_fd lock_result owner_pid owner_pgid token result pacing_result
   local available_memory_mb memory_deferred=0 memory_unavailable_logged=0
 
   # Keep descriptor allocation local to this subshell and independent of an

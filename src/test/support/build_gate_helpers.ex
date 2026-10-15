@@ -169,6 +169,7 @@ defmodule Aiur.TestSupport.BuildGateHelpers do
       {"AIUR_TEST_STATUS_READ_DELAY_SECONDS", to_string(Map.get(context, :status_read_delay_seconds, 0))},
       {"AIUR_TEST_HANDSHAKE_FIFO_FRAGMENT", Map.get(context, :handshake_fifo_fragment, "")},
       {"AIUR_TEST_DELAY_OWNER_MV", if(Map.get(context, :delay_owner_publication, false), do: "1", else: "0")},
+      {"AIUR_TEST_DELAY_OWNER_MV_SECONDS", to_string(Map.get(context, :owner_publication_delay_seconds, 0.2))},
       {"AIUR_TEST_FAIL_FINAL_OWNER_MV", if(Map.get(context, :fail_final_owner_publication, false), do: "1", else: "0")},
       {"AIUR_TEST_MV_COUNT", Path.join(gate_dir, "mv-count")},
       {"AIUR_BUILD_GATE_LEASE_STRATEGY", Map.get(context, :lease_strategy, "auto")},
