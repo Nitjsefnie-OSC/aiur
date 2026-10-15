@@ -1,5 +1,6 @@
 Code.require_file("../support/browser_harness/fixture_endpoint_start.ex", __DIR__)
 Code.require_file("../support/build_home/fixture_source.ex", __DIR__)
+Code.require_file("../support/build_home/usage_fixtures.ex", __DIR__)
 Code.require_file("../support/browser_harness/fixtures.ex", __DIR__)
 Code.require_file("../support/browser_harness/fixture_controls.ex", __DIR__)
 Code.require_file("../support/browser_harness/build_control.ex", __DIR__)

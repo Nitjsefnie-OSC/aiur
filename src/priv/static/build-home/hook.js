@@ -8,6 +8,7 @@ import './clock.js';
 import './layout.js';
 import './offline.js';
 import './tools.js';
+import './usage.js';
 
 export function writeOwnData() {
   Object.assign(ctx.root.dataset, { buildHomeHook: 'mounted', bdMounted: '', buildSocket: ctx.socket });

@@ -44,6 +44,7 @@ export function mapRawToPayload({ meta, data, usage, daemon }, { featureStats = 
     sources: Object.fromEntries(['history', 'features', 'queue', 'agents', 'index'].map(k => [k, { state: 'ok', observed_at: meta.now, reason: null }])),
     usage: { state: 'authorized', observed_at: meta.now,
       apis: [provider({ name: 'GitHub', icon: 'github', lines: usage.apis.filter(a => ['core', 'gql'].includes(a.tag))
-        .map(a => ({ ...a, acc: [a.pct ?? null], tip: a.rows })) })],
+        .map(a => ({ ...a, acc: [a.pct ?? null], tip: a.rows })) }),
+        ...usage.apis.filter(a => a.tag === 'credits').map(a => provider({ name: 'Search', icon: 'bars', lines: [{ ...a, acc: [a.pct ?? null], tip: a.rows }] }))],
       providers: usage.models.map(provider) }, daemon };
 }
