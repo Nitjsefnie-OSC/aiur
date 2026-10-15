@@ -24,7 +24,14 @@ GIT
 cat > "$tmp/bin/mix" <<'MIX'
 #!/usr/bin/env bash
 case "$*" in
-  "aiur.affected_tests "*) printf '%s\n' "cd src && mise exec -- mix test --max-cases 4 test/aiur/foo_test.exs" ;;
+  "aiur.affected_tests "*)
+    printf 'selector:%s\n' "${AIUR_CI_CHANGED_PATHS_B64:-}" >> "$COMMAND_LOG"
+    if [[ "$(printf '%s' "${AIUR_CI_CHANGED_PATHS_B64:-}" | base64 --decode)" == '[]' ]]; then
+      printf '%s\n' 'cd src && mise exec -- mix test --max-cases 4'
+      exit 0
+    fi
+    printf '%s\n' "cd src && mise exec -- mix test --max-cases 4 'test/aiur/foo test.exs'"
+    ;;
   pr_body.check*) printf 'body-check\n' >> "$COMMAND_LOG" ;;
   "test --max-cases 4 "*)
     printf 'test:%s\n' "$*" >> "$COMMAND_LOG"
@@ -66,8 +73,11 @@ if run_check failing_test src/lib/aiur/foo.ex true false; then
   exit 1
 fi
 grep -F 'test:' "$tmp/failing_test.commands" >/dev/null
-grep -F 'foo_test.exs' "$tmp/failing_test.commands" >/dev/null
+grep -F 'foo test.exs' "$tmp/failing_test.commands" >/dev/null
 grep -F 'subsystem_test.exs' "$tmp/failing_test.commands" >/dev/null
+encoded_paths="$(grep '^selector:' "$tmp/failing_test.commands" | cut -d: -f2-)"
+decoded_paths="$(printf '%s' "$encoded_paths" | base64 --decode)"
+[[ "$decoded_paths" == '["lib/aiur/foo.ex"]' ]]
 if grep -F 'dialyzer' "$tmp/failing_test.commands" >/dev/null; then
   echo 'test-run-pre-handoff-code-checks: Dialyzer ran after selected tests failed' >&2
   exit 1
@@ -84,6 +94,14 @@ if ! run_check passing src/lib/aiur/foo.ex false false; then
   echo 'test-run-pre-handoff-code-checks: passing checks were rejected' >&2
   exit 1
 fi
+
+if ! run_check script_only scripts/run-pre-handoff-code-checks.sh false false; then
+  cat "$tmp/script_only.log" >&2
+  echo 'test-run-pre-handoff-code-checks: script-only changes were rejected' >&2
+  exit 1
+fi
+grep -F 'selector:W10=' "$tmp/script_only.commands" >/dev/null
+grep -F 'no affected tests selected' "$tmp/script_only.log" >/dev/null
 
 pr_json="$tmp/pr.json"
 python3 - "$pr_json" "$head" <<'PY'

@@ -15,7 +15,20 @@ if [[ ! -s "$scratch/changed" ]]; then
 fi
 cp "$scratch/changed" "$scratch/changed-files"
 
-(cd "$repo_root/src" && mise exec -- mix aiur.affected_tests "$base") > "$scratch/selection"
+selector_paths=()
+while IFS= read -r path; do
+  case "$path" in
+    src/lib/*|src/test/*) selector_paths+=("${path#src/}") ;;
+  esac
+done < "$scratch/changed"
+selector_paths_json="$(python3 - "${selector_paths[@]}" <<'PY'
+import json, sys
+print(json.dumps(sys.argv[1:]))
+PY
+)"
+selector_paths_b64="$(printf '%s' "$selector_paths_json" | base64 | tr -d '\n')"
+(export AIUR_CI_CHANGED_PATHS_B64="$selector_paths_b64"; \
+  cd "$repo_root/src" && mise exec -- mix aiur.affected_tests "$base") > "$scratch/selection"
 cat "$scratch/selection"
 tests_file="$scratch/tests"
 : > "$tests_file"
@@ -23,8 +36,13 @@ tests_file="$scratch/tests"
 while IFS= read -r line; do
   case "$line" in
     "cd src && mise exec -- mix test --max-cases 4 "*)
-      read -r -a command <<< "${line#cd src && mise exec -- }"
-      printf '%s\n' "${command[@]:4}" >> "$tests_file"
+      python3 - "${line#cd src && mise exec -- }" >> "$tests_file" <<'PY'
+import shlex, sys
+command = shlex.split(sys.argv[1])
+if command[:3] != ["mix", "test", "--max-cases"] or command[3] != "4":
+    raise SystemExit("unexpected affected-test command")
+print("\n".join(command[4:]))
+PY
       ;;
     "cd src && mise exec -- make ci"*)
       echo "run-pre-handoff-code-checks: affected-test selection is unsafe; refusing handoff" >&2
