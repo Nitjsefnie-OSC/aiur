@@ -103,6 +103,7 @@
     "config": [],
     "env": [
       "AIUR_GITHUB_BUDGET_CONSUMER",
+      "AIUR_GITHUB_BUDGET_DIR",
       "AIUR_GITHUB_BUDGET_IDENTITY_KEY",
       "GH_TOKEN",
       "GITHUB_APP_ID",
@@ -132,6 +133,7 @@
   "config": [],
   "env": [
     "AIUR_GITHUB_BUDGET_CONSUMER",
+    "AIUR_GITHUB_BUDGET_DIR",
     "AIUR_GITHUB_BUDGET_IDENTITY_KEY",
     "GH_TOKEN",
     "GITHUB_APP_ID",
