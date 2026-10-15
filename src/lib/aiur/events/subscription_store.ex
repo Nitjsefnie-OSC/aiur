@@ -45,13 +45,13 @@ defmodule Aiur.Events.SubscriptionStore do
   `terminate/2` flushes pending writes and unsubscribes every binding
   from the Exchange so ETS rows don't accumulate.
   """
-
+  # aiur:event-bus-boundary-member
   use GenServer
 
   require Logger
 
   alias Aiur.Config.Paths
-  alias Aiur.Events.{AgentSubscriptionPolicy, DebugLog, Exchange, HistoryStore, IdGenerator, UniversalSubscriptions}
+  alias Aiur.Events.{AgentSubscriptionPolicy, Exchange, HistoryStore, IdGenerator, Trace, UniversalSubscriptions}
   alias Aiur.JsonStore
 
   @state_leaf "subscriptions"
@@ -419,7 +419,7 @@ defmodule Aiur.Events.SubscriptionStore do
       case enqueue_event(state, event) do
         :ok ->
           HistoryStore.record(state.identifier, :consumed, event)
-          DebugLog.broadcast(:receive, topic, id: event_id, identifier: state.identifier, body: event)
+          Trace.trace(:receive, topic, id: event_id, identifier: state.identifier, body: event)
           resolve_stall(state, event_id)
 
         {:error, reason} ->
@@ -444,7 +444,7 @@ defmodule Aiur.Events.SubscriptionStore do
     case enqueue_event(state, event) do
       :ok ->
         HistoryStore.record(state.identifier, :consumed, event)
-        DebugLog.broadcast(:receive, topic, id: event_id, identifier: state.identifier, body: event)
+        Trace.trace(:receive, topic, id: event_id, identifier: state.identifier, body: event)
         advance_cursor_inline(state, event_id)
 
       {:error, reason} ->
