@@ -171,7 +171,7 @@ defmodule Aiur.MainWatch.GitHubTest do
     assert observation.digest.checks == []
   end
 
-  test "retained commit window without aligned dates bypasses stale ETag" do
+  test "future regression guard: retained commit window without aligned dates bypasses stale ETag" do
     request = fn request ->
       if String.contains?(request.url, "/commits?") do
         refute Map.has_key?(request, :etag)
