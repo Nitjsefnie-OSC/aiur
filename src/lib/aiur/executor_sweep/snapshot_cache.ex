@@ -16,7 +16,11 @@ defmodule Aiur.ExecutorSweep.SnapshotCache do
       timelines = Map.new(entries(:issue_timeline, owner, name))
       snapshot = build(pull_requests, reviews, tickets, issues, blocked_by, branch_pull_requests, timelines)
       local = local_snapshot()
-      snapshot = Map.merge(snapshot, local)
+
+      snapshot =
+        snapshot
+        |> Map.merge(local)
+        |> Map.update!(:tickets, &attach_rework_attempts(&1, snapshot.pull_requests, local.rework_attempts))
 
       pull_requests = Enum.map(snapshot.pull_requests, &attach_ci(&1, local.ci_wait))
 
@@ -62,10 +66,33 @@ defmodule Aiur.ExecutorSweep.SnapshotCache do
           %{name: "run #{value(run, :id, "?")}", state: value(run, :status, "unknown"), started_at: value(run, :started_at, nil)}
         end),
       ci_wait: Map.get(fleet, :ci_wait, []),
+      rework_attempts: Map.get(fleet, :rework_attempts, []),
       services: watcher_services() ++ List.wrap(dispatcher_service)
     }
   rescue
-    _ -> %{decisions: [], queue_sets: [], idle_slots: 0, focus_set: nil, ci_wait: [], services: []}
+    _ -> %{decisions: [], queue_sets: [], idle_slots: 0, focus_set: nil, ci_wait: [], rework_attempts: [], services: []}
+  end
+
+  @doc false
+  @spec attach_rework_attempts([map()], [map()], [map()]) :: [map()]
+  def attach_rework_attempts(tickets, pull_requests, attempts) do
+    Enum.map(tickets, fn ticket ->
+      Map.put(ticket, :unchanged_pr_handoffs, attempt_count(ticket.number, pull_requests, attempts))
+    end)
+  end
+
+  defp attempt_count(ticket_number, pull_requests, attempts) do
+    case Enum.find(pull_requests, &(&1.issue_number == ticket_number and &1.state == "open")) do
+      %{head_sha: head_sha} when is_binary(head_sha) -> find_attempt_count(attempts, to_string(ticket_number), head_sha)
+      _ -> 0
+    end
+  end
+
+  defp find_attempt_count(attempts, ticket_number, head_sha) do
+    case Enum.find(attempts, &(Map.get(&1, :issue_id, Map.get(&1, "issue_id")) == ticket_number and Map.get(&1, :head_sha, Map.get(&1, "head_sha")) == head_sha)) do
+      nil -> 0
+      attempt -> Map.get(attempt, :count, Map.get(attempt, "count", 0))
+    end
   end
 
   defp fleet_snapshot do

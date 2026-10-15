@@ -54,4 +54,14 @@ defmodule Aiur.ExecutorSweep.SnapshotCacheTest do
 
     assert [%{number: 42, closed_blockers: [90], open_blocked_by: [%{"number" => 91}]}] = snapshot.tickets
   end
+
+  test "joins rework attempts only for the current open PR head" do
+    tickets = [%{number: 4429, labels: ["agent:rework"]}]
+    prs = [%{number: 4447, issue_number: 4429, state: "open", head_sha: "current"}]
+    attempts = [%{issue_id: "4429", head_sha: "old", count: 4}, %{issue_id: "4429", head_sha: "current", count: 3}]
+
+    assert [%{number: 4429, unchanged_pr_handoffs: 3}] = SnapshotCache.attach_rework_attempts(tickets, prs, attempts)
+    closed_pr = Map.put(hd(prs), :state, "closed")
+    assert [%{unchanged_pr_handoffs: 0}] = SnapshotCache.attach_rework_attempts(tickets, [closed_pr], attempts)
+  end
 end
