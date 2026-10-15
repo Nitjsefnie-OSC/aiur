@@ -314,7 +314,7 @@ defmodule Aiur.Claude.RemoteControl do
   def reap_workspace_agents(workspace_root, opts \\ []) when is_binary(workspace_root) do
     proc_dir = Keyword.get(opts, :proc_dir, "/proc")
     kill_fun = Keyword.get(opts, :kill_fun, &graceful_kill/1)
-    protected = MapSet.new(Keyword.get_lazy(opts, :protected_pids, &self_pid_tree/0))
+    protected = MapSet.new(Keyword.get_lazy(opts, :protected_pids, &self_pid_tree/0) ++ Keyword.get(opts, :additional_protected_pids, []))
     max_sweeps = positive_integer(Keyword.get(opts, :max_sweeps), @workspace_reap_max_sweeps)
     backoff_ms = non_negative_integer(Keyword.get(opts, :backoff_ms), @workspace_reap_backoff_ms)
 

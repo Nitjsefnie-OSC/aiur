@@ -115,9 +115,14 @@ defmodule Aiur.Claude.Repl.Reaper do
   this BEAM's os pid so a side-by-side aiur instance is never touched.
   """
   @spec sweep_own_panes(GenServer.server()) :: :ok
-  def sweep_own_panes(tmux \\ Socket.agents()) do
+  def sweep_own_panes(tmux \\ Socket.agents()), do: sweep_own_panes(tmux, [])
+
+  @doc false
+  @spec sweep_own_panes(GenServer.server(), keyword()) :: :ok
+  def sweep_own_panes(tmux, opts) do
     self_pid = beam_os_pid()
-    sweep_repl_panes(tmux, fn owner_pid -> owner_pid == self_pid end)
+    protected = MapSet.new(Keyword.get(opts, :protected_refs, []))
+    sweep_repl_panes(tmux, fn owner_pid -> owner_pid == self_pid end, protected)
   end
 
   @doc "Generate the default REPL window name embedding this BEAM's os pid."
@@ -140,11 +145,12 @@ defmodule Aiur.Claude.Repl.Reaper do
     end
   end
 
-  defp sweep_repl_panes(tmux, owner_match?) do
+  defp sweep_repl_panes(tmux, owner_match?, protected \\ MapSet.new()) do
     case Tmux.list_windows(tmux) do
       {:ok, windows} ->
         windows
         |> Enum.filter(fn {name, _pane} -> String.starts_with?(name, @repl_window_prefix) end)
+        |> Enum.reject(fn {_name, pane_id} -> MapSet.member?(protected, Socket.pane_ref(tmux, pane_id)) end)
         |> Enum.each(fn {name, pane_id} ->
           maybe_kill_repl_pane(tmux, name, pane_id, owner_match?)
         end)

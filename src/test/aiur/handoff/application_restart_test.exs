@@ -62,6 +62,11 @@ defmodule Aiur.Handoff.ApplicationRestartTest do
     {:ok, _handoff} = Aiur.Handoff.prepare()
     :ok = Application.stop(:aiur)
     true = Aiur.ProcessTree.process_alive?(metadata.provider_pid)
+    # Trace the production dispatch telemetry emitter before any second-boot
+    # process exists; VM tracing survives the Exchange and its bindings dying.
+    Code.ensure_loaded!(Aiur.Orchestrator.TelemetryCohort)
+    1 = :erlang.trace_pattern({Aiur.Orchestrator.TelemetryCohort, :record_dispatch, 3}, true, [:local])
+    :erlang.trace(:new, true, [:call, {:tracer, self()}])
     boot.("second-boot")
     after_boot = :sys.get_state(Aiur.Orchestrator)
     adopted = Map.fetch!(after_boot.running, "3844")
@@ -87,6 +92,20 @@ defmodule Aiur.Handoff.ApplicationRestartTest do
     true = String.contains?(File.read!(Path.join(workspace, "logs/agent.ndjson")), "turn_completed")
     {:ok, consumed} = Aiur.JsonStore.read(Aiur.Handoff.Record.path() <> ".consumed")
     [%{"status" => "adopted"}] = consumed["outcome"]
+    delivered = :erlang.trace_delivered(:all)
+    receive do
+      {:trace_delivered, :all, ^delivered} -> :ok
+    after
+      5_000 -> raise "dispatch observation did not drain"
+    end
+    receive do
+      {:trace, _, :call, {Aiur.Orchestrator.TelemetryCohort, :record_dispatch, [%Aiur.Issue{id: "3844"}, _, _]}} ->
+        raise "adoption emitted dispatch telemetry for ticket 3844"
+    after
+      0 -> :ok
+    end
+    :erlang.trace(:new, false, [:call])
+    :erlang.trace_pattern({Aiur.Orchestrator.TelemetryCohort, :record_dispatch, 3}, false, [:local])
     :ok = Application.stop(:aiur)
     IO.puts("supervised-handoff-restart-ok")
     """

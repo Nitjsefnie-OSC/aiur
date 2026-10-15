@@ -2,6 +2,7 @@ defmodule Aiur.Orchestrator do
   @moduledoc "Polls the issue tracker and dispatches repository copies to agent-backed workers."
   use GenServer
   require Logger
+
   alias Aiur.{Alerts, Issue}
   alias Aiur.Orchestrator.{AgentTeardown, AutoSubscriptions, BlockerPropagation, CiLifecycle, CommentPolling, CommentWake, Parking}
   alias Aiur.Orchestrator.BuildQueueClaimProbe
@@ -25,6 +26,7 @@ defmodule Aiur.Orchestrator do
   @impl true
   def terminate(reason, state), do: Lifecycle.terminate(reason, state)
 
+  # Publisher reads ETS here; a GenServer call back into this process would deadlock.
   @doc false
   @spec issue_tracked?(String.t() | integer() | nil) :: boolean()
   def issue_tracked?(nil), do: false
@@ -840,9 +842,7 @@ defmodule Aiur.Orchestrator do
       when is_binary(key) and is_binary(text),
       do: OM.lookup_operator_message_call(state, lookup, expected)
 
-  def handle_call({:claim_next_queue_item, issue_identifier}, _from, state)
-      when is_binary(issue_identifier),
-      do: Aiur.Handoff.claim_or_empty(state, fn -> OM.claim_next_queue_item_call(state, issue_identifier) end)
+  def handle_call({:claim_next_queue_item, id}, _from, state) when is_binary(id), do: Aiur.Handoff.claim_or_empty(state, fn -> OM.claim_next_queue_item_call(state, id) end)
 
   def handle_call({:claim_next_checkpoint_queue_item, issue_identifier}, _from, state)
       when is_binary(issue_identifier),
