@@ -133,10 +133,7 @@ defmodule Aiur.Application.Children do
       # owns the sliding-window rate and alert latch.
       Aiur.GitHub.BrokerTimeout,
       Aiur.GitHub.BudgetBroker,
-      # The ElevenLabs account credit quota, read on its own schedule. Absent an
-      # API key it observes nothing at all, so an unconfigured account costs a
-      # boot-time config read and never a request.
-      Aiur.ElevenLabs.Quota,
+      Aiur.Voice.child_specs(),
       Aiur.TicketContext.child_specs(:early, opts),
       BuildOrders.child_specs(:early, opts),
       {Aiur.Events.IdGenerator, floor_files: &Aiur.IdFloorSources.floor_files/0, legacy_counter_files: &Aiur.IdFloorSources.legacy_counter_files/0},
@@ -265,7 +262,9 @@ defmodule Aiur.Application.Children do
     |> Enum.reject(&is_nil/1)
     |> Kernel.++(
       cli_children ++
-        [Aiur.BackgroundCpu] ++ Aiur.Experiments.children(recording?) ++ Auto.child_specs(recording?: recording?) ++ BuildOrders.child_specs(:label_projection, opts) ++ landing_watch_children()
+        [Aiur.BackgroundCpu] ++
+        Aiur.Experiments.children(recording?) ++
+        Auto.child_specs(recording?: recording?) ++ BuildOrders.child_specs(:label_projection, opts) ++ landing_watch_children() ++ Aiur.Experiments.window_children(recording?)
     )
   end
 
