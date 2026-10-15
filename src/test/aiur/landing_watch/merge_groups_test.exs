@@ -230,9 +230,9 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
       request_fun: request,
       journal_path: journal,
       live_observations_fun: fn _, _ -> {:ok, [pr]} end,
-      job_log_fun: fn _, _ -> {:ok, "mix test src/test/aiur/example_test.exs:12 failed"} end,
+      job_log_fun: fn _, _ -> {:ok, "mix test src/test/aiur/example_test.exs:12 test issue signature failed"} end,
       jobs_fun: fn id, _ -> {:ok, [%{"name" => "test", "conclusion" => if(id == 201, do: "failure", else: "success"), "check_run_url" => "https://api.github.com/repos/o/r/check-runs/901"}]} end,
-      known_failure_patterns: ["example_test.exs"],
+      known_failure_patterns_fun: fn -> {:ok, [%{"title" => "Flaky test: ExampleTest :: test issue signature", "number" => nil}]} end,
       changed_paths_fun: fn _, _ -> {:ok, ["src/lib/changed.ex"]} end,
       approved_fun: fn _, _ -> {:ok, true} end,
       revalidate_fun: fn _, _, _ -> :ok end,
@@ -330,7 +330,7 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
   end
 
   test "known failure in untouched file is non-PR while a touched-file failure stays PR-caused" do
-    log = "mix test src/test/aiur/example_test.exs:12 failed"
+    log = "mix test src/test/aiur/example_test.exs:12 test issue signature failed"
     run = group_run(304, "failure", "pr-17-a")
     jobs = [%{"name" => "test", "conclusion" => "failure"}]
 
@@ -346,6 +346,60 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     assert {:ok, {:pr_caused, _}} = MergeFailureClassifier.classify(run, jobs, [], touched_opts)
     main_failure_opts = opts |> Keyword.put(:known_failure_patterns, []) |> Keyword.put(:failed_on_main_fun, fn _, _ -> true end)
     assert {:ok, {:known_non_pr, _}} = MergeFailureClassifier.classify(run, jobs, [], main_failure_opts)
+  end
+
+  test "a failed test in the last day's base-branch runs requeues an untouched failure" do
+    parent = self()
+    journal = Path.join(System.tmp_dir!(), "landing-watch-main-failure-#{System.unique_integer([:positive])}.json")
+    failed = group_run(406, "failure", "pr-17-a")
+    main = %{"id" => 405, "event" => "push", "status" => "completed", "conclusion" => "failure"}
+
+    request = fn %{method: :get, url: url} ->
+      runs =
+        cond do
+          String.contains?(url, "branch=main") -> [main]
+          String.contains?(url, "event=merge_group") and String.contains?(url, "status=completed") -> [failed]
+          true -> []
+        end
+
+      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    end
+
+    pr = %{
+      number: 17,
+      base: "main",
+      head: "current",
+      node_id: "PR_17",
+      draft?: false,
+      review_decision: "APPROVED",
+      merge_queue_entry: nil,
+      auto_merge_request: nil,
+      rest: %{"head" => %{"ref" => "aiur/17-work"}}
+    }
+
+    options = [
+      base_branch: "main",
+      now_ms: 1_800_000_000_000,
+      request_fun: request,
+      journal_path: journal,
+      live_observations_fun: fn _, _ -> {:ok, [pr]} end,
+      jobs_fun: fn id, _ -> {:ok, [%{"id" => id, "name" => "test", "conclusion" => "failure"}]} end,
+      job_log_fun: fn _, _ -> {:ok, "mix test src/test/aiur/example_test.exs:12 test base failure"} end,
+      changed_paths_fun: fn _, _ -> {:ok, ["src/lib/changed.ex"]} end,
+      known_failure_patterns: [],
+      approved_fun: fn _, _ -> {:ok, true} end,
+      revalidate_fun: fn _, _, _ -> :ok end,
+      attribution_fun: fn _ -> {:ok, :clean} end,
+      comment_fun: fn _, _, _ -> :ok end,
+      enqueue_fun: fn node, head, _ ->
+        send(parent, {:enqueue, node, head})
+        {:ok, "entry-17"}
+      end
+    ]
+
+    assert :ok = MergeGroups.cancel_stale([], options)
+    assert_received {:enqueue, "PR_17", "current"}
+    File.rm(journal)
   end
 
   test "a test failure in a PR-touched file routes to rework with its run URL" do

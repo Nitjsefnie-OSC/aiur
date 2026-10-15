@@ -109,7 +109,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
       end
     end)
     |> case do
-      {:ok, runs} -> {:ok, Enum.uniq_by(runs, & &1["id"])}
+      {:ok, runs} -> {:ok, runs |> Enum.filter(&(&1["event"] == "merge_group")) |> Enum.uniq_by(& &1["id"])}
       {:error, _} = error -> error
     end
   end
@@ -117,17 +117,23 @@ defmodule Aiur.LandingWatch.MergeGroups do
   defp completed_runs(owner, repo, token, opts) do
     request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
     url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{event: "merge_group", per_page: 100, status: "completed"})
-    read_pages(request, token, url, [], 0)
+    with {:ok, runs} <- read_pages(request, token, url, [], 0), do: {:ok, Enum.filter(runs, &(&1["event"] == "merge_group"))}
   end
 
   defp process_completed(runs, observations, base, opts) do
     failures = Enum.filter(runs, &(&1["conclusion"] in ["failure", "cancelled", "timed_out", "startup_failure"] and is_integer(&1["id"])))
     has_observed_pr? = Enum.any?(failures, fn run -> Enum.any?(pr_numbers(run["head_branch"]), &Enum.any?(observations, fn pr -> pr.number == &1 end)) end)
-    opts = if has_observed_pr?, do: Keyword.put(opts, :recent_main_failure_paths, recent_main_failure_paths(base, opts)), else: opts
+    opts = if has_observed_pr?, do: prepare_failure_evidence(opts, base), else: opts
 
     Enum.reduce(failures, :ok, fn run, result ->
       if result == :ok, do: process_claimed_failed_group(run, runs, observations, base, opts), else: result
     end)
+  end
+
+  defp prepare_failure_evidence(opts, base) do
+    opts
+    |> Keyword.put(:recent_main_failure_paths, recent_main_failure_paths(base, opts))
+    |> Keyword.put(:known_failure_patterns, known_failure_patterns(opts))
   end
 
   defp process_claimed_failed_group(run, runs, observations, base, opts) do
@@ -174,7 +180,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
     paths_fun = Keyword.get(opts, :changed_paths_fun, fn pr, options -> Client.fetch_pull_request_changed_paths(pr, options) end)
     log_fun = Keyword.get(opts, :job_log_fun, &job_log/2)
 
-    known_patterns = Keyword.get(opts, :known_failure_patterns, known_failure_patterns(opts))
+    known_patterns = Keyword.get(opts, :known_failure_patterns, [])
     main_paths = Keyword.get(opts, :recent_main_failure_paths, MapSet.new())
 
     paths_by_pr =
@@ -240,15 +246,37 @@ defmodule Aiur.LandingWatch.MergeGroups do
   end
 
   defp known_failure_patterns(opts) do
-    case Keyword.get(opts, :known_failure_patterns_fun, fn -> FailureEvidence.flake_issues(opts) end).() do
-      {:ok, issues} when is_list(issues) -> Enum.flat_map(issues, &failure_issue_patterns(&1, opts))
-      _ -> []
+    case Keyword.fetch(opts, :known_failure_patterns) do
+      {:ok, patterns} ->
+        patterns
+
+      :error ->
+        case Keyword.get(opts, :known_failure_patterns_fun, fn -> FailureEvidence.flake_issues(opts) end).() do
+          {:ok, issues} when is_list(issues) -> Enum.flat_map(issues, &failure_issue_patterns(&1, opts))
+          _ -> []
+        end
     end
   end
 
   defp failure_issue_patterns(issue, opts) do
     [issue["title"] || "", issue["body"] || "" | issue_comments(issue["number"], opts)]
+    |> Enum.flat_map(&failure_signature_patterns/1)
   end
+
+  defp failure_signature_patterns(text) when is_binary(text) do
+    lines = text |> String.split(~r/[\r\n]+/) |> Enum.map(&String.trim/1) |> Enum.reject(&(byte_size(&1) < 5))
+    paths = Regex.scan(~r/[\w.\/-]+_test\.exs/, text) |> List.flatten()
+
+    test_names =
+      case String.split(text, " :: ", parts: 2) do
+        [_module, name] -> [String.replace_prefix(name, "test ", "")]
+        _ -> []
+      end
+
+    (lines ++ paths ++ test_names) |> Enum.uniq()
+  end
+
+  defp failure_signature_patterns(_), do: []
 
   defp issue_comments(number, opts) when is_integer(number) do
     case Client.fetch_issue_comments_conditional(number, opts) do
@@ -415,8 +443,6 @@ defmodule Aiur.LandingWatch.MergeGroups do
   defp read_pages(request, token, url, acc, page) do
     case request.(%{method: :get, url: url, token: token, caller: "landing_watch_merge_group_runs"}) do
       {:ok, %{status: 200, body: %{"workflow_runs" => runs}} = response} when is_list(runs) ->
-        runs = Enum.filter(runs, &(&1["event"] == "merge_group"))
-
         case Transport.parse_next_page_url(Map.get(response, :headers, [])) do
           nil -> {:ok, acc ++ runs}
           next -> read_pages(request, token, next, acc ++ runs, page + 1)
