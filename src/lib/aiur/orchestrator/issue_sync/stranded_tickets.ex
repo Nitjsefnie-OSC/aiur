@@ -65,7 +65,7 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   defp reconcile_candidate(issue, state, update_state_fun) do
     cond do
       not stranded_ticket?(state, issue) -> state
-      approved_and_armed?(state, issue) -> restore_ci_wait(state, issue, update_state_fun)
+      CiLifecycle.approved_and_armed?(state, issue) -> restore_ci_wait(state, issue, update_state_fun)
       true -> requeue_stranded_ticket(state, issue, update_state_fun)
     end
   end
@@ -152,7 +152,7 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
 
     TrackerTasks.run(state, {:stranded_repair, issue.id}, fn -> update_state_fun.(issue.identifier, restored) end, fn current, result ->
       if Reconciler.issue_input(current, issue.id) == input and stranded_ticket?(current, issue) and
-           not approved_and_armed?(current, issue) do
+           not CiLifecycle.approved_and_armed?(current, issue) do
         apply_stranded_repair(current, issue, restored, result)
       else
         Lifecycle.wake_tick(current)
@@ -171,7 +171,7 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   defp apply_ci_wait_restore(current, issue, input, result) do
     latest = Map.get(current.last_polled_issues, issue.id, issue)
 
-    if Reconciler.issue_input(current, issue.id) == input and stranded_ticket?(current, latest) and approved_and_armed?(current, latest) do
+    if Reconciler.issue_input(current, issue.id) == input and stranded_ticket?(current, latest) and CiLifecycle.approved_and_armed?(current, latest) do
       case result do
         :ok -> %{current | released_claims: Map.delete(current.released_claims, issue.id)}
         {:error, reason} -> log_ci_wait_restore_failure(current, issue, reason)
@@ -184,13 +184,6 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   defp log_ci_wait_restore_failure(state, issue, reason) do
     Logger.warning("Stranded approved ticket CI-wait restore failed for #{State.issue_context(issue)}: #{inspect(reason)}")
     state
-  end
-
-  defp approved_and_armed?(%State{} = state, %Issue{} = issue) do
-    projection = get_in(state.ci_lifecycle, [:poll_cache, CiLifecycle.ci_target_for_issue(issue)])
-
-    is_map(projection) and Map.get(projection, :review_decision) == "APPROVED" and
-      (is_map(Map.get(projection, :auto_merge_request)) or is_map(Map.get(projection, :merge_queue_entry)))
   end
 
   defp open_nonterminal?(%Issue{} = issue) do

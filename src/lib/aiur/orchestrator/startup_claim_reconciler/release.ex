@@ -3,7 +3,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
 
   alias Aiur.{Alerts, Config, Issue, Tracker}
   alias Aiur.GitHub.Client
-  alias Aiur.Orchestrator.{CiLifecycle, DispatchPolicy, ReworkGate, TicketTransition}
+  alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
   alias Aiur.Orchestrator.StartupClaimReconciler.Observation
 
   @spec run(Issue.t(), keyword()) :: {:ok, String.t()} | {:error, term()} | {:defer, term()}
@@ -67,6 +67,13 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
   end
 
   defp target(issue, opts) do
+    case Keyword.get(opts, :forced_target) do
+      target when is_binary(target) -> {:ok, target}
+      nil -> discover_target(issue, opts)
+    end
+  end
+
+  defp discover_target(issue, opts) do
     fetch = Keyword.get(opts, :open_pr_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1)
 
     case fetch.(issue.identifier) do
@@ -101,14 +108,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
   defp mergeability_target(%{"mergeable" => true} = pr, issue, opts), do: review_target(pr, issue, opts)
   defp mergeability_target(_pr, _issue, _opts), do: {:error, :mergeability_unknown}
 
-  defp review_target(pr, issue, opts) do
-    case merge_queue_target(pr, issue, opts) do
-      "ci-wait" -> {:ok, "ci-wait"}
-      nil -> review_target_from_findings(pr, opts)
-    end
-  end
-
-  defp review_target_from_findings(pr, opts) do
+  defp review_target(pr, _issue, opts) do
     case ReworkGate.open_pull_request_rework_verdict(pr, opts) do
       {:ok, :rework} ->
         case ReworkGate.approved_and_queued?(pr, opts) do
@@ -123,18 +123,6 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
         error
     end
   end
-
-  defp merge_queue_target(%{"review_decision" => "APPROVED"}, issue, opts) do
-    state = Keyword.get(opts, :state)
-    target = CiLifecycle.ci_target_for_issue(issue)
-    projection = if match?(%Aiur.Orchestrator.State{}, state), do: get_in(state.ci_lifecycle, [:poll_cache, target])
-
-    if is_map(projection) and Map.get(projection, :review_decision) == "APPROVED" and
-         (is_map(Map.get(projection, :auto_merge_request)) or is_map(Map.get(projection, :merge_queue_entry))),
-       do: "ci-wait"
-  end
-
-  defp merge_queue_target(_pr, _issue, _opts), do: nil
 
   defp body_review_target(pr, opts) do
     fetch = Keyword.get(opts, :reviews_fetcher, &Aiur.CodeHost.fetch_classified_pr_reviews/1)

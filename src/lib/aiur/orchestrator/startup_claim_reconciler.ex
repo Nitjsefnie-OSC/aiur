@@ -98,6 +98,9 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp reconcile_issue(%State{} = state, %Issue{identifier: identifier} = issue, live_identifiers, opts)
        when is_binary(identifier) do
     cond do
+      approved_armed_orphan?(state, issue, identifier, live_identifiers, opts) ->
+        release_orphaned_claim(state, issue, Keyword.put(opts, :forced_target, "ci-wait"))
+
       not recoverable_claim?(state, issue, identifier) ->
         {:ok, resolve_release_failure(state, issue, opts), issue}
 
@@ -122,16 +125,15 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
 
   defp reconcile_issue(state, issue, _live_identifiers, _opts), do: {:ok, state, issue}
 
-  defp approved_and_armed?(%State{} = state, %Issue{} = issue) do
-    projection = get_in(state.ci_lifecycle, [:poll_cache, CiLifecycle.ci_target_for_issue(issue)])
-
-    is_map(projection) and Map.get(projection, :review_decision) == "APPROVED" and
-      (is_map(Map.get(projection, :auto_merge_request)) or is_map(Map.get(projection, :merge_queue_entry)))
+  defp recoverable_claim?(state, issue, identifier) do
+    DispatchPolicy.state_slug(issue.state) == "in-progress" and
+      not CiLifecycle.approved_and_armed?(state, issue) and Map.has_key?(state.orphaned_claim_since, identifier)
   end
 
-  defp recoverable_claim?(state, issue, identifier) do
-    DispatchPolicy.state_slug(issue.state) == "in-progress" and not approved_and_armed?(state, issue) and
-      Map.has_key?(state.orphaned_claim_since, identifier)
+  defp approved_armed_orphan?(state, issue, identifier, live_identifiers, opts) do
+    DispatchPolicy.state_slug(issue.state) == "in-progress" and CiLifecycle.approved_and_armed?(state, issue) and
+      Map.has_key?(state.orphaned_claim_since, identifier) and Observation.expired?(state, issue, opts) and
+      not MapSet.member?(live_identifiers, identifier) and not TrackerTasks.issue_pending?(state, issue.id)
   end
 
   # Positive current-generation liveness. A live Task pid protects its claim; a

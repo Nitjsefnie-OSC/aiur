@@ -151,21 +151,24 @@ defmodule Aiur.Orchestrator.StartupClaimReconcilerTest do
     assert state.startup_claim_reconciliation_complete?
   end
 
-  test "keeps an ownerless claim in ci-wait when its approved PR is queued or auto-merging" do
+  test "restores an ownerless claim to ci-wait when its approved PR is queued or auto-merging" do
     issue = issue("approved-queued", "in-progress")
     target = issue.identifier
     state = %State{ci_lifecycle: %{poll_cache: %{target => %{review_decision: "APPROVED", auto_merge_request: nil, merge_queue_entry: %{id: "queue"}}}}}
 
-    {result, [retained]} =
+    parent = self()
+
+    {result, [%Issue{state: "ci-wait"}]} =
       reconcile(state, [issue],
-        update_issue_state_fun: fn _identifier, _state_name, _expected_state ->
-          flunk("an approved queued PR must not be released to rework")
+        update_issue_state_fun: fn identifier, target, expected ->
+          send(parent, {:transition, identifier, target, expected})
+          :ok
         end,
         open_pr_fetcher: fn _identifier -> {:ok, %{"number" => 7}} end,
         pr_fetcher: fn _number -> {:ok, %{"number" => 7, "mergeable" => true, "review_decision" => "APPROVED", "head" => %{"sha" => "head"}}} end
       )
 
-    assert retained == issue
+    assert_receive {:transition, "approved-queued", "ci-wait", "in-progress"}, 1000
     assert result.startup_claim_reconciliation_complete?
   end
 
