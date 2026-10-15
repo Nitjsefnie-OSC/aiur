@@ -1,7 +1,7 @@
 defmodule Aiur.BuildOrder.Index.Catalogue do
   @moduledoc false
-  alias Aiur.BuildOrder.Index.Rows
   alias Aiur.BuildOrder.{Epic, FeatureStats, SourceFreshness}
+  alias Aiur.BuildOrder.Index.Rows
   @statuses Map.new(~w(done failed not_planned closed running queued open)a, &{Atom.to_string(&1), &1})
 
   @spec general(map()) :: {:ok, list()} | {:error, :epic_config_unavailable}

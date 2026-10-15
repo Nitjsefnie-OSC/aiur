@@ -22,11 +22,13 @@ defmodule Aiur.BrowserHarness.IndexLiveFixture do
   end
 
   defmodule Usage do
+    alias Aiur.TestSupport.BuildHome.FixtureSource
+    alias AiurWeb.Build.Read
     def subscribe(_), do: :ok
-    def read(:locked, _), do: AiurWeb.Build.Read.locked_usage()
+    def read(:locked, _), do: Read.locked_usage()
 
     def read(_, _) do
-      {:ok, data} = Aiur.TestSupport.BuildHome.FixtureSource.full(dataset: "live")
+      {:ok, data} = FixtureSource.full(dataset: "live")
       data["usage"]
     end
   end

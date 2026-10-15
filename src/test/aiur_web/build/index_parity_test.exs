@@ -72,10 +72,7 @@ defmodule AiurWeb.Build.IndexParityTest do
 
     sections =
       Map.new(snapshot["sections"], fn {sec, rows} ->
-        rows =
-          Enum.map(rows, fn r ->
-            if r["id"] in corrections, do: Map.put(r, "epic", hd(snapshot["features"][r["feature"]]["epics"])), else: r
-          end)
+        rows = Enum.map(rows, &canonical_row(&1, corrections, snapshot["features"]))
 
         {sec, if(sec == "hist", do: Enum.sort_by(rows, &{&1["end"], &1["id"]}), else: rows)}
       end)
@@ -88,6 +85,10 @@ defmodule AiurWeb.Build.IndexParityTest do
       end)
 
     snapshot |> Map.put("sections", sections) |> Map.put("counts", counts)
+  end
+
+  defp canonical_row(row, corrections, features) do
+    if row["id"] in corrections, do: Map.put(row, "epic", hd(features[row["feature"]]["epics"])), else: row
   end
 
   defp comparable(row) do
