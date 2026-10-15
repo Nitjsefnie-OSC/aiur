@@ -73,6 +73,10 @@ The agent credential boundary lives in [GitHub credentials and security](/apis/g
 
 See the [CLI reference](/reference/cli#pr-merge).
 
+### Measured feature epics
+
+Membership accounting lives in [Per-caller costs](/apis/github-costs#measured-feature-epics).
+
 ### Repository setup from global defaults
 
 Repository setup guidance lives in [GitHub polling](/apis/github-polling).

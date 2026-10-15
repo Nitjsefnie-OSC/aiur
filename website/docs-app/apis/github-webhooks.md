@@ -109,8 +109,6 @@ Repository-configuration reads are the one exception: branch protection, ruleset
 
 See [Configuration](/reference/configuration#webhooks) for the repository list, silence threshold, sweep interval, and widen factor.
 
-
-
 ## Related topics
 
 - [Polling and cadence](/apis/github-polling#poll-cadence)

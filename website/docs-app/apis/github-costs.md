@@ -51,14 +51,6 @@ A label write also corrects the labels on the issue Aiur already holds, and does
 
 A write that fails records nothing.
 
-## Experiment window evidence
-
-`aiur experiments events` reads merges, releases, tags, incidents and Actions through telemetry's quota-accounted transport as `experiment_window_events`. Errors and page caps mark GitHub incomplete; frozen reads are local until refresh or window/source changes.
-
-Each of five sources permits ten pages: at most 40 GraphQL page requests and 10 REST page requests, before transport retries. GraphQL points depend on the query; `rateLimit.cost` supplies the actual charge.
-
-Measured on aiur-team/aiur, 2026-10-12, with a 48-hour merge/Actions range: eight GraphQL pages cost 12 points (176 merges, nine releases and 137 tags across repository history, zero incidents); four REST pages returned 311 runs. This read-only census used the shipped query shapes; no saving is claimed.
-
 Main watch debounces base Actions deliveries for two seconds. At the default 120-second cadence, an unchanged completed census costs three Core reads: commits plus push and merge_group run censuses. Fingerprints reuse completed checks until a run changes; pagination coverage uses run and commit dates, allowing merge-queue commits without push runs.
 
 Main-watch matches push or merge_group runs to the landed SHA and queue base. Cold 20-SHA census: 43 reads; one changed SHA: five; startup: one permission probe (test counts, not live measurements). Reconciliation caps transport calls at 64; incomplete reads retain known state and mark it unavailable.
@@ -66,6 +58,14 @@ Main-watch matches push or merge_group runs to the landed SHA and queue base. Co
 Failure events carry tests, flake classifications and suspects. Evidence uses existing CI callers; associations use `main_watch_suspects`, permissions `main_watch_permissions`, and reruns `main_watch_canary`. Actions write is cached until daemon restart; permission changes require a restart.
 
 An idle completed head or any active watched run suppresses canaries; an eligible cancellation without write permission raises one persisted attention. Status distinguishes a running, unavailable or absent watcher and shows retained SHA and completed-run age after errors or poll crashes.
+
+## Experiment window evidence
+
+`aiur experiments events` reads merges, releases, tags, incidents and Actions through telemetry's quota-accounted transport as `experiment_window_events`. Errors and page caps mark GitHub incomplete; frozen reads are local until refresh or window/source changes.
+
+Each of five sources permits ten pages: at most 40 GraphQL page requests and 10 REST page requests, before transport retries. GraphQL points depend on the query; `rateLimit.cost` supplies the actual charge.
+
+Measured on aiur-team/aiur, 2026-10-12, with a 48-hour merge/Actions range: eight GraphQL pages cost 12 points (176 merges, nine releases and 137 tags across repository history, zero incidents); four REST pages returned 311 runs. This read-only census used the shipped query shapes; no saving is claimed.
 
 ## Operator PR merge command
 
@@ -79,6 +79,17 @@ A merge-queue rule routes the pinned head through GraphQL enqueueing; it never a
 
 The daemon independently verifies the configured repository, PR head, base and merge SHA against GitHub before publishing `system.pr.merged`; caller-supplied actor data is replaced with GitHub's merge attribution. See [the command reference](/reference/cli#pr-merge).
 
+## Measured feature epics
+
+The feature worker uses the quota-accounted transport as `experiments_auto`:
+one labelled-issue page hourly (100 rows; a full page is incomplete),
+and one `/issues/{number}/sub_issues` page per tracked epic hourly. Merge and
+membership deposits can bring the member refresh forward, bounded to five minutes.
+ResourceStore labels discover epics between polls.
+
+Closed completed members
+missing RecentMergeStore evidence use a bounded linked-PR GraphQL read for merge
+time and SHA. Incomplete or refused reads preserve state for retry. No saving is claimed.
 
 ## Related topics
 

@@ -33,9 +33,7 @@ nothing retires. This is a deliberate divergence from the daemon's `ReadCache`
 policy, which refuses every `/actions` path wholesale — the two stores serve
 different callers with different invalidation reach.
 
-Answers are kept for 60 seconds.
-
-**Conditional requests and 304s.** `gh api` reads carry a validator where the
+Answers are kept for 60 seconds. **Conditional requests and 304s.** `gh api` reads carry a validator where the
 store holds one: a re-read sends `If-None-Match` with the entry's stored `ETag`,
 and an unchanged answer returns `304`, is served from the cache, and is
 reconciled free — the same contract as the daemon's REST reads.
@@ -107,8 +105,6 @@ somebody else — is not seen by the wrapper. Aiur learns of it through the webh
 or the next poll and retires the affected answers then.
 
 That gap is the exposure, and it is why a verdict is never kept at all.
-
-
 
 ## Related topics
 

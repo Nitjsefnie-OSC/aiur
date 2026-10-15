@@ -13,7 +13,6 @@ No model/effort/alias labels are seeded and existing labels are neither deleted 
 Label read/create failures stop startup before agents start and explain the required Issues permissions. Repository-local configurations keep the explicit init flow.
 
 ## What Aiur polls
-
 | Poll | What it tracks | Why it exists |
 | --- | --- | --- |
 | Tracker state | Issue labels, active tickets, blockers, and pull requests | Keeps dispatch and the Units page aligned with GitHub. |
@@ -39,17 +38,11 @@ Measured on aiur-team/aiur on 2026-10-11: facts cost 4 points before bounding br
 
 The development `scripts/aiurdev --test` and `--test3` harnesses still read GitHub's issue lists, but pass only their pinned sandbox tickets to dispatch authorization, startup workspace cleanup, and tracker reconciliation. Ordinary runs retain full issue discovery.
 
-Each CI poll reads the base branch's active rules, rulesets and classic branch protection once per batch (`ci_required_checks`). This read is uncached because it governs a verdict. Every required check must pass on the current PR head from its configured integration.
-
-CI batches and landing require all ruleset checks on PR heads. Startup readiness uses operator-only `AIUR_CI_READINESS_TOKEN` (`ci gate`) and reports unavailable without it.
-
-Main-watch refreshes App auth once after 401 and names the failed request and credential class in status. A failed lookup keeps a green aggregate pending; missing and skipped required checks cannot pass.
+CI batches and landing require all ruleset checks on PR heads. Startup readiness uses operator-only `AIUR_CI_READINESS_TOKEN` (`ci gate` here) and reports unavailable without it. Main-watch refreshes App auth once after 401; status names the failed request and credential class. Missing/skipped checks fail; lookup errors keep green aggregates pending.
 
 Only required checks decide a failure: a red check that nothing requires does not send the ticket to rework. With no required list, every failure still decides.
 
-Ticket CI holds user-cancelled runs pending. A head with only completed checks and at least one cancellation is missing CI, not failed CI. It stays pending for operator action; Aiur never reruns a cancelled run. In `ci-wait`, the skipped rerun produces one neutral attention per ticket.
-
-The landing watcher follows approvals, retries infrastructure failures, routes real failures to rework, checks attribution and cancels stale groups. A same-job pass in an overlapping group proves a flake; it files a test-keyed issue, emits durable evidence and re-enqueues approved PRs.
+Ticket CI holds user-cancelled runs pending. The landing watcher follows approvals, retries infra failures, routes real failures to rework, checks attribution, and cancels stale groups. A same-job pass in an overlapping group proves a flake; it files a test-keyed issue, emits durable evidence, and re-enqueues approved PRs.
 
 The agent `git` guard spends one GraphQL read per push of the current branch and refuses the push when that PR is in the merge queue, unless GitHub reports it `CONFLICTING` or changes are requested. A lookup that cannot answer lets the push through.
 
@@ -140,46 +133,36 @@ A page-1 `304` on a churned ticket cannot self-heal: the change that would refre
 
 Only trust a `304` for a paginated read when the read was single-page (then page 1 *is* the list), or when the validator kept is the last page's rather than the first's. If neither is practical, do not make the read conditional: an unconditional read that is correct beats a conditional one that is quietly wrong.
 
-Issue comments and PR changed files drain every page; single-list readers refuse
-a next page with `pagination_unexpected` rather than return a partial list.
+Issue comments and PR changed files drain every page; single-list readers refuse a next page with `pagination_unexpected` rather than return a partial list.
 
 **Incomplete label provenance is retried.** A new issue can carry `agent:todo`
-before GitHub has indexed its `labeled` timeline event. Aiur does not cache a
-missing or malformed event as a final authorization decision. For a `todo`
+before GitHub has indexed its `labeled` timeline event. Aiur does not cache a missing or malformed event as a final authorization decision. For a `todo`
 ticket it defers dispatch and retries on the next candidate poll.
 
-For active and rework tickets, Aiur still denies incomplete evidence. This
-preserves revocation after an unverified relabel.
+For active and rework tickets, Aiur still denies incomplete evidence. This preserves revocation after an unverified relabel.
 
-Either incomplete result retires the daemon's cached reads for that issue
-number, including the timeline body. A webhook backed repository's hour-long
+Either incomplete result retires the daemon's cached reads for that issue number, including the timeline body. A webhook backed repository's hour-long
 read TTL cannot replay the early snapshot.
 
-The invalidation covers one issue number and may add a timeline request on each
-retry until the event appears, with further requests if the timeline spans
+The invalidation covers one issue number and may add a timeline request on each retry until the event appears, with further requests if the timeline spans
 pages. No quota saving is claimed.
 
 **A validator belongs to the thing it describes.**
 
-A read of one resource earns a validator for that resource; a read of a query
-earns a validator for that query. Writing a query's validator into a resource's
+A read of one resource earns a validator for that resource; a read of a query earns a validator for that query. Writing a query's validator into a resource's
 key means any other writer of that key destroys or corrupts it.
 
-A body change deletes the ETag, and a webhook deposit writes a body-derived
-validator that is then sent on a URL where it can never match — either way a
-later conditional request is answered wrongly. Store a validator where the
-thing it describes lives, and only answer it against the read that earned it.
+A body change deletes the ETag, and a webhook deposit writes a body-derived validator that is then sent on a URL where it can never match — either way a
+later conditional request is answered wrongly. Store a validator where the thing it describes lives, and only answer it against the read that earned it.
 
 The ticket poll uses GraphQL to resolve which pull request belongs to a ticket and to read its inline review threads. Build history also uses bounded closed-issue catch-up, described below.
 
 The old query attached full comment and review-thread selections to every speculative branch candidate, so identifying one pull request paid for the contents of up to ten. Measured against the live API with `rateLimit { cost }`, ten targets now cost **11 points** where that shape cost **114**.
 
-Spend scales with target count, not with comment volume. The table below is for
-the **dispatch-class** cadence — the tick every poll loop rides.
+Spend scales with target count, not with comment volume. The table below is for the **dispatch-class** cadence — the tick every poll loop rides.
 
 A per-class entry in `polling.intervals` scales the same way for that class: halving a class's interval doubles its own spend, and the GraphQL pollers are
-the classes worth widening (CI, comments/review threads, and previously the
-Build Order catalog, now event-sourced).
+the classes worth widening (CI, comments/review threads, and previously the Build Order catalog, now event-sourced).
 
 | `interval_seconds` | Approximate GraphQL spend | Worst-case wake latency |
 | --- | --- | --- |
@@ -218,8 +201,6 @@ The ticket backlog, Ad Hoc overlay and Build Order catalog reach the page the mo
 | `aiur --todo`, `aiur set max-agents`, global resume | Admission-changing actions request a fresh sweep, so a ticket is refreshed — and dispatched — before the backed-off timer can hold it up. `aiur --todo` also records the queued identifiers as known demand: the woken poll and one follow-up stay at the base interval even if GitHub has not yet indexed the label, and the command warns on stderr when the daemon did not accept the refresh. |
 
 Aiur's poll is state-based, so a longer interval delays a wake without losing one; the exception is a comment posted and answered between two polls.
-
-
 
 ## Related topics
 

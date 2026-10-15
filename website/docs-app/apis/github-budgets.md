@@ -2,10 +2,8 @@
 
 ## API budgets
 
-Daemon admissions use one resident Python broker per Aiur process. It reuses
-its SQLite connection and batches queued commands before replying. Shell
-`gh` guards keep the one-shot interface against the same shared database;
-separate daemons never get separate quota ledgers for a shared credential.
+Daemon admissions use one resident Python broker per Aiur process. It reuses its SQLite connection and batches queued commands before replying. Shell
+`gh` guards keep the one-shot interface against the same shared database; separate daemons never get separate quota ledgers for a shared credential.
 
 A broker deadline is a **local hold**: Aiur backs off, keeps the claim, and
 keeps attempt counters. `Errors.outcome/1` sorts results into `:complete`,
@@ -30,8 +28,7 @@ Sustained broker retry pressure still appears as
 Anonymous reads — a public `CODEOWNERS` fetch when no token is configured, for
 instance — bill GitHub's 60/hour unauthenticated per-IP allowance rather than
 the authenticated core budget, so they are metered in their own window. An
-exhausted anonymous allowance holds further anonymous reads but never gates
-agent dispatch.
+exhausted anonymous allowance holds further anonymous reads but never gates agent dispatch.
 
 ### Where the budget went
 
@@ -67,12 +64,10 @@ that looks like a leak and is not.
 **A daemon restart invalidates reconciliation for the rest of the window.**
 
 The daemon's attribution window restarts with the process; GitHub's does not.
-Points spent before the restart stay in `limit - remaining` and appear in no row
-of the ranking.
+Points spent before the restart stay in `limit - remaining` and appear in no row of the ranking.
 
 So the unattributed figure is inflated by exactly that much until the GitHub
-window rolls. Wait for the reset before comparing attribution against the
-credential's window.
+window rolls. Wait for the reset before comparing attribution against the credential's window.
 
 **The unattributed figure is not a leak.**
 
@@ -157,8 +152,6 @@ still exhausts it, just later.
 
 The pool total is also a ceiling rather than a balance, because the credentials'
 windows reset at different moments. Pooling buys margin while the burn itself is reduced.
-
-
 
 ## Related topics
 
