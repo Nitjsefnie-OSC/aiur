@@ -17,6 +17,8 @@
     "src/lib/aiur/handoff/fallback.ex",
     "src/lib/aiur/landing_watch.ex",
     "src/lib/aiur/landing_watch/**",
+    "src/lib/aiur/test_quarantine.ex",
+    "src/lib/aiur/test_quarantine/**",
     "src/lib/aiur/orchestrator.ex",
     "src/lib/aiur/orchestrator/**",
     "src/lib/aiur/pr_ready_ledger_store.ex",
