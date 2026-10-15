@@ -29,28 +29,16 @@ defmodule Aiur.Application.Children do
     interactive_cli? = Keyword.fetch!(opts, :interactive_cli?)
     headless? = Keyword.fetch!(opts, :headless?)
     dashboard? = Keyword.fetch!(opts, :dashboard?)
-
-    tailscale_funnel? =
-      Keyword.get_lazy(opts, :tailscale_funnel?, &AiurConfig.server_tailscale_funnel?/0)
-
+    tailscale_funnel? = Keyword.get_lazy(opts, :tailscale_funnel?, &AiurConfig.server_tailscale_funnel?/0)
     telemetry? = Keyword.get(opts, :telemetry?, true)
-
-    executor_mode? =
-      Keyword.get(opts, :executor_mode?, Application.get_env(:aiur, :executor_mode, false))
-
-    ls_remote_ticker? =
-      Keyword.get(
-        opts,
-        :ls_remote_ticker?,
-        Application.get_env(:aiur, :ls_remote_ticker_enabled?, true)
-      )
+    executor_mode? = Keyword.get(opts, :executor_mode?, Application.get_env(:aiur, :executor_mode, false))
+    ls_remote_ticker? = Keyword.get(opts, :ls_remote_ticker?, Application.get_env(:aiur, :ls_remote_ticker_enabled?, true))
 
     # Always true for a real run. The unit-test singleton turns it off so the
     # shared app process does not hold a VM-wide inbox and listener that every
     # case would then contend on; cases that exercise recording supervise their
     # own pair against their own isolated state directory.
-    recording? =
-      Keyword.get(opts, :recording?, Application.get_env(:aiur, :executor_recording?, true))
+    recording? = Keyword.get(opts, :recording?, Application.get_env(:aiur, :executor_recording?, true))
 
     recording_children = recording_children(recording?)
 
@@ -261,11 +249,7 @@ defmodule Aiur.Application.Children do
       executor_principal_child(recording?, executor_mode?),
       # Dashboard supervision is independent of terminal attachment/headless
       # mode. Aiur.HttpServer retains its own bind and credential guards.
-      dashboard_children(
-        dashboard?,
-        Keyword.get(opts, :dashboard_pages?, true),
-        tailscale_funnel?
-      ),
+      dashboard_children(dashboard?, Keyword.get(opts, :dashboard_pages?, true), tailscale_funnel?),
       Aiur.Opencode.TokenRegistry,
       Aiur.Opencode.ActiveTurns,
       # Chat-pane machinery — UI-only, never read by a headless run.
@@ -284,19 +268,18 @@ defmodule Aiur.Application.Children do
     |> Enum.reject(&is_nil/1)
     |> Kernel.++(
       cli_children ++
-        [Aiur.BackgroundCpu] ++
-        Aiur.Experiments.children(recording?) ++
-        Auto.child_specs(recording?: recording?) ++
-        BuildOrders.child_specs(:label_projection, opts)
+        [Aiur.BackgroundCpu] ++ Aiur.Experiments.children(recording?) ++ Auto.child_specs(recording?: recording?) ++ BuildOrders.child_specs(:label_projection, opts) ++ landing_watch_children()
     )
+  end
+
+  defp landing_watch_children do
+    if AiurConfig.tracker_kind() == "github", do: [Aiur.LandingWatch], else: []
   end
 
   defp maybe_ls_remote_ticker(enabled?) when enabled? in [nil, false], do: nil
   defp maybe_ls_remote_ticker(_enabled?), do: Aiur.Events.LsRemoteTicker
 
-  defp recording_children(true),
-    do: [Aiur.Executor.Claims, Aiur.ExecutorWakeInbox, Aiur.ExecutorListener]
-
+  defp recording_children(true), do: [Aiur.Executor.Claims, Aiur.ExecutorWakeInbox, Aiur.ExecutorListener]
   defp recording_children(false), do: []
 
   defp executor_principal_child(true, true), do: Aiur.Executor.Principal
