@@ -27,7 +27,6 @@ defmodule Aiur.Orchestrator.CommentReworkActiveEntryTest do
   use Aiur.TestSupport
 
   alias Aiur.{AgentQueueStore, Issue}
-  alias Aiur.Orchestrator.CommentPolling.TargetSelection
   alias Aiur.Orchestrator.{CommentWake, State}
 
   @issue_number "2814"
@@ -134,19 +133,49 @@ defmodule Aiur.Orchestrator.CommentReworkActiveEntryTest do
     Application.put_env(:aiur, :memory_tracker_issues, [issue])
     state = base_state(%{})
 
-    {:ok, targets, _review_targets, _watch_targets} =
-      TargetSelection.github_comment_poll_targets(state,
-        review_issue_fetcher: fn states -> {:ok, Enum.filter([issue], &(&1.state in states))} end,
-        review_pull_request_fetcher: fn _identifier -> {:ok, %{"number" => 337}} end
-      )
-
     event = changes_requested_review_event(issue, %{unresolved_threads_fetcher: fn _pr -> {:ok, []} end})
 
-    for target <- targets do
-      CommentWake.maybe_reactivate_on_comment(state, target, :pr_review, event)
-    end
+    CommentWake.maybe_transition_idle_issue_to_rework(
+      %{state | last_polled_issues: %{issue.id => issue}},
+      @issue_number,
+      :pr_review,
+      event,
+      1
+    )
 
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 2_000
+  end
+
+  test "a changes-requested review on an active worker ticket reaches its digest without dispatch decline" do
+    issue = human_review_issue()
+    state = base_state(completed_running_entry())
+
+    event =
+      changes_requested_review_event(issue, %{unresolved_threads_fetcher: fn _pr -> {:ok, []} end})
+
+    CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event)
+
+    assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 2_000
+    assert [digest] = Aiur.AgentQueueStore.list_pending(state.queue_store, @issue_number)
+    assert digest.category == :coordination_event
+    assert digest.body.events == [event]
+    refute_received {:alert, "ticket.2814.agent.attention.comment_wake_dispatch_declined", _}
+  end
+
+  test "an already-rework ticket still delivers a new changes-requested review to its worker" do
+    issue = %{human_review_issue() | state: "rework", labels: ["agent:rework"]}
+    state = base_state(completed_running_entry())
+
+    event =
+      changes_requested_review_event(issue, %{
+        unresolved_threads_fetcher: fn _pr -> {:ok, []} end
+      })
+
+    CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event)
+
+    assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 2_000
+    assert [digest] = Aiur.AgentQueueStore.list_pending(state.queue_store, @issue_number)
+    assert digest.body.events == [event]
   end
 
   for body <- ["Update the stale base before merge", "## Blocking: stale base must be updated"] do
