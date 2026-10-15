@@ -22,6 +22,7 @@ class QuarantinedTestSelectionTest(unittest.TestCase):
 
     def test_selector_locations_are_unique(self):
         selected = RUNNER.selectors()
+        self.assertTrue(selected)
         self.assertEqual(len(selected), len(set(selected)))
 
 
