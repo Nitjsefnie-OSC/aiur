@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-tmp="$(mktemp -d "${TMPDIR:-$repo_root/.aiur-runtime/tmp}/pre-handoff-test.XXXXXX")"
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/pre-handoff-test.XXXXXX")"
 fixture=""
 cleanup() {
   [[ -z "$fixture" ]] || rm -f "$fixture"
@@ -28,8 +28,8 @@ GH
 chmod +x "$tmp/bin/gh"
 pr_base="$(git rev-parse HEAD^1)"
 merge_base="$(git rev-parse HEAD)"
-push_before="$(git rev-parse HEAD^2)"
 main_base="$(git rev-parse origin/main)"
+push_before="$main_base"
 run_event() {
   local name="$1" event="$2" pr_sha="$3" merge_sha="$4" push_sha="$5"
   env GITHUB_EVENT_NAME="$event" GITHUB_REPOSITORY=example/repo AIUR_PR_NUMBER=1 \
