@@ -118,12 +118,13 @@ defmodule Aiur.BuildOrder.IndexTest do
   end
 
   test "all open tickets appear exactly once including active labels absent from history" do
-    p = parts() |> put_in([:open, Access.key(:tickets)], [open(50, ["agent:todo"]), open(51, ["agent:human-review"]), open(52), open(53)])
+    p = parts() |> put_in([:open, Access.key(:tickets)], [open(50, ["agent:todo"]), open(51, ["agent:human-review"]), open(52), open(53, ["bug"])])
     p = p |> put_in([:now, :rows], %{"51" => now_row(51)}) |> put_in([:planned, :rows], [plan_row(50), plan_row(52)])
     assert {:ok, index} = assemble(p)
     assert Enum.sort(Map.keys(index.all)) == ~w(50 51 52 53)
     assert Enum.map(~w(50 51 52 53), &index.all[&1].sec) == ~w(plan now plan nq)
     assert index.all["53"].title == "Open 53"
+    assert index.all["53"].epic == "bugs"
   end
 
   test "moves upsert once, removal and arrival share one diff, no-op emits no blocks" do

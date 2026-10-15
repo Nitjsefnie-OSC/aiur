@@ -6,7 +6,7 @@ defmodule Aiur.BuildOrder.Index.Rows do
 
   @spec build(map(), list()) :: {map(), non_neg_integer()}
   def build(parts, general) do
-    history = history(parts)
+    history = Map.merge(open_history(parts), history(parts))
     {closed, undated} = history |> Map.values() |> Enum.filter(&closed?/1) |> Enum.split_with(&is_integer(SourceFreshness.ms(&1.end)))
     hist = Enum.map(closed, fn row -> %{num: row.number, sec: "hist", status: closure(row.lifecycle.state_reason), ord: SourceFreshness.ms(row.start) || SourceFreshness.ms(row.end)} end)
     claimed = rows(parts[:now]) ++ hist ++ rows(parts[:planned]) ++ rows(parts[:not_queued]) ++ open_rows(parts)
@@ -23,7 +23,7 @@ defmodule Aiur.BuildOrder.Index.Rows do
 
   @spec resolver_context(map(), pos_integer()) :: map()
   def resolver_context(parts, number) do
-    row = Map.get(history(parts), number, %Row{})
+    row = Map.get(Map.merge(open_history(parts), history(parts)), number, %Row{})
     registry = Catalogue.registry(parts)
     owner = if registry == :unknown, do: :unknown, else: Map.get(registry.owners, number, :none)
 
