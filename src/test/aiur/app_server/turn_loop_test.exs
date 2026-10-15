@@ -17,10 +17,6 @@ defmodule Aiur.AppServer.TurnLoopTest do
       {:ok, :done}
     end
 
-    def handle_method(_session, _state, %{"method" => "turn/completed"}, _payload_string, _method) do
-      {:ok, :turn_completed}
-    end
-
     def handle_method(_session, state, payload, _payload_string, _method) do
       send(state.parent, {:method, payload})
       {:continue, state}

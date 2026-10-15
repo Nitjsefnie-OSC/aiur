@@ -12,7 +12,7 @@ defmodule Aiur.AppServer.TurnLoop do
     case Process.get(:handoff_replay_frames, []) do
       [frame | rest] ->
         Process.put(:handoff_replay_frames, rest)
-        continue_or_return(session, replay_frame(session, state, frame), state)
+        continue_or_return(session, replay_frame(session, state, frame))
 
       [] ->
         receive_messages(session, state)
@@ -42,7 +42,7 @@ defmodule Aiur.AppServer.TurnLoop do
 
       {^port, {:data, {:eol, chunk}}} ->
         complete_line = state.pending_line <> to_string(chunk)
-        continue_or_return(session, handle_incoming(session, %{state | pending_line: ""}, complete_line), state)
+        continue_or_return(session, handle_incoming(session, %{state | pending_line: ""}, complete_line))
 
       {^port, {:data, {:noeol, chunk}}} ->
         receive_loop(session, %{state | pending_line: state.pending_line <> to_string(chunk)})
@@ -87,10 +87,6 @@ defmodule Aiur.AppServer.TurnLoop do
 
   defp continue_or_return(session, {:continue, next_state}), do: receive_loop(session, next_state)
   defp continue_or_return(_session, result), do: result
-
-  defp continue_or_return(session, {:continue, next_state}, _state), do: receive_loop(session, next_state)
-
-  defp continue_or_return(_session, result, _state), do: result
 
   defp handle_incoming(%{port: port} = session, state, data) do
     on_message = state.on_message
