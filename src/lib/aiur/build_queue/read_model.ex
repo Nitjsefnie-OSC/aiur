@@ -92,6 +92,50 @@ defmodule Aiur.BuildQueue.ReadModel do
       else: :clear
   end
 
+  @doc "Returns focus starvation from the current reconciliation projections."
+  @spec focus_starvation(map(), [map()]) :: {:starved, [pos_integer()]} | :clear
+  def focus_starvation(state, projections) do
+    document = state.document || %{queues: [], items: []}
+    queues = Enum.sort_by(document.queues, &{&1.rank, &1.id})
+    projection_by_id = Map.new(projections, &{&1.issue_id, &1})
+    focus = List.first(queues)
+    focus_members = if focus, do: queue_projections(document.items, focus.id, projection_by_id), else: []
+
+    startable =
+      Enum.filter(focus_members, fn projection ->
+        projection.state in [:ready, :promoted, :overridden] and projection.verdict == :ready and
+          not blocked_by_github?(Map.get(state, :native_blockers) || %{}, projection.issue_id)
+      end)
+
+    lower_claimed? =
+      queues
+      |> Enum.drop(1)
+      |> Enum.any?(fn queue ->
+        Enum.any?(queue_projections(document.items, queue.id, projection_by_id), &(&1.state == :claimed))
+      end)
+
+    focus_claimed? = Enum.any?(focus_members, &(&1.state == :claimed))
+
+    if startable != [] and not focus_claimed? and lower_claimed?,
+      do: {:starved, Enum.map(startable, &String.to_integer(&1.issue_id))},
+      else: :clear
+  end
+
+  defp queue_projections(items, queue_id, projection_by_id) do
+    for %{queue_id: ^queue_id, issue_id: id} <- items,
+        projection = projection_by_id[id],
+        not is_nil(projection),
+        do: projection
+  end
+
+  defp blocked_by_github?(native_blockers, id) do
+    case Map.get(native_blockers, id) do
+      {:ok, blockers} -> Enum.any?(blockers, & &1.open?)
+      {:unknown, _reason} -> true
+      _ -> false
+    end
+  end
+
   defp order_summary(queues, state) do
     actual = queues |> Enum.sort_by(&{&1.set_rank, &1.queue_id}) |> Enum.map(& &1.name)
     {declared, source} = declared_order(queues, state)

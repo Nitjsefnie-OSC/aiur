@@ -411,14 +411,13 @@ defmodule Aiur.BuildQueue.Server do
     Reconcile.write_hints(projections, holds, state.document, state.settings, observations)
     Phoenix.PubSub.broadcast(Aiur.PubSub, "build_queue:changed", {:build_queue_changed, state.status})
     state = %{state | projections: projections, observations: observations, actions: state.actions, holds: holds, hold_ages: ages, reconciles: state.reconciles + 1}
-    state = focus_starvation(state)
+    state = focus_starvation(state, projections)
     state = Progress.reconcile(state)
     if Enum.any?(actions, &match?({:dequeue, _}, &1)), do: request(state), else: state
   end
 
-  defp focus_starvation(state) do
-    queues = ReadModel.build(state).queues
-    decision = ReadModel.focus_starvation(queues)
+  defp focus_starvation(state, projections) do
+    decision = ReadModel.focus_starvation(state, projections)
     key = {:focus_starved, nil}
     latched? = Enum.any?(state.document.latches, &(&1.key == key))
 

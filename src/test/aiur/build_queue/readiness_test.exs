@@ -101,6 +101,27 @@ defmodule Aiur.BuildQueue.ReadinessTest do
     assert ReadModel.focus_starvation([%{focus | items: [claimed]}, lower]) == :clear
   end
 
+  test "reconciliation focus starvation uses projections and cached GitHub blockers" do
+    time = DateTime.from_unix!(10_000, :millisecond)
+    focus = %Queue{id: "focus", name: "focus", rank: 0, kind: :list, root: nil, held: false, generation: 0, created_at: time}
+    lower = %Queue{id: "lower", name: "lower", rank: 1, kind: :list, root: nil, held: false, generation: 0, created_at: time}
+
+    members = [
+      %Item{issue_id: "11", queue_id: "focus", position: 0, hold: nil, override: nil, promoted_at: nil, added_at: time},
+      %Item{issue_id: "21", queue_id: "lower", position: 0, hold: nil, override: nil, promoted_at: nil, added_at: time}
+    ]
+
+    ready = %{issue_id: "11", state: :ready, verdict: :ready}
+    claimed = %{issue_id: "21", state: :claimed, verdict: :ready}
+    state = %{document: %{queues: [lower, focus], items: members}, native_blockers: %{}}
+
+    assert ReadModel.focus_starvation(state, [ready, claimed]) == {:starved, [11]}
+    assert ReadModel.focus_starvation(state, [%{ready | state: :claimed}, claimed]) == :clear
+
+    blocked = %{state | native_blockers: %{"11" => {:ok, [%{number: 3141, open?: true}]}}}
+    assert ReadModel.focus_starvation(blocked, [ready, claimed]) == :clear
+  end
+
   test "the node bound accepts 1000 and refuses 1001 without pretending acyclic" do
     edges = for id <- 1..999, do: edge(to_string(id), to_string(id + 1))
     assert Readiness.cyclic_items(edges) == MapSet.new()
