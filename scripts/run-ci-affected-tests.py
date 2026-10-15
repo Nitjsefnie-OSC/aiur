@@ -24,14 +24,17 @@ def run_selector(base):
     )
     output = bytearray()
     deadline = time.monotonic() + SELECTOR_TIMEOUT_SECONDS
+    selector_timed_out = False
     with selectors.DefaultSelector() as selector:
         selector.register(process.stdout, selectors.EVENT_READ)
         while selector.get_map():
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                selector_timed_out = True
                 break
             if not selector.select(remaining):
                 if time.monotonic() >= deadline:
+                    selector_timed_out = True
                     break
                 continue
             chunk = os.read(process.stdout.fileno(), 8192)
@@ -42,7 +45,7 @@ def run_selector(base):
             else:
                 selector.unregister(process.stdout)
 
-    timed_out = time.monotonic() >= deadline and process.poll() is None
+    timed_out = selector_timed_out or (time.monotonic() >= deadline and process.poll() is None)
     if not timed_out and process.poll() is None:
         try:
             process.wait(timeout=max(0, deadline - time.monotonic()))

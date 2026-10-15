@@ -156,6 +156,37 @@ time.sleep(30)
                         pass
                     process.communicate()
 
+    def test_selector_timeout_catches_descendant_holding_stdout_after_leader_exits(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('TMPDIR')) as scratch:
+            root = Path(scratch)
+            child_pid = root / 'child.pid'
+            mix = root / 'mix'
+            mix.write_text(f'''#!/usr/bin/env python3
+import subprocess, sys
+child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+open({str(child_pid)!r}, 'w').write(str(child.pid))
+print('# no affected test files detected', flush=True)
+''')
+            mix.chmod(0o755)
+            result = subprocess.run(
+                ['python3', str(SCRIPT), 'base-sha'],
+                capture_output=True,
+                text=True,
+                timeout=8,
+                start_new_session=True,
+                env=dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
+                         AIUR_CI_SELECTOR_TIMEOUT_SECONDS='2'),
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('selector exceeded 2s', result.stderr)
+            child_process = subprocess.run(
+                ['ps', '-o', 'stat=', '-p', child_pid.read_text()],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(child_process.stdout.strip(), '', 'selector descendant survived timeout')
+
     def test_unrecognized_output_fails_closed(self):
         for value in ['unexpected', 'cd src && mise exec -- echo success']:
             self.assertNotEqual(self.run_selection(value)[0], 0)
