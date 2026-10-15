@@ -6,7 +6,7 @@
 | --- | --- |
 | Comment commands and review-driven rework | Accepted only from configured trusted/daemon/bot accounts, the repository owner, or CODEOWNERS logins verified in the current refresh. |
 | Unresolvable CODEOWNERS | Failed teams contribute no members, including previously trusted members. Status/dashboard show the cause and age; sanitized comments remain visible to the Executor but untrusted bodies never enter agent digests or commands. Incomplete path ownership is unknown. |
-| The bot identity | Cannot trigger its own work. |
+| The bot identity | Cannot trigger its own work, except a distinct daemon App author filing a marked fixer authorized by `merge_policy.main_watch.on_red: dispatch_fixer`. Shared/PAT identities require human triage. |
 
 ## GitHub App authentication
 

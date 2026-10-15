@@ -20,8 +20,9 @@ Label read/create failures stop startup before agents start and explain the requ
 | Ticket branches | Validated refs and commits; subscribed known-ref changes trigger async compare (`per_page=1`, caller `ticket_branch_rewrite`) | `behind`/`diverged` or 404 emits `ticket.N.branch.force-push` (404: `previous_missing`). Errors/holds log and count `[:aiur, :events, :branch_rewrite, :error]`; new/unsubscribed refs skip compare. |
 | Comments and reviews | Trusted issue comments, PR comments, reviews, and unresolved threads | Wakes the correct agent for operator direction or rework. |
 | CI | Terminal checks while a ticket is in `agent:ci-wait` or `agent:human-review` | Returns passed work for human review and failed work for repair. |
-| Base-branch CI (main watch enabled) | Completed watched workflow runs for up to 20 recent base commits | Detects failures through check webhooks, base pushes and polling; retains state across restarts. |
-| Repository events | Default-branch pushes and opened, reopened, merged or closed-unmerged pull requests | Refreshes work whose base or review state changed. |
+| Base-branch CI (main watch enabled) | Completed watched workflow runs for up to 20 recent base commits | Detects failures through check webhooks, base pushes and polling; retains state across restarts. Fixer mode is opt-in (`on_red: dispatch_fixer`). Governed callers `main_fixer_open_issues` and `main_fixer_create` list/file tickets; shared comment and PR readers reconcile evidence/recovery. At default 120s, a single-page listing adds at most 30 calls/hr; pagination and comment/PR reads add calls (mechanism budget, not measured savings). [Fixer dispatch](/reference/merge-policy). |
+| Experiment release lines | Boot/hourly warm-clone `git ls-remote --tags --refs origin`; eligible tags are fetched and dated locally. | Creates [release experiments](/concepts/experiments#version-and-release-lines) without GitHub API calls. |
+| Repository events | Default-branch pushes and opened, reopened, merged or closed-unmerged pull requests | Refreshes work whose base or review state changed. Merged PR bodies also supply `Post-deploy check:` lines for the Executor checklist. |
 | Analytics facts | Terminal and on-demand backfill PR facts; boot/hourly base history and tags | Body-free `pr_facts` and `analytics/repo-timeline.ndjson`; callers `analytics_facts` and `analytics_repo_timeline`. |
 
 Once per repository and history query version, the daemon reads every issue for build history (caller `build_order_history_backfill`). It starts after a 60-second boot delay, spaces pages by 10 seconds, holds below 20% remaining GraphQL budget and pauses further reads after 300 reported points in a rolling hour.
@@ -38,11 +39,17 @@ Measured on aiur-team/aiur on 2026-10-11: facts cost 4 points before bounding br
 
 The development `scripts/aiurdev --test` and `--test3` harnesses still read GitHub's issue lists, but pass only their pinned sandbox tickets to dispatch authorization, startup workspace cleanup, and tracker reconciliation. Ordinary runs retain full issue discovery.
 
-Each CI poll reads the base branch's active rules and classic branch protection once per batch (caller `ci_required_checks`, uncached because they govern a CI verdict), then requires every required check on the current PR head from its configured integration. A failed lookup keeps a green aggregate pending; missing and skipped required checks cannot pass.
+Each CI poll reads the base branch's active rules, rulesets and classic branch protection once per batch (`ci_required_checks`). This read is uncached because it governs a verdict. Every required check must pass on the current PR head from its configured integration.
+
+CI batches and landing require all ruleset checks on PR heads. Startup readiness uses operator-only `AIUR_CI_READINESS_TOKEN` (`ci gate`) and reports unavailable without it.
+
+Main-watch refreshes App auth once after 401 and names the failed request and credential class in status. A failed lookup keeps a green aggregate pending; missing and skipped required checks cannot pass.
 
 Only required checks decide a failure: a red check that nothing requires does not send the ticket to rework. With no required list, every failure still decides.
 
-A head whose check runs all finished with at least one cancelled is missing CI, not failed CI. It stays pending for operator action; Aiur never reruns a cancelled run. In `ci-wait`, the skipped rerun produces one neutral attention per ticket.
+Ticket CI holds user-cancelled runs pending. A head with only completed checks and at least one cancellation is missing CI, not failed CI. It stays pending for operator action; Aiur never reruns a cancelled run. In `ci-wait`, the skipped rerun produces one neutral attention per ticket.
+
+The landing watcher follows approvals, retries infrastructure failures, routes real failures to rework, checks attribution and cancels stale groups. A same-job pass in an overlapping group proves a flake; it files a test-keyed issue, emits durable evidence and re-enqueues approved PRs.
 
 The agent `git` guard spends one GraphQL read per push of the current branch and refuses the push when that PR is in the merge queue, unless GitHub reports it `CONFLICTING` or changes are requested. A lookup that cannot answer lets the push through.
 
@@ -196,7 +203,7 @@ Dashboard state derives its staleness from the `dispatch` class (the cadence of 
 
 ExecutorList promotion candidates reuse the dispatch gate’s bounded `blocked_by` read (15-minute freshness, with early refresh on stale blocker evidence); unavailable or cross-repository edges hold promotion.
 
-Dispatch orders candidates with fresh cached native dependency holds after other candidates, preserving priority within each group. This ordering performs no GitHub reads; missing or stale evidence keeps the ordinary order and dispatch-time validation remains authoritative.
+Dispatch declines a `todo` candidate with no validation read when fresh cached dependency evidence names an open blocker. Others validate in priority order; one whose evidence is past the 15-minute bound but last named an open blocker validates last. Neither step reads GitHub. Stale evidence only orders candidates: it never holds or releases a ticket.
 
 `planning` is recommended as `0` (on-demand): its expensive query runs only when a page opens or a degradation needs a re-list.
 
