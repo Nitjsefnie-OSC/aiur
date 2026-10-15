@@ -38,7 +38,7 @@ defmodule Aiur.Events.Publisher do
 
   require Logger
 
-  alias Aiur.Events.{DebugLog, Exchange, IdGenerator, SourcePolicy}
+  alias Aiur.Events.{DebugLog, Exchange, HistoryStore, IdGenerator, SourcePolicy}
   alias Aiur.TicketObservation
 
   @table __MODULE__.Dedup
@@ -280,7 +280,7 @@ defmodule Aiur.Events.Publisher do
             true -> :emit
           end
 
-        Aiur.IssueLog.record_event(ticket_id, kind, event)
+        HistoryStore.record(ticket_id, kind, event)
     end
   end
 
