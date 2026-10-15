@@ -94,7 +94,7 @@ def analyze(snapshot, spec, annotations=None):
     for metric in metrics:
         result = results[metric["id"]]
         # Classify at full precision; serialize and summarize at the published precision.
-        _label(result, metric, settings["alpha"])
+        _label(result, metric, settings["alpha" if metric["primary"] else "fdr_q"])
         result = results[metric["id"]] = rounded(result)
         result["summary_text"] = summarize(result, metric, groups)
     primaries = {m["id"]: results[m["id"]]["status"] for m in metrics if m["primary"]}
