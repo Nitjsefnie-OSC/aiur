@@ -2,6 +2,7 @@ defmodule Aiur.Experiments.AnalysisInput do
   @moduledoc "Exports the stable, flat evidence consumed by experiment analysis."
 
   alias Aiur.Experiments.{Arms, Evidence, Journal, Paths, Persistence, Reader, Snapshot}
+  alias Aiur.Experiments.Sources.Common
 
   @spec export(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def export(id, opts \\ []) do
@@ -12,7 +13,7 @@ defmodule Aiur.Experiments.AnalysisInput do
   def prepare(id, opts) do
     context = Keyword.get(opts, :context, %{})
     clock = Map.get(context, :clock, &DateTime.utc_now/0)
-    now = if is_function(clock, 0), do: clock.(), else: clock
+    now = Common.timestamp(if is_function(clock, 0), do: clock.(), else: clock)
     opts = Keyword.put(opts, :context, Map.put(context, :clock, now))
 
     with :ok <- Persistence.writable(id),

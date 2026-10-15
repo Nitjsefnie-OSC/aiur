@@ -45,17 +45,29 @@ Censored durations are temporarily excluded with `censoring_ignored` and per-gro
 
 ## Prospective power and accrual
 
-Every metric carries a `power` block, including `insufficient_data` results. Primaries use 1,000 seeded empirical bootstrap simulations: A is resampled from completed baseline units, and B from that baseline multiplied by `1 − MDE` (or `1 + MDE` for higher-is-better). Each simulation uses a two-sided MWU test with the same exact/tie/continuity rules as inference. `power_at_current_n` is the fraction below alpha; `mc_se` is its binomial Monte Carlo standard error. Censored units are excluded and flagged `power_ignores_censoring`.
+Every metric carries a `power` block, including `insufficient_data` results. Primaries use 1,000 seeded empirical bootstrap simulations: A is resampled from completed baseline units, and B from that baseline multiplied by `1 − MDE` (or `1 + MDE` for higher-is-better).
 
-`mde_at_current_n` searches shifts from 0 to 90% at the power target. `samples_needed_per_group` searches baseline n from 5 to 5,000, preserving the observed comparison/baseline allocation ratio (equal allocation when comparison is empty). The comparison requirement is `ceil(n × allocation_ratio)`; the summary's per-group number is on the baseline scale. Requirements beyond the bound report `> 5000`; an unattainable MDE is null. Searches use common seeded draws and remain Monte Carlo estimates, not exact thresholds.
+Each simulation uses a two-sided MWU test with the same exact/tie/continuity rules as inference. `power_at_current_n` is the fraction below alpha; `mc_se` is its binomial Monte Carlo standard error. Censored units are excluded and flagged `power_ignores_censoring`.
 
-`samples_needed_noether` reports the Noether approximation beside the simulation: baseline n is `ceil((z(1−alpha/2)+z(target))² × (1+1/ratio) / (12 × (P−0.5)²))`, with a minimum of five. P is the exact empirical probability that B is below A, with half credit for ties. See [Noether (1987)](https://doi.org/10.1080/01621459.1987.10478478). Exploratory metrics run only this approximation and carry `power_estimate_approximate`. Empty or constant baselines return `not_estimable` with a reason and null estimates; binary and aggregate-rate tests also return `not_estimable`, since their tests require different prospective models. X2 analysis exports carry the observation time as `taken_at`.
+`mde_at_current_n` searches shifts from 0 to 90% at the power target. `samples_needed_per_group` searches baseline n from 5 to 5,000, preserving the observed comparison/baseline allocation ratio (equal allocation when comparison is empty).
+
+The comparison requirement is `ceil(n × allocation_ratio)`; the summary's per-group number is on the baseline scale. Requirements beyond the bound report `> 5000`; an unattainable MDE is null. Searches use common seeded draws and remain Monte Carlo estimates, not exact thresholds.
+
+`samples_needed_noether` reports the Noether approximation beside the simulation: baseline n is `ceil((z(1−alpha/2)+z(target))² × (1+1/ratio) / (12 × (P−0.5)²))`, with a minimum of five. P is the exact empirical probability that B is below A, with half credit for ties.
+
+See [Noether (1987)](https://doi.org/10.1080/01621459.1987.10478478). Exploratory metrics run only this approximation and carry `power_estimate_approximate`.
+
+Empty or constant baselines return `not_estimable` with a reason and null estimates; binary and aggregate-rate tests also return `not_estimable`, since their tests require different prospective models. X2 analysis exports carry the observation time as `taken_at`.
 
 `underpowered` compares prospective power at the registered MDE against the target. No post-hoc observed power is reported: it restates the observed p-value. `projected_p_if_effect_holds` is instead the median simulated p at the required n using the observed median ratio, explicitly a projection rather than evidence.
 
-For ETA, supply snapshot `taken_at` and spec `windows[comparison].start` (or the A/B `observation` start). After at least 24 hours, completed comparison units divided by elapsed days gives `accrual_per_day`; remaining comparison units give `days_needed` and `eta_date`. A zero rate, missing timestamps, or an unbounded requirement leaves ETA null. The computation uses only frozen inputs. Insufficient-data and inconclusive summaries append the requirement and, when available, the days at the current rate.
+For ETA, supply snapshot `taken_at` and spec `windows[comparison].start` (or the A/B `observation` start). After at least 24 hours, completed comparison units divided by elapsed days gives `accrual_per_day`; remaining comparison units give `days_needed` and `eta_date`.
 
-The daemon's `Aiur.Experiments.sample_status/1` reads arm evidence and returns completed-unit minimum-sample guards for primary metrics, including per-metric overrides. WindowManager uses these guards to end collection after the configured minimum window. This guard is independent of the offline power target; unavailable coverage and empty primary sets cannot satisfy it.
+A zero rate, missing timestamps, or an unbounded requirement leaves ETA null. The computation uses only frozen inputs. Insufficient-data and inconclusive summaries append the requirement and, when available, the days at the current rate.
+
+The daemon's `Aiur.Experiments.sample_status/1` reads arm evidence and returns completed-unit minimum-sample guards for primary metrics, including per-metric overrides. WindowManager uses these guards to end collection after the configured minimum window.
+
+This guard is independent of the offline power target; unavailable coverage and empty primary sets cannot satisfy it.
 
 ## Correction and labels
 
