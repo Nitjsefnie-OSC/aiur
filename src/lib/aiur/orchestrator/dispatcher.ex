@@ -4,6 +4,7 @@ defmodule Aiur.Orchestrator.Dispatcher do
   Tracker work executes outside the owner; guarded results apply inside it.
   """
 
+  alias Aiur.Alerts
   alias Aiur.GitHub.CycleFetchCache
   alias Aiur.Issue
   alias Aiur.Orchestrator.AutoResume
@@ -132,10 +133,56 @@ defmodule Aiur.Orchestrator.Dispatcher do
 
   @spec run_poll_cycle(State.t()) :: {:noreply, State.t()}
   def run_poll_cycle(%State{} = state) do
-    if TrackerTasks.running?(state, :startup_workspace_cleanup) do
-      {:noreply, Lifecycle.schedule_tick(state, 100)}
+    if TrackerTasks.running?(state, :startup_workspace_cleanup),
+      do: {:noreply, Lifecycle.schedule_tick(state, 100)},
+      else: state |> put_cycle_started() |> continue_poll_cycle()
+  end
+
+  defp continue_poll_cycle(state) do
+    if dispatch_chain_pending?(state) or dispatch_poll_running?(state) do
+      {:noreply, state |> check_dispatch_cycle_liveness() |> Lifecycle.schedule_tick(100)}
     else
-      start_poll_cycle(state)
+      start_and_watch_poll_cycle(state)
+    end
+  end
+
+  defp start_and_watch_poll_cycle(state) do
+    case start_poll_cycle(state) do
+      {:noreply, next} = result ->
+        if dispatch_poll_running?(next),
+          do: {:noreply, next |> check_dispatch_cycle_liveness() |> Lifecycle.schedule_tick(100)},
+          else: result
+    end
+  end
+
+  defp dispatch_poll_running?(state),
+    do: TrackerTasks.running?(state, :dispatch_poll) or TrackerTasks.running?(state, :ci_poll)
+
+  defp put_cycle_started(%State{dispatch_cycle_started_at_ms: started} = state) when is_integer(started), do: state
+  defp put_cycle_started(state), do: %{state | dispatch_cycle_started_at_ms: System.monotonic_time(:millisecond)}
+
+  defp check_dispatch_cycle_liveness(state) do
+    started = state.dispatch_cycle_started_at_ms
+    interval = state.effective_poll_interval_ms || state.poll_interval_ms || Aiur.PollCadence.base_interval_ms(class: :dispatch)
+    overdue_ms = interval * 2
+
+    if is_integer(started) and System.monotonic_time(:millisecond) - started >= overdue_ms and not state.dispatch_cycle_stalled? do
+      stage = dispatch_cycle_stage(state)
+      reason = "Dispatch cycle has not completed for #{div(System.monotonic_time(:millisecond) - started, 1_000)}s (stage: #{stage})."
+
+      case Alerts.emit_system("system.dispatch.cycle_stalled", message: reason, reason: reason, needs_attention: true, severity: "warning") do
+        :ok -> %{state | dispatch_cycle_stalled?: true, dispatch_cycle_stage: stage}
+        {:error, _} -> state
+      end
+    else
+      state
+    end
+  end
+
+  defp dispatch_cycle_stage(state) do
+    case state.tracker_tasks |> Map.values() |> Enum.map(& &1.key) do
+      [] -> if(state.poll_check_in_progress, do: "polling", else: "waiting for dispatch cycle")
+      keys -> Enum.map_join(keys, ", ", &inspect/1)
     end
   end
 
@@ -168,7 +215,9 @@ defmodule Aiur.Orchestrator.Dispatcher do
     end)
   end
 
-  defp finish_poll_cycle(state) do
+  @doc false
+  @spec finish_poll_cycle(State.t()) :: State.t()
+  def finish_poll_cycle(state) do
     schedule = TrackerHealth.poll_schedule(state)
 
     state =
@@ -192,12 +241,26 @@ defmodule Aiur.Orchestrator.Dispatcher do
     # `TrackerHealth.publish_poll_cadence/2` (#2309).
     :ok = TrackerHealth.publish_poll_cadence(state, schedule)
 
-    state = %{state | poll_check_in_progress: false}
+    state =
+      clear_dispatch_cycle_alert(%{
+        state
+        | poll_check_in_progress: false,
+          dispatch_cycle_started_at_ms: nil,
+          last_dispatch_cycle_completed_at_ms: System.monotonic_time(:millisecond),
+          dispatch_cycle_stage: nil
+      })
 
     state = StatusReport.sync_waiting_for_human_episodes(state, DateTime.utc_now())
     StatusReport.notify_dashboard(state)
     state
   end
+
+  defp clear_dispatch_cycle_alert(%State{dispatch_cycle_stalled?: true} = state) do
+    _ = Alerts.emit_system("system.dispatch.cycle_stalled.resolved", message: "Dispatch cycle completed.", reason: "Dispatch cycle completed.", needs_attention: false, severity: "info")
+    %{state | dispatch_cycle_stalled?: false, dispatch_cycle_stage: nil}
+  end
+
+  defp clear_dispatch_cycle_alert(state), do: state
 
   defp start_poll_reads(state) do
     state

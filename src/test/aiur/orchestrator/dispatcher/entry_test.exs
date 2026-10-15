@@ -66,6 +66,54 @@ defmodule Aiur.Orchestrator.Dispatcher.EntryTest do
     assert final.tracker_tasks == %{}
   end
 
+  test "an overdue candidate chain alerts and status binding stops naming its old hold" do
+    parent = self()
+    candidate = issue("stalled-chain")
+    Publisher.set_tracked_fn(fn _ -> true end)
+    :ok = Exchange.subscribe("system.dispatch.cycle_stalled")
+    :ok = Exchange.subscribe("system.dispatch.cycle_stalled.resolved")
+
+    pending =
+      Dispatcher.choose_issues(%State{snapshot_key: self(), effective_concurrent_agents: 4}, [candidate],
+        issue_fetcher: fn _ ->
+          send(parent, {:held_dispatch, self()})
+          receive do: (:release -> {:error, :controlled_failure})
+        end,
+        blocked_by_hydrator: fn value -> {:ok, value} end
+      )
+
+    receive_barrier({:held_dispatch, worker})
+
+    overdue = %{
+      pending
+      | dispatch_cycle_started_at_ms: System.monotonic_time(:millisecond) - 600_001,
+        poll_interval_ms: 1_000,
+        effective_poll_interval_ms: 1_000
+    }
+
+    assert {:noreply, stalled} = Dispatcher.run_poll_cycle(overdue)
+    assert stalled.dispatch_cycle_stalled?
+    assert_received {:event, %{"topic" => "system.dispatch.cycle_stalled", "reason" => reason}}
+    assert reason =~ "stage:"
+
+    capacity =
+      Map.merge(%{max: 4, effective: 4, configured: 4, occupied: 0, available: 4, reserved_paused: 0}, %{
+        dispatch_cycle_stalled?: true,
+        dispatch_cycle_started_at_ms: overdue.dispatch_cycle_started_at_ms
+      })
+
+    assert {:dispatch_cycle_stalled, _} = CapacityBinding.binding(capacity)
+
+    Process.cancel_timer(stalled.tick_timer_ref)
+    send(worker, :release)
+    receive_barrier({ref, result})
+    assert {:handled, chain_finished} = TrackerTasks.result(stalled, ref, result)
+    recovered = Dispatcher.finish_poll_cycle(chain_finished)
+    refute recovered.dispatch_cycle_stalled?
+    assert is_integer(recovered.last_dispatch_cycle_completed_at_ms)
+    assert_received {:event, %{"topic" => "system.dispatch.cycle_stalled.resolved"}}
+  end
+
   test "async candidate validation keeps dispatch priority order across slow reads" do
     owner = self()
     high = %Aiur.Issue{id: "async-high", identifier: "ASYNC-HIGH", title: "high", state: "Todo", priority: 1}

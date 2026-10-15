@@ -58,6 +58,9 @@ defmodule Aiur.Orchestrator.CapacityBinding do
   def binding(%{dispatch_hold: %{held?: true, reason: :tracker_preflight} = hold}, _polling, _now),
     do: {:tracker_preflight, hold}
 
+  def binding(%{dispatch_cycle_stalled?: true} = capacity, _polling, _now),
+    do: {:dispatch_cycle_stalled, %{started_at_ms: Map.get(capacity, :dispatch_cycle_started_at_ms), stage: Map.get(capacity, :dispatch_cycle_stage)}}
+
   def binding(%{capacity_hold: %{} = hold}, polling, now),
     do: {:admission, mark_stale_sample(hold, polling, now)}
 
