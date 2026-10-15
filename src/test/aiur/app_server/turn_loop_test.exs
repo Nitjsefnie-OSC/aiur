@@ -17,6 +17,10 @@ defmodule Aiur.AppServer.TurnLoopTest do
       {:ok, :done}
     end
 
+    def handle_method(_session, _state, %{"method" => "turn/completed"}, _payload_string, _method) do
+      {:ok, :turn_completed}
+    end
+
     def handle_method(_session, state, payload, _payload_string, _method) do
       send(state.parent, {:method, payload})
       {:continue, state}
@@ -72,6 +76,18 @@ defmodule Aiur.AppServer.TurnLoopTest do
     send(self(), {port, {:data, {:eol, ~s("done"})}}})
 
     assert TurnLoop.receive_loop(%{port: port}, state(%{parent: parent})) == {:ok, :done}
+  end
+
+  test "drains stderr queued after turn completion before returning" do
+    port = cat_port()
+    parent = self()
+    completed = Jason.encode!(%{"method" => "turn/completed"})
+
+    send(self(), {port, {:data, {:eol, completed}}})
+    send(self(), {port, {:data, {:eol, "warning: trailing stderr"}}})
+
+    assert TurnLoop.receive_loop(%{port: port}, state(%{parent: parent})) == {:ok, :turn_completed}
+    assert_receive {:malformed, "warning: trailing stderr"}, 1000
   end
 
   test "returns port exit and idle timeout errors" do

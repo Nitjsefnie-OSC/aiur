@@ -7,12 +7,15 @@ defmodule Aiur.AppServer.TurnLoop do
   alias Aiur.AppServer.{Adapter, Interrupts, Messages, OperatorDelivery, Rpc, TurnState}
   alias Aiur.AppServer.Rpc.StreamDiagnostics
 
+  @completion_output_quiet_ms 25
+  @completion_output_max_ms 100
+
   @spec receive_loop(map(), map()) :: term()
   def receive_loop(session, state) do
     case Process.get(:handoff_replay_frames, []) do
       [frame | rest] ->
         Process.put(:handoff_replay_frames, rest)
-        continue_or_return(session, replay_frame(session, state, frame))
+        continue_or_return(session, replay_frame(session, state, frame), state)
 
       [] ->
         receive_messages(session, state)
@@ -42,7 +45,7 @@ defmodule Aiur.AppServer.TurnLoop do
 
       {^port, {:data, {:eol, chunk}}} ->
         complete_line = state.pending_line <> to_string(chunk)
-        continue_or_return(session, handle_incoming(session, %{state | pending_line: ""}, complete_line))
+        continue_or_return(session, handle_incoming(session, %{state | pending_line: ""}, complete_line), state)
 
       {^port, {:data, {:noeol, chunk}}} ->
         receive_loop(session, %{state | pending_line: state.pending_line <> to_string(chunk)})
@@ -87,6 +90,69 @@ defmodule Aiur.AppServer.TurnLoop do
 
   defp continue_or_return(session, {:continue, next_state}), do: receive_loop(session, next_state)
   defp continue_or_return(_session, result), do: result
+
+  defp continue_or_return(session, {:continue, next_state}, _state), do: receive_loop(session, next_state)
+
+  defp continue_or_return(session, {:ok, :turn_completed} = result, state) do
+    deadline = System.monotonic_time(:millisecond) + @completion_output_max_ms
+    drain_completion_output(session, state, "", [], deadline)
+    result
+  end
+
+  defp continue_or_return(_session, result, _state), do: result
+
+  # The app-server combines stdout and stderr, but the BEAM can deliver the
+  # terminal JSON frame before stderr written by the same child. Drain a short
+  # quiet window, with a hard cap, before the caller tears down the port.
+  defp drain_completion_output(%{port: port} = session, state, pending_line, deferred_frames, deadline) do
+    remaining_ms = deadline - System.monotonic_time(:millisecond)
+
+    if remaining_ms > 0 do
+      receive do
+        {^port, {:data, {:eol, chunk}}} ->
+          line = pending_line <> to_string(chunk)
+
+          case Jason.decode(line) do
+            {:ok, _payload} ->
+              frame = {:data, {:eol, line}}
+              drain_completion_output(session, state, "", [frame | deferred_frames], deadline)
+
+            {:error, _reason} ->
+              _ = handle_incoming(session, Map.put(state, :pending_line, ""), line)
+              drain_completion_output(session, state, "", deferred_frames, deadline)
+          end
+
+        {^port, {:data, {:noeol, chunk}}} ->
+          drain_completion_output(session, state, pending_line <> to_string(chunk), deferred_frames, deadline)
+      after
+        min(@completion_output_quiet_ms, remaining_ms) ->
+          finish_completion_output_drain(session, state, pending_line, deferred_frames)
+      end
+    else
+      finish_completion_output_drain(session, state, pending_line, deferred_frames)
+    end
+  end
+
+  defp finish_completion_output_drain(session, state, pending_line, deferred_frames) do
+    if pending_line != "" do
+      case Jason.decode(pending_line) do
+        {:ok, _payload} ->
+          requeue_completion_frames(session.port, [{:data, {:noeol, pending_line}} | deferred_frames])
+
+        {:error, _reason} ->
+          _ = handle_incoming(session, Map.put(state, :pending_line, ""), pending_line)
+          requeue_completion_frames(session.port, deferred_frames)
+      end
+    else
+      requeue_completion_frames(session.port, deferred_frames)
+    end
+
+    :ok
+  end
+
+  defp requeue_completion_frames(port, frames) do
+    Enum.each(Enum.reverse(frames), &send(self(), {port, &1}))
+  end
 
   defp handle_incoming(%{port: port} = session, state, data) do
     on_message = state.on_message
