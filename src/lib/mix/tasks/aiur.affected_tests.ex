@@ -13,7 +13,7 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
   references deleted from individual source diff hunks, so root-level sibling
   tests are not hidden by topic-directory selections.
 
-      mix aiur.affected_tests [base_ref]
+      mix aiur.affected_tests [base_ref] [--json]
 
   Prints a root-runnable `cd src && mise exec -- mix test ...` line, or advises
   running the full `make ci` suite when the change cannot be scoped safely.
@@ -33,38 +33,81 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
   @impl Mix.Task
   def run(args) do
     root = repo_root()
+    json? = "--json" in args
+    args = Enum.reject(args, &(&1 == "--json"))
 
     with {:ok, base} <- requested_or_default_base(root, args),
-         {:ok, selection} <- selection(root, base) do
-      Enum.each(selection, fn line -> Mix.shell().info(line) end)
+         {:ok, lines} <- selection(root, base, json?) do
+      Enum.each(lines, &print_line/1)
     else
       {:error, reason} -> Mix.raise("Cannot select affected tests safely: #{reason}")
     end
   end
 
   @doc false
-  @spec selection(String.t(), String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
-  def selection(root, base) do
+  @spec selection(String.t(), String.t(), boolean()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def selection(root, base, json? \\ false) do
     with {:ok, diff_range} <- GitDiff.range(root, base),
-         {:ok, changed} <- changed_files(root, diff_range),
+         {:ok, changed} <- changed_files(root, base),
          {:ok, dependents} <- xref_dependents(root, changed),
          {:ok, references} <- deleted_reference_tests(root, diff_range) do
-      result =
+      selected =
         Aiur.AffectedTests.select(changed,
           base_dir: root,
           dependent_sources: dependents,
           reference_tests: references
         )
 
-      {:ok, Command.build(result)}
+      {:ok, output_lines(selected, json?, changed)}
     end
   end
 
-  defp changed_files(root, {base, head}) do
+  @spec selection_json({:full, String.t()} | {:scoped, [String.t()]}) :: String.t()
+  def selection_json({:full, reason}), do: Jason.encode!(%{status: "full", reason: reason})
+  def selection_json({:scoped, tests}), do: Jason.encode!(%{status: "scoped", tests: tests})
+
+  @doc false
+  @spec command({:full, String.t()} | {:full, String.t(), [String.t()]} | {:scoped, [String.t()]}) ::
+          [String.t()]
+  def command({:full, reason, changed}),
+    do: command({:full, "#{reason}; changed paths: #{Enum.join(changed, ", ")}"})
+
+  def command({:full, reason}),
+    do: Command.build({:full, reason})
+
+  def command(selection), do: Command.build(selection)
+
+  defp output_lines(selection, true, _changed), do: [selection_json(selection)]
+  defp output_lines({:full, reason}, false, changed), do: command({:full, reason, changed})
+  defp output_lines(selection, false, _changed), do: command(selection)
+
+  defp print_line(line), do: Mix.shell().info(line)
+
+  defp changed_files_for_range(root, {base, head}) do
     with {:ok, committed} <- GitDiff.changed_paths(root, base, head),
          {:ok, working} <- git(root, ["diff", "--name-only", "--"]),
          {:ok, untracked} <- git(root, ["ls-files", "--others", "--exclude-standard"]) do
       {:ok, Enum.uniq(committed ++ working ++ untracked)}
+    end
+  end
+
+  @doc false
+  @spec changed_files(String.t(), String.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def changed_files(root, base) do
+    case System.get_env("AIUR_CI_CHANGED_PATHS_B64") do
+      nil ->
+        with {:ok, diff_range} <- GitDiff.range(root, base) do
+          changed_files_for_range(root, diff_range)
+        end
+
+      encoded ->
+        with {:ok, json} <- Base.decode64(encoded),
+             {:ok, paths} <- Jason.decode(json),
+             true <- is_list(paths) and Enum.all?(paths, &is_binary/1) do
+          {:ok, Enum.uniq(paths)}
+        else
+          _ -> {:error, "AIUR_CI_CHANGED_PATHS_B64 must encode a JSON array of paths"}
+        end
     end
   end
 

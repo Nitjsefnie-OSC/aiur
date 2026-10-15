@@ -16,11 +16,14 @@ else:
         raise ValueError('selector produced multiple commands')
     command = shlex.split(commands[0].removeprefix('cd src && mise exec -- '))
     if command == ['make', 'ci']:
-        print('::notice::Unsafe affected selection deferred to full CI in the merge queue.', flush=True)
+        reason = next((line.removeprefix('# full suite recommended: ')
+                       for line in selection.splitlines()
+                       if line.startswith('# full suite recommended: ')), 'unknown')
+        print(f'::notice::Unsafe affected selection deferred to full CI in the merge queue: {reason}', flush=True)
         summary = os.environ.get('GITHUB_STEP_SUMMARY')
         if summary:
             with open(summary, 'a', encoding='utf-8') as out:
-                out.write('Full CI is deferred to the merge queue because this affected selection is unsafe to scope.\n')
+                out.write(f'Full CI is deferred to the merge queue because this affected selection is unsafe to scope: {reason}\n')
     elif command[:4] != ['mix', 'test', '--max-cases', '4']:
         raise ValueError('unsupported selector command')
     else:
