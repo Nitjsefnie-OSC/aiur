@@ -77,7 +77,7 @@ defmodule Aiur.Events.BusBoundaryTest do
     path = Path.join(events, "new_boundary_member.ex")
     File.write!(path, "# aiur:event-bus-boundary-member\ndefmodule Aiur.Events.NewBoundaryMember do\nend\n")
 
-    on_exit(fn -> File.rm_rf!(lib) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(lib) end)
 
     assert "events/new_boundary_member.ex" in members(lib)
   end
