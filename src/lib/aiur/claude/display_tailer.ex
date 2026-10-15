@@ -167,10 +167,13 @@ defmodule Aiur.Claude.DisplayTailer do
 
   def handle_call({:restore_handoff, %{path: path, session_id: session_id} = saved}, _from, state) do
     state = %{state | pending_operator_deliveries: Map.get(saved, :pending_operator_deliveries, [])}
-    cursor = case saved[:cursor] do
-      %{path: ^path, offset: offset} = cursor when is_integer(offset) and offset >= 0 -> cursor
-      _ -> nil
-    end
+
+    cursor =
+      case saved[:cursor] do
+        %{path: ^path, offset: offset} = cursor when is_integer(offset) and offset >= 0 -> cursor
+        _ -> nil
+      end
+
     {:reply, :ok, if(is_binary(path), do: maybe_retarget(state, path, session_id, cursor), else: state)}
   end
 
