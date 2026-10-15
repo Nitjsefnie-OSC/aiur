@@ -276,24 +276,6 @@ miss a wake, but cannot repeat one. A failed latch write publishes nothing and
 is retried on evaluation. Corrupt latches disable notifications and report
 `degraded` through the notifier status; the file is preserved for recovery.
 
-## The Experiment analyst
-
-The [aiur-experiment skill](https://github.com/aiur-team/aiur/tree/main/.claude/skills/aiur-experiment)
-ships into every ticket workspace and supports two modes: blind pre-registration
-(`spec`) and engine-backed analysis (`report`). Analysis tickets publish through
-`experiments preregister` or `experiments report submit`, verify persistence,
-and finish without a code PR.
-
-The analyst reviews every collected event, preserves engine numbers and can
-only downgrade labels or add `confounded`. Worked examples and a shared report
-template ship with the skill. Metric ids, units and direction come from the
-experiment's pack.
-
-Spec mode requires a baseline-only read and X4 power plan; it stops if those
-capabilities are unavailable. The current `show` detail read can expose outcomes,
-and `stats` offers no baseline-only planning or exclusion flags. Reports disclose
-unavailable sensitivity checks and mark high/noted effects `confounded`.
-
 ## Automatic experiments
 
 `experiments.auto` configures version, release and feature lines. The deploy
@@ -509,10 +491,10 @@ marks telemetry incomplete instead of implying a complete history.
 
 ## Reports and labels
 
-Register with `aiur experiments preregister <id> --file prereg.json`. The server assigns time and `post_hoc` after results reads. Repeating registration requires a JSON `reason`; amendments preserve the original and flag post-hoc changes. Contracts: `src/priv/experiments/schema/`.
+The [aiur-experiment analyst](/skills#agent-workspace-skills) ships to every workspace. Spec mode registers blind hypotheses and pack metrics; report mode interprets engine statistics. Analysis tickets publish through the validated CLI, verify persistence and finish without a PR.
 
-Labels, weakest first: `not-enough-data`, `underpowered`, `inconclusive`, `no-effect-detected`, `significant`. An analyst may weaken engine labels with a reason, never strengthen them. Overall labels derive from primaries; chips show n, effect and CI, with unavailable values explicit.
+Register with `aiur experiments preregister <id> --file prereg.json`. The server sets time and post-hoc status; amendments need `reason` and retain originals. Spec stops without a baseline-only read and X4 power plan: current `show` can expose outcomes and `stats` has no planning or exclusion flags. Contracts live in `src/priv/experiments/schema/`.
 
-Every event ID appears once. High/`noted` confounders require `confounded`; sensitivity needs a linked analysis. Snapshot hashes and registration must match. Summary verdicts need numbers; below planned n, confirmatory becomes interim.
+Labels, weakest first: `not-enough-data`, `underpowered`, `inconclusive`, `no-effect-detected`, `significant`. Analysts only downgrade, with reasons. Primary chips carry n, effect and CI; unavailable values stay explicit. Every event ID appears once. High/noted effects require `confounded`; sensitivity needs a linked analysis, or disclose unavailable reruns.
 
-After freezing both windows and collecting events, `aiur experiments stats <id> --json` returns the input hash and report-ready rows. `aiur experiments report submit <id> --file report.json` recomputes those inputs, rejects stale or invented numbers, and stores the next version. `show --json` exposes the report history.
+Freeze windows and collect events, then run `aiur experiments stats <id> --json`. `aiur experiments report submit <id> --file report.json` validates hashes, registration and engine numbers. Summary verdicts need numbers; below-n confirmatory reports become interim. Results are versioned; `show --json` exposes history.
