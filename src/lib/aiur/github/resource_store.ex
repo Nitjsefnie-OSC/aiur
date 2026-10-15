@@ -116,8 +116,7 @@ defmodule Aiur.GitHub.ResourceStore do
 
   ## The validator/body contract — read this before adding a reader
 
-  A validator and a body are separable, and the separation is what makes a
-  `304` dangerous. Three states exist and each one binds the reader differently:
+  A validator and a body are separable, and the separation is what makes a `304` dangerous. Three states exist and each one binds the reader differently:
 
     * **body + validator** — the normal state after `put_resource/3`. A `304`
       means "what you hold is current": serve the held body and publish exactly
