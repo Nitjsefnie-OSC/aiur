@@ -15,6 +15,7 @@ export async function transplant(browser, cell) {
     // modals open. Keep its timers frozen: reduced-motion changes their cadence
     // and can otherwise mutate shared progress before the analytics capture.
     await pair.design.clock.install({ time: FIXTURE_META.now })
+    await pair.design.clock.pauseAt(FIXTURE_META.now)
     await openHomeState(pair.design, cell)
     pair.allowlist = (await loadAllowlist()).filter(e => e.kind === 'design-style')
     await applyAllowlist(pair, cell)
