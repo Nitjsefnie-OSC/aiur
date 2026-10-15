@@ -131,7 +131,8 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.Experiments.Store,
     Aiur.Experiments.Capture,
     Aiur.Experiments.Checkpointer,
-    Aiur.BuildOrder.Features.LabelProjection
+    Aiur.BuildOrder.Features.LabelProjection,
+    Aiur.LandingWatch
   ]
 
   setup do

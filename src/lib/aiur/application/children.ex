@@ -258,12 +258,15 @@ defmodule Aiur.Application.Children do
       # into the dashboard, the Principal, or the opencode supervisors.
       if(recording?, do: [Aiur.AllowedContributors, BuildOrders.child_specs(:recording, opts)]),
       BuildOrders.child_specs(:final, opts),
-      if(Aiur.MainWatch.enabled?(), do: Aiur.MainWatch),
-      if(AiurConfig.tracker_kind() == "github", do: Aiur.LandingWatch)
+      if(Aiur.MainWatch.enabled?(), do: Aiur.MainWatch)
     ]
     |> List.flatten()
     |> Enum.reject(&is_nil/1)
-    |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu] ++ Aiur.Experiments.children(recording?) ++ BuildOrders.child_specs(:label_projection, opts))
+    |> Kernel.++(cli_children ++ [Aiur.BackgroundCpu] ++ Aiur.Experiments.children(recording?) ++ BuildOrders.child_specs(:label_projection, opts) ++ landing_watch_children())
+  end
+
+  defp landing_watch_children do
+    if AiurConfig.tracker_kind() == "github", do: [Aiur.LandingWatch], else: []
   end
 
   defp maybe_ls_remote_ticker(enabled?) when enabled? in [nil, false], do: nil
