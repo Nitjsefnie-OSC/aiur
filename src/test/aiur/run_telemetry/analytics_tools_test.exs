@@ -1,6 +1,6 @@
 defmodule Aiur.RunTelemetry.AnalyticsToolsTest do
   use ExUnit.Case, async: true
-  alias Aiur.RunTelemetry.AnalyticsTools
+  alias Aiur.RunTelemetry.{AnalyticsTools, Summaries}
 
   setup do
     root = Aiur.TestSupport.tmp_root!("analytics-tools")
@@ -28,7 +28,7 @@ defmodule Aiur.RunTelemetry.AnalyticsToolsTest do
   test "explicit override wins even before the directory exists", %{opts: opts, root: root} do
     File.mkdir_p!(Path.join(opts[:checkout], "analytics"))
     assert AnalyticsTools.resolve(root, opts) == {:ok, root}
-    assert Aiur.RunTelemetry.Summaries.reduce_dir(root) == {:ok, root}
+    assert Summaries.reduce_dir(root) == {:ok, root}
   end
 
   test "release step ships executable wrappers, libraries and schemas without fixtures", %{root: root} do

@@ -29,6 +29,7 @@ defmodule Aiur.RunTelemetry.Summaries do
   alias Aiur.GitHub.Config
   alias Aiur.RepoBase
   alias Aiur.RunTelemetry
+  alias Aiur.RunTelemetry.AnalyticsTools
   alias Aiur.RunTelemetry.SummaryReader
 
   @reduce_tool "reduce"
@@ -198,7 +199,7 @@ defmodule Aiur.RunTelemetry.Summaries do
 
   @doc false
   @spec reduce_dir(term()) :: {:ok, Path.t()} | {:error, term()}
-  def reduce_dir(override), do: Aiur.RunTelemetry.AnalyticsTools.resolve(override)
+  def reduce_dir(override), do: AnalyticsTools.resolve(override)
 
   ## ---- reading ----
 
