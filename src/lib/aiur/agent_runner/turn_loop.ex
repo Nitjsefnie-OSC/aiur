@@ -8,6 +8,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
   alias Aiur.CodingAgent
   alias Aiur.Config
   alias Aiur.Issue
+  alias Aiur.Orchestrator.DispatchPolicy
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.Workspace
   alias Aiur.Workspace.WipPreservation
@@ -133,7 +134,7 @@ defmodule Aiur.AgentRunner.TurnLoop do
         on_safe_checkpoint: callbacks.on_safe_checkpoint,
         on_operator_message: callbacks.on_operator_message,
         on_operator_response: callbacks.on_operator_response,
-        tool_executor: ToolExecutor.build(issue, workspace, worker_host, app_session, attempt_id: lifecycle_attempt_id)
+        tool_executor: ToolExecutor.build(issue, workspace, worker_host, app_session, attempt_id: lifecycle_attempt_id, rework_head_sha: Keyword.get(opts, :rework_head_sha))
       )
 
     record_implementation_end(issue, lifecycle_attempt_id, operation_id, turn_number, result)
@@ -435,8 +436,8 @@ defmodule Aiur.AgentRunner.TurnLoop do
   defp active_issue_state?(state_name) when is_binary(state_name) do
     normalized_state = normalize_issue_state(state_name)
 
-    Config.settings!().tracker.active_states
-    |> Enum.any?(fn active_state -> normalize_issue_state(active_state) == normalized_state end)
+    not DispatchPolicy.no_agent_work_state?(normalized_state) and
+      Enum.any?(Config.settings!().tracker.active_states, &(normalize_issue_state(&1) == normalized_state))
   end
 
   defp active_issue_state?(_state_name), do: false
