@@ -33,7 +33,9 @@ defmodule Aiur.BuildOrder.IndexBenchTest do
            broadcast: fn _ -> :ok end,
            read: fn _, _, _ -> p end,
            daemon_read: fn _ -> %{state: "unknown", heartbeat_at: nil, observed_at: now()} end,
-           daemon_timer: fn _, _, _ -> make_ref() end}, id: child)
+           daemon_timer: fn _, _, _ -> make_ref() end},
+          id: child
+        )
 
       assert {:ok, _} = GenServer.call(server, {:window, "Etc/UTC"})
       :erlang.garbage_collect(server)
