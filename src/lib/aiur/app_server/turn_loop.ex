@@ -12,7 +12,7 @@ defmodule Aiur.AppServer.TurnLoop do
     case Process.get(:handoff_replay_frames, []) do
       [frame | rest] ->
         Process.put(:handoff_replay_frames, rest)
-        continue_or_return(session, replay_frame(session, state, frame))
+        continue_or_return(session, replay_frame(session, state, frame), state)
 
       [] ->
         receive_messages(session, state)
@@ -42,7 +42,7 @@ defmodule Aiur.AppServer.TurnLoop do
 
       {^port, {:data, {:eol, chunk}}} ->
         complete_line = state.pending_line <> to_string(chunk)
-        continue_or_return(session, handle_incoming(session, %{state | pending_line: ""}, complete_line))
+        continue_or_return(session, handle_incoming(session, %{state | pending_line: ""}, complete_line), state)
 
       {^port, {:data, {:noeol, chunk}}} ->
         receive_loop(session, %{state | pending_line: state.pending_line <> to_string(chunk)})
@@ -87,6 +87,42 @@ defmodule Aiur.AppServer.TurnLoop do
 
   defp continue_or_return(session, {:continue, next_state}), do: receive_loop(session, next_state)
   defp continue_or_return(_session, result), do: result
+
+  defp continue_or_return(session, {:continue, next_state}, _state), do: receive_loop(session, next_state)
+
+  defp continue_or_return(session, {:ok, :turn_completed} = result, state) do
+    drain_queued_port_output(session, state)
+    result
+  end
+
+  defp continue_or_return(_session, result, _state), do: result
+
+  # Port data can already be queued to this process when the completion frame
+  # is handled. Drain only messages present now, without delaying the turn, and
+  # route every line through the normal parser so valid JSON is not discarded.
+  defp drain_queued_port_output(%{port: port} = session, state) do
+    receive do
+      {^port, {:data, {:eol, chunk}}} ->
+        line = state.pending_line <> to_string(chunk)
+        next_state = continue_after_queued_line(session, state, line)
+        drain_queued_port_output(session, next_state)
+
+      {^port, {:data, {:noeol, chunk}}} ->
+        drain_queued_port_output(session, %{state | pending_line: state.pending_line <> to_string(chunk)})
+    after
+      0 ->
+        if state.pending_line != "" do
+          _ = handle_incoming(session, %{state | pending_line: ""}, state.pending_line)
+        end
+    end
+  end
+
+  defp continue_after_queued_line(session, state, line) do
+    case handle_incoming(session, %{state | pending_line: ""}, line) do
+      {:continue, next_state} -> next_state
+      _result -> %{state | pending_line: ""}
+    end
+  end
 
   defp handle_incoming(%{port: port} = session, state, data) do
     on_message = state.on_message
