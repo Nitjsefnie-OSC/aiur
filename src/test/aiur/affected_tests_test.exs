@@ -63,57 +63,68 @@ defmodule Aiur.AffectedTestsTest do
            ) == {:scoped, ["src/test/aiur/caller_test.exs"]}
   end
 
-  test "maps #4447 changed projection and xref callers to exact-map tests" do
-    root = Aiur.TestSupport.tmp_root!("affected-xref-module-directory")
-    caller_test = Path.join(root, "src/test/aiur/orchestrator/ci_lifecycle/failure_test.exs")
-    unrelated_test = Path.join(root, "src/test/aiur/orchestrator/ci_lifecycle/transitions_test.exs")
-    File.mkdir_p!(Path.dirname(caller_test))
-    File.write!(caller_test, "")
-    File.write!(unrelated_test, "")
+  test "selects tests from a direct xref caller directory" do
+    root = Aiur.TestSupport.tmp_root!("affected-xref-caller-fallback")
+    callee_test = "src/test/aiur/callee/callee_test.exs"
+    caller_test = "src/test/aiur/callers/caller_test.exs"
+    File.mkdir_p!(Path.dirname(Path.join(root, callee_test)))
+    File.mkdir_p!(Path.dirname(Path.join(root, caller_test)))
+    File.write!(Path.join(root, callee_test), "")
+    File.write!(Path.join(root, caller_test), "")
 
     try do
-      assert AffectedTests.select(
-               ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"],
-               base_dir: root,
-               dependent_sources: ["src/lib/aiur/orchestrator/ci_lifecycle/poll.ex"]
-             ) ==
-               {:scoped,
-                Enum.sort([
-                  "src/test/aiur/orchestrator/ci_lifecycle/failure_test.exs",
-                  "src/test/aiur/orchestrator/ci_lifecycle/transitions_test.exs"
-                ])}
+      assert {:scoped, tests} =
+               AffectedTests.select(
+                 ["src/lib/aiur/callee/callee.ex"],
+                 base_dir: root,
+                 dependent_sources: ["src/lib/aiur/callers/caller.ex"]
+               )
+
+      assert callee_test in tests
+      assert caller_test in tests
+      assert length(tests) == 2
     after
       Aiur.TestCleanup.rm_rf!(root)
     end
   end
 
-  test "maps #4593 changed queue modules and xref callers to exact-count tests" do
-    root = Aiur.TestSupport.tmp_root!("affected-queue-xref-directory")
-    waiting = Path.join(root, "src/test/aiur/build_queue/set_waiting_test.exs")
-    queue_set = Path.join(root, "src/test/aiur/orchestrator/queue_set_next_test.exs")
-    read_model = Path.join(root, "src/lib/aiur/build_queue/read_model.ex")
-    File.mkdir_p!(Path.dirname(waiting))
-    File.mkdir_p!(Path.dirname(queue_set))
-    File.mkdir_p!(Path.dirname(read_model))
-    File.write!(waiting, "")
-    File.write!(queue_set, "alias Aiur.BuildQueue.ReadModel")
-    File.write!(read_model, "defmodule Aiur.BuildQueue.ReadModel do\nend\n")
+  test "falls back to full CI when xref caller directories exceed the cap" do
+    root = Aiur.TestSupport.tmp_root!("affected-xref-caller-cap")
+    File.mkdir_p!(Path.join(root, "src/test/aiur/callee"))
+    File.mkdir_p!(Path.join(root, "src/test/aiur/callers"))
+    File.write!(Path.join(root, "src/test/aiur/callee/callee_test.exs"), "")
 
     try do
-      assert {:scoped, tests} =
+      Enum.each(1..401, fn index ->
+        File.write!(Path.join(root, "src/test/aiur/callers/fixture_#{index}_test.exs"), "")
+      end)
+
+      assert {:full, reason} =
                AffectedTests.select(
-                 [
-                   "src/lib/aiur/build_queue/read_model.ex",
-                   "src/lib/aiur/build_queue/server.ex"
-                 ],
+                 ["src/lib/aiur/callee/callee.ex"],
                  base_dir: root,
-                 dependent_sources: ["src/lib/aiur/orchestrator/queue_set_slots.ex", "src/lib/aiur/build_queue_cli.ex"]
+                 dependent_sources: ["src/lib/aiur/callers/caller.ex"]
                )
 
-      assert tests == [
-               "src/test/aiur/build_queue/set_waiting_test.exs",
-               "src/test/aiur/orchestrator/queue_set_next_test.exs"
-             ]
+      assert reason =~ "fallback exceeds 400 files"
+    after
+      Aiur.TestCleanup.rm_rf!(root)
+    end
+  end
+
+  test "falls back to full CI when the module directory itself exceeds the cap" do
+    root = Aiur.TestSupport.tmp_root!("affected-module-directory-cap")
+    File.mkdir_p!(Path.join(root, "src/test/aiur/build_queue"))
+
+    try do
+      Enum.each(1..401, fn index ->
+        File.write!(Path.join(root, "src/test/aiur/build_queue/fixture_#{index}_test.exs"), "")
+      end)
+
+      assert {:full, reason} =
+               AffectedTests.select(["src/lib/aiur/build_queue/read_model.ex"], base_dir: root)
+
+      assert reason =~ "fallback exceeds 400 files"
     after
       Aiur.TestCleanup.rm_rf!(root)
     end
@@ -187,7 +198,7 @@ defmodule Aiur.AffectedTestsTest do
                "src/test/aiur/github_client_test.exs"
              ]
     after
-      File.rm_rf!(root)
+      Aiur.TestCleanup.rm_rf!(root)
     end
   end
 
@@ -204,7 +215,7 @@ defmodule Aiur.AffectedTestsTest do
                "src/test/aiur/github_client_test.exs"
              ]
     after
-      File.rm_rf!(root)
+      Aiur.TestCleanup.rm_rf!(root)
     end
   end
 

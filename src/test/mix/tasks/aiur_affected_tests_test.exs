@@ -34,42 +34,6 @@ defmodule Mix.Tasks.Aiur.AffectedTestsTest do
              "tests" => ["src/test/engine_test.exs"]
            }
   end
-
-  test "large xref source expansions are bounded and direct test callers are retained" do
-    changed = ["src/lib/aiur/build_queue/read_model.ex"]
-    source_callers = for index <- 1..405, do: "src/lib/aiur/caller_#{index}.ex"
-    test_caller = "src/test/aiur/orchestrator/queue_set_next_test.exs"
-    root = Aiur.TestSupport.tmp_root!("affected-xref-budget")
-    File.mkdir_p!(Path.join(root, "src/test/aiur/build_queue"))
-    File.mkdir_p!(Path.join(root, "src/test/aiur/orchestrator"))
-    File.write!(Path.join(root, "src/test/aiur/build_queue/read_model_test.exs"), "")
-    File.write!(Path.join(root, test_caller), "")
-
-    original_shell = Process.get(:mix_shell)
-
-    try do
-      Enum.each(source_callers, fn source ->
-        test_path = String.replace_prefix(source, "src/lib/", "src/test/") |> String.replace_suffix(".ex", "_test.exs")
-        File.mkdir_p!(Path.dirname(Path.join(root, test_path)))
-        File.write!(Path.join(root, test_path), "")
-      end)
-
-      assert {:scoped, selected} =
-               Aiur.AffectedTests.select(changed,
-                 base_dir: root,
-                 dependent_sources: source_callers,
-                 reference_tests: [test_caller]
-               )
-
-      assert "src/test/aiur/build_queue/read_model_test.exs" in selected
-      assert test_caller in selected
-      assert "src/test/aiur/build_queue/read_model_test.exs" in selected
-      assert length(selected) <= 2
-    after
-      Process.put(:mix_shell, original_shell)
-      Aiur.TestCleanup.rm_rf!(root)
-    end
-  end
 end
 
 defmodule Mix.Tasks.Aiur.AffectedTests.ChangedPathsTest do
@@ -158,6 +122,47 @@ defmodule Mix.Tasks.Aiur.AffectedTests.DefaultOriginTest do
   end
 end
 
+defmodule Mix.Tasks.Aiur.AffectedTests.XrefSelectionTest do
+  use ExUnit.Case, async: false
+
+  alias Mix.Tasks.Aiur.AffectedTests
+
+  @tag timeout: 120_000
+  test "uses the compiled xref graph and falls back to full CI over budget" do
+    root = File.cwd!() |> Path.dirname()
+    original_paths = System.get_env("AIUR_CI_CHANGED_PATHS_B64")
+
+    replay_cases = [
+      {"#4447", ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"]},
+      {"#4593",
+       [
+         "src/lib/aiur/build_queue/attention.ex",
+         "src/lib/aiur/build_queue/attention_actions.ex",
+         "src/lib/aiur/build_queue/read_model.ex",
+         "src/lib/aiur/build_queue/server.ex",
+         "src/lib/aiur/build_queue/set_summary.ex",
+         "src/lib/aiur/build_queue/settings.ex",
+         "src/lib/aiur/build_queue_cli.ex",
+         "src/lib/aiur/tracker.ex"
+       ]}
+    ]
+
+    try do
+      Enum.each(replay_cases, fn {_pr, changed} ->
+        System.put_env("AIUR_CI_CHANGED_PATHS_B64", Base.encode64(Jason.encode!(changed)))
+        assert {:ok, [json]} = AffectedTests.selection(root, "HEAD", true)
+
+        assert %{"status" => "full", "reason" => reason} = Jason.decode!(json)
+        assert reason =~ "fallback exceeds 400 files"
+      end)
+    after
+      if original_paths,
+        do: System.put_env("AIUR_CI_CHANGED_PATHS_B64", original_paths),
+        else: System.delete_env("AIUR_CI_CHANGED_PATHS_B64")
+    end
+  end
+end
+
 defmodule Mix.Tasks.Aiur.AffectedTests.XrefSinksTest do
   use ExUnit.Case, async: true
 
@@ -222,7 +227,7 @@ defmodule Mix.Tasks.Aiur.AffectedTests.DeletedReferencesTest do
       assert AffectedTests.deleted_reference_tests(repo, "HEAD") ==
                {:ok, ["src/test/aiur/github_client_test.exs"]}
     after
-      File.rm_rf!(repo)
+      Aiur.TestCleanup.rm_rf!(repo)
     end
   end
 

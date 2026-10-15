@@ -6,17 +6,20 @@ defmodule Aiur.AffectedTests do
 
   Paths are repo-relative as `git diff --name-only` emits them (e.g.
   `src/lib/aiur/foo.ex`). A changed `src/lib/**/X.ex` maps to its sibling
-  `src/test/**/X_test.exs`; a changed `*_test.exs` maps to itself. The caller may
-  add direct xref dependents via `:dependent_sources`, and those source paths
-  are mapped the same way. Deleted function, option-key, atom, and string
-  references can add every test file that still contains one, regardless of its
-  directory depth. Changes that cannot be classified safely — including test
-  support, executable/build files, Gettext `.po` files, `mix.exs`/`mix.lock`, and
-  runtime config — force the full suite.
+  `src/test/**/X_test.exs` and the tests in its module directory. Direct xref
+  callers add tests in their module directories too; oversized selections use
+  full CI.
+
+  A changed `*_test.exs` maps to itself. Deleted function, option-key, atom,
+  and string references can add every test file that still contains one,
+  regardless of its directory depth. Changes that cannot be classified safely
+  — including test support, executable/build files, Gettext `.po` files,
+  `mix.exs`/`mix.lock`, and runtime config — force the full suite.
   """
 
   @type path :: String.t()
   @common_literal_terms MapSet.new(~w(error is_binary ok open per_page state))
+  @max_affected_tests 400
 
   @doc """
   Map changed repo-relative paths to `{:scoped, test_files}` or `{:full, reason}`.
@@ -61,22 +64,20 @@ defmodule Aiur.AffectedTests do
       |> Enum.uniq()
       |> Enum.filter(exists?)
 
-    directory_tests = changed_directory_tests(base, changed ++ dependent_sources, exists?)
-    referenced_tests = referenced_module_tests(base, changed, exists?)
-    tests = Enum.uniq(exact_tests ++ directory_tests ++ referenced_tests)
+    changed_directory_tests = changed_directory_tests(base, changed, exists?)
+    caller_directory_tests = changed_directory_tests(base, dependent_sources, exists?)
+    tests = Enum.uniq(exact_tests ++ changed_directory_tests ++ caller_directory_tests)
 
     cond do
       sources != [] and tests == [] ->
         {:full, "no direct or xref-dependent tests were found for changed library sources"}
 
-      length(tests) > 400 ->
-        bounded =
-          (test_candidates_from(changed) ++ reference_tests ++ changed_directory_tests(base, changed, exists?))
-          |> Enum.uniq()
-          |> Enum.filter(exists?)
+      length(tests) > @max_affected_tests ->
+        Mix.shell().info(
+          "affected tests budget: changed-module directories plus xref caller directories select #{length(tests)} tests, over the #{@max_affected_tests}-file cap; forcing full CI, so no xref callers are dropped"
+        )
 
-        Mix.shell().info("affected tests budget: kept #{length(bounded)}, dropped #{length(tests -- bounded)} xref caller expansions above the 400-file cap")
-        {:scoped, bounded}
+        {:full, "affected test fallback exceeds #{@max_affected_tests} files (#{length(tests)} candidates)"}
 
       true ->
         {:scoped, tests}
@@ -89,45 +90,6 @@ defmodule Aiur.AffectedTests do
     |> Enum.flat_map(&directory_test_files(base, &1))
     |> Enum.filter(exists?)
   end
-
-  defp referenced_module_tests(base, changed, exists?) do
-    module_names = Enum.flat_map(changed, &source_module_names(base, &1))
-
-    base
-    |> Path.join("src/test/**/*_test.exs")
-    |> Path.wildcard()
-    |> Enum.filter(&test_mentions_module?(&1, module_names))
-    |> Enum.map(&Path.relative_to(&1, base))
-    |> Enum.filter(exists?)
-  end
-
-  defp source_module_names(base, "src/lib/" <> _ = path) do
-    case File.read(Path.join(base, path)) do
-      {:ok, source} -> Regex.scan(~r/^\s*defmodule\s+([A-Z][\w.]*)/m, source, capture: :all_but_first) |> List.flatten()
-      {:error, _reason} -> []
-    end
-  end
-
-  defp source_module_names(_base, _path), do: []
-
-  defp test_mentions_module?(_path, []), do: false
-
-  defp test_mentions_module?(path, module_names) do
-    case File.read(path) do
-      {:ok, source} -> Enum.any?(module_names, &test_mentions_alias?(source, &1))
-      {:error, _reason} -> false
-    end
-  end
-
-  defp test_mentions_alias?(source, module_name) do
-    alias_name = module_name |> String.split(".") |> List.last()
-    parent = module_name |> String.split(".") |> Enum.drop(-1) |> Enum.join(".")
-
-    String.contains?(source, module_name) or
-      Regex.match?(~r/\balias\s+#{Regex.escape(parent)}\.\{[^}]*\b#{Regex.escape(alias_name)}\b/s, source)
-  end
-
-  defp test_candidates_from(paths), do: Enum.flat_map(paths, &test_candidates/1)
 
   defp directory_test_files(base, "src/lib/" <> rest) do
     directory = rest |> Path.dirname() |> then(&"src/test/#{&1}")

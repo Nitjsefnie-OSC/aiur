@@ -38,7 +38,17 @@ if [[ "${EVENT_NAME}" == pull_request ]] && grep -qx 'full_ci=false' "$scratch/c
   fi
   case "$selection" in
     full) printf 'full_ci=true\ndocs_only=false\n' > "$scratch/classification" ;;
-    scoped:*) ;;
+    scoped:*)
+      selected_count="${selection#scoped:}"
+      if [[ ! "$selected_count" =~ ^[0-9]+$ ]]; then
+        echo "unsupported affected selection count: $selection" >&2
+        exit 1
+      fi
+      if (( selected_count > 400 )); then
+        echo "affected test selection exceeded 400 files ($selected_count); forcing full CI" >&2
+        printf 'full_ci=true\ndocs_only=false\n' > "$scratch/classification"
+      fi
+      ;;
     *) echo "unsupported affected selection: $selection" >&2; exit 1 ;;
   esac
 fi
