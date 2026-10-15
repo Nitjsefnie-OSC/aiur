@@ -1,7 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, mkdtempSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const root = new URL('../', import.meta.url);
 const sha = file => createHash('sha256').update(readFileSync(new URL(file, root))).digest('hex');
@@ -18,10 +21,16 @@ for (const [file, hash] of Object.entries(hashes)) {
   });
 }
 test('build ships every asset and license byte for byte', () => {
-  for (const directory of ['assets', 'fonts']) {
-    for (const file of readdirSync(new URL(`${directory}/`, root))) {
-      assert.equal(sha(`dist/${directory}/${file}`), sha(`${directory}/${file}`));
+  const output = mkdtempSync(join(tmpdir(), 'as12-dist-'));
+  try {
+    execFileSync(process.execPath, ['scripts/build.mjs', output], { cwd: root, stdio: 'pipe' });
+    for (const directory of ['assets', 'fonts']) {
+      for (const file of readdirSync(new URL(`${directory}/`, root))) {
+        assert.deepEqual(readFileSync(join(output, directory, file)), readFileSync(new URL(`${directory}/${file}`, root)));
+      }
     }
+  } finally {
+    rmSync(output, { recursive: true, force: true });
   }
 });
 test('optimized logo size budgets', () => {

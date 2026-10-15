@@ -5,9 +5,9 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+import { buildTokens } from '../src/tokens/build.mjs';
 
 export function build(outputDir = path.join(packageRoot, 'dist')) {
-  fs.rmSync(outputDir, { recursive: true, force: true });
   fs.mkdirSync(path.join(outputDir, 'css'), { recursive: true });
   execFileSync(path.join(packageRoot, 'node_modules/.bin/tsc'),
     ['--project', path.join(packageRoot, 'tsconfig.json'), '--outDir', path.join(outputDir, 'js')],
@@ -18,9 +18,12 @@ export function build(outputDir = path.join(packageRoot, 'dist')) {
     const css = fs.readFileSync(path.join(cssDir, file), 'utf8').replace(/\r\n/g, '\n');
     // Individual CSS lives one directory deeper than the consolidated stylesheet.
     fs.writeFileSync(path.join(outputDir, 'css', file), css.replaceAll("'./fonts/", "'../fonts/"));
-    return css;
+    // Font loading is opt-in; consumers adopt fonts.css in their migration.
+    return file === 'fonts.css' ? '' : css;
   });
-  fs.writeFileSync(path.join(outputDir, 'aiur-style.css'), contents.join('\n'));
+  fs.writeFileSync(path.join(outputDir, 'aiur-style.css'), buildTokens(outputDir) + contents.join('\n'));
+  fs.mkdirSync(path.join(outputDir, 'init'), { recursive: true });
+  fs.copyFileSync(path.join(packageRoot, 'src/init/theme-init.js'), path.join(outputDir, 'init/theme-init.js'));
   fs.copyFileSync(path.join(cssDir, 'fonts.css'), path.join(outputDir, 'fonts.css'));
   for (const directory of ['fonts', 'assets']) {
     fs.cpSync(path.join(packageRoot, directory), path.join(outputDir, directory), { recursive: true });

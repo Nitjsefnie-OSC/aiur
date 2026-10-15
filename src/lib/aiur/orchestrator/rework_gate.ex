@@ -27,7 +27,16 @@ defmodule Aiur.Orchestrator.ReworkGate do
   alias Aiur.Alerts
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.GitHub.ReviewThreads
-  alias Aiur.Orchestrator.{ReviewFindings, State}
+  alias Aiur.Orchestrator.{OperatorMessages, ReviewFindings, State}
+
+  @doc false
+  @spec operator_queue_empty?(GenServer.server(), String.t()) :: boolean()
+  def operator_queue_empty?(orchestrator, issue_identifier) do
+    case OperatorMessages.control_capabilities(orchestrator, issue_identifier) do
+      {:ok, %{queue_depth: 0}} -> true
+      _queued_or_unavailable -> false
+    end
+  end
 
   @doc """
   Returns the open pull request for the rework target.
@@ -224,10 +233,16 @@ defmodule Aiur.Orchestrator.ReworkGate do
   # Executor to dequeue it, and the approval already outranks an open thread
   # (#1756). A failed read keeps the rework verdict the threads justified.
   defp rework_unless_queued(pr, opts) do
-    fetcher = Keyword.get(opts, :queued_approval_fetcher, &default_queued_approval_fetcher/1)
     # A blocking review submitted after the approval leaves `reviewDecision` APPROVED; it is still a finding.
     blocking? = Keyword.get(opts, :blocking_review_submission?, false)
-    if not blocking? and fetcher.(pr) == {:ok, true}, do: {:skip, :approved_and_queued}, else: {:ok, pr}
+    if not blocking? and approved_and_queued?(pr, opts) == {:ok, true}, do: {:skip, :approved_and_queued}, else: {:ok, pr}
+  end
+
+  @doc false
+  @spec approved_and_queued?(map(), keyword()) :: {:ok, boolean()} | {:error, term()}
+  def approved_and_queued?(pr, opts \\ []) do
+    fetcher = Keyword.get(opts, :queued_approval_fetcher, &default_queued_approval_fetcher/1)
+    fetcher.(pr)
   end
 
   defp default_queued_approval_fetcher(pr) do
@@ -299,6 +314,19 @@ defmodule Aiur.Orchestrator.ReworkGate do
 
       {:skip, :no_open_pr} ->
         :none
+    end
+  end
+
+  @doc "Returns a handoff only when a completed turn pushed a new open-PR head."
+  @spec completed_agent_handoff(String.t(), term(), keyword()) :: :none | {:handoff, String.t()}
+  def completed_agent_handoff(issue_key, original_head, opts \\ []) do
+    with original when is_binary(original) and original != "" <- original_head,
+         {:ok, pr} <- open_pr(issue_key, opts),
+         head when is_binary(head) and head != "" <- head_sha(pr),
+         true <- head != original do
+      {:handoff, ci_handoff_state(head, opts)}
+    else
+      _ -> :none
     end
   end
 
