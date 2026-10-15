@@ -18,7 +18,7 @@ cp "$scratch/changed" "$scratch/changed-files"
 selector_paths=()
 while IFS= read -r path; do
   case "$path" in
-    src/lib/*|src/test/*|src/mix.exs|src/mix.lock) selector_paths+=("${path#src/}") ;;
+    src/*) selector_paths+=("$path") ;;
   esac
 done < "$scratch/changed"
 selector_paths_json="$(python3 - "${selector_paths[@]}" <<'PY'
@@ -86,7 +86,9 @@ if [[ "$run_order_tests" == true ]]; then
     test/aiur/application_child_order_test.exs >> "$tests_file"
 fi
 
-if [[ -s "$tests_file" ]]; then
+if [[ "$full_ci_ran" == true ]]; then
+  echo "run-pre-handoff-code-checks: selected and subsystem tests are covered by the full suite"
+elif [[ -s "$tests_file" ]]; then
   sort -u "$tests_file" -o "$tests_file"
   mapfile -t tests < "$tests_file"
   echo "run-pre-handoff-code-checks: running selected tests (${#tests[@]} files)"

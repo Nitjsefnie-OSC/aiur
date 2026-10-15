@@ -26,7 +26,7 @@ cat > "$tmp/bin/mix" <<'MIX'
 case "$*" in
   "aiur.affected_tests "*)
     printf 'selector:%s\n' "${AIUR_CI_CHANGED_PATHS_B64:-}" >> "$COMMAND_LOG"
-    if [[ "$CHANGED_PATHS" == *src/test/support/* || "$CHANGED_PATHS" == *src/mix.exs || "$CHANGED_PATHS" == *src/mix.lock ]]; then
+    if [[ "$CHANGED_PATHS" == *src/test/support/* || "$CHANGED_PATHS" == *src/mix.exs || "$CHANGED_PATHS" == *src/mix.lock || "$CHANGED_PATHS" == *src/config/* ]]; then
       printf '%s\n' 'cd src && mise exec -- make ci'
       exit 0
     fi
@@ -91,7 +91,7 @@ grep -F 'foo test.exs' "$tmp/failing_test.commands" >/dev/null
 grep -F 'subsystem_test.exs' "$tmp/failing_test.commands" >/dev/null
 encoded_paths="$(grep '^selector:' "$tmp/failing_test.commands" | cut -d: -f2-)"
 decoded_paths="$(printf '%s' "$encoded_paths" | base64 --decode)"
-[[ "$decoded_paths" == '["lib/aiur/github/foo.ex"]' ]]
+[[ "$decoded_paths" == '["src/lib/aiur/github/foo.ex"]' ]]
 if grep -F 'dialyzer' "$tmp/failing_test.commands" >/dev/null; then
   echo 'test-run-pre-handoff-code-checks: Dialyzer ran after selected tests failed' >&2
   exit 1
@@ -114,6 +114,13 @@ if run_check failing_full_ci src/test/support/foo.ex false false "" true; then
   exit 1
 fi
 grep -F 'make-ci' "$tmp/failing_full_ci.commands" >/dev/null
+
+if ! run_check runtime_config src/config/runtime.exs false false; then
+  cat "$tmp/runtime_config.log" >&2
+  echo 'test-run-pre-handoff-code-checks: runtime config did not trigger full CI' >&2
+  exit 1
+fi
+grep -F 'make-ci' "$tmp/runtime_config.commands" >/dev/null
 
 if ! run_check script_only scripts/run-pre-handoff-code-checks.sh false false; then
   cat "$tmp/script_only.log" >&2
