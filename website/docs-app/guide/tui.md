@@ -93,7 +93,9 @@ Session lookup is per repository, so concurrent runs in different directories at
 Claude REPL agents use a separate tmux server named `<daemon-socket>-agents`;
 chat panes stay on the daemon server. `aiur agents` and the dashboard show the
 REPL attach command. Normal `aiur stop` and unexpected daemon death clean up
-both servers. A prepared daemon handoff can instead rebind compatible local REPL
+both servers.
+
+A prepared daemon handoff can instead rebind compatible local REPL
 panes and replay their hook spool before polling resumes. Incompatible agents
 stop and resume through ordinary dispatch; adoption retains their existing claims
 and does not count as a new dispatch. The restart launcher controls whether a
