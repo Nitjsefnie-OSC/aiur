@@ -5,7 +5,7 @@ defmodule Aiur.Experiments.Preregistration do
   @spec prepare(term(), map() | nil, String.t() | nil, DateTime.t()) :: {:ok, map()} | {:error, term()}
   def prepare(attrs, existing, first_read, now) when is_map(attrs) do
     at = DateTime.to_iso8601(now)
-    record = attrs |> Map.put("registered_at", at) |> Map.put("post_hoc", post_hoc?(first_read, now)) |> Map.put("amendments", [])
+    record = attrs |> Map.delete("reason") |> Map.put("registered_at", at) |> Map.put("post_hoc", post_hoc?(first_read, now)) |> Map.put("amendments", [])
     with :ok <- ContractSchema.validate(record, "preregistration"), do: amend(existing, record, attrs["reason"], at)
   end
 
