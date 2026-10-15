@@ -94,6 +94,25 @@ defmodule Aiur.BuildQueue.UnauthorizedTest do
     end
   end
 
+  test "cold authorization check resolves a persisted unauthorized alert without reopening it", %{pid: pid} do
+    assert %{state: :promoted_unauthorized} = reconcile(pid)
+    assert_received {:event, %{topic: @topic}}
+
+    claims(%{"1" => :authorization_pending})
+    assert %{state: :held, reason: :authorization_pending} = reconcile(pid)
+    resolved = @topic <> ".resolved"
+    assert_received {:event, %{topic: ^resolved}}
+    refute_received {:event, %{topic: @topic}}
+
+    assert %{state: :promoted_unauthorized} =
+             (
+               claims(%{"1" => {:declined, :unauthorized}})
+               reconcile(pid)
+             )
+
+    assert_received {:event, %{topic: @topic}}
+  end
+
   test "cleared decline resolves once and claiming also clears attention", %{pid: pid} do
     for {claim, state} <- [{:unclaimed, :promoted}, {:claimed, :claimed}, {{:declined, :worker_capacity}, :promoted}] do
       claims(%{"1" => {:declined, :unauthorized}})
