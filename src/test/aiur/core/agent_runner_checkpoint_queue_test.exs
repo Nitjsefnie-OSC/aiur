@@ -16,6 +16,7 @@ defmodule Aiur.Core.AgentRunnerCheckpointQueueTest do
       )
 
     File.mkdir_p!(test_root)
+    isolate_ownership_store!(test_root)
 
     try do
       template_repo = Path.join(test_root, "source")
@@ -178,6 +179,7 @@ defmodule Aiur.Core.AgentRunnerCheckpointQueueTest do
       )
 
     File.mkdir_p!(test_root)
+    isolate_ownership_store!(test_root)
 
     try do
       template_repo = Path.join(test_root, "source")
@@ -310,5 +312,22 @@ defmodule Aiur.Core.AgentRunnerCheckpointQueueTest do
       System.delete_env("SYMP_TEST_CODEX_TRACE")
       File.rm_rf(test_root)
     end
+  end
+
+  defp isolate_ownership_store!(test_root) do
+    previous = Application.get_env(:aiur, :decision_state_dir)
+    Application.put_env(:aiur, :decision_state_dir, Path.join(test_root, "decisions"))
+
+    :ok = Supervisor.terminate_child(Aiur.Supervisor, Aiur.Workspace.Ownership.Store)
+    {:ok, _pid} = Supervisor.restart_child(Aiur.Supervisor, Aiur.Workspace.Ownership.Store)
+
+    on_exit(fn ->
+      if previous,
+        do: Application.put_env(:aiur, :decision_state_dir, previous),
+        else: Application.delete_env(:aiur, :decision_state_dir)
+
+      :ok = Supervisor.terminate_child(Aiur.Supervisor, Aiur.Workspace.Ownership.Store)
+      {:ok, _pid} = Supervisor.restart_child(Aiur.Supervisor, Aiur.Workspace.Ownership.Store)
+    end)
   end
 end
