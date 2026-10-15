@@ -60,7 +60,7 @@ defmodule Aiur.Config.Paths do
   """
   @spec decision_state_dir() :: {:ok, Path.t()} | {:error, atom()}
   def decision_state_dir do
-    case Aiur.TestRunIsolation.decision_state_override(Application.get_env(:aiur, :decision_state_dir)) do
+    case Aiur.TestRunState.decision_state_override(Application.get_env(:aiur, :decision_state_dir)) do
       {:ok, path} -> {:ok, path}
       :resolve -> resolve_decision_state_dir()
       {:error, reason} -> {:error, reason}
@@ -459,7 +459,7 @@ defmodule Aiur.Config.Paths do
   end
 
   defp decision_state_root do
-    Aiur.TestRunIsolation.decision_state_root(Path.join(File.cwd!(), ".aiur-state"))
+    Aiur.TestRunState.decision_state_root(Path.join(File.cwd!(), ".aiur-state"))
   end
 
   defp contain_within_root(root, candidate) do

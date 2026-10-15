@@ -4,6 +4,7 @@ defmodule Aiur.AgentEnvironment do
   """
 
   alias Aiur.{AgentBuildGuard, AgentGitHubGuard, AgentScratch, BuildGate, Config, Shell}
+  alias Aiur.AgentEnvironment.TestRunIsolation
   alias Aiur.Config.Paths
   alias Aiur.GitHub.{AgentMarker, Budget, Credential}
   alias Aiur.GitHub.Config, as: GitHubConfig
@@ -443,7 +444,7 @@ defmodule Aiur.AgentEnvironment do
       "export GH_CONFIG_DIR=#{Aiur.Shell.escape(AgentGitHubGuard.gh_config_dir(workspace))}\n" <>
       "export AIUR_AGENT_QUOTA_STATE_PATH=#{Aiur.Shell.escape(AgentGitHubGuard.quota_dir(workspace))}\n" <>
       "export AIUR_AGENT_WORKSPACE=#{Aiur.Shell.escape(workspace)}\n" <>
-      Aiur.TestRunIsolation.remote_github_budget_exports() <>
+      TestRunIsolation.remote_github_budget_exports() <>
       "unset AIUR_GITHUB_BUDGET_KEY\n" <>
       publication_credential_export(opts) <>
       __MODULE__.GitIdentity.export_prefix(opts) <>

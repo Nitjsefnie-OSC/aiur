@@ -35,7 +35,6 @@
     "src/lib/aiur/test_http_guard.ex",
     "src/lib/aiur/test_reset.ex",
     "src/lib/aiur/test_reset/**",
-    "src/lib/aiur/test_run_isolation.ex",
     "src/lib/aiur/test_shard.ex",
     "src/lib/aiur/test_ticket_scope.ex",
     "src/lib/mix/tasks/**"
