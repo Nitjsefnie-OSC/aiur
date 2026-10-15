@@ -74,17 +74,6 @@ defmodule Aiur.Events.BusBoundaryTest do
     |> String.contains?("# aiur:event-bus-boundary-member")
   end
 
-  defp allowed?(mod) do
-    mod in @allowed_modules or mod in member_modules() or
-      Enum.any?(~w(Aiur.Config Aiur.JsonStore), &String.starts_with?(mod, &1 <> "."))
-  end
-
-  defp member_modules do
-    for file <- members() do
-      "Aiur." <> (file |> String.trim_trailing(".ex") |> Path.split() |> Enum.map_join(".", &Macro.camelize/1))
-    end
-  end
-
   test "a boundary-member marker discovers a newly added event module" do
     path = Path.join(@lib, "events/new_boundary_member.ex")
     File.write!(path, "# aiur:event-bus-boundary-member\ndefmodule Aiur.Events.NewBoundaryMember do\nend\n")
@@ -99,7 +88,18 @@ defmodule Aiur.Events.BusBoundaryTest do
              Enum.sort(~w(events/exchange.ex events/topic.ex events/publisher.ex events/id_generator.ex
                   events/subscription_store.ex events/subscription_store_supervisor.ex
                   events/universal_subscriptions.ex events/agent_subscription_policy.ex
-                  events/debug_log.ex events/history_store.ex ticket_observation.ex))
+                  events/debug_log.ex events/history_store.ex events/trace.ex ticket_observation.ex))
+  end
+
+  defp allowed?(mod) do
+    mod in @allowed_modules or mod in member_modules() or
+      Enum.any?(~w(Aiur.Config Aiur.JsonStore), &String.starts_with?(mod, &1 <> "."))
+  end
+
+  defp member_modules do
+    for file <- members() do
+      "Aiur." <> (file |> String.trim_trailing(".ex") |> Path.split() |> Enum.map_join(".", &Macro.camelize/1))
+    end
   end
 
   defp edges do

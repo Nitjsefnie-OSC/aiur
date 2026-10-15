@@ -1,5 +1,7 @@
 import Config
 
+config :aiur, Aiur.Events.Trace, Aiur.Events.DebugLog
+
 config :aiur, env: config_env()
 
 config :aiur, Aiur.Events.TrustClassifier, Aiur.GitHub.EventTrust
@@ -38,6 +40,8 @@ config :aiur, :env_startup_checks, [Aiur.Commands]
 config :aiur, :keyring_token_fun_module, Aiur.GitHub.Config
 
 config :aiur, :experiment_metric_packs, [Aiur.Experiments.Packs.DeliverySpeed]
+
+config :aiur, :init_contributions, [Aiur.Voice]
 
 config :aiur, :capability_providers, [
   Aiur.Capabilities.IdentityProvider,
