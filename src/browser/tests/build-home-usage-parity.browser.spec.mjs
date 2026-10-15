@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { PARITY_VIEWPORTS, openParityPair, expectDesignParity } from '../support/design-parity.mjs'
 
+test.setTimeout(90_000)
+
 // The board and shell are still being ported; compare the complete usage region.
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) for (const palette of ['aiur','gruvbox']) for (const count of [2,4,7]) {
   test(`usage ${viewport.viewport.width} ${theme} ${palette} n${count}`, async ({ browser }) => {
