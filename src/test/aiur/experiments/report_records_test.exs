@@ -2,7 +2,7 @@ defmodule Aiur.Experiments.ReportRecordsTest do
   use ExUnit.Case, async: false
   import ExUnit.CaptureIO
   alias Aiur.{Experiments, ExperimentsCLI}
-  alias Aiur.Experiments.{Paths, ReportRecords, Store}
+  alias Aiur.Experiments.{Paths, ReportRecords, Snapshot, Store}
   @fixture Path.expand("../../fixtures/experiments/preregistration.valid.json", __DIR__)
 
   setup do
@@ -65,7 +65,7 @@ defmodule Aiur.Experiments.ReportRecordsTest do
       assert {:ok, detail} = Experiments.fetch(id)
       assert detail.analysis["first_results_read_at"] == nil
       # Prepare server-owned evidence without exposing post-period values to a consumer.
-      assert {:ok, _snapshot} = Aiur.Experiments.Snapshot.freeze(id, "after", context: ctx)
+      assert {:ok, _snapshot} = Snapshot.freeze(id, "after", context: ctx)
 
       response =
         case @surface do
