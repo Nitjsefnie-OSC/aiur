@@ -111,6 +111,7 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
 
     File.write!(path, """
     import json, sys
+    print("READY", flush=True)
     request = json.loads(sys.stdin.readline())
     thread_id = request["params"]["threadId"]
     response = {"id": request["id"], "result": {}}
@@ -130,6 +131,11 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
 
     executable = System.find_executable("python3") || raise "python3 is required for JSON-RPC wire tests"
     port = Port.open({:spawn_executable, executable}, [:binary, :exit_status, :use_stdio, {:line, 65_536}, args: [path]])
+
+    receive do
+      {^port, {:data, {:eol, "READY"}}} -> :ok
+    end
+
     {port, dir}
   end
 
