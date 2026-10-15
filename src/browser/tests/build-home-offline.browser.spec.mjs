@@ -58,6 +58,7 @@ test('offline design copy and accessible status markup', async ({ page }) => {
   await expect(page.locator('.bd-offline')).toHaveAttribute('role', 'status')
   await expect(page.locator('.bd-offline')).toHaveText('Daemon offline · last heartbeat 6 min ago (14:14). Showing cached state — agent states and usage may be stale.Reconnect')
   expect(await page.evaluate(() => m.daemonView().socketDown)).toBe(false)
+  await page.clock.resume()
   const audit = await new AxeBuilder({ page }).include('#bd-offline').analyze()
   expect(audit.violations).toEqual([])
 })
