@@ -2,7 +2,7 @@
   "id": "experiments-page",
   "name": "Experiments dashboard page",
   "layer": 4,
-  "kind": "optional",
+  "kind": "in-app",
   "paths": [
     "src/lib/aiur_web/live/experiments_live.ex",
     "src/lib/aiur_web/experiments/**",
