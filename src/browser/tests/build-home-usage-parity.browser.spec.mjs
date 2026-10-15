@@ -40,7 +40,8 @@ for (const theme of ['dark','light']) test(`usage popover and grain ${theme}`, a
         records.push({name:'usage.popover',samples:animations})
       }
       expect(compareRecords(records[0],records[1])).toEqual([])
-      await expectDesignParity(pair,{name:`popover-${selector.startsWith('.mdl') ? 'model' : 'gql'}-${theme}`,region:'body > .ax-pop.show'})
+      for (const side of ['design','product']) await pair[side].evaluate(() => window.motionAnimations.forEach(a => { a.currentTime=Number(a.effect.getTiming().duration) }))
+      await expectDesignParity(pair,{preserveAnimations:true,name:`popover-${selector.startsWith('.mdl') ? 'model' : 'gql'}-${theme}`,region:'body > .ax-pop.show'})
     }
     const design=await runOn(pair.design,'grain.static',{selector:'.ax-uc'})
     const product=await runOn(pair.product,'grain.static',{selector:'.ax-uc'})
