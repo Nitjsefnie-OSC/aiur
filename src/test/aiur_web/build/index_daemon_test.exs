@@ -9,10 +9,21 @@ defmodule AiurWeb.Build.IndexDaemonTest do
     Core.subscribe()
     parent = self()
     {:ok, block} = Agent.start_link(fn -> %{state: "live", heartbeat_at: 1, observed_at: 2} end)
-    pid = start_supervised!({Index, name: nil, subscribe: fn -> :ok end, read: fn _, _, _ -> parts() end,
-      timer: fn _, _, _ -> flunk("daemon must not schedule a ticket flush") end,
-      daemon_read: fn _ -> Agent.get(block, & &1) end,
-      daemon_timer: fn pid, message, ms -> send(parent, {:tick_scheduled, pid, message, ms}); make_ref() end})
+
+    pid =
+      start_supervised!(
+        {Index,
+         name: nil,
+         subscribe: fn -> :ok end,
+         read: fn _, _, _ -> parts() end,
+         timer: fn _, _, _ -> flunk("daemon must not schedule a ticket flush") end,
+         daemon_read: fn _ -> Agent.get(block, & &1) end,
+         daemon_timer: fn pid, message, ms ->
+           send(parent, {:tick_scheduled, pid, message, ms})
+           make_ref()
+         end}
+      )
+
     receive_barrier({:tick_scheduled, ^pid, :daemon_tick, 10_000})
     :sys.get_state(pid)
     # Mount read is the initial-load barrier; restart and daemon messages may arrive in either order.
