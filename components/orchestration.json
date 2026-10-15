@@ -31,7 +31,6 @@
     "event-bus",
     "identity",
     "kernel",
-    "github",
     "listener-modes",
     "signal",
     "tracker",

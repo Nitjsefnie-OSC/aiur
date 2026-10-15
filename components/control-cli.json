@@ -18,7 +18,6 @@
     "src/lib/aiur/launch_state_adoption.ex",
     "src/lib/aiur/launcher_watchdog.ex",
     "src/lib/aiur/pr_merge.ex",
-    "src/lib/aiur/pr_merge/**",
     "src/lib/aiur/pubsub_boot.ex",
     "src/lib/aiur/shutdown.ex",
     "src/lib/aiur/specs_check.ex",
@@ -27,7 +26,16 @@
     "src/lib/aiur/test_reset/**",
     "src/lib/aiur/test_shard.ex",
     "src/lib/aiur/test_ticket_scope.ex",
-    "src/lib/mix/tasks/**"
+    "src/lib/mix/tasks/**",
+    "src/lib/aiur/pr_merge/checks.ex",
+    "src/lib/aiur/pr_merge/client.ex",
+    "src/lib/aiur/pr_merge/facts.ex",
+    "src/lib/aiur/pr_merge/gate.ex",
+    "src/lib/aiur/pr_merge/identity.ex",
+    "src/lib/aiur/pr_merge/merge_result.ex",
+    "src/lib/aiur/pr_merge/record.ex",
+    "src/lib/aiur/pr_merge/reviews.ex",
+    "src/lib/aiur/pr_merge/rules.ex"
   ],
   "facades": [
     "*"
@@ -64,7 +72,6 @@
     "dashboard-ui",
     "executor-attention",
     "experiments",
-    "github",
     "github-listeners",
     "linear",
     "listener-spec",
@@ -81,7 +88,8 @@
     "voice-conversation",
     "voice-stt",
     "watch-apps",
-    "web-shell"
+    "web-shell",
+    "github"
   ],
   "owns": {
     "config": [],

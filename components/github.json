@@ -18,7 +18,8 @@
     "src/lib/aiur/open_ticket_source/**",
     "src/lib/aiur/webhooks/delivery_mode.ex",
     "src/lib/aiur/webhooks/mode_table.ex",
-    "src/priv/github_budget.py"
+    "src/priv/github_budget.py",
+    "src/lib/aiur/pr_merge/queue.ex"
   ],
   "facades": [
     "Aiur.AllowedContributors",
@@ -83,7 +84,10 @@
     "Aiur.OpenTicketSource",
     "Aiur.OpenTicketSource.Snapshot",
     "Aiur.Webhooks.DeliveryMode",
-    "Aiur.Webhooks.ModeTable"
+    "Aiur.Webhooks.ModeTable",
+    "Aiur.GitHub.FailureEvidence",
+    "Aiur.GitHub.HumanReviewGate",
+    "Aiur.PrMerge.Queue"
   ],
   "requires": [
     "config",
