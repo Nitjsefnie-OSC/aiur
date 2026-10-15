@@ -3,8 +3,8 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   use GenServer
   require Logger
 
-  alias Aiur.Events.Exchange
   alias Aiur.Config.TrackerSettings
+  alias Aiur.Events.Exchange
   alias Aiur.GitHub.{Errors, Transport}
   alias Aiur.LandingWatch.Journal
 

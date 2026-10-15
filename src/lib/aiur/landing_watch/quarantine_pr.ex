@@ -58,7 +58,7 @@ defmodule Aiur.LandingWatch.QuarantinePR do
 
     case request(opts).(%{method: :get, url: url, token: token, caller: "landing_watch_quarantine_contents"}) do
       {:ok, %{status: 200, body: %{"encoding" => "base64", "content" => encoded}}} ->
-        case Base.decode64(String.replace(encoded, ~r/\\s/, "")) do
+        case Base.decode64(String.replace(encoded, ~r/\s/, "")) do
           {:ok, contents} -> {:ok, contents}
           :error -> {:error, :invalid_quarantine_list_encoding}
         end

@@ -47,6 +47,34 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
              )
   end
 
+  test "decodes GitHub content with line-wrapped base64" do
+    parent = self()
+    contents = "# " <> String.duplicate("quarantine list content ", 5) <> "\n"
+    encoded = Base.encode64(contents)
+    <<first::binary-size(60), rest::binary>> = encoded
+    wrapped = first <> "\n" <> rest
+
+    request = fn
+      %{method: :get, url: "https://api.github.com/repos/test-org/test-repo/contents/src/test/quarantine.txt?ref=main"} ->
+        {:ok, %{status: 200, body: %{"encoding" => "base64", "content" => wrapped}}}
+
+      %{method: method, url: url} = call ->
+        send(parent, {:request, method, url, Map.get(call, :body)})
+        response(method, url)
+    end
+
+    assert {:ok, %{"number" => 901}} =
+             QuarantinePR.open(
+               %{identity: "Aiur.ExampleTest :: fails repeatedly", observations: []},
+               900,
+               request_fun: request,
+               base_branch: "main"
+             )
+
+    assert_received {:request, :post, "https://api.github.com/repos/test-org/test-repo/git/blobs", %{"content" => updated}}
+    assert updated == String.trim_trailing(contents) <> "\nAiur.ExampleTest\tfails repeatedly\t#900\n"
+  end
+
   defp response(:get, "https://api.github.com/repos/test-org/test-repo"),
     do: {:ok, %{status: 200, body: %{"default_branch" => "main", "html_url" => "https://github.com/test-org/test-repo"}}}
 
