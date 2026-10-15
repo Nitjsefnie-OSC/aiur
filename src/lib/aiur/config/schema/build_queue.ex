@@ -9,7 +9,8 @@ defmodule Aiur.Config.Schema.BuildQueue do
   embedded_schema do
     # @config-reference config-configuration-21 build_queue.set_order
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-detail build_queue.set_order | string | `none` | `none` preserves ordinary candidate ordering. Opt into `ranked` to prefer queue sets by persisted rank (creation order by default); ready members follow list position, while optimistic members retain deepest-first ordering within each set. Ready work always precedes optimistic work. With a cap or reserve configured, earlier unknown or stale readiness blocks ranked spill because it may have ready work. Held sets remain stopped. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-detail build_queue.set_order | string | `none` | `none` preserves ordinary candidate ordering. Opt into `ranked` to prefer queue sets by persisted rank (creation order by default); ready members follow list position, while optimistic members retain deepest-first ordering within each set. Ready work always precedes optimistic work. With a cap or reserve configured, earlier unknown or stale readiness blocks ranked spill because it may have ready work. Held sets remain stopped. Main CI fixer tickets dispatch ahead of ranked sets. |
     field(:set_order, :string, default: "none")
     # @config-reference config-configuration-21 build_queue.max_active_sets
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength

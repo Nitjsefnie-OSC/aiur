@@ -88,7 +88,8 @@ defmodule Aiur.Config.Schema.Agent do
     # agents on a 16-core host. Explicit config still wins. The load envelope
     # reduces effective concurrency below this ceiling under host pressure.
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
-    # @config-reference config-configuration-agent-00 agent.max_concurrent_agents | integer or nil | derived from host capacity | Global simultaneous-agent cap. When omitted, it derives from the measured host capacity: `schedulers + schedulers / 4` (e.g. 20 on a 16-core host), so the ceiling is calibrated to the box instead of a hard-coded count. Explicit config wins. The adaptive envelope reduces effective concurrency below this ceiling under CPU pressure. |
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.max_concurrent_agents | integer or nil | derived from host capacity | Global simultaneous-agent cap. When omitted, it derives from the measured host capacity: `schedulers + schedulers / 4` (e.g. 20 on a 16-core host), so the ceiling is calibrated to the box instead of a hard-coded count. Explicit config wins. The adaptive envelope reduces effective concurrency below this ceiling under CPU pressure. [Fixer tickets](/reference/merge-policy) take the next free slot first, within this cap and the same pressure gates. |
     field(:max_concurrent_agents, :integer)
     # Per-scheduler runnable-process ceiling for the instantaneous run-queue
     # dispatch gate. nil disables the gate (the 1-minute load gate and envelope
@@ -161,7 +162,7 @@ defmodule Aiur.Config.Schema.Agent do
     field(:max_retry_attempts, :integer, default: 3)
     # @config-reference config-configuration-agent-00 agent.max_retry_backoff_ms | integer | 300000 | Retry backoff ceiling in milliseconds. |
     field(:max_retry_backoff_ms, :integer, default: 300_000)
-    # @config-reference config-configuration-agent-00 agent.max_concurrent_agents_by_state | map | `%{}` | Per-state caps overriding the global cap. |
+    # @config-reference config-configuration-agent-00 agent.max_concurrent_agents_by_state | map | `%{}` | Per-state caps overriding the global cap. These caps also constrain fixer tickets. |
     field(:max_concurrent_agents_by_state, :map, default: %{})
     # Provider settings are keyed by the backend's registry name. Built-in
     # schemas remain as typed compatibility views, while a new backend can keep

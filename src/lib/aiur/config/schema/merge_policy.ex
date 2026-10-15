@@ -20,7 +20,7 @@ defmodule Aiur.Config.Schema.MergePolicy do
       # @config-detail merge_policy.main_watch.workflows | array | `[]` | Workflow names to watch; empty means every workflow on the base branch. |
       field(:workflows, {:array, :string}, default: [])
       # @config-reference config-merge-policy-00 merge_policy.main_watch.on_red
-      # @config-detail merge_policy.main_watch.on_red | string | `alert` | `alert` reports failed CI; `dispatch_fixer` requests a fixer ticket and priority dispatch. |
+      # @config-detail merge_policy.main_watch.on_red | string | `alert` | `alert` reports failed CI; `dispatch_fixer` files a P1 fixer after confirmed red CI and dispatches it first. |
       field(:on_red, :string, default: "alert")
       # @config-reference config-merge-policy-00 merge_policy.main_watch.fixer_label
       # @config-detail merge_policy.main_watch.fixer_label | string | `main-fix` | Label for fixer tickets and their full-CI requirement. |
