@@ -1,9 +1,14 @@
 # The Aiur Executor
 
-The Executor operates an Aiur run to its agreed terminal condition: the human
-at the CLI, or the agent they delegate through `aiur-run`. `aiur-monitor`
-can assist either. Requirements and Build Orders come from `aiur-build`.
-GitHub owns ticket facts; Aiur owns activity, progress, alerts and events.
+The Executor is the operator responsible for an Aiur run from launch through
+the run's agreed terminal condition. A human who launches Aiur is the Executor
+and may use an agent with `aiur-monitor` as an assistant. When an agent is told
+to use `aiur-run`, that agent is the Executor.
+
+This role owns the system of work. It receives the requirements, ticket
+contracts, and Build Order from the Feature Planner that used `aiur-build`. At
+runtime, GitHub owns ticket facts and Aiur owns agent activity, progress,
+alerts, and events; planning documents preserve approved intent.
 
 Experiment wakes (`experiments:auto`): `system.experiment.<id>.preregister`
 starts analyst pre-registration; `.report_due` starts the report flow (X6).
@@ -26,18 +31,13 @@ Topic IDs encode dots as `%2E`.
 
 ## Establish the authority envelope
 
-Before consulting repository documentation, read
-`~/.aiur/repo/<owner>/<repo>/executor/handoff.md`. It is the current machine's
-run-specific handoff; GitHub and Aiur still provide the authoritative live
-ticket and runtime state. Keep this single living document current whenever the
-operator gives a directive, frames the run's request, supplies context that
-cannot be recovered from the repository/history, or changes the Executor's
-role or authority. A directive not written into the handoff has not been
-recorded. When replacing an Executor, rewrite it wholesale with the next
+Before consulting repository documentation, read `~/.aiur/repo/<owner>/<repo>/executor/handoff.md`. It is the current machine's
+run-specific handoff; GitHub and Aiur still provide the authoritative live ticket and runtime state. Keep this single living document current whenever the
+operator gives a directive, frames the run's request, supplies context that cannot be recovered from the repository/history, or changes the Executor's
+role or authority. A directive not written into the handoff has not been recorded. When replacing an Executor, rewrite it wholesale with the next
 Executor's ranked work and hazards; never append another dated checkpoint.
 
-Record these decisions before making the corresponding mutations. Reuse clear
-answers already present in the request or handoff instead of asking again.
+Record these decisions before making the corresponding mutations. Reuse clear answers already present in the request or handoff instead of asking again.
 
 - ticket scope or the GitHub selector that defines it;
 - whether the Executor may create newly discovered tickets;
