@@ -14,6 +14,7 @@ defmodule AiurWeb.Build.IndexLiveTest do
 
   test "real source bounds connected LiveView mailboxes, drops stale diffs and resyncs on restart" do
     parent = self()
+    topic = "build-home:live-test:#{System.unique_integer([:positive])}"
     initial = parts() |> put_in([:planned, :rows], [plan_row(12)])
     agent = start_supervised!({Agent, fn -> initial end})
     name = __MODULE__.Index
@@ -21,6 +22,7 @@ defmodule AiurWeb.Build.IndexLiveTest do
     start_supervised!(
       {Index,
        name: name,
+       broadcast: fn changes -> Phoenix.PubSub.broadcast(Aiur.PubSub, topic, {:build_changes, changes}) end,
        subscribe: fn -> :ok end,
        read: fn dirty, _, _ ->
          send(parent, {:index_read, dirty})
@@ -32,11 +34,11 @@ defmodule AiurWeb.Build.IndexLiveTest do
        end,
        daemon_timer: fn _, _, _ -> make_ref() end,
        daemon_read: &DaemonStub.read_daemon/1,
-       clock: &Aiur.TestSupport.BuildHome.IndexParts.now/0}
+       clock: &now/0}
     )
 
     assert {:ok, _} = GenServer.call(name, {:window, "Etc/UTC"})
-    Application.put_env(:aiur, :build_data_source, {IndexSource, [server: name, usage: UsageStub, freshness: DaemonStub]})
+    Application.put_env(:aiur, :build_data_source, {IndexSource, [server: name, usage: UsageStub, freshness: DaemonStub, index_subscribe: fn -> Phoenix.PubSub.subscribe(Aiur.PubSub, topic) end]})
 
     views =
       for _ <- 1..4 do

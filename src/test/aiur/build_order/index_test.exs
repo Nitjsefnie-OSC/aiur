@@ -1,7 +1,7 @@
 defmodule Aiur.BuildOrder.IndexTest do
   use ExUnit.Case, async: true
   import Aiur.TestSupport.BuildHome.IndexParts
-  alias Aiur.BuildOrder.{Index, Lifecycle, ProviderHealth}
+  alias Aiur.BuildOrder.{Epic, Index, Lifecycle, ProviderHealth}
   alias AiurWeb.Build.Payload
 
   test "joins history facts, resolved membership, timing, edges and merged PR" do
@@ -21,6 +21,11 @@ defmodule Aiur.BuildOrder.IndexTest do
     assert index.features["pag"].stats["done"] == 1
     assert index.features["pag"].stats["pct"] == 100
     assert {:ok, ^t} = Payload.row(t)
+    p = put_in(p, [:history], {:ok, %{rows: %{7 => %{r | end: :unknown}}, health: health()}})
+    assert {:ok, undated} = assemble(p)
+    assert undated.hist == [] and undated.history_meta.undated == 1
+    assert undated.features["pag"].stats["done"] == 1
+    assert undated.features["pag"].stats["pct"] == 100
   end
 
   test "now wins over history and plan; every resolver result survives unknown inputs" do
@@ -28,6 +33,7 @@ defmodule Aiur.BuildOrder.IndexTest do
     p = p |> put_in([:now, :rows], %{"12" => now_row(12)}) |> put_in([:planned, :rows], [plan_row(12)])
     assert {:ok, index} = assemble(p)
     assert map_size(index.all) == 3
+    assert index.sources.features.state == "unavailable"
     assert index.all["12"].sec == "now"
 
     for {_id, row} <- index.all do
@@ -37,7 +43,7 @@ defmodule Aiur.BuildOrder.IndexTest do
 
     context = Index.resolver_context(p, 13)
     assert context.owning_feature == :unknown and context.override == :unknown
-    assert Aiur.BuildOrder.Epic.resolve(context, %{general: general(), features: :unknown}).source == "unknown"
+    assert Epic.resolve(context, %{general: general(), features: :unknown}).source == "unknown"
   end
 
   test "preserves closure causes and unknown title, model and complexity" do
@@ -81,6 +87,11 @@ defmodule Aiur.BuildOrder.IndexTest do
     assert failed.hist == [] and failed.history_meta == %{total: nil, undated: nil} and failed.counts == nil
     assert failed.sources.history.state == "unavailable" and failed.sources.history.reason == "history_corrupt"
     assert failed.all["2"].sec == "now"
+    assert {:ok, page} = Index.earlier(failed, now(), "Etc/UTC", 1)
+    assert page.history.from == nil and page.history.total == nil
+    assert {:ok, stopped} = assemble(%{p | health: %ProviderHealth{failure: :history_not_running}})
+    assert stopped.hist == [] and stopped.history_meta.total == nil and stopped.counts == nil
+    assert stopped.sources.history.reason == "history_not_running"
     incomplete = %{health() | complete?: false, failure: :backfill_pending}
     assert {:ok, partial} = assemble(%{p | health: incomplete, history: {:ok, %{rows: %{1 => row(1)}, health: incomplete}}})
     assert length(partial.hist) == 1 and partial.counts == nil

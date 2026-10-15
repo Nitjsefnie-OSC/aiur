@@ -21,8 +21,14 @@ defmodule Aiur.BuildOrder.Index.Sources do
   def health(_), do: %ProviderHealth{failure: :unknown}
 
   defp history(parts) do
-    source = SourceFreshness.source(health(parts[:history]))
     health = parts[:health]
+
+    source =
+      case health do
+        %ProviderHealth{state: state} when state in [:unavailable, :structurally_invalid] -> SourceFreshness.source(health)
+        {:error, _} = failure -> SourceFreshness.source(health(failure))
+        _ -> SourceFreshness.source(health(parts[:history]))
+      end
 
     cond do
       source.state == "unavailable" -> source

@@ -7,7 +7,7 @@ defmodule AiurWeb.Build.Index do
   @signals %{
     build_order_history_changed: ~w(history health catch_up planned not_queued)a,
     build_order_features_changed: [:features],
-    build_order_epic_overrides_changed: [:overrides],
+    epic_overrides_changed: [:overrides],
     build_progress_changed: ~w(queue planned not_queued)a,
     build_queue_changed: ~w(queue planned not_queued)a,
     open_tickets_updated: ~w(open planned not_queued)a,
@@ -66,21 +66,28 @@ defmodule AiurWeb.Build.Index do
 
   def handle_info({ref, parts}, %{task: %{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
+    Process.cancel_timer(state.task.deadline)
     {:noreply, finish(%{state | task: nil}, parts)}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: %{ref: ref, dirty: keys}} = state) do
     require Logger
     Logger.warning("build_index read_task_failed=#{inspect(reason)}")
+    Process.cancel_timer(state.task.deadline)
     keys = if keys == :all, do: Map.keys(state.parts) ++ ~w(settings history now planned not_queued)a, else: MapSet.to_list(keys)
     parts = Enum.reduce(keys, state.parts, &Map.put(&2, &1, {:error, :read_failed}))
     {:noreply, finish(%{state | task: nil}, parts)}
   end
 
+  def handle_info({:read_timeout, ref}, %{task: %{ref: ref, pid: pid}} = state) do
+    Process.exit(pid, :kill)
+    {:noreply, state}
+  end
+
   def handle_info(:daemon_tick, %{daemon_task: nil} = state) do
     reader = Keyword.get(state.opts, :daemon_read, &Freshness.read_daemon/1)
-    task = Task.async(fn -> reader.(state.opts) end)
-    Process.unlink(task.pid)
+    opts = state.opts
+    task = Task.async(fn -> reader.(opts) end)
     {:noreply, %{state | daemon_task: task}}
   end
 
@@ -105,7 +112,7 @@ defmodule AiurWeb.Build.Index do
   defp daemon_result(state, block) do
     changed? = Freshness.push_daemon?(state.daemon, block)
     generation = if changed?, do: state.generation + 1, else: state.generation
-    if changed?, do: Core.broadcast(%{index_generation: generation, now: clock(state), upsert: [], remove: [], set: %{daemon: block}, resync: false})
+    if changed?, do: broadcast(state, %{index_generation: generation, now: clock(state), upsert: [], remove: [], set: %{daemon: block}, resync: false})
     timer = Keyword.get(state.opts, :daemon_timer, &Process.send_after/3)
     timer.(self(), :daemon_tick, 10_000)
     %{state | daemon_task: nil, daemon: block, generation: generation}
@@ -125,17 +132,19 @@ defmodule AiurWeb.Build.Index do
 
   defp read(state, keys) do
     reader = Keyword.get(state.opts, :read, &IndexReader.read/3)
-    task = Task.async(fn -> reader.(keys, state.parts, state.opts) end)
-    # The monitor handles a killed read without killing the cached index owner.
-    Process.unlink(task.pid)
-    %{state | dirty: MapSet.new(), task: %{ref: task.ref, pid: task.pid, dirty: keys}}
+    parts = state.parts
+    opts = state.opts
+    task = Task.async(fn -> reader.(keys, parts, opts) end)
+    # trap_exit handles a failed read; the link terminates workers when the owner dies.
+    deadline = Process.send_after(self(), {:read_timeout, task.ref}, Keyword.get(opts, :read_timeout, 3_500))
+    %{state | dirty: MapSet.new(), task: %{ref: task.ref, pid: task.pid, dirty: keys, deadline: deadline}}
   end
 
   defp finish(state, parts) do
     next = Core.assemble(parts, now: clock(state))
     changes = changes(state.index, next)
     generation = if changes, do: state.generation + 1, else: state.generation
-    if changes, do: Core.broadcast(Map.merge(changes, %{index_generation: generation, now: clock(state)}))
+    if changes, do: broadcast(state, Map.merge(changes, %{index_generation: generation, now: clock(state)}))
     state = %{state | parts: parts, index: next, generation: generation}
 
     Enum.each(state.waiting, fn {from, zone} ->
@@ -148,12 +157,23 @@ defmodule AiurWeb.Build.Index do
   end
 
   defp changes({:ok, old}, {:ok, new}) do
+    # An empty unavailable/backfilling window has no cutoff: pull a bounded day window on recovery.
+    if old.hist == [] and new.hist != [] and old.sources.history.state in ["unavailable", "incomplete"] do
+      %{resync: true}
+    else
+      ordinary_changes(old, new)
+    end
+  end
+
+  defp changes(_, _), do: %{resync: true}
+
+  defp ordinary_changes(old, new) do
     case Core.diff(old, new) do
       %{upsert: [], remove: [], set: set} when map_size(set) == 0 -> nil
       diff -> Map.put(diff, :resync, false)
     end
   end
 
-  defp changes(_, _), do: %{resync: true}
+  defp broadcast(state, changes), do: Keyword.get(state.opts, :broadcast, &Core.broadcast/1).(changes)
   defp clock(state), do: Keyword.get(state.opts, :clock, fn -> System.system_time(:millisecond) end).()
 end

@@ -1,7 +1,8 @@
 defmodule Aiur.TestSupport.BuildHome.IndexParts do
   @moduledoc false
-  alias Aiur.BuildOrder.{Lifecycle, ProviderHealth}
   alias Aiur.BuildOrder.History.Row
+  alias Aiur.BuildOrder.{Index, Lifecycle, ProviderHealth}
+  alias Aiur.Config.Schema.BuildOrder, as: BuildOrderSchema
   @now ~U[2026-10-07 14:20:00Z]
 
   def now, do: DateTime.to_unix(@now, :millisecond)
@@ -9,7 +10,7 @@ defmodule Aiur.TestSupport.BuildHome.IndexParts do
   def source, do: %{state: "ok", observed_at: now(), reason: nil}
 
   def general do
-    %Aiur.Config.Schema.BuildOrder{} |> Aiur.Config.Schema.BuildOrder.changeset(%{}) |> Ecto.Changeset.apply_changes() |> Map.fetch!(:general_epics)
+    %BuildOrderSchema{} |> BuildOrderSchema.changeset(%{}) |> Ecto.Changeset.apply_changes() |> Map.fetch!(:general_epics)
   end
 
   def parts(rows \\ []) do
@@ -66,5 +67,5 @@ defmodule Aiur.TestSupport.BuildHome.IndexParts do
     }
 
   def open(number, labels \\ []), do: %{identifier: to_string(number), title: "Open #{number}", labels: labels, created_at: @now}
-  def assemble(parts), do: Aiur.BuildOrder.Index.assemble(parts, now: now())
+  def assemble(parts), do: Index.assemble(parts, now: now())
 end

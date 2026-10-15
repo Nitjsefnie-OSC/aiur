@@ -7,7 +7,7 @@ defmodule AiurWeb.Build.IndexSource do
 
   @impl true
   def subscribe(opts) do
-    with :ok <- Core.subscribe() do
+    with :ok <- Keyword.get(opts, :index_subscribe, &Core.subscribe/0).() do
       usage = Keyword.get(opts, :usage, Usage)
       usage.subscribe(Keyword.get(opts, :financial, :locked))
     end

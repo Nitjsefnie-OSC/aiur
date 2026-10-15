@@ -1,5 +1,6 @@
 defmodule Aiur.BuildOrder.Index do
   @moduledoc "Shared build-home join and changes; all input reads are local projections."
+  alias Aiur.BuildOrder.{EpicOverrides, Features, History, NotQueued}
   alias Aiur.BuildOrder.Index.{Catalogue, Pages, Parts, Rows, Sources}
   @topic "build-home:index"
   @blocks ~w(epics features order counts sources history_meta repo)a
@@ -12,7 +13,7 @@ defmodule Aiur.BuildOrder.Index do
       catalogue = Catalogue.build(parts, general, all, now)
       sources = Sources.build(parts, now)
       complete? = sources.history.state not in ["unavailable", "incomplete"]
-      counts = if complete?, do: Enum.reduce(all, Map.new(catalogue.order, &{&1, 0}), fn {_id, row}, acc -> Map.update!(acc, row.epic, &(&1 + 1)) end)
+      counts = if complete?, do: counts(all, catalogue.order)
       hist = all |> Map.values() |> Enum.filter(&(&1.sec == "hist")) |> Enum.sort_by(&{&1.end, &1.id})
       available? = sources.history.state != "unavailable"
 
@@ -63,16 +64,16 @@ defmodule Aiur.BuildOrder.Index do
       end
 
     history = %{rows: Map.merge(Rows.open_history(parts), Rows.history(parts))}
-    nq = safe_read(:not_queued, fn -> Aiur.BuildOrder.NotQueued.build(parts[:open], parts[:queue], active: active, label_prefix: prefix) end)
+    nq = safe_read(:not_queued, fn -> NotQueued.build(parts[:open], parts[:queue], active: active, label_prefix: prefix) end)
     %{history_snapshot: {:ok, history}, todo_label: prefix <> ":todo", not_queued: nq}
   end
 
   @spec subscribe_sources() :: :ok | {:error, term()}
   def subscribe_sources do
     subscribers = [
-      &Aiur.BuildOrder.History.subscribe/0,
-      &Aiur.BuildOrder.Features.subscribe/0,
-      &Aiur.BuildOrder.EpicOverrides.subscribe/0,
+      &History.subscribe/0,
+      &Features.subscribe/0,
+      &EpicOverrides.subscribe/0,
       &Aiur.BuildProgress.subscribe/0,
       &Aiur.OpenTicketSource.subscribe/0,
       &Aiur.TicketActivity.subscribe/0,
@@ -95,6 +96,8 @@ defmodule Aiur.BuildOrder.Index do
     if Process.whereis(Aiur.PubSub), do: Phoenix.PubSub.broadcast(Aiur.PubSub, @topic, {:build_changes, changes})
     :ok
   end
+
+  defp counts(all, order), do: Enum.reduce(all, Map.new(order, &{&1, 0}), fn {_id, row}, acc -> Map.update!(acc, row.epic, &(&1 + 1)) end)
 
   defp changed?(:sources, old, new), do: Map.delete(old.sources, :index) != Map.delete(new.sources, :index)
   defp changed?(key, old, new), do: old[key] != new[key]

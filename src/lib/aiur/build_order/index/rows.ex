@@ -1,6 +1,6 @@
 defmodule Aiur.BuildOrder.Index.Rows do
   @moduledoc false
-  alias Aiur.BuildOrder.{Epic, FeatureStats, Metadata, SourceFreshness}
+  alias Aiur.BuildOrder.{Epic, FeatureStats, Metadata, ProviderHealth, SourceFreshness}
   alias Aiur.BuildOrder.History.{Edges, Row, Timing}
   alias Aiur.BuildOrder.Index.Catalogue
 
@@ -37,6 +37,8 @@ defmodule Aiur.BuildOrder.Index.Rows do
   end
 
   @spec history(map()) :: map()
+  def history(%{health: %ProviderHealth{state: state}}) when state in [:unavailable, :structurally_invalid], do: %{}
+  def history(%{health: {:error, _}}), do: %{}
   def history(%{history: {:ok, %{rows: rows}}}), do: rows
   def history(_), do: %{}
 
@@ -53,7 +55,8 @@ defmodule Aiur.BuildOrder.Index.Rows do
   @spec open_history(map()) :: map()
   def open_history(%{open: %{status: status, tickets: tickets}}) when status in [:available, :stale] do
     for ticket <- tickets, is_binary(ticket.identifier), {number, ""} <- [Integer.parse(ticket.identifier)], number > 0, into: %{} do
-      {number, %Row{number: number, title: ticket.title, labels: ticket.labels, labels_complete: true, created_at: ticket.created_at, lifecycle: %Aiur.BuildOrder.Lifecycle{state: :open}}}
+      {number,
+       %Row{number: number, title: ticket.title, labels: ticket.labels, labels_complete: true, created_at: ticket.created_at, lifecycle: %Aiur.BuildOrder.Lifecycle{state: :open, state_reason: :none}}}
     end
   end
 

@@ -1,6 +1,8 @@
 defmodule Aiur.BuildOrder.Index.Catalogue do
   @moduledoc false
+  alias Aiur.BuildOrder.Index.Rows
   alias Aiur.BuildOrder.{Epic, FeatureStats, SourceFreshness}
+  @statuses Map.new(~w(done failed not_planned closed running queued open)a, &{Atom.to_string(&1), &1})
 
   @spec general(map()) :: {:ok, list()} | {:error, :epic_config_unavailable}
   def general(%{settings: {:ok, %{build_order: %{general_epics: general}}}}) when is_list(general), do: {:ok, general}
@@ -15,7 +17,7 @@ defmodule Aiur.BuildOrder.Index.Catalogue do
     registry = registry(parts)
     features = if registry == :unknown, do: %{}, else: registry.features
     sorted = Enum.sort_by(features, fn {slug, f} -> {SourceFreshness.ms(f.from) || :unknown, slug} end)
-    facts = Map.new(rows, fn {_id, row} -> {row.num, fact(parts, row)} end)
+    facts = Map.new(rows, fn {_id, row} -> {row.num, fact(parts, row)} end) |> include_undated(parts)
     stats = if registry == :unknown, do: %{}, else: FeatureStats.compute_all(registry, facts, now: now)
 
     features =
@@ -29,14 +31,21 @@ defmodule Aiur.BuildOrder.Index.Catalogue do
     %{features: features, epics: epics |> Map.merge(feature_epics) |> Map.put("unsorted", Epic.unsorted()), order: order}
   end
 
+  defp include_undated(facts, parts) do
+    Enum.reduce(Rows.history(parts), facts, fn {number, row}, acc ->
+      Map.put_new_lazy(acc, number, fn -> FeatureStats.fact(row, historic_status(row.lifecycle), {:unknown, :progress}) end)
+    end)
+  end
+
+  defp historic_status(%{state: :closed, state_reason: :completed}), do: :done
+  defp historic_status(%{state: :closed, state_reason: :not_planned}), do: :not_planned
+  defp historic_status(%{state: :closed}), do: :closed
+  defp historic_status(_), do: :unknown
+
   defp fact(parts, row) do
-    historic =
-      case parts[:history] do
-        {:ok, %{rows: rows}} -> Map.get(rows, row.num, :missing)
-        _ -> :missing
-      end
+    historic = Map.get(Rows.history(parts), row.num, :missing)
 
     progress = if is_integer(row.pct), do: {:known, row.pct}, else: {:unknown, :progress}
-    FeatureStats.fact(historic, String.to_existing_atom(row.status), progress)
+    FeatureStats.fact(historic, Map.fetch!(@statuses, row.status), progress)
   end
 end

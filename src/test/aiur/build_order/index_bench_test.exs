@@ -5,6 +5,9 @@ defmodule Aiur.BuildOrder.IndexBenchTest do
   @moduletag :perf_regression
 
   test "records 1400 and 10000 ticket assembly time, index size and page size" do
+    # Measure steady-state work after loading the projector modules.
+    assert {:ok, _warm} = assemble(parts([row(1)]))
+
     for count <- [1_400, 10_000] do
       p = parts(for n <- 1..count, do: row(n, %{end: DateTime.add(~U[2026-10-07 12:00:00Z], -div(n, 50) * 86_400)}))
       {microseconds, {:ok, index}} = :timer.tc(fn -> assemble(p) end)

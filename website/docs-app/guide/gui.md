@@ -77,9 +77,9 @@ A degraded CODEOWNERS trust banner shows the lookup cause and elapsed age (`age 
 
 The `sort` query parameter preserves the selected table, column, and direction in copied or refreshed URLs. Paginated and progressively revealed tables sort the displayed rows, then reapply that order when more rows appear.
 
-The temporary, unlinked `/build` route shows the repository timeline from local stores.
+The temporary, unlinked `/build` route reads the repository timeline from local stores.
 It requires dashboard authentication and loads history by active day in the browser’s time zone.
-Live changes are coalesced; unavailable sources remain distinct from empty sections.
+Live changes are coalesced; snapshots distinguish unavailable sources from empty sections.
 
 Its links retain view, span, feature focus, filters and ticket selection in
 `view`, `span`, `feature`, `fmode`, `epic`, `model`, `tstate`, `astate`,

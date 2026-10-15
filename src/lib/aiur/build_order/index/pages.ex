@@ -36,7 +36,7 @@ defmodule Aiur.BuildOrder.Index.Pages do
     available = dated |> Enum.map(&elem(&1, 1)) |> Enum.uniq() |> Enum.filter(&(is_nil(before) or &1 < before)) |> Enum.sort(:desc)
     chosen = available |> Enum.take(days) |> MapSet.new()
     rows = for {row, day} <- dated, MapSet.member?(chosen, day), do: row
-    from = Enum.min(chosen, fn -> before end)
+    from = if index.history_meta.total == nil, do: nil, else: Enum.min(chosen, fn -> before end)
     history = Map.merge(index.history_meta, %{from: from, more: length(available) > days, tz: zone})
     {rows, history}
   end

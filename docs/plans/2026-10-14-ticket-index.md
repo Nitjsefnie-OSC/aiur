@@ -26,7 +26,8 @@ new polling, rendering, pack rows or estimates. General epic configuration uses
    40-signal bursts, no-op diffs, moves/removals, restart, failed and slow reads.
 3. Source/wiring: `src/lib/aiur_web/build/index_source.ex`, default DataSource,
    final dashboard child in `src/lib/aiur/application/children.ex`, seam allowlist.
-   Usage and daemon remain per connection; locked subscriptions never load usage.
+   Usage remains per connection; Index publishes public daemon changes on its tick.
+   Locked subscriptions never load usage.
    Tests: source, application ordering and real LiveView mailbox bounds.
 4. Parity: seed real temporary stores plus producer facts from frozen datasets,
    expose `/build-fixture/index-live`, compare supported fields for live/noqueue/

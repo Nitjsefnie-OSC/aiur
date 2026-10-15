@@ -1,9 +1,16 @@
 defmodule AiurWeb.Build.IndexSourceTest do
   use ExUnit.Case, async: false
+  use Aiur.TestSupport
+
+  setup do
+    Aiur.TestSupport.start_owned_endpoint!()
+    :ok
+  end
+
   import Aiur.TestSupport, only: [receive_barrier: 1]
   import Aiur.TestSupport.BuildHome.IndexParts
   alias Aiur.BuildOrder.Index, as: Core
-  alias AiurWeb.Build.{Index, IndexSource, Payload}
+  alias AiurWeb.Build.{Index, IndexSource, Payload, Usage}
 
   defmodule FreshnessSpy do
     def read_daemon(opts) do
@@ -13,7 +20,7 @@ defmodule AiurWeb.Build.IndexSourceTest do
   end
 
   defmodule UsageSpy do
-    def read(:locked, _opts), do: AiurWeb.Build.Usage.read(:locked)
+    def read(:locked, _opts), do: Usage.read(:locked)
 
     def read({:ok, _context}, opts) do
       send(opts[:test_pid], :usage_loaded)

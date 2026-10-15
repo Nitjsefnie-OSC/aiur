@@ -2,11 +2,11 @@ defmodule AiurWeb.Build.IndexDaemonTest do
   use ExUnit.Case, async: false
   import Aiur.TestSupport, only: [receive_barrier: 1]
   import Aiur.TestSupport.BuildHome.IndexParts
-  alias Aiur.BuildOrder.Index, as: Core
   alias AiurWeb.Build.Index
 
   test "daemon ticks bypass the ticket coalescer and only push changes selected by Freshness" do
-    Core.subscribe()
+    topic = "build-home:daemon-test:#{System.unique_integer([:positive])}"
+    Phoenix.PubSub.subscribe(Aiur.PubSub, topic)
     parent = self()
     {:ok, block} = Agent.start_link(fn -> %{state: "live", heartbeat_at: 1, observed_at: 2} end)
 
@@ -14,6 +14,7 @@ defmodule AiurWeb.Build.IndexDaemonTest do
       start_supervised!(
         {Index,
          name: nil,
+         broadcast: fn changes -> Phoenix.PubSub.broadcast(Aiur.PubSub, topic, {:build_changes, changes}) end,
          subscribe: fn -> :ok end,
          read: fn _, _, _ -> parts() end,
          timer: fn _, _, _ -> flunk("daemon must not schedule a ticket flush") end,
