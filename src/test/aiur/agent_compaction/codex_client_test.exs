@@ -134,6 +134,11 @@ defmodule Aiur.AgentCompaction.CodexClientTest do
 
     receive do
       {^port, {:data, {:eol, "READY"}}} -> :ok
+      {^port, {:exit_status, status}} -> raise "fake Codex server exited before ready (#{status})"
+    after
+      5_000 ->
+        Port.close(port)
+        raise "fake Codex server did not become ready within 5 seconds"
     end
 
     {port, dir}
