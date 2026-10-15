@@ -13,7 +13,6 @@
     "test:admission": "node --test scripts/browser-admission.test.mjs",
     "test": "npm run test:core && npm run test:home-css",
     "test:build-home-layout": "npm run fixture:preflight && node scripts/run-browser-tests.mjs tests/build-home-layout.browser.spec.mjs",
-    "test:experiments": "node scripts/run-browser-tests.mjs tests/experiments.browser.spec.mjs",
     "test:build-home-assets": "node scripts/run-browser-tests.mjs tests/build-home-assets.browser.spec.mjs",
     "test:smoke": "node scripts/run-browser-tests.mjs tests/liveview-smoke.spec.mjs",
     "test:shell": "node scripts/run-browser-tests.mjs tests/route-shell.browser.spec.mjs tests/shell-history-contrast.browser.spec.mjs",
