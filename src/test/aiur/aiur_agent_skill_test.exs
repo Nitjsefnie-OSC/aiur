@@ -29,9 +29,6 @@ defmodule Aiur.AiurAgentSkillTest do
     dictated-input.md
   )
   @codex_exposed_aiur_skills ~w(aiur-agent aiur-build aiur-debug aiur-intro aiur-monitor aiur-run design-import)
-  # `aiur-meta` is an Executor meta-check driven by `aiur-run`'s timer. It audits
-  # operator surfaces and files tickets; issue workers never run it, so it stays
-  # Claude-only and is deliberately not symlinked into `.codex/skills/`.
   @claude_executor_only_skills ~w(aiur-handoff aiur-meta release)
 
   # Every skill that can reach a ticket-creation command. Each states the rule
@@ -757,7 +754,7 @@ defmodule Aiur.AiurAgentSkillTest do
 
   test "CI-wait fallback config is documented but is not an init question" do
     config_reference =
-      File.read!(Path.join(@repo_root, "website/docs-app/reference/configuration.md"))
+      File.read!(Path.join(@repo_root, "website/docs-app/reference/configuration-agent.md"))
 
     assert config_reference =~ "`agent.ci_wait_rewake_minutes`"
     assert config_reference =~ "| 5 |"
@@ -852,10 +849,10 @@ defmodule Aiur.AiurAgentSkillTest do
       {_output, status} =
         System.cmd(
           "/bin/sh",
-          [Path.join(@repo_root, "src/priv/github_quota_guard.sh"), "issue", "create" | arguments],
+          [Aiur.AgentGitHubGuardTestSupport.write_gh_guard(root), "issue", "create" | arguments],
           # This test asserts the dispatch disposition enforcement in
           # isolation. The shared GitHub budget broker lives beside the
-          # installed wrapper, not beside the repo copy this test invokes, so
+          # installed wrapper, not beside the copy this test writes, so
           # disable it explicitly or the admission check exits 75 whenever the
           # broker is absent (CI has no broker in `src/priv`).
           env: [
