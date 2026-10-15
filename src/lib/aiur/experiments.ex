@@ -10,7 +10,7 @@ defmodule Aiur.Experiments do
   def observations(refs, window, context \\ %{}), do: Evaluator.observations(refs, window, context)
 
   @spec children(boolean()) :: [module()]
-  def children(recording?), do: if(child(recording?), do: [Store, Capture, Checkpointer], else: [])
+  def children(recording?), do: if(child(recording?), do: [Store, Capture, Checkpointer, Aiur.Experiments.Auto.Notifier, Aiur.Experiments.Auto.WindowManager], else: [])
 
   @spec child(boolean()) :: module() | nil
   def child(false), do: nil
@@ -107,6 +107,14 @@ defmodule Aiur.Experiments do
 
   @spec checkpoint(String.t(), DateTime.t()) :: {:ok, map()} | {:error, term()}
   def checkpoint(id, now), do: mutate({:checkpoint, id, now})
+
+  @doc false
+  @spec manage_window(String.t(), term(), map(), DateTime.t(), term()) :: term()
+  def manage_window(id, samples, config, now, truncation \\ nil), do: mutate({:manage_window, id, samples, config, now, truncation})
+
+  @doc false
+  @spec window_spec(String.t()) :: {:ok, map(), boolean()} | {:error, term()}
+  def window_spec(id), do: mutate({:window_spec, id})
 
   @spec amend(String.t(), map(), term()) :: {:ok, Aiur.Experiments.Spec.t()} | {:error, term()}
   def amend(id, changes, actor), do: mutate({:amend, id, changes, actor, "amended"})

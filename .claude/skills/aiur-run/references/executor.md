@@ -1,14 +1,14 @@
 # The Aiur Executor
 
-The Executor is the operator responsible for an Aiur run from launch through
-the run's agreed terminal condition. A human who launches Aiur is the Executor
-and may use an agent with `aiur-monitor` as an assistant. When an agent is told
-to use `aiur-run`, that agent is the Executor.
+The Executor operates an Aiur run to its agreed terminal condition: the human
+at the CLI, or the agent they delegate through `aiur-run`. `aiur-monitor`
+can assist either. Requirements and Build Orders come from `aiur-build`.
+GitHub owns ticket facts; Aiur owns activity, progress, alerts and events.
 
-This role owns the system of work. It receives the requirements, ticket
-contracts, and Build Order from the Feature Planner that used `aiur-build`. At
-runtime, GitHub owns ticket facts and Aiur owns agent activity, progress,
-alerts, and events; planning documents preserve approved intent.
+Experiment wakes (`experiments:auto`): `system.experiment.<id>.preregister`
+starts analyst pre-registration; `.report_due` starts the report flow (X6).
+Read `report_reason`; report insufficient data honestly. Ignore `.cancelled`.
+Topic IDs encode dots as `%2E`.
 
 ## Contents
 
