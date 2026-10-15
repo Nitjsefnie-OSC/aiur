@@ -290,7 +290,11 @@ aiur_restart_report_state() {
 
   echo "aiur: the daemon is STOPPED and was NOT restarted" >&2
   if [ -n "${AIUR_RESTART_HANDOFF_ID:-}" ]; then
-    echo "aiur: handoff $AIUR_RESTART_HANDOFF_ID and providers retained until the configured relay orphan timeout (default 30 minutes); start aiur to adopt." >&2
+    if [ "${aiur_restart_start_attempted:-0}" -eq 1 ]; then
+      echo "aiur: handoff $AIUR_RESTART_HANDOFF_ID; startup was attempted, so provider survival is unknown. Inspect 'aiur status --handoff --json' after recovery." >&2
+    else
+      echo "aiur: handoff $AIUR_RESTART_HANDOFF_ID and providers retained until the configured relay orphan timeout (default 30 minutes); start aiur to adopt." >&2
+    fi
   fi
   if [ -n "$dir" ] && [ -x "$dir/bin/aiur" ]; then
     echo "aiur: fix the cause and run 'aiur restart' again, or 'aiur restart --no-build' to start" >&2
@@ -376,7 +380,7 @@ verify_restart_build() {
 }
 
 cmd_restart() {
-  local skip_build=0 keep_agents=0 arg AIUR_RESTART_HANDOFF_ID=""
+  local skip_build=0 keep_agents=0 arg AIUR_RESTART_HANDOFF_ID="" aiur_restart_start_attempted=0
   local run_args=()
 
   # Refuse a stale config before stopping a healthy daemon. dispatch_run also
@@ -470,6 +474,7 @@ cmd_restart() {
   # that captured the terminal would be a surprise. `--interactive` still opts
   # into the attachable session (`aiur --bg --interactive`), and a purely
   # foreground restart remains `aiur stop && aiur run`.
+  aiur_restart_start_attempted=1
   dispatch_run --bg "${run_args[@]+"${run_args[@]}"}"
 
   aiur_restart_daemon_state="running"

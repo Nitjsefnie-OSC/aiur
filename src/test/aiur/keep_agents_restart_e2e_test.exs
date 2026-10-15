@@ -17,9 +17,10 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
   end
 
   defp restart_case(incompatible?) do
-    root = Aiur.TestSupport.tmp_root!("keep-agents-engine")
+    nonce = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
+    root = Aiur.TestSupport.tmp_root!("keep-agents-engine-#{nonce}")
     File.mkdir_p!(Path.join(root, "run"))
-    endpoint = Path.join(System.tmp_dir!(), "ka4-#{System.unique_integer([:positive])}")
+    endpoint = Path.join(System.tmp_dir!(), "k4-#{nonce}")
     {:ok, socket} = :gen_udp.open(0, [:binary, {:ifaddr, {:local, endpoint}}, {:active, true}])
     File.write!(Path.join(root, "endpoint"), endpoint)
     on_exit(fn -> File.rm(endpoint) end)
@@ -85,9 +86,9 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
       {"AIUR_REPO_ROOT", root},
       {"XDG_RUNTIME_DIR", Path.join(root, "run")},
       {"AIUR_INSTANCE_KEY", ""},
-      {"AIUR_RELEASE_NODE", "aiur-keepagents-#{System.unique_integer([:positive])}@127.0.0.1"},
+      {"AIUR_RELEASE_NODE", "aiur-keepagents-#{nonce}@127.0.0.1"},
       {"AIUR_RESTART_BUILD_CMD", nil},
-      {"AIUR_SESSION_PREFIX", "keep-agents-test-#{System.unique_integer([:positive])}"},
+      {"AIUR_SESSION_PREFIX", "keep-agents-test-#{nonce}"},
       {"AIUR_TMUX_GRACE_TICKS", "600"}
     ]
 
@@ -142,13 +143,13 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
       {added_output, 0} =
         run_sourced_engine(
           """
-          run_control_rpc 'Application.put_env(:aiur, :memory_tracker_issues, [%Aiur.Issue{id: "5", identifier: "5", title: "new ticket", state: "todo", selected_backend: "codex"}]); IO.puts("ADDED:" <> to_string(System.system_time(:millisecond))); Aiur.ControlCLI.Protocol.exit_marker(0)'
+          run_control_rpc 'added_at = System.system_time(:millisecond); Application.put_env(:aiur, :memory_tracker_issues, [%Aiur.Issue{id: "5", identifier: "5", title: "new ticket", state: "todo", selected_backend: "codex"}]); IO.puts("ADDED:" <> to_string(added_at)); Aiur.ControlCLI.Protocol.exit_marker(0)'
           """,
           env
         )
 
       [_, added_at] = Regex.run(~r/ADDED:(\d+)/, added_output)
-      event = wait_event(socket, "dispatch")
+      event = wait_dispatch(socket, "5")
       assert event["ticket"] == "5"
       assert event["timestamp_ms"] - String.to_integer(added_at) <= 5_000
     end
@@ -195,6 +196,11 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
     receive_barrier({:udp, ^socket, _address, _port, data})
     event = Jason.decode!(data)
     if event["event"] == kind, do: event, else: wait_event(socket, kind)
+  end
+
+  defp wait_dispatch(socket, ticket) do
+    event = wait_event(socket, "dispatch")
+    if event["ticket"] == ticket, do: event, else: wait_dispatch(socket, ticket)
   end
 
   defp complete_agents(env, root, socket, agents) do

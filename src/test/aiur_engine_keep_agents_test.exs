@@ -159,4 +159,21 @@ defmodule AiurEngineKeepAgentsTest do
     assert File.read!(Path.join(state, "stop")) == "handoff=keep-test\n"
     assert File.read!(Path.join(state, "agents.handoff")) == "handoff=keep-test\n"
   end
+
+  test "failed successor startup reports unknown survival rather than promised retention" do
+    {output, status} =
+      run_sourced_engine(
+        """
+        run_control_rpc() { echo '__AIUR_HANDOFF__:attempted'; }
+        cmd_stop() { echo STOP; }
+        dispatch_run() { return 23; }
+        cmd_restart --keep-agents --no-build
+        """,
+        []
+      )
+
+    assert status == 23
+    assert output =~ "handoff attempted; startup was attempted, so provider survival is unknown"
+    refute output =~ "providers retained until"
+  end
 end

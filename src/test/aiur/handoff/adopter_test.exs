@@ -150,6 +150,7 @@ defmodule Aiur.Handoff.AdopterTest do
         dir: dir,
         generation: 2,
         config_fingerprint: "config",
+        emit_alert: fn _name, _options -> :ok end,
         relay_probe: fn
           "missing" -> {:error, :enoent}
           _ -> {:ok, hello()}
