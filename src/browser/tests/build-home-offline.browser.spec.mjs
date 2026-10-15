@@ -6,7 +6,8 @@ test.use({ timezoneId: 'America/Los_Angeles' })
 test.beforeEach(async ({ page }) => {
   await page.route('**/offline-harness', route => route.fulfill({ contentType: 'text/html', body: '<main id="build-root"><div id="bd-offline"></div></main>' }))
   await page.goto('/offline-harness')
-  await page.clock.install()
+  await page.clock.install({ time: NOW - 1000 })
+  await page.clock.pauseAt(NOW)
   await page.evaluate(async NOW => {
     const state = await import('/build-home/state.js')
     const life = await import('/build-home/life.js')
