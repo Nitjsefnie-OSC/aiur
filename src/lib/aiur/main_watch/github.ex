@@ -140,7 +140,7 @@ defmodule Aiur.MainWatch.GitHub do
       (run["event"] == "push" and run["head_branch"] == branch) or
         (run["event"] == "merge_group" and is_binary(run["head_branch"]) and String.starts_with?(run["head_branch"], "gh-readonly-queue/#{branch}/"))
 
-    run["head_sha"] in commits and branch_event? and (workflows == [] or run["name"] in workflows)
+    (run["event"] == "merge_group" or run["head_sha"] in commits) and branch_event? and (workflows == [] or run["name"] in workflows)
   end
 
   defp normalize(run),
@@ -152,6 +152,9 @@ defmodule Aiur.MainWatch.GitHub do
       status: run["status"],
       conclusion: run["conclusion"],
       attempt: run["run_attempt"] || 1,
+      event: run["event"],
+      head_branch: run["head_branch"],
+      started_at: timestamp(run["created_at"]),
       completed_at: timestamp(run["updated_at"]),
       url: run["html_url"]
     }

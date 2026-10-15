@@ -43,12 +43,24 @@ defmodule Aiur.ExecutorSweep.SnapshotCache do
     {fleet, dispatcher_service} = fleet_snapshot()
     queues = Map.get(queue, :queues, [])
     focus = focus_queue(queues, fleet)
+    order = Map.get(queue, :order, %{})
+    declared_order = value(order, :declared, nil)
+    actual_order = value(order, :actual, [])
+    declared_order? = is_list(declared_order) and value(order, :source, :none) != :none
+    main_watch = if Aiur.MainWatch.enabled?(), do: safe_state(&Aiur.MainWatch.state/0), else: %{}
 
     %{
       decisions: decisions,
       queue_sets: Enum.map(queues, &%{id: &1.queue_id, held: &1.held}),
       idle_slots: idle_slots(fleet),
       focus_set: focus,
+      queue_order: actual_order,
+      feature_order: if(declared_order?, do: declared_order, else: []),
+      queue_order_declared?: declared_order?,
+      merge_groups:
+        Enum.map(value(main_watch, :merge_groups, []), fn run ->
+          %{name: "run #{value(run, :id, "?")}", state: value(run, :status, "unknown"), started_at: value(run, :started_at, nil)}
+        end),
       ci_wait: Map.get(fleet, :ci_wait, []),
       services: watcher_services() ++ List.wrap(dispatcher_service)
     }
