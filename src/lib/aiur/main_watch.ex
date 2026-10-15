@@ -109,7 +109,14 @@ defmodule Aiur.MainWatch do
 
   defp start_poll(server) do
     poll = Keyword.get(server.opts, :poll_fun, &GitHub.poll/3)
-    opts = server.opts |> Keyword.put(:history, server.data.state.history) |> bounded_requests()
+
+    opts =
+      server.opts
+      |> Keyword.put(:history, server.data.state.history)
+      |> Keyword.put(:commit_etag, Map.get(server.data, :commit_etag))
+      |> Keyword.put(:commits, Map.get(server.data, :commit_window, server.data.commits))
+      |> Keyword.put(:commit_dates, Map.get(server.data, :commit_dates, []))
+      |> bounded_requests()
 
     task =
       Task.Supervisor.async_nolink(Aiur.TaskSupervisor, fn ->
@@ -220,7 +227,15 @@ defmodule Aiur.MainWatch do
 
   defp consume({:ok, result}, server) do
     now = Keyword.get(server.opts, :now_fun, fn -> System.system_time(:millisecond) end).()
-    data = %{server.data | commits: commit_order(result.commits, server.data.commits), unavailable: false}
+
+    data =
+      server.data
+      |> Map.put(:commits, commit_order(result.commits, server.data.commits))
+      |> Map.put(:commit_window, result.commits)
+      |> Map.put(:commit_dates, Map.get(result, :commit_dates, []))
+      |> Map.put(:commit_etag, Map.get(result, :commit_etag))
+      |> Map.put(:unavailable, false)
+
     data = observe(data, result.observations, now)
     data = %{data | commits: retained_commits(data.commits, data.state.history)}
     data = %{data | pending: data.pending ++ result.flake_events, last_completed_at: completed_at(result, server.data)}

@@ -7,11 +7,19 @@ defmodule Aiur.MainWatch.GitHub do
   def poll(branch, workflows, opts \\ []) do
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts),
-         {:ok, commit_window} <- commits(owner, repo, branch, token, opts),
+         {:ok, commit_window, commit_etag} <- commits(owner, repo, branch, token, opts),
          {commits, dates} = commit_window,
          {:ok, runs} <- runs(owner, repo, branch, commits, dates, workflows, token, opts),
          {:ok, observations} <- observations(commits, runs, workflows, opts) do
-      {:ok, %{observations: observations, runs: runs, commits: commits, actions_write: Keyword.get_lazy(opts, :actions_write, fn -> actions_write?(opts) end)}}
+      {:ok,
+       %{
+         observations: observations,
+         runs: runs,
+         commits: commits,
+         commit_dates: dates,
+         commit_etag: commit_etag,
+         actions_write: Keyword.get_lazy(opts, :actions_write, fn -> actions_write?(opts) end)
+       }}
     end
   end
 
@@ -51,22 +59,37 @@ defmodule Aiur.MainWatch.GitHub do
   defp commits(owner, repo, branch, token, opts) do
     url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/commits?" <> URI.encode_query(%{sha: branch, per_page: 20})
 
-    case request_fun(opts).(%{method: :get, url: url, token: token, caller: "main_watch_commits"}) do
-      {:ok, %{status: 200, body: commits}} when is_list(commits) ->
-        if Enum.all?(commits, &(is_map(&1) and is_binary(&1["sha"]))) do
-          window = Enum.take(commits, 20)
-          {:ok, {Enum.map(window, & &1["sha"]), Enum.map(window, &timestamp(get_in(&1, ["commit", "committer", "date"])))}}
-        else
-          {:error, :invalid_main_commits}
-        end
+    retained_commits = Keyword.get(opts, :commits)
+    retained_dates = Keyword.get(opts, :commit_dates)
 
-      {:ok, response} ->
-        {:error, Errors.github_status_error(response)}
+    etag =
+      if is_list(retained_commits) and is_list(retained_dates) and
+           length(retained_commits) == length(retained_dates),
+         do: Keyword.get(opts, :commit_etag)
 
-      {:error, reason} ->
-        {:error, Errors.classify_error({:error, reason})}
+    request_fun(opts)
+    |> Transport.fetch_json_list_conditional(token, url, etag, caller: "main_watch_commits")
+    |> commit_response(retained_commits, retained_dates)
+  end
+
+  defp commit_response({:ok, commits, etag}, _retained_commits, _retained_dates) do
+    if Enum.all?(commits, &(is_map(&1) and is_binary(&1["sha"]))) do
+      window = Enum.take(commits, 20)
+      dates = Enum.map(window, &timestamp(get_in(&1, ["commit", "committer", "date"])))
+      {:ok, {Enum.map(window, & &1["sha"]), dates}, etag}
+    else
+      {:error, :invalid_main_commits}
     end
   end
+
+  defp commit_response({:not_modified, etag}, commits, dates)
+       when is_list(commits) and is_list(dates),
+       do: {:ok, {commits, dates}, etag}
+
+  defp commit_response({:not_modified, _etag}, _commits, _dates),
+    do: {:error, :main_commits_not_modified_without_snapshot}
+
+  defp commit_response({:error, reason}, _commits, _dates), do: {:error, reason}
 
   defp runs(owner, repo, branch, commits, dates, workflows, token, opts) do
     url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs?" <> URI.encode_query(%{branch: branch, event: "push", per_page: 100})
