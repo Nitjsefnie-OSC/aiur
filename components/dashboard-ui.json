@@ -4,6 +4,7 @@
   "layer": 4,
   "kind": "in-app",
   "paths": [
+    "src/lib/aiur/post_deploy_checklist.ex",
     "src/lib/aiur/event_humanizer.ex",
     "src/lib/aiur/event_humanizer_helpers.ex",
     "src/lib/aiur_web/**",
@@ -15,6 +16,7 @@
   ],
   "facade_pending": "MP-R1-C1-T02",
   "requires": [
+    "event-bus",
     "kernel",
     "orchestration",
     "projections",
