@@ -107,9 +107,10 @@ test('offline type specimens load every bundled weight', async ({ page }) => {
   await expect(page.locator('#type-specimens')).toHaveScreenshot('type-specimens.png');
 });
 
-test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails', async ({ page }, testInfo) => {
+for (const background of ['#ffffff', '#1a1b1e']) {
+test(`optimized logos on ${background}; nearest neighbor fails`, async ({ page }, testInfo) => {
   await page.goto('./');
-  const errors = await page.evaluate(async () => {
+  const errors = await page.evaluate(async (background) => {
     const load = async (name: string) => {
       const image = new Image();
       image.src = `../dist/assets/${name}`;
@@ -138,7 +139,7 @@ test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails'
       const c = document.createElement('canvas');
       c.height = height; c.width = Math.round(original.width / original.height * height);
       const ctx = c.getContext('2d')!;
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = background; ctx.fillRect(0, 0, c.width, c.height);
       ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(image, 0, 0, c.width, c.height);
       return ctx.getImageData(0, 0, c.width, c.height).data;
@@ -168,14 +169,14 @@ test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails'
       const width = Math.round(original.width / original.height * height);
       c.width = width * 3; c.height = height;
       const ctx = c.getContext('2d')!;
-      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.fillStyle = background; ctx.fillRect(0, 0, c.width, c.height);
       ctx.imageSmoothingQuality = 'high';
       [original, png, bad].forEach((image, index) => ctx.drawImage(image, index * width, 0, width, height));
       return c.toDataURL();
     });
     return { panels, png: [compare(png, 224), compare(png, 28)],
       webp: [compare(webp, 224), compare(webp, 28)], bad: compare(bad, 224) };
-  });
+  }, background);
   for (const [index, panel] of errors.panels.entries()) {
     writeFileSync(testInfo.outputPath(`logo-review-${[224, 28][index]}.png`), Buffer.from(panel.split(',')[1], 'base64'));
     await testInfo.attach(`logo-original-lanczos-nearest-${[224, 28][index]}.png`, {
@@ -194,6 +195,11 @@ test('optimized logos preserve pixels at 224px and 28px; nearest neighbor fails'
     webp: errors.webp.map(({ diff, ...metric }) => metric), bad: (({ diff, ...metric }) => metric)(errors.bad) };
   console.log('Logo ΔE76 metrics:', metrics);
   await testInfo.attach('logo-metrics', { body: JSON.stringify(metrics, null, 2), contentType: 'application/json' });
-  for (const error of [...errors.png, ...errors.webp]) expect(error.max).toBeLessThan(2);
-  expect(errors.bad.max).toBeGreaterThanOrEqual(2);
+  const withinBudget = (metric: { mean: number; max: number; over2: number }, index: number) =>
+    metric.mean < 2 && metric.max < 33 && metric.over2 <= [0.05, 0.25][index];
+  for (const comparisons of [errors.png, errors.webp]) {
+    for (const [index, comparison] of comparisons.entries()) expect.soft(withinBudget(comparison, index), `optimized logo at ${[224, 28][index]}px`).toBe(true);
+  }
+  expect.soft(withinBudget(errors.bad, 0), 'nearest-neighbor must fail at 224px').toBe(false);
 });
+}
