@@ -68,6 +68,9 @@ defmodule Aiur.BuildOrder.IndexTest do
     p = put_in(p, [:features], {:ok, %{features: %{"aaa" => feature.("aaa", ~U[2026-10-01 00:00:00Z]), "zzz" => feature.("zzz", ~U[2026-09-01 00:00:00Z])}, owners: %{}, also: %{}, health: health()}})
     assert {:ok, index} = assemble(p)
     assert index.order == ~w(bugs design infra docs f-zzz f-aaa unsorted)
+    design = __DIR__ |> Path.join("../../fixtures/build_home/live.json") |> File.read!() |> Jason.decode!()
+    # E1: actual schema defaults must retain the frozen design catalogue.
+    for key <- ~w(bugs design infra docs), do: assert(Payload.scrub(index.epics[key]) == design["epics"][key])
     assert index.epics["f-aaa"] == %{key: "f-aaa", label: "aaa", hue: 42, icon: "layers", feature: "aaa", temp: true}
     assert index.counts == Map.new(index.order, &{&1, if(&1 == "unsorted", do: 4, else: 0)})
     assert index.all["4"].cx == 3 and index.all["4"].pts == 3
