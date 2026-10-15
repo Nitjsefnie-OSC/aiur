@@ -34,11 +34,12 @@ defmodule AiurWeb.ExperimentsLiveTest do
 
   test "disabled and unreadable stores remain distinct and never expose paths" do
     for {reason, state, copy} <- [{:disabled, "component_off", "Experiments are not enabled"}, {{:bad, "/private/store"}, "store_unreadable", "could not be read"}] do
-      fixture(status: %{available?: false, store: {:error, reason}, capture: :on})
+      fixture(status: %{available?: false, store: {:error, reason}, capture: :off})
       {:ok, view, html} = live(build_conn(), "/experiments")
       assert has_element?(view, "[data-empty-reason=#{state}]")
       assert html =~ copy
       refute html =~ "/private/store"
+      refute has_element?(view, "#experiments-capture-off")
     end
   end
 

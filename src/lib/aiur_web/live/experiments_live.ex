@@ -51,7 +51,7 @@ defmodule AiurWeb.ExperimentsLive do
       {Phoenix.HTML.raw("<style>" <> Styles.css() <> "</style>")}
       <section id="experiments-page" class="exp-root" data-selection={if @selected_id, do: "detail", else: "index"} aria-label="Experiment collection">
         <h1>Experiments</h1>
-        <p :if={@status.capture == :off} class="exp-notice" id="experiments-capture-off" role="status">
+        <p :if={@status.capture == :off and @index_error not in [:component_off, :store_unreadable]} class="exp-notice" id="experiments-capture-off" role="status">
           Capture is off. New samples are not being captured; existing experiments remain available.
         </p>
         <div :if={@index_error} class="exp-notice" data-empty-reason={@index_error}>
@@ -65,8 +65,8 @@ defmodule AiurWeb.ExperimentsLive do
               <span :for={metric <- Enum.take(item.metrics, 3)} class="exp-headline">
                 {metric.label}: {metric.change} · {metric.direction} · {metric.sample}
                 <span :if={metric.guarded?} class="exp-chip">not enough data</span>
-                <span :for={label <- metric.labels} class="exp-chip">{label}</span>
               </span>
+              <span :for={label <- item.labels} class="exp-chip">{label}</span>
             </.link>
           </nav>
           <section class="exp-detail" aria-label="Experiment detail">

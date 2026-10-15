@@ -6,6 +6,7 @@ defmodule AiurWeb.Experiments.ViewModel do
   @spec index_item(map(), map(), map()) :: map()
   def index_item(summary, detail, catalog \\ %{}) do
     spec = Map.get(detail, :spec, %{})
+    metrics = Metrics.rows(spec, Map.get(detail, :analysis), catalog)
 
     %{
       id: summary.id,
@@ -14,8 +15,8 @@ defmodule AiurWeb.Experiments.ViewModel do
       status: Map.get(summary, :status) || "unknown",
       phase: Map.get(detail, :phase, :unknown),
       created_at: Map.get(summary, :created_at),
-      metrics: Metrics.rows(spec, Map.get(detail, :analysis), catalog),
-      labels: [],
+      metrics: metrics,
+      labels: metrics |> Enum.flat_map(& &1.labels) |> Enum.uniq(),
       evidence_state: if(is_map(Map.get(detail, :analysis)), do: :available, else: :pending)
     }
   end
