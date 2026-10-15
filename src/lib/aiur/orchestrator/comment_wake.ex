@@ -771,8 +771,7 @@ defmodule Aiur.Orchestrator.CommentWake do
   # construction a reviewer asked for a change and the ticket did not move, the
   # review will never be delivered again, and an operator is the only thing that
   # can release it.
-  defp emit_idle_comment_refusal(issue_number, reason)
-       when reason in [:parked, :unlabeled_issue, :no_open_pr, :rework_attempt_limit_reached] do
+  defp emit_idle_comment_refusal(issue_number, reason) when reason in [:parked, :unlabeled_issue, :no_open_pr, :rework_attempt_limit_reached] do
     remedy =
       case reason do
         :parked -> "resume the issue explicitly to clear the park marker"
@@ -1355,7 +1354,7 @@ defmodule Aiur.Orchestrator.CommentWake do
     end
   end
 
-  defp write_rework_state(issue_key, "rework", event) do
+  defp write_rework_state(issue_key, "rework", _event) do
     TicketTransition.write_state(issue_key, "rework", writer: :comment_wake)
   end
 
@@ -1581,6 +1580,9 @@ defmodule Aiur.Orchestrator.CommentWake do
       :ok ->
         state
 
+      {:ok, state} ->
+        state
+
       {:error, reason} ->
         Logger.warning(
           "#{source} active rework transition deferred behind delivery fence: " <>
@@ -1608,25 +1610,19 @@ defmodule Aiur.Orchestrator.CommentWake do
     end
   end
 
-  defp apply_active_comment_protection({:handled, state}, _context), do: state
-
   defp apply_active_comment_protection({{:ok, state}, _original}, _context), do: state
 
   defp apply_active_comment_protection({{_failure, state}, _original}, _context), do: state
 
-  defp apply_active_comment_protection({:ok, state}, _context), do: state
-
   defp apply_active_review_write({:handled, state}, _result, _context), do: state
-
-  defp apply_active_review_write({:ok, state}, _result, _context), do: state
 
   defp apply_active_review_write(state, :ok, _context), do: state
 
   defp apply_active_review_write(state, {:error, reason}, {attempt, event, issue_number, source}),
     do: schedule_comment_rework_retry(state, issue_number, source, event, attempt, reason)
 
-  defp apply_active_review_write(state, {{:error, reason}, _prior_state}, context),
-    do: apply_active_review_write(state, {:error, reason}, context)
+  defp apply_active_review_write(_state, {{:error, reason}, prior_state}, context),
+    do: apply_active_review_write(prior_state, {:error, reason}, context)
 
   defp apply_comment_reactivation(
          outcome,
