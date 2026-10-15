@@ -2,7 +2,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
   @moduledoc "Cancels active merge-group runs that no longer belong to the live queue."
 
   alias Aiur.Config.TrackerSettings
-  alias Aiur.GitHub.{CIRecovery, Client, Comments, Errors, FailureEvidence, Transport}
+  alias Aiur.GitHub.{CIRecovery, Client, Errors, FailureEvidence, Transport}
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.{Attribution, Journal, MergeFailureClassifier, Observer}
   alias Aiur.PrMerge.Queue
@@ -378,7 +378,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
 
   defp comment_requeue(pr, run, reason, opts) do
     body = "Landing watcher requeued this approved PR after merge group run ##{run["id"]} failed due to #{reason}."
-    Keyword.get(opts, :comment_fun, fn number, text, options -> Comments.create_comment(to_string(number), text, options) end).(pr.number, body, opts)
+    Keyword.get(opts, :comment_fun, fn number, text, options -> Client.create_comment(to_string(number), text, options) end).(pr.number, body, opts)
   end
 
   defp run_prs(run, base) do
