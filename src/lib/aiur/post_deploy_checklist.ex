@@ -2,8 +2,10 @@ defmodule Aiur.PostDeployChecklist do
   @moduledoc "Durable checklist of manual checks reported by merged pull requests."
 
   use GenServer
+  require Logger
 
   alias Aiur.{Config, JsonStore}
+  alias Aiur.Events.Exchange
 
   @filename "post_deploy_checks.json"
 
@@ -23,6 +25,9 @@ defmodule Aiur.PostDeployChecklist do
   @impl true
   def init(opts) do
     path = Keyword.get(opts, :path) || state_path()
+    exchange = Keyword.get(opts, :exchange, Exchange)
+
+    if Keyword.get(opts, :subscribe?, true), do: :ok = Exchange.subscribe("ticket.*.pr.merged", exchange)
 
     with path when is_binary(path) <- path,
          {:ok, records} when is_list(records) <- JsonStore.read(path, []),
@@ -64,6 +69,30 @@ defmodule Aiur.PostDeployChecklist do
     if changed?, do: persist_reply(next, state, true), else: {:reply, {:error, :not_found_or_done}, state}
   end
 
+  @impl true
+  def handle_info({:event, %{topic: topic} = event}, state) when is_binary(topic) do
+    case checks(event) do
+      [] ->
+        {:noreply, state}
+
+      entries ->
+        {next, changed?} = Enum.reduce(entries, {state.records, false}, &upsert(&1, &2, event))
+
+        case persist_ingest(next, state, changed?) do
+          {:reply, :ok, next_state} ->
+            {:noreply, next_state}
+
+          {:reply, {:error, reason}, _state} ->
+            Logger.warning("aiur_post_deploy_checklist ingest_failed reason=#{inspect(reason)}")
+            {:noreply, state}
+        end
+    end
+  rescue
+    error ->
+      Logger.warning("aiur_post_deploy_checklist ingest_failed error=#{Exception.message(error)}")
+      {:noreply, state}
+  end
+
   defp persist_reply(_records, state, false), do: {:reply, :ok, state}
 
   defp persist_reply(records, state, true) do
@@ -86,7 +115,7 @@ defmodule Aiur.PostDeployChecklist do
 
   defp upsert(entry, {records, changed?}, event) do
     pr = Map.get(event, :pr, %{})
-    repo = Map.get(event, :repository) || get_in(pr, ["head", "repo", "full_name"]) || "unknown/unknown"
+    repo = get_in(pr, ["head", "repo", "full_name"]) || Map.get(event, :repository) || "unknown/unknown"
     id = "#{repo}##{Map.get(pr, "number", "unknown")}:#{entry.text}"
 
     case Enum.find_index(records, &(&1["id"] == id)) do

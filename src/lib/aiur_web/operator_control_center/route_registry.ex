@@ -53,7 +53,7 @@ defmodule AiurWeb.OperatorControlCenter.RouteRegistry do
       description: "Manual checks from merged pull requests.",
       path: "/post-deploy",
       type: :live,
-      owner: :dashboard,
+      owner: :post_deploy,
       availability: :available,
       active_actions: [:post_deploy]
     },

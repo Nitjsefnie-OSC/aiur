@@ -21,7 +21,7 @@ Label read/create failures stop startup before agents start and explain the requ
 | Comments and reviews | Trusted issue comments, PR comments, reviews, and unresolved threads | Wakes the correct agent for operator direction or rework. |
 | CI | Terminal checks while a ticket is in `agent:ci-wait` or `agent:human-review` | Returns passed work for human review and failed work for repair. |
 | Base-branch CI (main watch enabled) | Completed watched workflow runs for up to 20 recent base commits | Detects failures through check webhooks, base pushes and polling; retains state across restarts. |
-| Repository events | Default-branch pushes and opened, reopened, merged or closed-unmerged pull requests | Refreshes work whose base or review state changed. |
+| Repository events | Default-branch pushes and opened, reopened, merged or closed-unmerged pull requests | Refreshes work whose base or review state changed. Merged PR bodies also supply `Post-deploy check:` lines for the Executor checklist. |
 | Analytics facts | Terminal and on-demand backfill PR facts; boot/hourly base history and tags | Body-free `pr_facts` and `analytics/repo-timeline.ndjson`; callers `analytics_facts` and `analytics_repo_timeline`. |
 
 Once per repository and history query version, the daemon reads every issue for build history (caller `build_order_history_backfill`). It starts after a 60-second boot delay, spaces pages by 10 seconds, holds below 20% remaining GraphQL budget and pauses further reads after 300 reported points in a rolling hour.
@@ -817,4 +817,3 @@ Reviews use each reviewer's latest decision. An approval must match the current 
 A merge-queue rule routes the pinned head through GraphQL enqueueing; it never authorizes a direct bypass merge. Without a queue, squash merge pins the reviewed head. The ledger distinguishes enqueueing from observed merges.
 
 The daemon independently verifies the configured repository, PR head, base and merge SHA against GitHub before publishing `system.pr.merged`; caller-supplied actor data is replaced with GitHub's merge attribution. See [the command reference](/reference/cli#pr-merge).
-

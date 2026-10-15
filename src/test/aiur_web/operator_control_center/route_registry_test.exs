@@ -49,6 +49,11 @@ defmodule AiurWeb.OperatorControlCenter.RouteRegistryTest do
     assert RouteRegistry.available?(analytics_route)
     assert analytics_route.description == "Live run utilization."
     assert analytics_route.active_actions == [:analytics]
+
+    assert {:ok, post_deploy} = RouteRegistry.route(:post_deploy, analytics)
+    assert post_deploy.path == "/post-deploy"
+    assert post_deploy.owner == :post_deploy
+    assert RouteRegistry.active?(post_deploy, :post_deploy)
   end
 
   test "keeps Analytics always navigable so the live page owns its empty state" do

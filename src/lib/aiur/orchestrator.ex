@@ -202,10 +202,8 @@ defmodule Aiur.Orchestrator do
     {:noreply, CommentWake.maybe_reactivate_on_comment(state, issue_number, source, event, attempt)}
   end
 
-  def handle_info({:event, %{topic: topic} = event}, state) when is_binary(topic) do
-    if String.ends_with?(topic, ".pr.merged"), do: record_post_deploy_checks(event)
-    {:noreply, EventTopics.route(state, event)}
-  end
+  def handle_info({:event, %{topic: topic} = event}, state) when is_binary(topic),
+    do: {:noreply, EventTopics.route(state, event)}
 
   def handle_info({:github_comments_polled, ref, payload}, state) when is_reference(ref),
     do: {:noreply, CommentPolling.apply_async(state, ref, payload)}
@@ -253,17 +251,6 @@ defmodule Aiur.Orchestrator do
   def handle_info(msg, state) do
     Logger.debug("Orchestrator ignored message: #{inspect(msg)}")
     {:noreply, state}
-  end
-
-  defp record_post_deploy_checks(event) do
-    case Aiur.PostDeployChecklist.ingest(event) do
-      :ok -> :ok
-      {:error, reason} -> Logger.warning("aiur_post_deploy_checklist ingest_failed reason=#{inspect(reason)}")
-    end
-  rescue
-    error -> Logger.warning("aiur_post_deploy_checklist ingest_failed error=#{Exception.message(error)}")
-  catch
-    :exit, reason -> Logger.warning("aiur_post_deploy_checklist ingest_unavailable reason=#{inspect(reason)}")
   end
 
   defp handle_other_down(state, ref, reason) do

@@ -150,4 +150,4 @@ This telemetry is measurement-only; it does not adapt `max_concurrent_agents` au
 
 ### Post-deploy checks
 
-The `/post-deploy` dashboard page lists manual checks recorded in merged PR bodies. Add each check under `## Local tests` as `Post-deploy check: <exact steps>`; append `(operator: physical Stream Deck)` when a named operator or device is required. Checks stay pending until an Executor marks them done, and completed entries remain visible in history. Run pending steps after rebuilding the runtime.
+The `/post-deploy` page lists manual checks from merged PRs. Add `Post-deploy check: <exact steps>` under `## Local tests`; name required operators, such as `(operator: physical Stream Deck)`. Checks stay pending until an Executor marks them done. Run them after rebuilding the runtime.
