@@ -105,6 +105,7 @@ grep -Fxq "affected_paths_b64=$expected_paths" "$test_dir/out"
 PATH="$test_dir/failbin:$PATH" expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' fail
 workflow="$root/.github/workflows/ci.yml"
 ! grep -q 'outputs.draft\|pull_request.draft' "$workflow"
+grep -Fq 'uses: ./.github/actions/setup-elixir' "$workflow"
 grep -Eq 'outputs:.*full_ci:.*steps\.classify\.outputs\.full_ci' "$workflow"
 grep -Eq 'outputs:.*affected_paths_b64:.*steps\.classify\.outputs\.affected_paths_b64' "$workflow"
 grep -Fq 'run: bash scripts/classify-ci-changes.sh' "$workflow"
