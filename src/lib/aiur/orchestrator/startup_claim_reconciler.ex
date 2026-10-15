@@ -9,7 +9,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   require Logger
 
   alias Aiur.{Alerts, Issue}
-  alias Aiur.Orchestrator.{DispatchPolicy, Lifecycle, Reconciler, State, TrackerTasks}
+  alias Aiur.Orchestrator.{CiLifecycle, DispatchPolicy, Lifecycle, Reconciler, State, TrackerTasks}
   alias Aiur.Orchestrator.StartupClaimReconciler.{BootMarker, Observation, Release}
 
   @max_release_attempts 3
@@ -98,6 +98,9 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp reconcile_issue(%State{} = state, %Issue{identifier: identifier} = issue, live_identifiers, opts)
        when is_binary(identifier) do
     cond do
+      approved_and_armed?(state, issue) ->
+        {:ok, resolve_release_failure(state, issue, opts), issue}
+
       DispatchPolicy.state_slug(issue.state) != "in-progress" ->
         {:ok, resolve_release_failure(state, issue, opts), issue}
 
@@ -125,6 +128,13 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
 
   defp reconcile_issue(state, issue, _live_identifiers, _opts), do: {:ok, state, issue}
 
+  defp approved_and_armed?(%State{} = state, %Issue{} = issue) do
+    projection = get_in(state.ci_lifecycle, [:poll_cache, CiLifecycle.ci_target_for_issue(issue)])
+
+    is_map(projection) and Map.get(projection, :review_decision) == "APPROVED" and
+      (is_map(Map.get(projection, :auto_merge_request)) or is_map(Map.get(projection, :merge_queue_entry)))
+  end
+
   # Positive current-generation liveness. A live Task pid protects its claim; a
   # parked/staged entry (`pid: nil` — a rate-limit-fallback redispatch or a
   # deactivated row) is still owned by this generation while a replacement is
@@ -147,7 +157,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp release_orphaned_claim(%State{} = state, %Issue{} = issue, opts) do
     if TrackerTasks.owner?(state) do
       input = Reconciler.issue_input(state, issue.id) |> Tuple.delete_at(1)
-      update = fn -> Release.run(issue, opts) end
+      update = fn -> Release.run(issue, Keyword.put(opts, :state, state)) end
 
       current =
         TrackerTasks.run(state, {:startup_release, issue.id}, update, fn arg1, arg2 ->
@@ -163,7 +173,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp reject_pending_releases(state, issues), do: Enum.reject(issues, &TrackerTasks.running?(state, {:startup_release, &1.id}))
 
   defp release_orphaned_claim_sync(%State{} = state, %Issue{} = issue, opts) do
-    case Release.run(issue, opts) do
+    case Release.run(issue, Keyword.put(opts, :state, state)) do
       {:ok, target} ->
         Logger.warning("Released orphaned startup claim to #{target}; no live runtime owns it #{State.issue_context(issue)}")
         emit_released_alert(issue, target, opts)

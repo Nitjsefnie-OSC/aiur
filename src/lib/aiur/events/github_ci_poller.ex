@@ -301,6 +301,7 @@ defmodule Aiur.Events.GithubCIPoller do
           draft?: Evaluation.pr_draft?(current_pr),
           review_decision: Map.get(current_pr, "review_decision")
         })
+        |> Map.merge(Evaluation.merge_queue_observation(current_pr))
         |> log_classification()
 
       {:ok, current_head_sha} ->
