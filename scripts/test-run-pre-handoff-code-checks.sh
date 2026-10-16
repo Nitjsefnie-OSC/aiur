@@ -26,7 +26,13 @@ case "$*" in
   "aiur.affected_tests "*)
     printf 'selector:%s\n' "${AIUR_CI_CHANGED_PATHS_B64:-}" >> "$COMMAND_LOG"
     if [[ "$CHANGED_PATHS" == *src/test/support/* || "$CHANGED_PATHS" == *src/mix.exs || "$CHANGED_PATHS" == *src/mix.lock || "$CHANGED_PATHS" == *src/config/* ]]; then
-      printf '%s\n' 'cd src && mise exec -- make ci'
+      printf '%s\n' '# full suite recommended: shared test support changed' 'cd src && mise exec -- make ci'
+      exit 0
+    fi
+    if [[ "$CHANGED_PATHS" == *overcap* ]]; then
+      printf 'cd src && mise exec -- mix test --max-cases 4'
+      printf ' test/aiur/over_%s_test.exs' $(seq 301)
+      printf '\n'
       exit 0
     fi
     if [[ "$(printf '%s' "${AIUR_CI_CHANGED_PATHS_B64:-}" | base64 --decode)" == '[]' ]]; then
@@ -129,27 +135,34 @@ if ! run_check passing src/lib/aiur/github/foo.ex false false; then
   exit 1
 fi
 
-if run_check failing_full_ci src/test/support/foo.ex false false "" true; then
-  echo 'test-run-pre-handoff-code-checks: expected full-suite failure to refuse handoff' >&2
-  exit 1
-fi
-grep -F 'make-ci' "$tmp/failing_full_ci.commands" >/dev/null
-grep -Fx 'timeout:--signal=TERM --kill-after=60s 45m mise exec -- make ci' "$tmp/failing_full_ci.commands" >/dev/null
+# A full-suite or over-cap selection is deferred to the merge queue, never run here.
+assert_deferred() {
+  local name="$1" notice="$2"
+  if grep -E 'make-ci|^test:' "$tmp/$name.commands" >/dev/null; then
+    echo "test-run-pre-handoff-code-checks: $name selection ran tests in the worker handback" >&2
+    exit 1
+  fi
+  grep -F -- "$notice; deferred to the merge-queue full suite" "$tmp/$name.log" >/dev/null || {
+    cat "$tmp/$name.log" >&2
+    echo "test-run-pre-handoff-code-checks: $name selection did not record its deferral" >&2
+    exit 1
+  }
+}
 
-if ! run_check runtime_config src/config/runtime.exs false false; then
-  cat "$tmp/runtime_config.log" >&2
-  echo 'test-run-pre-handoff-code-checks: runtime config did not trigger full CI' >&2
+if ! run_check full_suite src/test/support/foo.ex false false "" true; then
+  cat "$tmp/full_suite.log" >&2
+  echo 'test-run-pre-handoff-code-checks: full-suite selection refused handoff' >&2
   exit 1
 fi
-grep -F 'make-ci' "$tmp/runtime_config.commands" >/dev/null
+assert_deferred full_suite 'full suite recommended (shared test support changed)'
 
-if ! run_check full_suite_lib $'src/test/support/foo.ex\nsrc/lib/aiur/foo.ex' false false; then
-  cat "$tmp/full_suite_lib.log" >&2
-  echo 'test-run-pre-handoff-code-checks: full-suite fallback skipped Dialyzer for a lib change' >&2
+if ! run_check over_cap src/lib/aiur/overcap.ex false false; then
+  cat "$tmp/over_cap.log" >&2
+  echo 'test-run-pre-handoff-code-checks: over-cap selection refused handoff' >&2
   exit 1
 fi
-grep -F 'make-ci' "$tmp/full_suite_lib.commands" >/dev/null
-grep -Fx 'timeout:--signal=TERM --kill-after=60s 15m mise exec -- mix dialyzer' "$tmp/full_suite_lib.commands" >/dev/null
+assert_deferred over_cap 'selection 301 files > 300'
+grep -Fx 'timeout:--signal=TERM --kill-after=60s 15m mise exec -- mix dialyzer' "$tmp/over_cap.commands" >/dev/null
 
 if ! run_check script_only scripts/run-pre-handoff-code-checks.sh false false; then
   cat "$tmp/script_only.log" >&2

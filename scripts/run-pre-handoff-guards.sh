@@ -25,7 +25,9 @@ esac
 if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
   scripts/pre-handoff-guards "$RUNNER_TEMP/pr-evidence.json" "$AIUR_PR_BASE_SHA"
 else
-  scripts/pre-handoff-guards --skip-pr-body "$code_base"
+  # Merge-queue, main and scheduled runs execute the full suite and Dialyzer;
+  # selected tests here would only repeat them.
+  AIUR_PRE_HANDOFF_SKIP_CODE_CHECKS=1 scripts/pre-handoff-guards --skip-pr-body "$code_base"
 fi
 
 python3 scripts/check-config-docs.py

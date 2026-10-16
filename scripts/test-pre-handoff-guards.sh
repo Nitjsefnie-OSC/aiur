@@ -55,7 +55,7 @@ printf 'code-checks: %s\n' "$*"
 CODE_CHECKS
 cat > "$events_repo/scripts/pre-handoff-guards" <<'GUARDS'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "$EVENT_LOG"
+printf '%s skip-code-checks=%s\n' "$*" "${AIUR_PRE_HANDOFF_SKIP_CODE_CHECKS:-0}" > "$EVENT_LOG"
 printf 'pre-handoff-guards: %s\n' "$*"
 GUARDS
 cat > "$events_repo/scripts/check-config-docs.py" <<'PYTHON'
@@ -121,6 +121,10 @@ assert_contains "$tmp/workflow_dispatch.args" "--skip-pr-body $dispatch_base" 'm
 assert_contains "$tmp/schedule.args" "--skip-pr-body $dispatch_base" 'scheduled event used the wrong merge base'
 for event in merge_group push push_zero workflow_dispatch schedule; do
   assert_absent "$tmp/$event.log" 'scripts/check-pr-body.py' "$event event included PR body guard"
+done
+assert_contains "$tmp/pull_request.args" 'skip-code-checks=0' 'pull-request event skipped selected tests and Dialyzer'
+for event in merge_group push push_zero workflow_dispatch schedule; do
+  assert_contains "$tmp/$event.args" 'skip-code-checks=1' "$event event repeated selected tests the full suite already runs"
 done
 assert_contains "$tmp/merge_group.log" "pre-handoff-guards: --skip-pr-body $merge_base" 'merge-group event runner did not execute its guard command'
 
