@@ -13,7 +13,7 @@ trap cleanup EXIT
 base="$(git -C "$repo_root" rev-parse HEAD)"
 head="$base"
 cat > "$tmp/pr.json" <<JSON
-{"created_at":"1970-01-01T00:00:00Z","body":"","head":{"sha":"$head"}}
+{"created_at":"1970-01-01T00:00:00Z","body":"","head":{"sha":"$head","repo":{"full_name":"example/repo"}}}
 JSON
 
 cd "$repo_root"
@@ -69,7 +69,7 @@ chmod +x "$events_repo/scripts/run-pre-handoff-code-checks.sh"
 
 cat > "$tmp/bin/gh" <<'GH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" > "$GH_LOG"
+printf '%s\n' "$*" >> "$GH_LOG"
 cat "$PR_METADATA"
 GH
 chmod +x "$tmp/bin/gh"
