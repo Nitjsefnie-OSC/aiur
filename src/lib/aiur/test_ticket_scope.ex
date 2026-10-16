@@ -8,7 +8,9 @@ defmodule Aiur.TestTicketScope do
 
   The inverse also holds: a daemon without the scope never reads or writes the
   pinned sandbox tickets of the repository they belong to, so a live fleet does
-  not race a concurrent `--test3` run for them (#4741).
+  not race a concurrent `--test3` run for them (#4741). The pinned ids are read
+  at compile time, so a changed `.aiur-test-tickets.json` takes effect only
+  after a rebuild.
   """
 
   @env "AIUR_DEV_TEST_TICKET_IDS"
@@ -70,10 +72,7 @@ defmodule Aiur.TestTicketScope do
       when method in [:post, :patch, :put, :delete] and is_binary(url) do
     case System.get_env(@env) do
       nil ->
-        case resource_number(url) do
-          {:ok, :issue, number} -> if allowed_identifier?(number), do: :ok, else: deny_write(number)
-          _ -> :ok
-        end
+        allow_unscoped_write(resource_number(url))
 
       ids when is_binary(ids) and ids != "" ->
         allow_scoped_write(request, resource_number(url))
@@ -103,6 +102,11 @@ defmodule Aiur.TestTicketScope do
         deny_write(resource_identifier(resource))
     end
   end
+
+  defp allow_unscoped_write({:ok, :issue, number}),
+    do: if(allowed_identifier?(number), do: :ok, else: deny_write(number))
+
+  defp allow_unscoped_write(_resource), do: :ok
 
   defp deny_write(identifier), do: {:error, {:outside_test_ticket_scope, identifier}}
 
