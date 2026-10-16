@@ -5,8 +5,6 @@ defmodule Aiur.Workspace.AttributionHooksSetupTest do
 
   @hooks_path Path.expand("../../../../.aiur/hooks", __DIR__)
   @installer_path Path.expand("../../../../scripts/install-attribution-hooks", __DIR__)
-  @zero_sha "0000000000000000000000000000000000000000"
-
   test "after_create installs hooks that strip AI trailers and preserve human co-authors" do
     root = Aiur.TestSupport.tmp_root!("attribution-hooks-setup")
     workspace = Path.join(root, "workspace")
