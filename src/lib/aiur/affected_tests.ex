@@ -32,7 +32,12 @@ defmodule Aiur.AffectedTests do
     * `:reference_tests` — test files containing references deleted by the diff.
   """
   @spec select([path], keyword()) :: {:scoped, [path]} | {:full, String.t()}
-  def select(changed, opts \\ []) do
+  def select(changed, opts \\ []), do: changed |> select_with_candidates(opts) |> elem(0)
+
+  @doc false
+  @spec select_with_candidates([path], keyword()) ::
+          {{:scoped, [path]} | {:full, String.t()}, [path], [path]}
+  def select_with_candidates(changed, opts \\ []) do
     base = Keyword.get(opts, :base_dir, ".")
     exists? = Keyword.get(opts, :exists?, fn p -> File.exists?(Path.join(base, p)) end)
     dependent_sources = Keyword.get(opts, :dependent_sources, [])
@@ -40,18 +45,30 @@ defmodule Aiur.AffectedTests do
     changed = Enum.uniq(changed)
     unknown = Enum.reject(changed, &recognized?/1)
 
-    cond do
-      changed == [] ->
-        {:scoped, []}
+    result =
+      cond do
+        changed == [] ->
+          {{:scoped, []}, [], []}
 
-      Enum.any?(changed, &forces_full?/1) ->
-        {:full, "changed files include test support / gettext / mix / config paths that a scoped run cannot capture"}
+        Enum.any?(changed, &forces_full?/1) ->
+          {:full, "changed files include test support / gettext / mix / config paths that a scoped run cannot capture"}
 
-      unknown != [] ->
-        {:full, "changed files cannot be classified safely: #{Enum.join(unknown, ", ")}"}
+        unknown != [] ->
+          {:full, "changed files cannot be classified safely: #{Enum.join(unknown, ", ")}"}
 
-      true ->
-        scoped_tests(base, changed, dependent_sources, reference_tests, exists?)
+        true ->
+          scoped_tests(base, changed, dependent_sources, reference_tests, exists?)
+      end
+
+    case result do
+      {selection, candidates, fallback} when is_list(candidates) and is_list(fallback) ->
+        {selection, candidates, fallback}
+
+      {selection, candidates} when is_list(candidates) ->
+        {selection, candidates, candidates}
+
+      selection ->
+        {selection, [], []}
     end
   end
 
@@ -64,24 +81,35 @@ defmodule Aiur.AffectedTests do
       |> Enum.uniq()
       |> Enum.filter(exists?)
 
-    changed_directory_tests = changed_directory_tests(base, changed, exists?)
-    caller_directory_tests = changed_directory_tests(base, dependent_sources, exists?)
+    changed_directory_tests = changed_directory_tests(base, changed, exists?) |> Enum.uniq()
+    caller_directory_tests = changed_directory_tests(base, dependent_sources, exists?) |> Enum.uniq()
     tests = Enum.uniq(exact_tests ++ changed_directory_tests ++ caller_directory_tests)
 
-    cond do
-      sources != [] and tests == [] ->
-        {:full, "no direct or xref-dependent tests were found for changed library sources"}
+    fallback_tests = Enum.uniq(exact_tests ++ changed_directory_tests)
 
-      length(tests) > @max_affected_tests ->
-        Mix.shell().info(
-          "affected tests budget: changed-module directories plus xref caller directories select #{length(tests)} tests, over the #{@max_affected_tests}-file cap; forcing full CI, so no xref callers are dropped"
-        )
+    selection =
+      cond do
+        sources != [] and tests == [] ->
+          {:full, "no direct or xref-dependent tests were found for changed library sources"}
 
-        {:full, "affected test fallback exceeds #{@max_affected_tests} files (#{length(tests)} candidates)"}
+        length(tests) > @max_affected_tests ->
+          dropped = caller_directory_tests -- fallback_tests
 
-      true ->
-        {:scoped, tests}
-    end
+          Mix.shell().info(
+            "affected tests budget: widened set has #{length(tests)} tests; dropped #{length(dropped)} xref caller-directory tests, leaving #{length(fallback_tests)} fallback candidates"
+          )
+
+          if fallback_tests == [] or length(fallback_tests) > @max_affected_tests do
+            {:full, "affected test fallback exceeds #{@max_affected_tests} files (#{length(fallback_tests)} candidates after dropping caller-directory expansion)"}
+          else
+            {:scoped, fallback_tests}
+          end
+
+        true ->
+          {:scoped, tests}
+      end
+
+    {selection, tests, fallback_tests}
   end
 
   defp changed_directory_tests(base, changed, exists?) do
@@ -175,7 +203,8 @@ defmodule Aiur.AffectedTests do
     MapSet.new(structural_terms ++ literal_terms)
   end
 
-  defp captures(text, regex), do: Regex.scan(regex, text, capture: :all_but_first) |> List.flatten()
+  defp captures(text, regex),
+    do: Regex.scan(regex, text, capture: :all_but_first) |> List.flatten()
 
   defp contains_any?(path, patterns) do
     case File.read(path) do

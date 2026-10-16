@@ -29,10 +29,11 @@ defmodule Mix.Tasks.Aiur.AffectedTestsTest do
              "reason" => "shared support changed"
            }
 
-    assert Jason.decode!(AffectedTests.selection_json({:scoped, ["src/test/engine_test.exs"]})) == %{
-             "status" => "scoped",
-             "tests" => ["src/test/engine_test.exs"]
-           }
+    assert Jason.decode!(AffectedTests.selection_json({:scoped, ["src/test/engine_test.exs"]})) ==
+             %{
+               "status" => "scoped",
+               "tests" => ["src/test/engine_test.exs"]
+             }
   end
 end
 
@@ -128,12 +129,12 @@ defmodule Mix.Tasks.Aiur.AffectedTests.XrefSelectionTest do
   alias Mix.Tasks.Aiur.AffectedTests
 
   @tag timeout: 120_000
-  test "uses the compiled xref graph and falls back to full CI over budget" do
+  test "uses compiled xref callers and bounds the replay selections" do
     root = File.cwd!() |> Path.dirname()
     original_paths = System.get_env("AIUR_CI_CHANGED_PATHS_B64")
 
     replay_cases = [
-      {"#4447", ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"]},
+      {"#4447", ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"], ["failure_test.exs", "transitions_test.exs"]},
       {"#4593",
        [
          "src/lib/aiur/build_queue/attention.ex",
@@ -144,16 +145,26 @@ defmodule Mix.Tasks.Aiur.AffectedTests.XrefSelectionTest do
          "src/lib/aiur/build_queue/settings.ex",
          "src/lib/aiur/build_queue_cli.ex",
          "src/lib/aiur/tracker.ex"
-       ]}
+       ], ["set_waiting_test.exs", "queue_set_next_test.exs"]}
     ]
 
     try do
-      Enum.each(replay_cases, fn {_pr, changed} ->
+      Enum.each(replay_cases, fn {pr, changed, expected_tests} ->
         System.put_env("AIUR_CI_CHANGED_PATHS_B64", Base.encode64(Jason.encode!(changed)))
-        assert {:ok, [json]} = AffectedTests.selection(root, "HEAD", true)
 
-        assert %{"status" => "full", "reason" => reason} = Jason.decode!(json)
-        assert reason =~ "fallback exceeds 400 files"
+        assert {:ok, selected, candidates, fallback, ^changed} =
+                 AffectedTests.selection_details(root, "HEAD")
+
+        Enum.each(expected_tests, fn expected ->
+          assert Enum.any?(candidates, &String.ends_with?(&1, "/#{expected}")),
+                 "#{pr} pre-cap candidates omitted #{expected}"
+        end)
+
+        if pr == "#4593", do: assert(length(fallback) > 400)
+
+        assert %{"status" => status} = AffectedTests.selection_json(selected) |> Jason.decode!()
+        expected_status = if length(fallback) <= 400, do: "scoped", else: "full"
+        assert status == expected_status, "#{pr} has #{length(fallback)} fallback candidates"
       end)
     after
       if original_paths,

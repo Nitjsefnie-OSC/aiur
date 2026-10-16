@@ -30,7 +30,9 @@ defmodule Aiur.AffectedTestsTest do
   end
 
   test "forces the full suite for gettext .po/.pot changes" do
-    assert {:full, _} = AffectedTests.select(["priv/gettext/en/LC_MESSAGES/default.po"], all_exist())
+    assert {:full, _} =
+             AffectedTests.select(["priv/gettext/en/LC_MESSAGES/default.po"], all_exist())
+
     assert {:full, _} = AffectedTests.select(["priv/gettext/default.pot"], all_exist())
   end
 
@@ -88,7 +90,7 @@ defmodule Aiur.AffectedTestsTest do
     end
   end
 
-  test "falls back to full CI when xref caller directories exceed the cap" do
+  test "drops oversized caller-directory expansion and keeps changed-module tests" do
     root = Aiur.TestSupport.tmp_root!("affected-xref-caller-cap")
     File.mkdir_p!(Path.join(root, "src/test/aiur/callee"))
     File.mkdir_p!(Path.join(root, "src/test/aiur/callers"))
@@ -99,14 +101,14 @@ defmodule Aiur.AffectedTestsTest do
         File.write!(Path.join(root, "src/test/aiur/callers/fixture_#{index}_test.exs"), "")
       end)
 
-      assert {:full, reason} =
+      assert {:scoped, [callee_test]} =
                AffectedTests.select(
                  ["src/lib/aiur/callee/callee.ex"],
                  base_dir: root,
                  dependent_sources: ["src/lib/aiur/callers/caller.ex"]
                )
 
-      assert reason =~ "fallback exceeds 400 files"
+      assert callee_test == "src/test/aiur/callee/callee_test.exs"
     after
       Aiur.TestCleanup.rm_rf!(root)
     end
@@ -227,7 +229,11 @@ defmodule Aiur.AffectedTestsTest do
   end
 
   test "fails closed for unrecognized executable and build files" do
-    for path <- ["scripts/aiurdev", ".claude/skills/aiur-run/scripts/poll.py", "src/assets/app.js"] do
+    for path <- [
+          "scripts/aiurdev",
+          ".claude/skills/aiur-run/scripts/poll.py",
+          "src/assets/app.js"
+        ] do
       assert {:full, reason} = AffectedTests.select([path], all_exist())
       assert reason =~ path
     end

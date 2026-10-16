@@ -47,18 +47,28 @@ defmodule Mix.Tasks.Aiur.AffectedTests do
   @doc false
   @spec selection(String.t(), String.t(), boolean()) :: {:ok, [String.t()]} | {:error, String.t()}
   def selection(root, base, json? \\ false) do
+    with {:ok, selected, _candidates, _fallback, changed} <- selection_details(root, base) do
+      {:ok, output_lines(selected, json?, changed)}
+    end
+  end
+
+  @doc false
+  @spec selection_details(String.t(), String.t()) ::
+          {:ok, {:full, String.t()} | {:scoped, [String.t()]}, [String.t()], [String.t()], [String.t()]}
+          | {:error, String.t()}
+  def selection_details(root, base) do
     with {:ok, diff_range} <- GitDiff.range(root, base),
          {:ok, changed} <- changed_files(root, base),
          {:ok, dependents} <- xref_dependents(root, changed),
          {:ok, references} <- deleted_reference_tests(root, diff_range) do
-      selected =
-        Aiur.AffectedTests.select(changed,
+      {selected, candidates, fallback} =
+        Aiur.AffectedTests.select_with_candidates(changed,
           base_dir: root,
           dependent_sources: dependents,
           reference_tests: references
         )
 
-      {:ok, output_lines(selected, json?, changed)}
+      {:ok, selected, candidates, fallback, changed}
     end
   end
 
