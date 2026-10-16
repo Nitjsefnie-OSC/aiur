@@ -6,7 +6,7 @@ const source = await readFile(new URL('../../test/fixtures/build_home/design-sou
 const probe = source.replace('  window.AiurBuild = {', `window.__columns = { prepare(mode) {
   S.ready = false; snapping = true;
   if (mode === 'focus' || mode === 'compact') { S.feature = 'khala'; S.fmode = mode }
-  if (mode === 'epic') S.f.epic = ['docs'];
+  if (mode === 'epic') { S.f.epic = ['docs']; D._fwd = null; relayout() }
   if (mode !== 'boot') vp.scrollTop = 0;
   applyCols(visibleCols(), true);
 } };\n  window.AiurBuild = {`)
@@ -23,10 +23,10 @@ for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`,
     await pair.design.reload(); await waitParityReady(pair.design, 'board', 'design', true)
     await pair.design.evaluate(mode => __columns.prepare(mode), cell.mode)
     await pair.product.evaluate(async mode => {
-      const { ctx, S } = await import('/build-home/state.js'), c = await import('/build-home/columns.js')
+      const { ctx, S, fx } = await import('/build-home/state.js'), c = await import('/build-home/columns.js')
       S.ready = false
       if (mode === 'focus' || mode === 'compact') { S.feature = 'khala'; S.fmode = mode }
-      if (mode === 'epic') S.f.epic = ['docs']
+      if (mode === 'epic') { S.f.epic = ['docs']; ctx.D._fwd = null; fx.relayout() }
       if (mode !== 'boot') ctx.vp.scrollTop = 0
       c.applyCols(c.visibleCols(), true)
     }, cell.mode)
