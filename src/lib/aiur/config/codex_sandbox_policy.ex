@@ -297,7 +297,7 @@ defmodule Aiur.Config.CodexSandboxPolicy do
   end
 
   defp remote_workspace_writable_roots(workspace_root) do
-    [workspace_root, Path.join(workspace_root, ".git"), Path.join(workspace_root, ".agents"), Path.join(workspace_root, ".codex")]
+    [workspace_root, Path.join(workspace_root, ".git"), Path.join(workspace_root, ".agents")]
   end
 
   # Codex protects .agents by default, including the skills symlink Git must

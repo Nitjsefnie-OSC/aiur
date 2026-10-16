@@ -137,7 +137,7 @@ defmodule Aiur.Config.SandboxPolicyTest do
 
     assert remote_policy == %{
              "type" => "workspaceWrite",
-             "writableRoots" => ["~/.aiur-workspaces", "~/.aiur-workspaces/.git", "~/.aiur-workspaces/.agents", "~/.aiur-workspaces/.codex"],
+             "writableRoots" => ["~/.aiur-workspaces", "~/.aiur-workspaces/.git", "~/.aiur-workspaces/.agents"],
              "readOnlyAccess" => %{"type" => "fullAccess"},
              "networkAccess" => true,
              "excludeTmpdirEnvVar" => false,
@@ -200,8 +200,7 @@ defmodule Aiur.Config.SandboxPolicyTest do
                "writableRoots" => [
                  issue_workspace,
                  Path.join(issue_workspace, ".git"),
-                 Path.join(issue_workspace, ".agents"),
-                 Path.join(issue_workspace, ".codex")
+                 Path.join(issue_workspace, ".agents")
                ],
                "networkAccess" => true
              }

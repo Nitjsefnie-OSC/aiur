@@ -198,6 +198,8 @@ defmodule Aiur.Config.RuntimeSandboxTest do
                "writableRoots" => [remote_workspace, Path.join(remote_workspace, ".git"), Path.join(remote_workspace, ".agents")]
              }
 
+      refute Path.join(remote_workspace, ".codex") in remote_workspace_write_policy["writableRoots"]
+
       read_only_settings = %{
         settings
         | agent: %{
