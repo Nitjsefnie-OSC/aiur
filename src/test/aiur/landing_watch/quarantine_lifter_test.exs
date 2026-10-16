@@ -14,7 +14,13 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
       response(method, url, original)
     end
 
-    assert :ok = QuarantineLifter.lift(900, request_fun: request, base_branch: "main", journal_path: journal)
+    assert :ok =
+             QuarantineLifter.lift(900,
+               request_fun: request,
+               token: "test-gh-token",
+               base_branch: "main",
+               journal_path: journal
+             )
 
     assert_received {:request, :put, "https://api.github.com/repos/test-org/test-repo/contents/src/test/quarantine.txt", body}
     {:ok, content} = Base.decode64(body["content"])

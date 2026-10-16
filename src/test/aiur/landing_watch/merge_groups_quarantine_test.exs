@@ -22,10 +22,12 @@ defmodule Aiur.LandingWatch.MergeGroupsQuarantineTest do
     opts = [
       base_branch: "main",
       journal_path: journal,
+      token: "test-gh-token",
       request_fun: request,
       live_observations_fun: fn _fallback, _opts -> {:ok, []} end,
       changed_paths_fun: fn _pr, _opts -> {:ok, []} end,
       jobs_fun: fn _run, _opts -> {:ok, [%{"check_run_id" => 1, "name" => "test", "conclusion" => "failure"}]} end,
+      job_log_fun: fn _job, _opts -> {:ok, ""} end,
       annotations_fun: fn _id, _opts -> {:ok, [%{"title" => "aiur-test-failure", "message" => "new-failure :: Aiur.ExampleTest :: flakes", "path" => "src/test/example_test.exs"}]} end,
       flake_recorder: fn _failure, _run, _passed, recorder_opts ->
         send(parent, :flake_ticket_recorded)

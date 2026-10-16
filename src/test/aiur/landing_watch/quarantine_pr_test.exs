@@ -21,6 +21,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
                %{identity: "Aiur.ExampleTest :: fails repeatedly", observations: observations},
                900,
                request_fun: request,
+               token: "test-gh-token",
                base_branch: "main",
                quarantine_list_fun: fn -> {:ok, "# Existing entries\n"} end
              )
@@ -43,6 +44,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
                %{identity: "Aiur.ExampleTest :: fails repeatedly", observations: []},
                900,
                request_fun: fn _ -> flunk("already listed test must not make a GitHub request") end,
+               token: "test-gh-token",
                quarantine_list_fun: fn -> {:ok, list} end
              )
   end
@@ -68,6 +70,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
                %{identity: "Aiur.ExampleTest :: fails repeatedly", observations: []},
                900,
                request_fun: request,
+               token: "test-gh-token",
                base_branch: "main"
              )
 
