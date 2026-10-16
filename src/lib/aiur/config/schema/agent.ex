@@ -345,6 +345,12 @@ defmodule Aiur.Config.Schema.Agent do
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.budget_broker_degraded_alert_after_seconds | integer | 600 | How long the degraded budget-broker retry rate must persist before the single `system.github.budget_broker_degraded` alert raises (the dwell): a momentary blip that clears within this bound produces nothing, a sustained degradation raises exactly once. |
     field(:budget_broker_degraded_alert_after_seconds, :integer, default: 600)
+    # A dispatch declined by a local GitHub budget hold is a retry. It raises an
+    # Executor attention only once the same ticket has been declined this many
+    # times in a row (#4067).
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
+    # @config-reference config-configuration-agent-00 agent.dispatch_hold_attention_threshold | integer | 3 | Consecutive dispatch declines caused by local GitHub budget holds on one ticket before Aiur raises an Executor attention. Earlier declines retry on the next dispatch poll; a successful dispatch validation or a different failure clears the count. |
+    field(:dispatch_hold_attention_threshold, :integer, default: 3)
 
     embeds_one(:claude, Claude, on_replace: :update, defaults_to_struct: true)
     embeds_one(:codex, Codex, on_replace: :update, defaults_to_struct: true)
@@ -409,7 +415,8 @@ defmodule Aiur.Config.Schema.Agent do
         :capacity_starvation_alert_after_seconds,
         :budget_broker_rate_window_seconds,
         :budget_broker_degraded_retry_threshold,
-        :budget_broker_degraded_alert_after_seconds
+        :budget_broker_degraded_alert_after_seconds,
+        :dispatch_hold_attention_threshold
       ],
       empty_values: []
     )
@@ -449,6 +456,7 @@ defmodule Aiur.Config.Schema.Agent do
     |> validate_number(:budget_broker_rate_window_seconds, greater_than: 0)
     |> validate_number(:budget_broker_degraded_retry_threshold, greater_than: 0)
     |> validate_number(:budget_broker_degraded_alert_after_seconds, greater_than: 0)
+    |> validate_number(:dispatch_hold_attention_threshold, greater_than: 0)
     |> AgentValidation.validate_backend_configs()
     |> update_change(:max_concurrent_agents_by_state, &AgentValidation.normalize_state_limits/1)
     |> AgentValidation.validate_state_limits(:max_concurrent_agents_by_state)
