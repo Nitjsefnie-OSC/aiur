@@ -165,9 +165,9 @@ defmodule Aiur.AgentControlCLI do
     Commands.print_projection_status()
     print_codeowners_trust()
     ReloadRejection.print_status()
+    Aiur.Handoff.CLI.print_latest()
     Aiur.MergePolicyCLI.print()
     tracker_states = tracker_state_sets()
-
     # Count printed rows so hidden releases cannot inflate the headline (#1475).
     visible_statuses = Enum.filter(statuses, &visible_status_row?(&1, tracker_states))
 
@@ -955,7 +955,7 @@ defmodule Aiur.AgentControlCLI do
 
   defp print_build_gate_holder(%{kind: :slot} = holder) do
     identifiers = ["slot=#{Map.get(holder, :slot)}", "pid=#{Map.get(holder, :pid)}"]
-    annotation = if Map.get(holder, :command_alive?) == false, do: " (command gone)", else: ""
+    annotation = if Map.get(holder, :command_alive?) == false, do: " (command gone)", else: if(Map.get(holder, :command_alive?) == nil, do: " (command liveness unknown)", else: "")
     print_build_gate_line("HOLDER", identifiers, holder, "held", annotation)
   end
 
