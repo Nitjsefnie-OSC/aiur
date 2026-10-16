@@ -1,6 +1,6 @@
 # GitHub
 
-Aiur reads GitHub to discover work, follow tickets, and return completed changes for review. This API reference is split by topic:
+Aiur reads GitHub to find work, follow each ticket, and return completed changes for review. This API reference is split by topic:
 
 - [Polling, repository setup, and cadence](/apis/github-polling)
 - [API budgets and credential pooling](/apis/github-budgets)
