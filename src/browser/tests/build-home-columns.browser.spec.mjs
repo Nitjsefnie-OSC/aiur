@@ -170,7 +170,7 @@ test('rendered cards keep the current layout back-reference through a live pass'
 })
 
 test('unknown URL epics cannot become lanes', async ({ page }) => {
-  await page.goto('/build-fixture/live?epic=nope')
+  await page.goto('/build?epic=nope')
   await expect(page.locator('.bd-lane')).toHaveCount(4)
   expect(await page.locator('.bd-lane').evaluateAll(els => els.map(el => el.title))).toEqual(['Bugs', 'Design', 'Infra', 'Docs'])
 })
