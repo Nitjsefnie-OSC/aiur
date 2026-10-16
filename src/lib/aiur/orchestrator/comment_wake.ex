@@ -14,6 +14,7 @@ defmodule Aiur.Orchestrator.CommentWake do
   alias Aiur.GitHub.{Config, LocalHold}
   alias Aiur.GitHub.Issues, as: GitHubIssues
   alias Aiur.{Issue, Tracker}
+  alias Aiur.Orchestrator.CommentReworkRefusal
   alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, MembershipLifecycle, MergedTicketReconciler, PrAnchored, PushRouting, ReviewFreshness, ReworkGate, State, TicketTransition, TrackerTasks}
   alias Aiur.Orchestrator.Lifecycle, as: OrchestratorLifecycle
   alias Aiur.Orchestrator.{MergeAttribution, MergeTransition, OperatorMessages, OptimisticLedger, ReviewFindings, WorkspaceCleanup}
@@ -780,37 +781,12 @@ defmodule Aiur.Orchestrator.CommentWake do
 
     if changes_requested_review?(event) do
       Logger.warning("#{source} refused rework for a changes-requested review: #{context}")
-      emit_refused_review_rework_alert(issue_number, event, reason)
+      CommentReworkRefusal.emit(issue_number, event, reason)
     else
       Logger.info("#{source} active comment rework skipped: #{context}")
     end
 
     state
-  end
-
-  defp emit_refused_review_rework_alert(issue_number, event, reason) do
-    emit_alert_fun =
-      case Map.get(event, :emit_alert_fun) do
-        fun when is_function(fun, 2) -> fun
-        _ -> &Alerts.emit_system/2
-      end
-
-    identifier = to_string(issue_number)
-
-    emit_alert_fun.(
-      "ticket.#{identifier}.agent.attention.review_rework_refused",
-      issue: identifier,
-      message:
-        "Ticket #{identifier} received a CHANGES_REQUESTED review but was not moved to rework " <>
-          "(#{inspect(reason)}); it is still sitting in its review state.",
-      reason:
-        "The rework gate refused the transition for a live changes-requested review, and a review " <>
-          "submission is delivered only once, so nothing re-derives it. Remedy: move the ticket to " <>
-          "rework or re-review it after addressing the gate condition.",
-      needs_attention: true,
-      severity: "warning",
-      central: true
-    )
   end
 
   defp emit_comment_rework_refusal(issue_number, suffix, message, reason, remedy) do
@@ -1612,30 +1588,13 @@ defmodule Aiur.Orchestrator.CommentWake do
             "issue_identifier=#{issue_number} reason=#{inspect(reason)}"
         )
 
-        # A review submission is delivered ONCE. `Aiur.Events.Publisher`
-        # marks `{:pr_review, owner, repo, review_id}` handled for 72h at
-        # `resource_version = submitted_at`, and the poller's
-        # `pr_review_seen_at` watermark advances past that `submitted_at` in
-        # the very cycle that read `/reviews` — so nothing re-derives this
-        # review later. One transient refusal (a held, 5xx or 429 open-PR
-        # search, review-thread read, or label write) must re-enter this bounded
-        # retry path rather than silently dropping the review.
-        #
-        # The idle writer has always retried exactly this failure class
-        # (`maybe_transition_idle_issue_to_rework/5`), and `Aiur.Orchestrator`'s
-        # `{:retry_comment_rework, ...}` handler routes the retry back through
-        # `maybe_reactivate_on_comment/5`, so the running-entry writer
-        # re-enters this branch with the entry still in place. The attempt
-        # bound and `retryable_comment_rework_failure?/1` are shared, so an
-        # auth or non-retryable 4xx refusal still fails once and stays failed.
+        # Review submissions are delivered once, so transient open-PR, thread,
+        # or label-write failures must use the bounded retry path. The retry
+        # re-enters `maybe_reactivate_on_comment/5` with the running entry intact.
 
         schedule_comment_rework_retry(state, issue_number, source, event, attempt, reason)
     end
   end
-
-  defp apply_active_comment_protection({{:ok, state}, _original}, _context), do: state
-
-  defp apply_active_comment_protection({{_failure, state}, _original}, _context), do: state
 
   defp apply_active_review_write({:handled, state}, _result, _context), do: state
 
