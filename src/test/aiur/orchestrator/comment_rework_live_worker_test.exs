@@ -60,7 +60,11 @@ defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
     :ok
   end
 
-  test "changes-requested moves a held worker ticket to rework and delivers the review" do
+  # Baseline behavior already delivered these reviews to a held worker. Keep
+  # this as a regression guard; the new behavior is the redundant-write no-op
+  # below, which avoids a dispatch decline when an operator has already put the
+  # ticket in rework while that worker is still holding it.
+  test "regression guard: a changes-requested review reaches a held worker without dispatch decline" do
     ticket = issue("human-review")
     state = base_state(ticket)
     event = review_event(ticket)
@@ -74,7 +78,7 @@ defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
     refute Enum.any?(AlertFeed.list(), &(&1["topic"] == "ticket.#{@issue_number}.agent.attention.dispatch-declined"))
   end
 
-  test "an already-rework held worker gets a new review without a state transition" do
+  test "an already-rework held worker gets a new review without a redundant transition or dispatch decline" do
     ticket = issue("rework")
     Application.put_env(:aiur, :memory_tracker_issues, [ticket])
     state = base_state(ticket)
@@ -85,5 +89,6 @@ defmodule Aiur.Orchestrator.CommentReworkLiveWorkerTest do
     refute_received {:memory_tracker_state_update, @issue_number, "rework"}
     assert [digest] = AgentQueueStore.list_pending(updated.queue_store, @issue_number)
     assert digest.body.events == [event]
+    refute Enum.any?(AlertFeed.list(), &(&1["topic"] == "ticket.#{@issue_number}.agent.attention.dispatch-declined"))
   end
 end

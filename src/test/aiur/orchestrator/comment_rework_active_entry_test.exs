@@ -1,9 +1,33 @@
 defmodule Aiur.Orchestrator.CommentReworkActiveEntryTest do
-  @moduledoc "Regression coverage for reviews delivered to completed worker entries."
+  @moduledoc """
+  A `CHANGES_REQUESTED` review that lands while the ticket still holds a running
+  entry must still reach `agent:rework`.
+
+  `CommentWake.maybe_reactivate_on_comment/5` routes on the running entry's
+  shape. Two shapes were covered: no entry at all (the idle writer, which
+  retries a transient failure through `{:retry_comment_rework, ...}`), and a
+  `:deactivated` entry (the write-then-reactivate path). The third shape — an
+  entry that is present but *not* `:deactivated` — is what a worker that just
+  finished its turn leaves behind (`control.status: :completed`), and what a
+  ticket that bounced `human-review` → `ci-wait` → `human-review` keeps across
+  the round trip. That shape went to `protect_active_comment_delivery/6`, which
+  discarded every non-`:ok` gate outcome with no retry, no alert and no log
+  line.
+
+  A review submission is delivered once: `Aiur.Events.Publisher` holds
+  `{:pr_review, owner, repo, review_id}` for 72h and the poller's
+  `pr_review_seen_at` watermark advances past the review's `submitted_at` in the
+  cycle that read it. So a single transient refusal on this path was permanent —
+  the ticket stayed in `agent:human-review` until an operator relabelled it.
+
+  Sync (`Aiur.TestSupport`), because the in-memory tracker adapter is a
+  VM-global setting.
+  """
 
   use Aiur.TestSupport
 
   alias Aiur.{AgentQueueStore, Issue}
+  alias Aiur.Orchestrator.CommentPolling.TargetSelection
   alias Aiur.Orchestrator.{CommentWake, State}
 
   @issue_number "2814"
@@ -105,20 +129,22 @@ defmodule Aiur.Orchestrator.CommentReworkActiveEntryTest do
     :ok
   end
 
-  test "an idle ci-wait ticket is discovered and a changes-requested review routes it to rework" do
+  test "the poll target for an idle ci-wait ticket routes a changes-requested review to rework" do
     issue = %{human_review_issue() | state: "ci-wait", labels: ["agent:ci-wait"]}
     Application.put_env(:aiur, :memory_tracker_issues, [issue])
     state = base_state(%{})
 
+    {:ok, targets, _review_targets, _watch_targets} =
+      TargetSelection.github_comment_poll_targets(state,
+        review_issue_fetcher: fn states -> {:ok, Enum.filter([issue], &(&1.state in states))} end,
+        review_pull_request_fetcher: fn _identifier -> {:ok, %{"number" => 337}} end
+      )
+
     event = changes_requested_review_event(issue, %{unresolved_threads_fetcher: fn _pr -> {:ok, []} end})
 
-    CommentWake.maybe_transition_idle_issue_to_rework(
-      %{state | last_polled_issues: %{issue.id => issue}},
-      @issue_number,
-      :pr_review,
-      event,
-      1
-    )
+    for target <- targets do
+      CommentWake.maybe_reactivate_on_comment(state, target, :pr_review, event)
+    end
 
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 2_000
   end
@@ -159,5 +185,87 @@ defmodule Aiur.Orchestrator.CommentReworkActiveEntryTest do
       assert {:ok, [%Issue{state: state}]} = Aiur.Tracker.fetch_issue_states_by_ids([@issue_number])
       assert state == unquote(ticket_state)
     end
+  end
+
+  test "a transient gate failure on a completed running entry is retried, not dropped" do
+    issue = human_review_issue()
+
+    reads = :counters.new(1, [])
+
+    event =
+      changes_requested_review_event(issue, %{
+        unresolved_threads_fetcher: fn _pr ->
+          :counters.add(reads, 1, 1)
+
+          case :counters.get(reads, 1) do
+            1 -> {:error, {:github, :http, %{status: 502}}}
+            _ -> {:ok, []}
+          end
+        end
+      })
+
+    state = base_state(completed_running_entry())
+
+    capture_log(fn ->
+      CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event, 1)
+    end)
+
+    # The first attempt failed transiently, so the review must come back.
+    assert_receive {:retry_comment_rework, @issue_number, :pr_review, retried_event, 2}, 2_000
+
+    capture_log(fn ->
+      CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, retried_event, 2)
+    end)
+
+    # …and the retry writes the label the operator used to write by hand.
+    assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 2_000
+  end
+
+  test "a refused changes-requested review on a completed running entry raises attention" do
+    issue = human_review_issue()
+    test_pid = self()
+
+    event =
+      changes_requested_review_event(issue, %{
+        # The ticket has no open pull request any more, so the gate refuses the
+        # verdict — correctly — and the refusal must not be silent.
+        open_pr_fetcher: fn _issue_key -> {:ok, :no_open_pr} end,
+        emit_alert_fun: fn topic, opts -> send(test_pid, {:alert, topic, opts}) end
+      })
+
+    state = base_state(completed_running_entry())
+
+    log =
+      capture_log(fn ->
+        CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event, 1)
+      end)
+
+    refute_received {:memory_tracker_state_update, @issue_number, "rework"}
+
+    assert_receive {:alert, "ticket.2814.agent.attention.review_rework_refused", opts}, 1_000
+    assert Keyword.get(opts, :needs_attention) == true
+    assert log =~ "refused rework for a changes-requested review"
+    assert log =~ ":no_open_pr"
+  end
+
+  test "a plain comment whose threads are clear stays quiet" do
+    issue = human_review_issue()
+    test_pid = self()
+
+    event =
+      changes_requested_review_event(issue, %{
+        comment: %{"body" => "just a note", "created_at" => "2026-09-26T04:09:44Z"},
+        unresolved_threads_fetcher: fn _pr -> {:ok, []} end,
+        emit_alert_fun: fn topic, opts -> send(test_pid, {:alert, topic, opts}) end
+      })
+
+    state = base_state(completed_running_entry())
+
+    capture_log(fn ->
+      CommentWake.maybe_reactivate_on_comment(state, @issue_number, :pr_review, event, 1)
+    end)
+
+    refute_received {:alert, "ticket.2814.agent.attention.review_rework_refused", _opts}
+    refute_received {:memory_tracker_state_update, @issue_number, "rework"}
   end
 end
