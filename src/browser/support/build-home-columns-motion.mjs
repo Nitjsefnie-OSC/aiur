@@ -4,13 +4,25 @@ export async function columnSequence(page, ctx, { click, cssMotion, state, scrol
   // Month loads older days; week zoom preserves them without paging during measurement.
   if (await page.locator('.bd-cal [data-span="7"]').count()) await click(page, '.bd-cal [data-span="7"]')
   else await page.evaluate(async () => {
-    const { S, ctx, fx, LH } = await import('/build-home/state.js')
+    const { S, fx } = await import('/build-home/state.js')
     await (await import('/build-home/history.js')).ensureDays(30)
     S.span = 7; fx.relayout()
-    ctx.vp.scrollTop = ctx.secs.hist.el.offsetTop + ctx.L.secs.hist.h - LH; fx.update()
   })
-  await page.clock.runFor(16)
-  await page.clock.runFor(704)
+  await page.clock.runFor(720)
+  const historyEnd = await page.evaluate(() => {
+    const hist = document.querySelector('#bd-sec-hist'), vp = document.querySelector('#bd-vp')
+    return hist.offsetTop + hist.offsetHeight - vp.clientHeight - 80
+  })
+  await page.locator('#bd-vp').evaluate((el, y) => { el.scrollTop = y }, historyEnd)
+  await page.clock.runFor(720)
+  // Canonicalize the settled starting paint stack after their different boot paths.
+  await page.locator('.bd-lanes').evaluate(host => [...host.querySelectorAll('.bd-lane')]
+    .sort((a, b) => a.title.localeCompare(b.title)).forEach(el => host.appendChild(el)))
+  // Both shells poll scroll position every 250 ms. Align their phase after async mounts;
+  // otherwise that fallback poll can restart the 220 ms debounce at different times.
+  await page.evaluate(() => window.columnPolls?.slice().forEach(poll => {
+    clearInterval(poll.id); poll.id = setInterval(poll.fn, 250, ...poll.args)
+  }))
   const samples = [], initial = await page.locator('.bd-lane:not(.leave)').evaluateAll(nodes => nodes.map(el => el.title))
   await scrollTo(page, 270)
   let applyAt = null, removeAt = null, leaving = false, animation = {}

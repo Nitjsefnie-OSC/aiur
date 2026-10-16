@@ -264,9 +264,26 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
       test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
-      if (name.startsWith('columns.')) await Promise.all([pair.design, pair.product].map(normalizeColumnCapture))
+      if (name.startsWith('columns.')) {
+        await Promise.all([pair.design, pair.product].map(async page => {
+          await page.addInitScript(() => {
+            const every = window.setInterval.bind(window)
+            window.columnPolls = []
+            window.setInterval = (fn, ms, ...args) => {
+              const id = every(fn, ms, ...args)
+              if (ms === 250) columnPolls.push({ id, fn, args })
+              return id
+            }
+          })
+          await page.reload(); await waitParityReady(page, 'board', page === pair.design ? 'design' : 'product', true)
+          await page.clock.setSystemTime(FIXTURE_META.now)
+          await normalizeColumnCapture(page)
+        }))
+      }
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
+      if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
+        throw new Error(JSON.stringify({ design: design.reason, product: product.reason }))
       collectAllowlist(design, product, entries)
     } finally { await pair.close() }
   })
