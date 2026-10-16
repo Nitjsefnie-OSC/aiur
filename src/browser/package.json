@@ -58,7 +58,7 @@
     "test:build-home-render": "node scripts/run-browser-tests.mjs tests/build-home-render.browser.spec.mjs tests/build-home-render-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
     "test:build-home-offline": "node scripts/run-browser-tests.mjs tests/build-home-offline.browser.spec.mjs",
     "test:build-home-tools": "node scripts/run-browser-tests.mjs tests/build-home-tools.browser.spec.mjs && node scripts/run-browser-tests.mjs tests/build-home-tools-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
-    "test:build-home-cards": "node scripts/run-browser-tests.mjs tests/build-home-cards.browser.spec.mjs --config playwright.design-parity.config.mjs"
+    "test:build-home-cards": "AIUR_BROWSER_KEEP_ARTIFACTS=1 node scripts/run-browser-tests.mjs tests/build-home-cards.browser.spec.mjs --config playwright.design-parity.config.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.11.3",
