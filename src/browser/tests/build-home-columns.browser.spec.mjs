@@ -6,7 +6,8 @@ test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angel
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', error => errors.push(error.message))
   const errors = []; page.columnErrors = errors
-  await page.route('**/build-home/columns.js', route => route.fulfill({ path: fileURLToPath(new URL('../../priv/static/build-home/columns.js', import.meta.url)), contentType: 'text/javascript' }))
+  // Resolve owned modules from this checkout even when the fixture uses a shared compiled release.
+  await page.route(/\/build-home\/(columns|state|render|hook)\.js$/, route => route.fulfill({ path: fileURLToPath(new URL('../../priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), import.meta.url)), contentType: 'text/javascript' }))
   await page.goto('/build-fixture/live')
   await expect(page.locator('.bd-lane')).not.toHaveCount(0)
   await page.evaluate(async () => {
