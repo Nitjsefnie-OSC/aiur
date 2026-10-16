@@ -46,15 +46,28 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash scripts/classify-ci-changes.sh
-  workflow-security:
+  pre-handoff:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.result == 'success' }}
-    name: workflow security
+    name: pre-handoff
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: read
-      pull-requests: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/pre-handoff
+  workflow-security:
+    needs: [changes, pre-handoff]
+    if: ${{ !cancelled() && needs.changes.result == 'success' }}
+    name: workflow security
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -63,13 +76,8 @@ jobs:
       - name: Disclose rerun attempt
         if: ${{ github.run_attempt > 1 }}
         run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
-      - uses: ./.github/actions/setup-elixir
-      - uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: src/_build/dev/*.plt*
-          key: ${{ runner.os }}-plt-${{ hashFiles('src/mix.lock') }}
       - name: Guard workflow triggers, action pins and PR body rollout
-        run: bash scripts/test-workflow-security.sh && python3 scripts/test-check-pr-body.py && python3 scripts/test-rerun-failed-ci-gate.py && python3 scripts/test-check-pr-body-check-run.py && python3 scripts/test-hot-list-format.py && python3 scripts/test-shared-list-merges.py && node scripts/test-check-browser-smoke-shards.mjs && bash scripts/test-pre-handoff-guards.sh && bash scripts/test-run-pre-handoff-code-checks.sh
+        run: bash scripts/test-workflow-security.sh && python3 scripts/test-rerun-failed-ci-gate.py && python3 scripts/test-hot-list-format.py && python3 scripts/test-shared-list-merges.py && node scripts/test-check-browser-smoke-shards.mjs && bash scripts/test-run-pre-handoff-code-checks.sh
       - name: Test legacy Stream Deck nightly cleanup
         run: node scripts/test-cleanup-legacy-streamdeck-nightlies.mjs
       - name: Test human-only merge ruleset verifier
@@ -96,14 +104,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/verify-human-only-merge-ruleset-live.sh
-      - name: Structural guards
-        env:
-          GH_TOKEN: ${{ github.token }}
-          AIUR_PR_NUMBER: ${{ github.event.pull_request.number }}
-          AIUR_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          AIUR_MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
-          AIUR_PUSH_BEFORE: ${{ github.event.before }}
-        run: scripts/run-pre-handoff-guards.sh
       - name: Test rename preflight and plan refresh
         run: make test-rename-preflight && python3 -I scripts/test_plan_refresh.py
       - name: Test config documentation and design extract guards
@@ -115,7 +115,7 @@ jobs:
       - name: Test coverage-shard parity guard
         run: bash scripts/test-check-test-shard-parity.sh
       - name: Test bare assert_receive and on_exit rm_rf guards
-        run: bash scripts/test-check-bare-assert-receive.sh && bash scripts/test-check-on-exit-rm-rf.sh
+        run: bash scripts/test-check-bare-assert-receive.sh && bash scripts/test-check-on-exit-rm-rf.sh && test "${{ needs['pre-handoff'].result }}" = success
       - name: Test hourly retrospective visual check
         run: bash .claude/skills/aiur-run/scripts/tests/executor-retrospective_test.sh
       - name: Test hourly dashboard analyzer
@@ -678,7 +678,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y zsh && python3 ../scripts/run-ci-affected-tests.py "$PR_BASE"
   ci-gate:
     name: ci gate
-    needs: [changes, workflow-security, lint, affected-tests, build, coverage-partition, test, dialyzer, browser, browser-2, browser-3, browser-4, home-css, layout-release, analytics, streamdeck]
+    needs: [changes, workflow-security, pre-handoff, lint, affected-tests, build, coverage-partition, test, dialyzer, browser, browser-2, browser-3, browser-4, home-css, layout-release, analytics, streamdeck]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2

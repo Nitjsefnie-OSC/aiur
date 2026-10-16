@@ -38,6 +38,7 @@ assert_absent() {
 }
 
 for output in "$tmp/clean.log" "$tmp/non-pr.log"; do
+  assert_contains "$output" 'run-pre-handoff-code-checks: no changed files' 'worker handoff runner omitted selected tests and Dialyzer gate'
   for guard in check-on-exit-rm-rf.py check-bare-assert-receive.py check-browser-smoke-shards.mjs check-hot-list-format.py check-file-size.py; do
     assert_contains "$output" "scripts/$guard" "shared guard list entry missing"
   done
@@ -87,6 +88,7 @@ pr_base="$(printf '1%.0s' {1..40})"
 merge_base="$(printf '2%.0s' {1..40})"
 push_before="$(printf '3%.0s' {1..40})"
 dispatch_base="$(printf '4%.0s' {1..40})"
+cp "$tmp/pr.json" "$tmp/pr-original.json"
 run_event() {
   local name="$1" event="$2" pr_sha="$3" merge_sha="$4" push_sha="$5"
   : > "$tmp/$name.log"
@@ -109,6 +111,8 @@ run_event push_zero push "$pr_base" "$merge_base" "$(printf '0%.0s' {1..40})"
 run_event workflow_dispatch workflow_dispatch "$pr_base" "$merge_base" "$push_before"
 run_event schedule schedule "$pr_base" "$merge_base" "$push_before"
 assert_contains "$tmp/pull_request.gh" "repos/example/repo/pulls/1" 'pull-request event did not fetch PR metadata'
+assert_absent "$tmp/pull_request.gh" 'PATCH' 'pull-request event attempted to write the PR body'
+cmp -s "$tmp/pr-original.json" "$tmp/pr.json" || fail 'pull-request event changed local PR metadata'
 assert_contains "$tmp/pull_request.args" "$pr_base" 'pull-request event used the wrong base'
 assert_contains "$tmp/merge_group.args" "--skip-pr-body $merge_base" 'merge-group event did not use its supplied base'
 assert_contains "$tmp/push.args" "--skip-pr-body $push_before" 'push event did not use its before SHA'

@@ -14,7 +14,6 @@ cat > "$tmp/bin/git" <<'GIT'
 #!/usr/bin/env bash
 case "$*" in
   *"diff --name-only"*) printf '%s\n' "$CHANGED_PATHS" ;;
-  *"diff --unified=8"*) [[ "$CHANGED_PATHS" == *application/children.ex* ]] && printf '%s\n' '+children: [Aiur.Supervisor]' ;;
   *"rev-parse HEAD"*) printf '%s\n' "$HEAD_SHA" ;;
   *"rev-parse $BASE_SHA"*) printf '%s\n' "$BASE_SHA" ;;
   *) echo "unexpected git args: $*" >&2; exit 90 ;;
@@ -95,8 +94,11 @@ if run_check failing_test src/lib/aiur/github/foo.ex true false; then
 fi
 grep -F 'test:' "$tmp/failing_test.commands" >/dev/null
 grep -F 'foo test.exs' "$tmp/failing_test.commands" >/dev/null
-grep -F 'subsystem_test.exs' "$tmp/failing_test.commands" >/dev/null
-grep -Fx 'timeout:--signal=TERM --kill-after=60s 20m mise exec -- mix test --max-cases 4 test/aiur/foo test.exs test/aiur/github/subsystem_test.exs' "$tmp/failing_test.commands" >/dev/null
+if grep -F 'subsystem_test.exs' "$tmp/failing_test.commands" >/dev/null; then
+  echo 'test-run-pre-handoff-code-checks: selector added subsystem-wide files outside mix aiur.affected_tests' >&2
+  exit 1
+fi
+grep -F 'timeout:--signal=TERM --kill-after=60s 20m mise exec -- mix test --max-cases 4 test/aiur/foo test.exs' "$tmp/failing_test.commands" >/dev/null
 encoded_paths="$(grep '^selector:' "$tmp/failing_test.commands" | cut -d: -f2-)"
 decoded_paths="$(printf '%s' "$encoded_paths" | base64 --decode)"
 [[ "$decoded_paths" == '["src/lib/aiur/github/foo.ex"]' ]]
@@ -111,6 +113,15 @@ if run_check failing_dialyzer src/lib/aiur/foo.ex false true; then
 fi
 grep -F 'dialyzer' "$tmp/failing_dialyzer.commands" >/dev/null
 grep -Fx 'timeout:--signal=TERM --kill-after=60s 15m mise exec -- mix dialyzer' "$tmp/failing_dialyzer.commands" >/dev/null
+
+if ! run_check child_order src/lib/aiur/application/children.ex false false; then
+  cat "$tmp/child_order.log" >&2
+  echo 'test-run-pre-handoff-code-checks: explicit child-list path was rejected' >&2
+  exit 1
+fi
+grep -F 'application_child_order_test.exs' "$tmp/child_order.commands" >/dev/null
+grep -F 'voice_quota_test.exs' "$tmp/child_order.commands" >/dev/null
+grep -F 'component_test.exs' "$tmp/child_order.commands" >/dev/null
 
 if ! run_check passing src/lib/aiur/github/foo.ex false false; then
   cat "$tmp/passing.log" >&2
@@ -132,6 +143,14 @@ if ! run_check runtime_config src/config/runtime.exs false false; then
 fi
 grep -F 'make-ci' "$tmp/runtime_config.commands" >/dev/null
 
+if ! run_check full_suite_lib $'src/test/support/foo.ex\nsrc/lib/aiur/foo.ex' false false; then
+  cat "$tmp/full_suite_lib.log" >&2
+  echo 'test-run-pre-handoff-code-checks: full-suite fallback skipped Dialyzer for a lib change' >&2
+  exit 1
+fi
+grep -F 'make-ci' "$tmp/full_suite_lib.commands" >/dev/null
+grep -Fx 'timeout:--signal=TERM --kill-after=60s 15m mise exec -- mix dialyzer' "$tmp/full_suite_lib.commands" >/dev/null
+
 if ! run_check script_only scripts/run-pre-handoff-code-checks.sh false false; then
   cat "$tmp/script_only.log" >&2
   echo 'test-run-pre-handoff-code-checks: script-only changes were rejected' >&2
@@ -148,17 +167,17 @@ with open(sys.argv[1], "w", encoding="utf-8") as output:
 PY
 if ! run_check evidence src/lib/aiur/foo.ex false false "$pr_json"; then
   cat "$tmp/evidence.log" >&2
-  echo 'test-run-pre-handoff-code-checks: PR body evidence generation failed' >&2
+  echo 'test-run-pre-handoff-code-checks: evidence output failed' >&2
   exit 1
 fi
 python3 - "$pr_json" "$head" <<'PY'
 import json, sys
-body = json.load(open(sys.argv[1], encoding="utf-8"))["body"]
-assert f"Tested head: {sys.argv[2]}" in body
-assert f"Base: main @ {'a' * 40}" in body
-assert "Selection: #4602 mix aiur.affected_tests xref/module callers, plus #4585 subsystem and pinned child-order tests" in body
-assert "- `mix test --max-cases 4" in body and "-> passed" in body
-assert "- `mix dialyzer` -> passed" in body
+pr = json.load(open(sys.argv[1], encoding="utf-8"))
+assert pr["body"] == "## Local tests\nPolicy: partial\nTested head: " + "a" * 40 + "\nBase: main @ " + "a" * 40 + "\nSelection: previous\n- `mix test` -> previous\n"
 PY
+grep -F '## Local tests evidence (paste into the PR body)' "$tmp/evidence.log" >/dev/null
+grep -F "Tested head: $head" "$tmp/evidence.log" >/dev/null
+grep -F 'mix aiur.affected_tests' "$tmp/evidence.log" >/dev/null
+grep -F -- '- `timeout --signal=TERM --kill-after=60s 15m mise exec -- mix dialyzer` -> passed' "$tmp/evidence.log" >/dev/null
 
 echo 'test-run-pre-handoff-code-checks: selected test and Dialyzer failures refuse handoff'
