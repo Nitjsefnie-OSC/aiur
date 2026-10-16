@@ -106,7 +106,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
   test "the light-mode Stream Deck chassis pins every token it paints ink with" do
     pinned = declarations(css_rule(~s(html[data-theme="light"] .sd-device)))
-    dark_root = declarations(css_rule(":root"))
+    dark_root = css_rule(":root") |> declarations() |> resolve_all("dark")
 
     for token <- @streamdeck_chassis_pins ++ @streamdeck_dark_root_pins do
       assert Map.has_key?(pinned, token), """
@@ -238,7 +238,11 @@ defmodule AiurWeb.DashboardCssThemeTest do
           if(palette == "gruvbox", do: [~s(html[data-palette="gruvbox"])], else: []) ++
           if(palette == "gruvbox" and theme == "light", do: [~s(html[data-palette="gruvbox"][data-theme="light"])], else: [])
 
-      tokens = Enum.reduce(selectors, %{}, fn selector, acc -> Map.merge(acc, declarations(css_rule(selector))) end)
+      tokens =
+        selectors
+        |> Enum.reduce(%{}, fn selector, acc -> Map.merge(acc, declarations(css_rule(selector))) end)
+        |> resolve_all(theme)
+
       theme = "#{theme}/#{palette}"
       surface = tokens["--surface"]
       panel = blend(tokens["--super-soft"], surface)
@@ -329,6 +333,19 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
     hex |> String.to_charlist() |> Enum.chunk_every(2) |> Enum.map(&List.to_integer(&1, 16))
   end
+
+  @aiur_tokens Path.expand("../../../packages/aiur-style/src/tokens/tokens.json", __DIR__) |> File.read!() |> Jason.decode!()
+
+  # Resolve `var(--aiur-*)` aliases to the theme's literal so value comparisons
+  # and contrast maths keep working on aliased dashboard variables.
+  defp resolve(value, theme) do
+    Regex.replace(~r/var\(--aiur-([a-z0-9-]+)\)/, value, fn _full, name ->
+      {_key, token} = Enum.find(@aiur_tokens, fn {key, _} -> String.replace(key, ".", "-") == name end)
+      Map.fetch!(token, theme)
+    end)
+  end
+
+  defp resolve_all(tokens, theme), do: Map.new(tokens, fn {name, value} -> {name, resolve(value, theme)} end)
 
   defp declarations(rule) do
     ~r/(--[a-z0-9-]+)\s*:\s*([^;]+);/

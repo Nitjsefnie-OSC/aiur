@@ -1,0 +1,55 @@
+defmodule AiurWeb.AiurStyleSyncTest do
+  use ExUnit.Case, async: true
+
+  import Phoenix.ConnTest
+
+  @endpoint AiurWeb.Endpoint
+
+  @copy Path.expand("../../priv/static/aiur-style", __DIR__)
+  @dist Path.expand("../../../packages/aiur-style/dist", __DIR__)
+
+  defp files(root), do: root |> Path.join("**/*") |> Path.wildcard() |> Enum.filter(&File.regular?/1) |> Enum.map(&Path.relative_to(&1, root))
+
+  defp get_authed(path) do
+    authorization = "Basic " <> Base.encode64("operator:test-dashboard-secret")
+    build_conn() |> Plug.Conn.put_req_header("authorization", authorization) |> get(path)
+  end
+
+  # dist/ is gitignored build output, so this only has something to compare
+  # after `npm run build` in packages/aiur-style; the aiur-style workflow builds it.
+  @tag skip: if(File.dir?(@dist), do: false, else: "packages/aiur-style/dist is not built")
+  test "the committed copy is byte-equal to packages/aiur-style/dist" do
+    copied = files(@copy)
+    assert "tokens.css" in copied and "fonts.css" in copied and "init/theme-init.js" in copied
+
+    for file <- copied do
+      assert File.read!(Path.join(@copy, file)) == File.read!(Path.join(@dist, file)),
+             "#{file} differs from dist; run scripts/sync-aiur-style"
+    end
+  end
+
+  test "the layout loads tokens and fonts before dashboard.css and replaces the inline theme script" do
+    html = "/" |> get_authed() |> html_response(200)
+    order = Enum.map(["/aiur-style/tokens.css", "/aiur-style/fonts.css", "/dashboard.css"], &:binary.match(html, &1))
+    assert Enum.all?(order, &(&1 != :nomatch))
+    assert order == Enum.sort(order)
+    assert html =~ ~s(<script src="/aiur-style/init/theme-init.js" data-default="dark">)
+    refute html =~ "dataset.theme = theme"
+  end
+
+  test "aiur-style files are served, fonts immutably and the rest revalidating" do
+    tokens = get_authed("/aiur-style/tokens.css")
+    assert tokens.status == 200
+    assert Plug.Conn.get_resp_header(tokens, "cache-control") == ["private, max-age=0, must-revalidate"]
+    assert get_authed("/aiur-style/js/theme.js").status == 200
+    assert get_authed("/aiur-style/init/theme-init.js").status == 200
+
+    font = get_authed("/aiur-style/fonts/SpaceGrotesk-Variable.woff2")
+    assert font.status == 200
+    assert Plug.Conn.get_resp_header(font, "cache-control") == ["public, max-age=31536000, immutable"]
+  end
+
+  test "aiur-style files require dashboard authentication" do
+    assert get(build_conn(), "/aiur-style/tokens.css").status in [401, 403]
+  end
+end

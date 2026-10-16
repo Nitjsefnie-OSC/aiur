@@ -193,3 +193,28 @@ for (const { width, isMobile } of routeShellViewports) {
     }
   })
 }
+
+test('a stored light theme never paints a dark frame and the toggle persists under aiur-theme', async ({ page }) => {
+  await openFixture(page)
+  await page.context().setHTTPCredentials(dashboardCredentials)
+  await page.addInitScript(() => {
+    window.localStorage.setItem('aiur-theme', 'light')
+    window.__themes = []
+    // documentElement does not exist yet at init time. Records every data-theme the document takes after the server's "dark" markup default.
+    new MutationObserver(() => window.__themes.push(document.documentElement.dataset.theme))
+      .observe(document, { attributes: true, subtree: true, attributeFilter: ['data-theme'] })
+    requestAnimationFrame(() => window.__themes.push(document.documentElement.dataset.theme))
+  })
+
+  await page.goto('/palette-probe') // the production root layout
+  await expect.poll(() => page.evaluate(() => window.liveSocket?.isConnected() === true)).toBe(true)
+
+  const themes = await page.evaluate(() => window.__themes)
+  expect(themes).toContain('light')
+  expect(themes).not.toContain('dark')
+  expect(await page.evaluate(() => document.fonts.check('16px "Space Grotesk"'))).toBe(true)
+
+  await page.locator('#theme-toggle').evaluate((button) => button.click())
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  expect(await page.evaluate(() => window.localStorage.getItem('aiur-theme'))).toBe('dark')
+})
