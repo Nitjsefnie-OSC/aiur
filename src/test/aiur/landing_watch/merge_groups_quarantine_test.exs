@@ -1,8 +1,8 @@
 defmodule Aiur.LandingWatch.MergeGroupsQuarantineTest do
   use ExUnit.Case, async: true
 
-  alias Aiur.LandingWatch.MergeGroups
   alias Aiur.LandingWatch.MergeGroupQuarantine
+  alias Aiur.LandingWatch.MergeGroups
 
   test "two failed runs from unrelated PRs open one quarantine PR candidate" do
     parent = self()

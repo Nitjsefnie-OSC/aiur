@@ -114,21 +114,25 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   defp cached_changed_paths(pr, changed_paths, opts) do
     case Keyword.get(opts, :changed_paths_cache) do
       cache when is_pid(cache) ->
-        api_opts = Keyword.delete(opts, :changed_paths_cache)
-
-        Agent.get_and_update(cache, fn entries ->
-          case Map.fetch(entries, pr) do
-            {:ok, result} ->
-              {result, entries}
-
-            :error ->
-              result = changed_paths.(pr, api_opts)
-              {result, Map.put(entries, pr, result)}
-          end
-        end)
+        cached_agent_paths(cache, pr, changed_paths, Keyword.delete(opts, :changed_paths_cache))
 
       _ ->
         changed_paths.(pr, opts)
+    end
+  end
+
+  defp cached_agent_paths(cache, pr, changed_paths, opts) do
+    Agent.get_and_update(cache, fn entries -> cached_path_result(entries, pr, changed_paths, opts) end)
+  end
+
+  defp cached_path_result(entries, pr, changed_paths, opts) do
+    case Map.fetch(entries, pr) do
+      {:ok, result} ->
+        {result, entries}
+
+      :error ->
+        result = changed_paths.(pr, opts)
+        {result, Map.put(entries, pr, result)}
     end
   end
 
