@@ -12,49 +12,58 @@ defmodule Aiur.GitHub.Client.IssueStateTest do
   describe "update_issue_state/3" do
     test "swaps labels and closes terminal issues" do
       calls = :ets.new(:calls, [:set, :public])
-      :ets.insert(calls, {:count, 0})
+      :ets.insert(calls, {:requests, []})
+      :ets.insert(calls, {:issue_reads, 0})
 
       request_fun = fn req ->
-        [{:count, n}] = :ets.lookup(calls, :count)
-        :ets.insert(calls, {:count, n + 1})
+        [{:requests, seen}] = :ets.lookup(calls, :requests)
+        :ets.insert(calls, {:requests, [req | seen]})
 
-        case {req.method, n} do
-          # GET issue
-          {:get, 0} ->
-            {:ok,
-             %{
-               status: 200,
-               body: %{
-                 "state" => "open",
-                 "labels" => [%{"name" => "sym:todo"}, %{"name" => "other"}]
-               }
-             }}
+        case req.method do
+          :get ->
+            case :ets.update_counter(calls, :issue_reads, 1) do
+              1 ->
+                {:ok,
+                 %{
+                   status: 200,
+                   body: %{
+                     "state" => "open",
+                     "labels" => [%{"name" => "sym:todo"}, %{"name" => "other"}]
+                   }
+                 }}
 
-          # POST new label (terminal target, so no active-label re-check GET)
-          {:post, 1} ->
+              2 ->
+                open_issue_response(["sym:todo", "sym:done", "other"])
+
+              read_number ->
+                flunk("unexpected issue read number #{read_number}: #{inspect(req)}")
+            end
+
+          :post ->
             assert req.body == %{"labels" => ["sym:done"]}
             {:ok, %{status: 200}}
 
-          # State swaps re-read labels after adding the target.
-          {:get, 2} ->
-            open_issue_response(["sym:todo", "sym:done", "other"])
-
-          # DELETE old label (new label excluded)
-          {:delete, 3} ->
+          :delete ->
             assert req.url =~ "sym:todo" or req.url =~ "sym%3Atodo"
             {:ok, %{status: 200}}
 
-          # PATCH close
-          {:patch, 4} ->
+          :patch ->
             assert req.body == %{"state" => "closed"}
             {:ok, %{status: 200}}
 
-          _ ->
-            {:ok, %{status: 200}}
+          other ->
+            flunk("unexpected request: #{inspect(other)}")
         end
       end
 
       assert :ok = Client.update_issue_state("42", "Done", request_fun: request_fun)
+
+      [{:requests, seen}] = :ets.lookup(calls, :requests)
+      methods = Enum.map(seen, & &1.method)
+      assert Enum.count(methods, &(&1 == :get)) == 2
+      assert Enum.count(methods, &(&1 == :post)) == 1
+      assert Enum.count(methods, &(&1 == :delete)) == 1
+      assert Enum.count(methods, &(&1 == :patch)) == 1
     end
 
     test "human-review readiness requires unresolved authenticated-viewer replies to be resolved" do
