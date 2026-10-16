@@ -1,5 +1,6 @@
 export async function columnSequence(page, ctx, { click, cssMotion, state, scrollTo }) {
-  if (await page.locator('#bd-content').evaluate(el => el.classList.contains('flow'))) return { samples: [await state(page, ctx)], mode: 'flow' }
+  const columnState = async () => { const { nodes } = await state(page, ctx); return { nodes: Object.fromEntries(Object.entries(nodes).filter(([key]) => key.startsWith('lane:') || key.startsWith('guide:'))) } }
+  if (await page.locator('#bd-content').evaluate(el => el.classList.contains('flow'))) return { samples: [await columnState()], mode: 'flow' }
   // Month loads older days; week zoom preserves them without paging during measurement.
   if (await page.locator('.bd-cal [data-span="7"]').count()) await click(page, '.bd-cal [data-span="7"]')
   else await page.evaluate(async () => {
@@ -23,6 +24,6 @@ export async function columnSequence(page, ctx, { click, cssMotion, state, scrol
     samples.push(Object.fromEntries(lanes.map(lane => [lane.key, lane])))
   }
   if (applyAt === null || removeAt === null) throw new Error(`unreachable column enter/leave ${JSON.stringify({ initial, applyAt, removeAt, final: await page.locator('.bd-lane').allTextContents() })}`)
-  return { samples, dom: await state(page, ctx), applyAt, removeAt, animation }
+  return { samples, dom: await columnState(), applyAt, removeAt, animation }
 }
 

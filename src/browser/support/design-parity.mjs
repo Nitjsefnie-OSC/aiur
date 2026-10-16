@@ -161,7 +161,10 @@ export async function captureStable(target, opts, page) {
       const box = await target.boundingBox()
       if (!box) throw new Error('unreachable screenshot region')
       const offset = await page.evaluate(() => ({ x: scrollX, y: scrollY }))
-      return page.screenshot({ ...opts, fullPage: true, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
+      // Capture fully owned pixels; outward rounding includes neighbouring content at fractional edges.
+      const x = Math.ceil(box.x + offset.x), y = Math.ceil(box.y + offset.y)
+      const clip = { x, y, width: Math.floor(box.x + offset.x + box.width) - x, height: Math.floor(box.y + offset.y + box.height) - y }
+      return page.screenshot({ ...opts, fullPage: true, clip })
     }
     let png
     try { png = await shoot() }
