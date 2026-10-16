@@ -2,7 +2,8 @@ defmodule Aiur.Workspace.SeededBuild do
   @moduledoc """
   Invalidate path-sensitive first-party BEAMs in a build copied from another checkout.
 
-  A module that embeds an absolute path (for example through `__DIR__`) keeps
+  A module that embeds an absolute path (for example through a compile-time
+  directory macro) keeps
   pointing at the seed checkout after `_build` is copied. Such modules are the
   ones whose literal table contains the seed root. Their beams are removed and
   their sources touched, which is what Mix needs to recompile them (and their
@@ -59,14 +60,22 @@ defmodule Aiur.Workspace.SeededBuild do
 
   defp embeds?(beam, needle) do
     case :beam_lib.chunks(String.to_charlist(beam), [~c"LitT"]) do
-      {:ok, {_module, [{~c"LitT", chunk}]}} -> chunk |> literals() |> String.contains?(needle)
+      {:ok, {_module, [{~c"LitT", chunk}]}} -> literals_contain?(chunk, needle)
       _ -> false
     end
   end
 
-  # The literal chunk is either stored raw (size 0) or zlib-compressed.
-  defp literals(<<0::32, raw::binary>>), do: raw
-  defp literals(<<_size::32, compressed::binary>>), do: :zlib.uncompress(compressed)
+  # The literal chunk is stored raw (size 0) or zlib-compressed. An unreadable
+  # chunk counts as a match: recompiling is safe, a stale path is not.
+  defp literals_contain?(<<0::32, raw::binary>>, needle), do: String.contains?(raw, needle)
+
+  defp literals_contain?(<<_size::32, compressed::binary>>, needle) do
+    compressed |> :zlib.uncompress() |> String.contains?(needle)
+  rescue
+    ErlangError -> true
+  end
+
+  defp literals_contain?(_chunk, _needle), do: true
 
   # Compiled paths come from the build's cwd, which has symlinks resolved.
   defp physical_path(path) do
