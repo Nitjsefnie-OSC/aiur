@@ -31,8 +31,9 @@ for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`,
       c.applyCols(c.visibleCols(), true)
     }, cell.mode)
     await Promise.all([pair.design, pair.product].map(async page => { await page.clock.runFor(800); await page.evaluate(() => document.getAnimations().forEach(a => Number.isFinite(a.effect?.getComputedTiming().endTime) ? a.finish() : a.cancel())); await page.clock.setSystemTime(FIXTURE_META.now) }))
-    const read = page => page.evaluate(() => [...document.querySelectorAll('.bd-lane, .bd-guide')].map(el => ({ cls: el.className, left: el.style.left, width: el.style.width, hue: el.style.getPropertyValue('--h'), title: el.title, count: el.querySelector('em')?.textContent })))
+    const read = page => page.evaluate(() => [...document.querySelectorAll('.bd-lane, .bd-guide')].map(el => ({ cls: el.className, left: el.style.left, width: el.style.width, hue: el.style.getPropertyValue('--h'), title: el.title, count: el.querySelector('em')?.textContent, paint: Object.fromEntries(['backgroundColor', 'borderLeft', 'font', 'color', 'transition'].map(key => [key, getComputedStyle(el)[key]])) })))
     expect(await read(pair.product)).toEqual(await read(pair.design))
-    for (const region of ['.bd-lanes', '.bd-guides']) await expectDesignParity(pair, { name: 'columns-' + cell.mode, region, preserveAnimations: true })
+    // Guides sit behind separately owned cards and the Now band; their geometry and paint are compared above.
+    await expectDesignParity(pair, { name: 'columns-' + cell.mode, region: '.bd-lanes', preserveAnimations: true })
   } finally { await pair.close() }
 })
