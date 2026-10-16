@@ -21,9 +21,21 @@ runs:
   steps:
     - name: Set up browser harness
       uses: ./.github/actions/setup-browser
+    - name: Disclose rerun attempt
+      if: ${{ github.run_attempt > 1 }}
+      working-directory: .
+      run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
+      shell: bash
     - name: Run browser smoke shard
       working-directory: src/browser
+      env:
+        AIUR_BROWSER_TIMING_FILE: ${{ runner.temp }}/browser-smoke-timings-${{ inputs.shard }}.jsonl
       run: node scripts/run-browser-smoke-shard.mjs ${{ inputs.shard }}
+      shell: bash
+    - name: Report slowest browser smoke suites
+      if: ${{ always() }}
+      working-directory: src/browser
+      run: node scripts/report-browser-smoke-timings.mjs "${{ runner.temp }}/browser-smoke-timings-${{ inputs.shard }}.jsonl" "$GITHUB_STEP_SUMMARY"
       shell: bash
     - name: Check browser fixtures and vendored assets
       if: ${{ inputs.verify_fixtures == 'true' }}

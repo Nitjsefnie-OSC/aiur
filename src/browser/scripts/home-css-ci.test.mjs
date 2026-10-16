@@ -20,8 +20,9 @@ test('required full CI gate rejects failures, cancellations and skipped browser 
   const gate = workflow.jobs['ci-gate']
   assert.ok(gate.needs.includes('browser'))
   assert.ok(gate.needs.includes('browser-4'))
+  assert.ok(gate.needs.includes('browser-5'))
   assert.ok(gate.needs.includes('home-css'))
-  for (const job of ['browser', 'browser-2', 'browser-3', 'browser-4']) assert.ok(gate.needs.includes(job))
+  for (const job of ['browser', 'browser-2', 'browser-3', 'browser-4', 'browser-5']) assert.ok(gate.needs.includes(job))
   assert.match(gate.if, /always\(\)/)
   const step = gate.steps.find(step => step.name === "Require the event's selected jobs")
   assert.equal(step.env.EVENT_NAME, '${{ github.event_name }}')
@@ -41,21 +42,19 @@ test('required full CI gate rejects failures, cancellations and skipped browser 
 })
 
 test('browser shards have bounded timeouts and home matrix keeps an independent deadline', () => {
-  for (const [job, shard] of [['browser', 1], ['browser-2', 2], ['browser-3', 3], ['browser-4', 4]]) {
+  for (const [job, shard] of [['browser', 1], ['browser-2', 2], ['browser-3', 3], ['browser-4', 4], ['browser-5', 5]]) {
     assert.equal(workflow.jobs[job].steps[0].uses, 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd')
-    assert.equal(workflow.jobs[job].steps[1].name, 'Disclose rerun attempt')
-    assert.match(workflow.jobs[job].steps[1].if, /github.run_attempt > 1/)
-    assert.match(workflow.jobs[job].steps[1].run, /scripts\/report-ci-run-attempt\.sh/)
-    assert.equal(workflow.jobs[job].steps[2].with.shard, shard)
-    assert.equal(workflow.jobs[job].steps[2].uses, './.github/actions/browser-smoke')
-    assert.equal(workflow.jobs[job].name, `browser smoke (${shard}/4)`)
-    assert.equal(workflow.jobs[job]['timeout-minutes'], 15)
+    assert.equal(workflow.jobs[job].steps[1].uses, './.github/actions/browser-smoke')
+    assert.equal(workflow.jobs[job].steps[1].with.shard, shard)
+    assert.equal(workflow.jobs[job].name, `browser smoke (${shard}/5)`)
+    assert.equal(workflow.jobs[job]['timeout-minutes'], 22)
   }
   assert.equal(workflow.jobs['browser-2'].steps[2].with.visual_regression, 'first')
-  assert.equal(workflow.jobs['browser-4'].steps[2].with.visual_regression, 'second')
+  assert.equal(workflow.jobs['browser-5'].steps[2].with.visual_regression, 'second')
   assert.equal(browserAction.runs.using, 'composite')
   assert.equal(browserAction.runs.steps.find(step => step.name === 'Run browser smoke shard').run,
     'node scripts/run-browser-smoke-shard.mjs ${{ inputs.shard }}')
+  assert.equal(browserAction.runs.steps.find(step => step.name === 'Report slowest browser smoke suites').if, '${{ always() }}')
   assert.match(workflow.jobs['home-css'].if, /outputs.full_ci == 'true'/)
   assert.equal(workflow.jobs['home-css']['timeout-minutes'], 25)
   assert.equal(workflow.jobs['home-css'].steps.at(-1).uses, './.github/actions/verify-home-css')
@@ -74,24 +73,30 @@ test('browser shards execute every core suite exactly once', () => {
     mkdirSync(bin)
     // Stub only npm: execute the real shard runner and record its selected suites.
     writeFileSync(join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$BROWSER_SHARD_CALLS"\n', { mode: 0o755 })
-    for (const shard of [1, 2, 3, 4]) {
+    for (const shard of [1, 2, 3, 4, 5]) {
       const result = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), String(shard)], {
         cwd: new URL('../', import.meta.url), encoding: 'utf8',
         env: { ...process.env, PATH: bin + ':' + process.env.PATH, BROWSER_SHARD_CALLS: calls }
       })
       assert.equal(result.status, 0, result.stderr)
     }
-    const invalid = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), '5'], {
+    const invalid = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), '6'], {
       cwd: new URL('../', import.meta.url), encoding: 'utf8',
       env: { ...process.env, PATH: bin + ':' + process.env.PATH, BROWSER_SHARD_CALLS: calls }
     })
-    assert.notEqual(invalid.status, 0, 'only the four workflow shard ids are accepted')
-    assert.match(invalid.stderr, /Unknown browser smoke shard: 5/)
+    assert.notEqual(invalid.status, 0, 'only the five workflow shard ids are accepted')
+    assert.match(invalid.stderr, /Unknown browser smoke shard: 6/)
     const expected = [...scripts['test:core'].matchAll(/npm run ([\w:-]+)/g)].map(match => match[1])
       .filter(name => name !== 'fixture:preflight').sort()
     const selected = readFileSync(calls, 'utf8').trim().split('\n').map(line => line.replace(/^run /, ''))
       .filter(name => name !== 'fixture:preflight').sort()
     assert.deepEqual(selected, expected)
     assert.equal(selected.length, new Set(selected).size, 'each core suite runs exactly once across shards')
+    const runner = readFileSync(fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), 'utf8')
+    const shardThree = runner.match(/3: \[([^\]]+)\]/)?.[1]
+    assert.ok(shardThree?.includes('test:experiments'))
+    assert.ok(!shardThree?.includes('test:build-home-render'), 'the slow render suite moves off shard 3')
+    assert.match(runner, /const timeoutMs = 19 \* 60_000/)
+    assert.match(runner, /slowest completed suites/)
   } finally { rmSync(scratch, { recursive: true, force: true }) }
 })
