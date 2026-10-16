@@ -39,20 +39,15 @@ defmodule Aiur.Workspace.BootstrapImage do
 
   @doc false
   @spec bootstrap_image_copy_script() :: String.t()
-  def bootstrap_image_copy_script, do: bootstrap_image_copy_script("/opt/aiur", "/workspace")
-
-  @spec bootstrap_image_copy_script(Path.t(), Path.t()) :: String.t()
-  def bootstrap_image_copy_script(image_root, workspace_root) do
+  def bootstrap_image_copy_script do
     paths = Enum.map_join(@warm_cache_paths, " ", &Aiur.Shell.escape/1)
 
     """
     set -eu
-    image_root=#{Aiur.Shell.escape(image_root)}
-    workspace_root=#{Aiur.Shell.escape(workspace_root)}
     found=0
     for path in #{paths}; do
-      source="$image_root/$path"
-      target="$workspace_root/$path"
+      source="/opt/aiur/$path"
+      target="/workspace/$path"
 
       if [ -e "$target" ]; then
         found=1
@@ -71,9 +66,6 @@ defmodule Aiur.Workspace.BootstrapImage do
       printf 'aiur warm bootstrap: no cache paths found in image or workspace\\n' >&2
       exit 66
     fi
-    # First-party beams can embed absolute checkout paths (for example through
-    # __DIR__). Keep dependencies warm, but always compile Aiur from this checkout.
-    rm -rf "$workspace_root/src/_build/test/lib/aiur" "$workspace_root/_build/test/lib/aiur"
     """
   end
 
