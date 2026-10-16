@@ -79,7 +79,7 @@ A degraded CODEOWNERS trust banner shows the lookup cause and elapsed age (`age 
 
 The `sort` query parameter preserves the selected table, column, and direction in copied or refreshed URLs. Paginated and progressively revealed tables sort the displayed rows, then reapply that order when more rows appear.
 
-The temporary, unlinked `/build` route previews the build timeline loading shell.
+The temporary, unlinked `/build` route previews the build timeline.
 It requires dashboard authentication; the production data source is not wired yet.
 
 The toolbar selects Timeline, Gantt or List and retains the view in the URL.
