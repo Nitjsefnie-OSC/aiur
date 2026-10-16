@@ -245,7 +245,11 @@ function frameBarrier(pair, name, reduce) {
     if (aborted) return
     if (reduce && ['modal.open', 'modal.reduce', 'modal.url', 'modal.close'].includes(name)) return // S-18 records the admitted tkin difference numerically.
     if (count++ % 2 === 0) { pending = new Promise(done => { resolve = done }); return pending }
-    try { await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true }) }
+    try {
+      // Column application can cross different clock frames; numeric records retain that timing.
+      if (name.startsWith('columns.')) await Promise.all([pair.design, pair.product].map(page => page.clock.setSystemTime(FIXTURE_META.now)))
+      await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true })
+    }
     finally { resolve() }
   }
   return { frame, abort() { aborted = true; resolve?.() } }

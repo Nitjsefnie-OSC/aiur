@@ -4,8 +4,10 @@ export async function columnSequence(page, ctx, { click, cssMotion, state, scrol
   // Month loads older days; week zoom preserves them without paging during measurement.
   if (await page.locator('.bd-cal [data-span="7"]').count()) await click(page, '.bd-cal [data-span="7"]')
   else await page.evaluate(async () => {
-    const { S, fx } = await import('/build-home/state.js')
+    const { S, ctx, fx, LH } = await import('/build-home/state.js')
+    await (await import('/build-home/history.js')).ensureDays(30)
     S.span = 7; fx.relayout()
+    ctx.vp.scrollTop = ctx.secs.hist.el.offsetTop + ctx.L.secs.hist.h - LH; fx.update()
   })
   await page.clock.runFor(16)
   await page.clock.runFor(704)
