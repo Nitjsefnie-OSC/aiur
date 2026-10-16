@@ -8,7 +8,7 @@ Code.require_file("../support/browser_harness/models_panel_live.ex", __DIR__)
 
 for file <- ~w(
       route_shell_live graph_live ticket_context_live units_live_data units_live
-      support voice_provider build_order_source meters_live optimistic_control index_live
+      support voice_provider build_order_source meters_live optimistic_control experiments index_live
     ) do
   Code.require_file("fixture/#{file}.exs", __DIR__)
 end
@@ -16,7 +16,6 @@ end
 defmodule Aiur.BrowserHarness.FixtureRouter do
   use Phoenix.Router
   import Phoenix.LiveView.Router
-
   alias Aiur.BrowserHarness.FixtureAuth
 
   pipeline :browser do
@@ -59,6 +58,7 @@ defmodule Aiur.BrowserHarness.FixtureRouter do
     get("/build-control/:action", Aiur.BrowserHarness.FixtureBuildControl, :configure)
     get("/streamdeck-control/:mode", Aiur.BrowserHarness.FixtureStreamdeckControl, :configure)
     get("/build-queue-control/:state", Aiur.BrowserHarness.BuildQueueFixture, :configure)
+    get("/experiments-control/:scenario", Aiur.BrowserHarness.ExperimentsFixture, :configure)
   end
 
   scope "/" do
@@ -146,7 +146,7 @@ defmodule Aiur.BrowserHarness.FixtureEndpoint do
 end
 
 defmodule Aiur.BrowserHarness.FixtureServer do
-  alias Aiur.BrowserHarness.FixtureEndpoint
+  alias Aiur.BrowserHarness.{ExperimentsFixture, FixtureEndpoint}
   alias Aiur.BrowserHarness.FixtureEndpointStart
   alias Aiur.IssueLog
   alias Aiur.TestSupport.BuildHome.FixtureSource
@@ -161,6 +161,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
     Application.put_env(:aiur, :build_data_source, FixtureSource)
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
     configure_forwarded_dashboard() |> FixtureSource.configure_usage()
+    ExperimentsFixture.prepare("empty")
 
     {:ok, _} =
       Supervisor.start_link(
@@ -170,9 +171,11 @@ defmodule Aiur.BrowserHarness.FixtureServer do
             id: Aiur.BrowserHarness.FixturePubSub
           ),
           Supervisor.child_spec({Phoenix.PubSub, name: Aiur.PubSub}, id: Aiur.PubSub),
+          {Task.Supervisor, name: Aiur.TaskSupervisor},
           {AiurWeb.Endpoint, []},
           AiurWeb.FinancialDataAccess.Generation,
-          AiurWeb.VoiceSessionLimiter
+          AiurWeb.VoiceSessionLimiter,
+          Aiur.Experiments.Store
         ],
         strategy: :one_for_one
       )
