@@ -417,11 +417,12 @@ defmodule Aiur.ExecutorAttention.CLI do
     end
   end
 
-  @doc "Prints the `status` WAKES and DECISIONS lines."
+  @doc "Prints the `status` WAKES, DECISIONS and TRIAGE lines."
   @spec print_wake_status() :: :ok
   def print_wake_status do
     print_wakes()
     DecisionEscalation.print_status()
+    Aiur.ExecutorSweep.TriageBacklog.print_status()
   end
 
   defp print_wakes do

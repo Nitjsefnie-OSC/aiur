@@ -4,6 +4,8 @@ defmodule Aiur.ExecutorSweep.Checks do
   GitHub snapshot data. This module performs no I/O.
   """
 
+  alias Aiur.ExecutorSweep.TriageBacklog
+
   @type finding :: %{kind: String.t(), priority: pos_integer(), action: String.t(), message: String.t()}
 
   @doc "Runs all pure checks against one local snapshot."
@@ -201,8 +203,13 @@ defmodule Aiur.ExecutorSweep.Checks do
       |> Enum.flat_map(fn ticket ->
         age = age_ms(date(value(ticket, :created_at, nil)), now)
 
-        if "needs-triage" in labels(ticket) and age > 60 * 60_000 do
-          [finding("stale_needs_triage", 10, age, "Triage the ticket and set its queue state.", "Ticket #{value(ticket, :number, "?")} has needed triage for #{duration(age)}.")]
+        if TriageBacklog.stale?(labels(ticket), date(value(ticket, :created_at, nil)), now) do
+          # The ticket keys the sweep fingerprint, so each newly stale ticket wakes the Executor.
+          [
+            finding("stale_needs_triage", 10, age, "Triage the ticket and set its queue state.", "Ticket #{value(ticket, :number, "?")} has needed triage for #{duration(age)}.",
+              ticket: value(ticket, :number, nil)
+            )
+          ]
         else
           []
         end
