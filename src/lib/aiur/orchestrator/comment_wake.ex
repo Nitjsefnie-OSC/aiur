@@ -734,8 +734,8 @@ defmodule Aiur.Orchestrator.CommentWake do
       {{:skip, :no_unresolved_review_threads}, state} ->
         write_active_review_rework(state, running_entry, issue_number, source, event, attempt)
 
-      {{:skip, _reason}, state} ->
-        state
+      {{:skip, reason}, state} ->
+        refuse_active_comment_rework(state, issue_number, source, event, reason)
 
       {{:error, reason}, state} ->
         schedule_comment_rework_retry(state, issue_number, source, event, attempt, reason)
@@ -774,6 +774,44 @@ defmodule Aiur.Orchestrator.CommentWake do
   end
 
   defp emit_idle_comment_refusal(_issue_number, _reason), do: :ok
+
+  defp refuse_active_comment_rework(%State{} = state, issue_number, source, event, reason) do
+    context = "issue_identifier=#{issue_number} reason=#{inspect(reason)}"
+
+    if changes_requested_review?(event) do
+      Logger.warning("#{source} refused rework for a changes-requested review: #{context}")
+      emit_refused_review_rework_alert(issue_number, event, reason)
+    else
+      Logger.info("#{source} active comment rework skipped: #{context}")
+    end
+
+    state
+  end
+
+  defp emit_refused_review_rework_alert(issue_number, event, reason) do
+    emit_alert_fun =
+      case Map.get(event, :emit_alert_fun) do
+        fun when is_function(fun, 2) -> fun
+        _ -> &Alerts.emit_system/2
+      end
+
+    identifier = to_string(issue_number)
+
+    emit_alert_fun.(
+      "ticket.#{identifier}.agent.attention.review_rework_refused",
+      issue: identifier,
+      message:
+        "Ticket #{identifier} received a CHANGES_REQUESTED review but was not moved to rework " <>
+          "(#{inspect(reason)}); it is still sitting in its review state.",
+      reason:
+        "The rework gate refused the transition for a live changes-requested review, and a review " <>
+          "submission is delivered only once, so nothing re-derives it. Remedy: move the ticket to " <>
+          "rework or re-review it after addressing the gate condition.",
+      needs_attention: true,
+      severity: "warning",
+      central: true
+    )
+  end
 
   defp emit_comment_rework_refusal(issue_number, suffix, message, reason, remedy) do
     Alerts.emit_custom(
@@ -1564,6 +1602,9 @@ defmodule Aiur.Orchestrator.CommentWake do
 
       {:ok, state} ->
         state
+
+      {:skip, reason} ->
+        refuse_active_comment_rework(state, issue_number, source, event, reason)
 
       {:error, reason} ->
         Logger.warning(
