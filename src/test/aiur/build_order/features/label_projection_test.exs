@@ -189,6 +189,7 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
 
     optional_children = [
       Aiur.LandingWatch,
+      Aiur.ExecutorSweep,
       Aiur.Experiments.Auto.Notifier,
       Aiur.Experiments.Auto.WindowManager,
       Aiur.LandingWatch.QuarantineLifter
