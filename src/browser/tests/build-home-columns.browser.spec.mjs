@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
@@ -5,6 +6,7 @@ test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angel
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', error => errors.push(error.message))
   const errors = []; page.columnErrors = errors
+  await page.route('**/build-home/columns.js', route => route.fulfill({ path: fileURLToPath(new URL('../../priv/static/build-home/columns.js', import.meta.url)), contentType: 'text/javascript' }))
   await page.goto('/build-fixture/live')
   await expect(page.locator('.bd-lane')).not.toHaveCount(0)
   await page.evaluate(async () => {
@@ -150,4 +152,24 @@ test('destroy cancels debounce and leave DOM writes', async ({ page }) => {
   })
   await page.clock.runFor(800)
   expect(await page.evaluate(() => ({ same: JSON.stringify(ctx.cols) === before, writes }))).toEqual({ same: true, writes: [] })
+})
+
+
+test('rendered cards keep the current layout back-reference through a live pass', async ({ page }) => {
+  const result = await page.evaluate(() => {
+    const before = new Map(ctx.R)
+    ren.relayout({ live: true })
+    return [...ctx.R].map(([uid, el]) => ({
+      same: before.get(uid) === el,
+      current: ctx.L.secs[uid.split(':')[0]].items.includes(el._it),
+    }))
+  })
+  expect(result.length).toBeGreaterThan(0)
+  expect(result.every(row => row.same && row.current)).toBe(true)
+})
+
+test('unknown URL epics cannot become lanes', async ({ page }) => {
+  await page.goto('/build-fixture/live?epic=nope')
+  await expect(page.locator('.bd-lane')).toHaveCount(4)
+  expect(await page.locator('.bd-lane').evaluateAll(els => els.map(el => el.title))).toEqual(['Bugs', 'Design', 'Infra', 'Docs'])
 })
