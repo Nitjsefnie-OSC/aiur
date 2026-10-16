@@ -21,11 +21,6 @@ runs:
   steps:
     - name: Set up browser harness
       uses: ./.github/actions/setup-browser
-    - name: Disclose rerun attempt
-      if: ${{ github.run_attempt > 1 }}
-      working-directory: .
-      run: bash scripts/report-ci-run-attempt.sh "${{ github.run_attempt }}" "$GITHUB_STEP_SUMMARY"
-      shell: bash
     - name: Run browser smoke shard
       working-directory: src/browser
       env:
