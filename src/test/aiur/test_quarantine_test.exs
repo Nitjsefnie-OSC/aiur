@@ -51,13 +51,13 @@ defmodule Aiur.TestQuarantineTest do
   test "the detector ignores same-PR repeats, old failures, and tests changed by a failing PR" do
     now = 1_800_000_000_000
     old = %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "run-1", at_ms: now - 90_000_000, path: "src/test/example_test.exs", group_prs: [41]}
-    fresh = %{old | pr: 42, run_url: "run-2", at_ms: now - 30_000}
+    fresh = %{old | pr: 42, run_url: "run-2", at_ms: now - 30_000, group_prs: [42]}
 
     assert {:ok, []} = Detector.repeated([fresh, %{fresh | run_url: "run-3"}], now, fn _pr -> {:ok, []} end)
     assert {:ok, []} = Detector.repeated([old, fresh], now, fn _pr -> {:ok, []} end)
-    assert {:ok, []} = Detector.repeated([%{fresh | pr: 41}], now, fn _pr -> {:ok, ["src/test/example_test.exs"]} end)
+    assert {:ok, []} = Detector.repeated([%{fresh | pr: 41, group_prs: [41]}], now, fn _pr -> {:ok, ["src/test/example_test.exs"]} end)
     same_pr = %{fresh | run_url: "run-3"}
-    same_run = %{fresh | pr: 41}
+    same_run = %{fresh | pr: 41, group_prs: [41]}
     assert {:ok, []} = Detector.repeated([fresh, same_pr], now, fn _pr -> {:ok, []} end)
     assert {:ok, []} = Detector.repeated([fresh, same_run], now, fn _pr -> {:ok, []} end)
   end
