@@ -174,3 +174,15 @@ test('unknown URL epics cannot become lanes', async ({ page }) => {
   await expect(page.locator('.bd-lane')).toHaveCount(4)
   expect(await page.locator('.bd-lane').evaluateAll(els => els.map(el => el.title))).toEqual(['Bugs', 'Design', 'Infra', 'Docs'])
 })
+
+
+test('shared matching API preserves epic and multi-type filter semantics', async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const { colKey, match, tstate, astate } = await import('/build-home/match.js')
+    const row = { sec: 'plan', epic: null, type: ['bug', 'docs'], feature: 'khala', cue: { held: false, waitAny: false, failed: false, blockedChain: false } }
+    S.f.type = ['docs']; S.f.epic = ['unsorted']
+    const yes = match(row); S.f.type = ['feature']; const no = match(row)
+    return { key: colKey(row), yes, no, ticket: tstate(row), agent: astate(row) }
+  })
+  expect(result).toEqual({ key: 'unsorted', yes: true, no: false, ticket: 'queued', agent: 'none' })
+})

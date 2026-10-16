@@ -1,6 +1,6 @@
 import { S, ctx, fx, LH, gutW } from './state.js';
 import { esc } from './dom.js';
-import { colKey } from './layout.js';
+import { colKey } from './match.js';
 import { dayKey } from './util.js';
 import { I } from './icons.js';
 import { place } from './render.js';
