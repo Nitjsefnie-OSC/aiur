@@ -254,9 +254,9 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
   for (const name of Object.keys(SEQUENCES).filter(n => !['inventory', 'grain.static'].includes(n))) test(name, async ({ browser }) => {
     test.setTimeout(120_000)
     const owner = ownerFor(name), reduce = selectedCell.reducedMotion === 'reduce'
-    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: owner.anchor, productPending: owner.pending })
+    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('columns.') ? undefined : owner.anchor, productPending: owner.pending })
     try {
-      const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count()) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
+      const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
       test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
