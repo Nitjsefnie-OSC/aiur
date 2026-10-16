@@ -191,9 +191,6 @@ defmodule AiurWeb.Presenter do
     "Showing a partial merge history."
   end
 
-  defp recent_merge_health(:writable), do: :writable
-  defp recent_merge_health(_health), do: :degraded
-
   defp analytics_payload(opts) do
     provider = Keyword.get(opts, :telemetry_file_fun, &RunTelemetry.telemetry_file/0)
 

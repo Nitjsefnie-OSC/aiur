@@ -269,7 +269,9 @@ defmodule Aiur.Application.Children do
         [Aiur.BackgroundCpu] ++
         Aiur.Experiments.children(recording?) ++
         Auto.child_specs(recording?: recording?, feature_opts: [recent_merges: &Aiur.RecentMergeStore.list/0]) ++
-        BuildOrders.child_specs(:label_projection, opts) ++ landing_watch_children() ++ executor_sweep_children() ++
+        BuildOrders.child_specs(:label_projection, opts) ++
+        landing_watch_children() ++
+        executor_sweep_children() ++
         Aiur.Experiments.window_children(recording?) ++ quarantine_lifter_children()
     )
   end
