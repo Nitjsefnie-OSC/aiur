@@ -29,8 +29,9 @@ defmodule Aiur.TestQuarantine.Detector do
     end)
   end
 
-  defp valid_observation?(%{identity: id, pr: pr, run_url: url, at_ms: at, path: path}, now) do
-    valid_identity?(id) and valid_pr?(pr) and valid_run?(url) and valid_time?(at, now) and valid_path?(path)
+  defp valid_observation?(%{identity: id, pr: pr, run_url: url, at_ms: at, path: path, group_prs: group_prs}, now) do
+    valid_identity?(id) and valid_pr?(pr) and valid_run?(url) and valid_time?(at, now) and
+      valid_path?(path) and valid_group_prs?(group_prs, pr)
   end
 
   defp valid_observation?(_, _), do: false
@@ -40,16 +41,24 @@ defmodule Aiur.TestQuarantine.Detector do
   defp valid_run?(url), do: is_binary(url) and url != ""
   defp valid_time?(at, now), do: is_integer(at) and at <= now and now - at <= @window_ms
   defp valid_path?(path), do: is_binary(path) and path != ""
+  defp valid_group_prs?(prs, pr), do: is_list(prs) and pr in prs and Enum.all?(prs, &valid_pr?/1)
 
   defp qualifying_identity({identity, rows}, now) do
     rows = Enum.uniq_by(rows, &{&1.pr, &1.run_url})
-    if distinct_prs_in_window?(rows, now), do: [%{identity: identity, observations: rows}], else: []
+    if independent_failures_in_window?(rows, now), do: [%{identity: identity, observations: rows}], else: []
   end
 
-  defp distinct_prs_in_window?(rows, now) do
+  defp independent_failures_in_window?(rows, now) do
     within_window = Enum.filter(rows, &(now - &1.at_ms <= @window_ms))
-    prs = within_window |> Enum.map(& &1.pr) |> Enum.uniq()
-    runs = within_window |> Enum.map(& &1.run_url) |> Enum.uniq()
-    length(prs) >= 2 and length(runs) >= 2
+
+    Enum.any?(within_window, fn left ->
+      Enum.any?(within_window, fn right ->
+        left.pr != right.pr and left.run_url != right.run_url and
+          MapSet.disjoint?(MapSet.new(group_prs(left)), MapSet.new(group_prs(right)))
+      end)
+    end)
   end
+
+  defp group_prs(%{group_prs: prs}) when is_list(prs), do: prs
+  defp group_prs(%{pr: pr}), do: [pr]
 end

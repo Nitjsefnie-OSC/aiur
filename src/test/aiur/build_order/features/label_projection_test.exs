@@ -20,21 +20,13 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
     assert_receive {:build_order_features_changed, %{changed: [12]}}, 2_000
     assert {:ok, _} = F.observe(ctx, 13, ["feature:auth"])
     assert_receive {:build_order_features_changed, %{changed: [13]}}, 2_000
-
-    assert {:ok, %{feature: "auth", source: "label:unknown"}} =
-             Features.owner(13, server: ctx.features)
+    assert {:ok, %{feature: "auth", source: "label:unknown"}} = Features.owner(13, server: ctx.features)
   end
 
   test "registry joins ensure once, write labels and persist; echoes do not write again", ctx do
     F.join(ctx, [12, 13])
     pid = F.start(ctx)
-
-    assert F.calls() == [
-             {:ensure, ["feature:auth"]},
-             {:add, "12", "feature:auth"},
-             {:add, "13", "feature:auth"}
-           ]
-
+    assert F.calls() == [{:ensure, ["feature:auth"]}, {:add, "12", "feature:auth"}, {:add, "13", "feature:auth"}]
     assert F.states(pid, [12, 13]) == {:ok, %{12 => :labelled, 13 => :labelled}}
     F.advance(ctx, 10)
     F.observe(ctx, 12, ["feature:auth"])
@@ -49,10 +41,7 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
     F.observe(ctx, 12, ["feature:auth"])
     # A synchronous barrier after the signal: no direct mutation of projection state.
     F.tick(pid)
-
-    assert {:ok, %{feature: "auth", source: "label:unknown", actor: "unknown"}} =
-             Features.owner(12, server: ctx.features)
-
+    assert {:ok, %{feature: "auth", source: "label:unknown", actor: "unknown"}} = Features.owner(12, server: ctx.features)
     assert F.calls() == []
     F.advance(ctx, 30)
     F.observe(ctx, 12, [])
@@ -94,10 +83,7 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
     F.observe(ctx, 12, ["feature:other"])
     F.observe(ctx, 13, ["feature:other", "feature:zzz"])
     F.tick(pid)
-
-    assert {:ok, %{feature: "other", source: "label:unknown", confirmed: true}} =
-             Features.owner(12, server: ctx.features)
-
+    assert {:ok, %{feature: "other", source: "label:unknown", confirmed: true}} = Features.owner(12, server: ctx.features)
     assert {:ok, %{feature: "auth"}} = Features.owner(13, server: ctx.features)
     status = F.sync(pid)
     assert {13, ["auth", "other"]} in status.conflicts
@@ -105,8 +91,7 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
     refute {:remove, "13", "feature:other"} in F.calls()
   end
 
-  test "held backfill releases only through mark_labelled and imported members remain exempt",
-       ctx do
+  test "held backfill releases only through mark_labelled and imported members remain exempt", ctx do
     F.join(ctx, 12, "backfill-agent")
     F.join(ctx, 13, "import:build-order")
     pid = F.start(ctx)
@@ -119,13 +104,8 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
     assert Projection.mark_labelled("auth", 12, times, server: pid) == :ok
     assert F.states(pid, [12]) == {:ok, %{12 => :labelled}}
     assert Projection.mark_labelled("auth", 12, times, server: pid) == {:error, :not_held}
-
-    assert Projection.mark_labelled("other", 12, times, server: pid) ==
-             {:error, {:not_member, [12]}}
-
-    assert Projection.mark_labelled("auth", 99, times, server: pid) ==
-             {:error, {:not_member, [99]}}
-
+    assert Projection.mark_labelled("other", 12, times, server: pid) == {:error, {:not_member, [12]}}
+    assert Projection.mark_labelled("auth", 99, times, server: pid) == {:error, {:not_member, [99]}}
     assert F.entries(ctx)[{"auth", 12}].seen_at == times.seen_at
   end
 
@@ -186,13 +166,7 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
   end
 
   test "supervision is recording-gated and follows registry and History" do
-    specs =
-      AiurApp.child_specs(
-        recording?: true,
-        interactive_cli?: false,
-        headless?: true,
-        dashboard?: false
-      )
+    specs = AiurApp.child_specs(recording?: true, interactive_cli?: false, headless?: true, dashboard?: false)
 
     mods =
       Enum.map(specs, fn
@@ -206,17 +180,24 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionTest do
     assert Projection in mods
     assert Enum.find_index(mods, &(&1 == Projection)) > Enum.find_index(mods, &(&1 == Features))
     assert Enum.find_index(mods, &(&1 == Projection)) > Enum.find_index(mods, &(&1 == History))
-    assert Aiur.LandingWatch.QuarantineLifter in mods
 
-    tail =
-      [Projection] ++
-        if(Aiur.LandingWatch in mods, do: [Aiur.LandingWatch], else: []) ++
-        [Aiur.Experiments.Auto.Notifier, Aiur.Experiments.Auto.WindowManager] ++
-        [Aiur.LandingWatch.QuarantineLifter]
+    if Aiur.Config.tracker_kind() == "github" do
+      assert Aiur.LandingWatch.QuarantineLifter in mods
+    else
+      refute Aiur.LandingWatch.QuarantineLifter in mods
+    end
 
+    optional_children = [
+      Aiur.LandingWatch,
+      Aiur.Experiments.Auto.Notifier,
+      Aiur.Experiments.Auto.WindowManager,
+      Aiur.LandingWatch.QuarantineLifter
+    ]
+
+    tail = [Projection] ++ Enum.filter(optional_children, &(&1 in mods))
     assert Enum.take(mods, -length(tail)) == tail
 
-    Enum.each([Aiur.LandingWatch, Aiur.Experiments.Auto.Notifier, Aiur.Experiments.Auto.WindowManager], fn optional ->
+    Enum.each(optional_children, fn optional ->
       if optional in mods do
         assert Enum.find_index(mods, &(&1 == optional)) > Enum.find_index(mods, &(&1 == Projection))
       end

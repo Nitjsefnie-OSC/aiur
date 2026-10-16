@@ -120,16 +120,18 @@ defmodule AiurWeb.Presenter do
     case safe_call(provider) do
       {:ok, %{merges: merges, health: health, reconciliation: reconciliation}}
       when is_list(merges) and is_map(reconciliation) ->
+        public_health = recent_merge_health(health)
+
         %{
-          status: if(health == :writable, do: :available, else: :degraded),
+          status: if(public_health == :writable, do: :available, else: :degraded),
           entries:
             merges
             |> Enum.map(&recent_merge_payload/1)
             |> Enum.reject(&is_nil/1)
             |> Enum.take(@recent_merge_limit),
-          health: health,
+          health: public_health,
           reconciliation: reconciliation,
-          message: recent_merge_message(health)
+          message: recent_merge_message(public_health)
         }
 
       _other ->
@@ -171,6 +173,9 @@ defmodule AiurWeb.Presenter do
   defp recent_merge_message(_health) do
     "Showing a partial merge history."
   end
+
+  defp recent_merge_health(:writable), do: :writable
+  defp recent_merge_health(_health), do: :degraded
 
   defp analytics_payload(opts) do
     provider = Keyword.get(opts, :telemetry_file_fun, &RunTelemetry.telemetry_file/0)

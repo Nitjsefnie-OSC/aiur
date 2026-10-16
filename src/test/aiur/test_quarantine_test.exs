@@ -40,8 +40,8 @@ defmodule Aiur.TestQuarantineTest do
     now = 1_800_000_000_000
 
     rows = [
-      %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "https://github.com/o/r/actions/runs/1", at_ms: now - 60_000, path: "src/test/example_test.exs"},
-      %{identity: "Aiur.ExampleTest :: flakes", pr: 42, run_url: "https://github.com/o/r/actions/runs/2", at_ms: now - 30_000, path: "src/test/example_test.exs"}
+      %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "https://github.com/o/r/actions/runs/1", at_ms: now - 60_000, path: "src/test/example_test.exs", group_prs: [41]},
+      %{identity: "Aiur.ExampleTest :: flakes", pr: 42, run_url: "https://github.com/o/r/actions/runs/2", at_ms: now - 30_000, path: "src/test/example_test.exs", group_prs: [42]}
     ]
 
     assert {:ok, [%{identity: "Aiur.ExampleTest :: flakes", observations: ^rows}]} =
@@ -50,7 +50,7 @@ defmodule Aiur.TestQuarantineTest do
 
   test "the detector ignores same-PR repeats, old failures, and tests changed by a failing PR" do
     now = 1_800_000_000_000
-    old = %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "run-1", at_ms: now - 90_000_000, path: "src/test/example_test.exs"}
+    old = %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "run-1", at_ms: now - 90_000_000, path: "src/test/example_test.exs", group_prs: [41]}
     fresh = %{old | pr: 42, run_url: "run-2", at_ms: now - 30_000}
 
     assert {:ok, []} = Detector.repeated([fresh, %{fresh | run_url: "run-3"}], now, fn _pr -> {:ok, []} end)
@@ -60,5 +60,18 @@ defmodule Aiur.TestQuarantineTest do
     same_run = %{fresh | pr: 41}
     assert {:ok, []} = Detector.repeated([fresh, same_pr], now, fn _pr -> {:ok, []} end)
     assert {:ok, []} = Detector.repeated([fresh, same_run], now, fn _pr -> {:ok, []} end)
+  end
+
+  test "same PRs failing in both merge groups are not independent evidence" do
+    now = 1_800_000_000_000
+
+    rows = [
+      %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "run-1", at_ms: now - 60_000, path: "test/example_test.exs", group_prs: [41, 42]},
+      %{identity: "Aiur.ExampleTest :: flakes", pr: 42, run_url: "run-1", at_ms: now - 60_000, path: "test/example_test.exs", group_prs: [41, 42]},
+      %{identity: "Aiur.ExampleTest :: flakes", pr: 41, run_url: "run-2", at_ms: now - 30_000, path: "test/example_test.exs", group_prs: [41, 42]},
+      %{identity: "Aiur.ExampleTest :: flakes", pr: 42, run_url: "run-2", at_ms: now - 30_000, path: "test/example_test.exs", group_prs: [41, 42]}
+    ]
+
+    assert {:ok, []} = Detector.repeated(rows, now, fn _pr -> {:ok, []} end)
   end
 end

@@ -39,7 +39,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
              )
   end
 
-  test "the classifier skips claimed failures while quarantine scanning revisits runs" do
+  test "the classifier and quarantine scanner each claim a failed run once" do
     parent = self()
 
     journal =
@@ -85,7 +85,6 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
     assert_received {:jobs, 111}
     refute_received {:jobs, _}
     assert :ok = MergeGroups.cancel_stale([], options)
-    assert_received {:jobs, 111}
     refute_received {:jobs, _}
   end
 
@@ -148,7 +147,9 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
       "event" => "merge_group",
       "status" => "completed",
       "conclusion" => conclusion,
-      "head_branch" => "gh-readonly-queue/main/#{prs}"
+      "head_branch" => "gh-readonly-queue/main/#{prs}",
+      "html_url" => "https://github.com/test-org/test-repo/actions/runs/#{id}",
+      "created_at" => DateTime.to_iso8601(DateTime.utc_now())
     }
   end
 end

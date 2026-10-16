@@ -2,6 +2,7 @@ defmodule Aiur.LandingWatch.MergeGroupsQuarantineTest do
   use ExUnit.Case, async: true
 
   alias Aiur.LandingWatch.MergeGroups
+  alias Aiur.LandingWatch.MergeGroupQuarantine
 
   test "two failed runs from unrelated PRs open one quarantine PR candidate" do
     parent = self()
@@ -45,6 +46,43 @@ defmodule Aiur.LandingWatch.MergeGroupsQuarantineTest do
     assert_received {:quarantine_candidate, 900, candidate}
     assert candidate.identity == "Aiur.ExampleTest :: flakes"
     assert Enum.map(candidate.observations, & &1.pr) |> Enum.uniq() |> length() == 4
+  end
+
+  test "changed PR paths are fetched once per PR for a poll" do
+    parent = self()
+    run = failed_run(511, "pr-51-a-pr-52-b", "https://github.com/test-org/test-repo/actions/runs/511", DateTime.to_iso8601(DateTime.utc_now()))
+    journal = Path.join(System.tmp_dir!(), "merge-group-path-cache-#{System.unique_integer([:positive])}.json")
+    on_exit(fn -> File.rm(journal) end)
+
+    opts = [
+      journal_path: journal,
+      changed_paths_fun: fn pr, _opts ->
+        send(parent, {:changed_paths, pr})
+        {:ok, []}
+      end,
+      jobs_fun: fn _run, _opts ->
+        {:ok, [%{"check_run_id" => 1, "name" => "test", "conclusion" => "failure"}]}
+      end,
+      annotations_fun: fn _id, _opts ->
+        {:ok,
+         [
+           %{"title" => "aiur-test-failure", "message" => "new-failure :: Aiur.OneTest :: fails", "path" => "test/one_test.exs"},
+           %{"title" => "aiur-test-failure", "message" => "new-failure :: Aiur.TwoTest :: fails", "path" => "test/two_test.exs"}
+         ]}
+      end
+    ]
+
+    assert :ok = MergeGroupQuarantine.process_completed([run], "main", opts)
+    assert_received {:changed_paths, 51}
+    assert_received {:changed_paths, 52}
+    refute_received {:changed_paths, _}
+  end
+
+  test "failed runs older than a day are skipped before fetching jobs" do
+    run = failed_run(512, "pr-53-a", "https://github.com/test-org/test-repo/actions/runs/512", "2026-10-01T10:00:00Z")
+
+    assert :ok =
+             MergeGroupQuarantine.process_completed([run], "main", jobs_fun: fn _run, _opts -> flunk("stale runs must not fetch jobs") end)
   end
 
   defp failed_run(id, branch, url, created_at) do
