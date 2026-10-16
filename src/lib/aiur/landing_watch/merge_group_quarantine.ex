@@ -5,6 +5,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   alias Aiur.LandingWatch.{FlakeRecorder, Journal, QuarantinePR}
   alias Aiur.TestQuarantine.Detector
 
+  @spec process_completed([map()], String.t(), keyword()) :: :ok | {:error, term()}
   def process_completed(runs, base, opts) do
     runs
     |> Enum.filter(&(&1["conclusion"] == "failure" and is_integer(&1["id"])))
@@ -17,20 +18,25 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   end
 
   defp process_run(run, base, opts) do
-    with prs when prs != [] <- run_prs(run, base),
+    with prs <- run_prs(run, base),
+         true <- prs != [],
          {:ok, jobs} <- Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2).(run["id"], opts),
          {:ok, failures} <- test_failures(jobs, opts) do
-      Enum.reduce_while(failures, :ok, fn failure, :ok ->
-        case maybe_quarantine(failure, run, prs, opts) do
-          :ok -> {:cont, :ok}
-          {:error, _} = error -> {:halt, error}
-        end
-      end)
+      process_failures(failures, run, prs, opts)
     else
-      [] -> :ok
+      false -> :ok
       {:error, _} = error -> error
       _ -> :ok
     end
+  end
+
+  defp process_failures(failures, run, prs, opts) do
+    Enum.reduce_while(failures, :ok, fn failure, :ok ->
+      case maybe_quarantine(failure, run, prs, opts) do
+        :ok -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   defp maybe_quarantine(%{path: path} = failure, run, prs, opts) when is_binary(path) do
@@ -38,38 +44,41 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
          :ok <- record_observations(failure, run, prs, path, at_ms, opts),
          {:ok, rows} <- Journal.failure_observations(opts),
          {:ok, candidate} <- repeated(rows, failure),
-         :ok <- record_flake(candidate, failure, run, opts) do
-      :ok
-    end
+         do: record_flake(candidate, failure, run, opts)
   end
 
   defp maybe_quarantine(_failure, _run, _prs, _opts), do: :ok
 
   defp record_observations(failure, run, prs, path, at_ms, opts) do
     Enum.reduce_while(prs, :ok, fn pr, :ok ->
-      case Keyword.get(opts, :changed_paths_fun, &PullRequests.fetch_pull_request_changed_paths/2).(pr, opts) do
-        {:ok, paths} when is_list(paths) ->
-          if path in paths do
-            {:cont, :ok}
-          else
-            row = %{
-              "identity" => "#{failure.module} :: #{failure.name}",
-              "pr" => pr,
-              "run_url" => run["html_url"],
-              "at_ms" => at_ms,
-              "path" => path
-            }
-
-            case Journal.record_failure_observation(row, opts) do
-              :ok -> {:cont, :ok}
-              {:error, _} = error -> {:halt, error}
-            end
-          end
-
-        {:error, _} = error ->
-          {:halt, error}
+      case record_pr_observation(pr, failure, run, path, at_ms, opts) do
+        :ok -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
       end
     end)
+  end
+
+  defp record_pr_observation(pr, failure, run, path, at_ms, opts) do
+    changed_paths = Keyword.get(opts, :changed_paths_fun, &PullRequests.fetch_pull_request_changed_paths/2)
+
+    case changed_paths.(pr, opts) do
+      {:ok, paths} when is_list(paths) -> persist_if_unrelated(path in paths, pr, failure, run, path, at_ms, opts)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp persist_if_unrelated(true, _pr, _failure, _run, _path, _at_ms, _opts), do: :ok
+
+  defp persist_if_unrelated(false, pr, failure, run, path, at_ms, opts) do
+    row = %{
+      "identity" => "#{failure.module} :: #{failure.name}",
+      "pr" => pr,
+      "run_url" => run["html_url"],
+      "at_ms" => at_ms,
+      "path" => path
+    }
+
+    Journal.record_failure_observation(row, opts)
   end
 
   defp repeated(rows, failure) do
@@ -118,17 +127,24 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     jobs
     |> Enum.filter(&(&1["conclusion"] == "failure"))
     |> Enum.reduce_while({:ok, []}, fn job, {:ok, acc} ->
-      case check_run_id(job) do
-        nil ->
-          {:cont, {:ok, acc}}
-
-        id ->
-          case Keyword.get(opts, :annotations_fun, &FailureEvidence.annotations/2).(id, opts) do
-            {:ok, annotations} -> {:cont, {:ok, acc ++ annotation_failures(annotations, job["name"] || "unknown job")}}
-            {:error, reason} -> {:halt, {:error, {:merge_group_annotations_unavailable, reason}}}
-          end
+      case job_annotations(job, opts) do
+        {:ok, annotations} -> {:cont, {:ok, acc ++ annotation_failures(annotations, job["name"] || "unknown job")}}
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp job_annotations(job, opts) do
+    case check_run_id(job) do
+      nil ->
+        {:ok, []}
+
+      id ->
+        case Keyword.get(opts, :annotations_fun, &FailureEvidence.annotations/2).(id, opts) do
+          {:ok, annotations} -> {:ok, annotations}
+          {:error, reason} -> {:error, {:merge_group_annotations_unavailable, reason}}
+        end
+    end
   end
 
   defp annotation_failures(annotations, job) do
