@@ -26,7 +26,10 @@ for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`,
     await pair.product.evaluate(async mode => {
       const { ctx, S, fx } = await import('/build-home/state.js'), c = await import('/build-home/columns.js')
       S.ready = false
-      if (mode === 'focus' || mode === 'compact') { S.feature = 'khala'; S.fmode = mode }
+      if (mode === 'focus' || mode === 'compact') {
+        await (await import('/build-home/history.js')).ensureDays(100)
+        S.feature = 'khala'; S.fmode = mode
+      }
       if (mode === 'epic') { S.f.epic = ['docs']; ctx.D._fwd = null; fx.relayout() }
       if (mode !== 'boot') ctx.vp.scrollTop = 0
       c.applyCols(c.visibleCols(), true)
