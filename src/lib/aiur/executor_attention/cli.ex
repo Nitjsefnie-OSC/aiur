@@ -4,6 +4,7 @@ defmodule Aiur.ExecutorAttention.CLI do
   alias Aiur.Executor.{Claims, Roster}
   alias Aiur.ExecutorAttention.DecisionEscalation
   alias Aiur.{ExecutorEvents, ExecutorListener, ExecutorWakeInbox}
+  alias Aiur.ExecutorSweep.TriageBacklog
 
   import Aiur.ControlCLI.Protocol, only: [control_error: 1, exit_marker: 1]
 
@@ -422,7 +423,7 @@ defmodule Aiur.ExecutorAttention.CLI do
   def print_wake_status do
     print_wakes()
     DecisionEscalation.print_status()
-    Aiur.ExecutorSweep.TriageBacklog.print_status()
+    TriageBacklog.print_status()
   end
 
   defp print_wakes do
