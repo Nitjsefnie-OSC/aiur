@@ -1,6 +1,8 @@
 defmodule Aiur.Workspace.AttributionHooksSetupTest do
   use ExUnit.Case, async: true
 
+  alias Aiur.Workspace.AttributionGuard
+
   @hooks_path Path.expand("../../../../.aiur/hooks", __DIR__)
   @installer_path Path.expand("../../../../scripts/install-attribution-hooks", __DIR__)
   @zero_sha "0000000000000000000000000000000000000000"
@@ -105,67 +107,79 @@ defmodule Aiur.Workspace.AttributionHooksSetupTest do
     assert File.read!(Path.join(workspace, "pre-push-input")) == push_input
   end
 
-  test "first push ignores attributed commits already on origin HEAD" do
-    root = Aiur.TestSupport.tmp_root!("attribution-hooks-first-push")
-    workspace = attributed_base_repo!(root)
-    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
-    git!(workspace, ["switch", "--quiet", "-c", "feature"])
-    File.write!(Path.join(workspace, "change"), "feature\n")
-    git!(workspace, ["add", "change"])
-    git!(workspace, ["commit", "--quiet", "-m", "feature change"])
-    head = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
+  # #4623: the pre-push guard scans only the commits a push introduces, never history inherited from main.
+  @ai_message "subject\n\nCo-authored-by: Claude <noreply@anthropic.com>"
 
-    {output, 0} = pre_push!(workspace, head, @zero_sha)
-    assert output == ""
+  for {installer, install} <- [script: :script, guard: :guard] do
+    test "#{installer}: a new branch with an inherited AI-trailer commit and a clean new commit pushes" do
+      workspace = pushed_main_workspace!(unquote(install), "inherited")
+      git!(workspace, ["checkout", "--quiet", "-b", "feature"])
+      commit!(workspace, "clean new commit")
+
+      assert {_output, 0} = push(workspace, "feature")
+      assert git!(workspace, ["ls-remote", "origin", "refs/heads/feature"]) =~ "refs/heads/feature"
+    end
+
+    test "#{installer}: a new branch with a new AI-trailer commit is refused and names it" do
+      workspace = pushed_main_workspace!(unquote(install), "new-branch")
+      git!(workspace, ["checkout", "--quiet", "-b", "clean"])
+      commit!(workspace, "clean sibling commit")
+      assert {_output, 0} = push(workspace, "clean")
+      git!(workspace, ["checkout", "--quiet", "-b", "feature", "main"])
+      sha = commit!(workspace, "bad new commit\n\nCo-authored-by: Claude <noreply@anthropic.com>")
+
+      assert {output, status} = push(workspace, "feature")
+      assert status != 0, output
+      assert output =~ "refusing to push commit #{sha} (bad new commit)"
+      refute output =~ "(subject)"
+    end
+
+    test "#{installer}: an existing branch pushed with a new AI-trailer commit is refused" do
+      workspace = pushed_main_workspace!(unquote(install), "existing-branch")
+      git!(workspace, ["checkout", "--quiet", "-b", "feature"])
+      commit!(workspace, "clean new commit")
+      assert {_output, 0} = push(workspace, "feature")
+      sha = commit!(workspace, "bad update\n\nCo-authored-by: Claude <noreply@anthropic.com>")
+
+      assert {output, status} = push(workspace, "feature")
+      assert status != 0, output
+      assert output =~ "refusing to push commit #{sha} (bad update)"
+    end
   end
 
-  test "still rejects attribution introduced by a new commit" do
-    root = Aiur.TestSupport.tmp_root!("attribution-hooks-new-commit")
-    workspace = attributed_base_repo!(root)
+  # A clone whose pushed main already carries an AI-trailer commit, as old squash merges do.
+  defp pushed_main_workspace!(install, name) do
+    root = Aiur.TestSupport.tmp_root!("attribution-pre-push-#{name}-#{install}")
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
-
-    git!(workspace, ["switch", "--quiet", "-c", "feature"])
-    File.write!(Path.join(workspace, "change"), "feature\n")
-    git!(workspace, ["add", "change"])
-    git!(workspace, ["commit", "--quiet", "-m", "feature change"])
-    remote = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
-
-    File.write!(Path.join(workspace, "another-change"), "more feature\n")
-    git!(workspace, ["add", "another-change"])
-    git!(workspace, ["-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "bad commit\n\nCo-authored-by: Claude <noreply@anthropic.com>"])
-    head = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
-
-    {output, 1} = pre_push!(workspace, head, remote)
-    assert output =~ "AI attribution remains in the commit message"
-  end
-
-  defp attributed_base_repo!(root) do
+    origin = Path.join(root, "origin.git")
     workspace = Path.join(root, "workspace")
-    File.mkdir_p!(workspace)
-    git!(workspace, ["init", "--quiet", "-b", "main"])
+    File.mkdir_p!(origin)
+    git!(origin, ["init", "--bare", "--quiet", "--initial-branch=main"])
+    git!(root, ["clone", "--quiet", origin, workspace])
+    git!(workspace, ["checkout", "--quiet", "-B", "main"])
     git!(workspace, ["config", "user.name", "Test User"])
     git!(workspace, ["config", "user.email", "test@example.com"])
-    File.write!(Path.join(workspace, "base"), "base\n")
-    git!(workspace, ["add", "base"])
-    git!(workspace, ["-c", "core.hooksPath=/dev/null", "commit", "--quiet", "-m", "base\n\nCo-authored-by: Claude <noreply@anthropic.com>"])
-    base = String.trim(git!(workspace, ["rev-parse", "HEAD"]))
-    git!(workspace, ["update-ref", "refs/remotes/origin/main", base])
-    git!(workspace, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"])
+    commit!(workspace, @ai_message)
+    git!(workspace, ["push", "--quiet", "origin", "main"])
 
-    {output, 0} = System.cmd(@installer_path, [workspace], stderr_to_stdout: true)
-    assert output == ""
+    case install do
+      :script -> {_output, 0} = System.cmd(@installer_path, [workspace], stderr_to_stdout: true)
+      :guard -> :ok = AttributionGuard.install(workspace)
+    end
+
     workspace
   end
 
-  defp pre_push!(workspace, local_sha, remote_sha) do
-    input = "refs/heads/feature #{local_sha} refs/heads/feature #{remote_sha}\n"
+  # Commits bypass the commit-msg hook so a trailer survives for the pre-push guard to see.
+  defp commit!(workspace, message) do
+    git!(workspace, ["-c", "core.hooksPath=/dev/null", "commit", "--quiet", "--allow-empty", "-m", message])
+    String.trim(git!(workspace, ["rev-parse", "HEAD"]))
+  end
 
-    System.cmd(
-      "sh",
-      ["-c", "cd \"$1\" && printf '%s' \"$2\" | .git/hooks/pre-push", "sh", workspace, input],
-      stderr_to_stdout: true
-    )
+  defp push(workspace, branch) do
+    System.cmd("git", ["-C", workspace, "push", "origin", branch], stderr_to_stdout: true)
+
   end
 
   defp git!(directory, args) do
