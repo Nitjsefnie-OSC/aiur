@@ -51,6 +51,22 @@ defmodule Aiur.AgentTools.TicketState do
         "description" =>
           "Target state, with or without the `agent:` prefix (e.g. `human-review` or `agent:human-review`). One of: " <>
             Enum.join(@agent_settable_states, ", ") <> "."
+      },
+      "review_findings" => %{
+        "type" => "array",
+        "description" => "For rework handoff, include every review finding with id, file, status, commit, and evidence. Status must be fixed or disputed.",
+        "items" => %{
+          "type" => "object",
+          "required" => ["id", "file", "status"],
+          "properties" => %{
+            "id" => %{"type" => "string"},
+            "file" => %{"type" => "string"},
+            "status" => %{"type" => "string", "enum" => ["fixed", "disputed"]},
+            "commit" => %{"type" => "string"},
+            "evidence" => %{"type" => "string"}
+          },
+          "additionalProperties" => false
+        }
       }
     }
   }
@@ -73,12 +89,16 @@ defmodule Aiur.AgentTools.TicketState do
 
   @impl true
   @spec execute(String.t(), term(), keyword()) :: map()
-  def execute("aiur_set_ticket_state", arguments, opts) do
+  def execute("aiur_set_ticket_state", arguments, opts) when is_map(arguments) do
     setter = Keyword.get(opts, :ticket_state_setter)
 
     with {:ok, state} <- normalize_state(arguments),
-         true <- is_function(setter, 1) || {:error, :ticket_state_setter_unavailable},
-         {:ok, result} <- setter.(state) do
+         true <- is_function(setter, 2) || {:error, :ticket_state_setter_unavailable},
+         {:ok, result} <-
+           setter.(
+             state,
+             Map.get(arguments, "review_findings", Map.get(arguments, :review_findings))
+           ) do
       Response.build(
         true,
         Jason.encode!(
@@ -91,6 +111,9 @@ defmodule Aiur.AgentTools.TicketState do
       false -> Response.failure(Errors.payload(:ticket_state_setter_unavailable))
     end
   end
+
+  def execute("aiur_set_ticket_state", _arguments, _opts),
+    do: Response.failure(Errors.payload(:invalid_ticket_state))
 
   @spec agent_settable_states() :: [String.t()]
   def agent_settable_states, do: @agent_settable_states

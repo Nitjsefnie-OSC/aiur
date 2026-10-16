@@ -1,7 +1,7 @@
 defmodule Aiur.AgentRunner.ReworkHandoff do
   @moduledoc false
 
-  alias Aiur.AgentRunner.{TurnAlerts, TurnLoop}
+  alias Aiur.AgentRunner.{ReworkHandoffGuard, TurnAlerts, TurnLoop}
   alias Aiur.CodeHost
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
@@ -32,9 +32,45 @@ defmodule Aiur.AgentRunner.ReworkHandoff do
   end
 
   defp write_handoff(issue, turn_context, state) do
+    opts = turn_context.opts
+
+    gate_opts = [
+      rework_head_sha: Keyword.get(opts, :rework_head_sha),
+      open_pr_fetcher: Keyword.get(opts, :open_pr_fetcher, &CodeHost.fetch_open_pull_request_for_branch/1),
+      review_checklist: Keyword.get(opts, :rework_checklist),
+      workspace: turn_context.workspace,
+      rework_commits_since_review: Keyword.get(opts, :rework_commits_since_review),
+      rework_touched_files: Keyword.get(opts, :rework_touched_files),
+      review_checklist_fetcher: Keyword.get(opts, :review_checklist_fetcher),
+      pull_request_status_fetcher: Keyword.get(opts, :pull_request_status_fetcher),
+      worker_host: turn_context.worker_host
+    ]
+
+    case ReworkHandoffGuard.handoff_blockers(
+           issue,
+           state,
+           turn_context.workspace,
+           turn_context.worker_host,
+           gate_opts
+         ) do
+      {:blocked, reasons} ->
+        {:error, {:rework_handoff_blocked, Enum.join(reasons, "; ")}}
+
+      :allow ->
+        write_state(issue, turn_context, state)
+    end
+  end
+
+  defp write_state(issue, turn_context, state) do
     case TicketTransition.write_state(issue.identifier, state, writer: :turn_loop) do
       :ok ->
-        TurnAlerts.emit_rework_handoff_alert(issue, turn_context.workspace, turn_context.worker_host, state)
+        TurnAlerts.emit_rework_handoff_alert(
+          issue,
+          turn_context.workspace,
+          turn_context.worker_host,
+          state
+        )
+
         TurnLoop.return_completed(turn_context, %{issue | state: state})
 
       {:error, reason} ->
