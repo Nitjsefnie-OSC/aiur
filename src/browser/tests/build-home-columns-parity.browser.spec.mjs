@@ -33,6 +33,6 @@ for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`,
     await Promise.all([pair.design, pair.product].map(async page => { await page.clock.runFor(800); await page.clock.setSystemTime(FIXTURE_META.now) }))
     const read = page => page.evaluate(() => [...document.querySelectorAll('.bd-lane, .bd-guide')].map(el => ({ cls: el.className, left: el.style.left, width: el.style.width, hue: el.style.getPropertyValue('--h'), title: el.title, count: el.querySelector('em')?.textContent })))
     expect(await read(pair.product)).toEqual(await read(pair.design))
-    for (const region of ['.bd-lanes', '.bd-guides']) await expectDesignParity(pair, { name: 'columns-' + cell.mode, region })
+    for (const region of ['.bd-lanes', '.bd-guides']) await expectDesignParity(pair, { name: 'columns-' + cell.mode, region, preserveAnimations: true })
   } finally { await pair.close() }
 })
