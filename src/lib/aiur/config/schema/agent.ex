@@ -74,7 +74,6 @@ defmodule Aiur.Config.Schema.Agent do
     # max_turns recycle or completed-entry replacement) whose codex thread could
     # not be resumed gets continuation guidance instead of the cold-start prompt,
     # so it does not re-run brainstorm/plan over work that already exists.
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.prior_work_continuation | boolean | true | Lets a resumed ticket continue existing workspace work when policy permits. |
     field(:prior_work_continuation, :boolean, default: true)
     # Lifetime cap on (re)dispatches for one ticket. The per-window thrash
@@ -87,7 +86,6 @@ defmodule Aiur.Config.Schema.Agent do
     # schedulers + 1/4 schedulers, which matches the measured ~19-20 concurrent
     # agents on a 16-core host. Explicit config still wins. The load envelope
     # reduces effective concurrency below this ceiling under host pressure.
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.max_concurrent_agents | integer or nil | derived from host capacity | Global simultaneous-agent cap. When omitted, it derives from the measured host capacity: `schedulers + schedulers / 4` (e.g. 20 on a 16-core host), so the ceiling is calibrated to the box instead of a hard-coded count. Explicit config wins. The adaptive envelope reduces effective concurrency below this ceiling under CPU pressure. [Fixer tickets](/reference/merge-policy) take the next free slot first, within this cap and the same pressure gates. |
     field(:max_concurrent_agents, :integer)
@@ -110,12 +108,10 @@ defmodule Aiur.Config.Schema.Agent do
     field(:build_nice, :integer, default: 10)
     # Minimum spacing between local Mix compile/test starts when more than one
     # build may run concurrently. 0 disables start pacing.
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.build_start_stagger_seconds | integer | 0 | Minimum spacing between local Mix build starts; 0 disables pacing. |
     field(:build_start_stagger_seconds, :integer, default: 0)
     # Optional Linux MemAvailable floor shared by normal dispatch and the local
     # Mix build gate. Omitted means memory admission is disabled.
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.min_free_memory_mb | integer or nil | nil | Linux `MemAvailable` floor shared by dispatch and the Mix build gate. |
     field(:min_free_memory_mb, :integer)
     # Absolute wall-clock cap (seconds) on how long any one build-gate slot may
@@ -172,7 +168,6 @@ defmodule Aiur.Config.Schema.Agent do
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.enabled | boolean | backend registry default | Explicitly enables or disables dispatch for the backend. `agent.priority` takes precedence by enabling every backend it names. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.command | string | backend registry command | Overrides the backend command used for model discovery and setup where supported. |
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.model | string or nil | nil | Selects the backend's default model where the backend accepts a configured model. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-06 agent.backend_configs.<backend>.model_discovery | boolean | true | Set `false` to stop aiur asking this backend for its model list — the catalogue endpoint for an OpenAI-compatible backend, or the CLI's `model/list` for `codex` and `claude`. The curated list and any list already cached keep working; aiur just stops refreshing them. |
@@ -180,7 +175,6 @@ defmodule Aiur.Config.Schema.Agent do
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.default_model | string or nil | backend registry value | Overrides the registry fallback model for an OpenAI-compatible backend; `model` takes precedence. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.base_url | URL string | backend registry value | Overrides the registry endpoint for an OpenAI-compatible backend. |
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.api_key_env | string | backend registry value | Names the environment variable containing the backend API key. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.management_api_key_env | string or nil | backend registry value | Names the environment variable containing a provider's usage-management API key. |
@@ -196,13 +190,10 @@ defmodule Aiur.Config.Schema.Agent do
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.quirks.openrouter_metadata | boolean | backend registry value | Enables OpenRouter endpoint metadata used for billing attribution. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-01 agent.backend_configs.<backend>.quirks.local_concurrency_limit | boolean | backend registry value | Applies aiur's local concurrency slot around backend requests. |
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.order | array of strings or nil | omitted | Preferred upstream providers, most preferred first. |
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.ignore | array of strings or nil | omitted | Upstream providers to exclude. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.allow_fallbacks | boolean or nil | omitted | Whether OpenRouter may cross to another upstream within one request. |
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-02 agent.backend_configs.openrouter.provider.sort | string or nil | omitted | `price`, `throughput`, or `latency`. |
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.backend_configs | map | `%{}` | Provider-specific configuration, including per-backend settings and credentials for OpenAI-compatible backends. A backend listed in `agent.priority` is enabled automatically. |
@@ -225,7 +216,6 @@ defmodule Aiur.Config.Schema.Agent do
     # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.headroom_reading_max_age_seconds | integer | 1800 | Under `account_selection: headroom`, a usage reading older than this scores as unknown and shows its age; see [Headroom dispatch](/concepts/headroom-dispatch). |
     field(:headroom_reading_max_age_seconds, :integer, default: 1800)
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.switch_model_on_ratelimit | array | `[]` | Deprecated claim-time fallback order; ignored when `agent.priority` is non-empty. |
     field(:switch_model_on_ratelimit, {:array, :string}, default: [])
     # Automatic reroute for an ALREADY-RUNNING agent on `rate_limit_primary`
@@ -258,15 +248,12 @@ defmodule Aiur.Config.Schema.Agent do
     field(:max_agent_duration_minutes, :integer, default: 60)
     # A CI-wait pause releases its dispatch slot. If no terminal CI event is
     # observed in this window, wake the agent for one recovery check.
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.ci_wait_rewake_minutes | positive integer | 5 | Re-wakes a CI-wait-paused agent for one recovery check when no terminal event arrives. |
     field(:ci_wait_rewake_minutes, :integer, default: 5)
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.ci_recovery_enabled | boolean | true | Enables automatic CI recovery reruns; set `false` to disable them. |
     field(:ci_recovery_enabled, :boolean, default: true)
     # @config-reference config-configuration-agent-00 agent.ci_recovery_max_per_poll | positive integer | 5 | Maximum recovery reruns admitted by one CI poll. |
     field(:ci_recovery_max_per_poll, :integer, default: 5)
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.ci_recovery_max_per_hour | positive integer | 20 | Maximum recovery reruns admitted in a rolling hour. |
     field(:ci_recovery_max_per_hour, :integer, default: 20)
     # Linux CPU PSI some avg60 percentages; explicit null disables each.
@@ -310,7 +297,6 @@ defmodule Aiur.Config.Schema.Agent do
     # the escalation threshold, so a crash under saturation (the sparse
     # `erl_child_setup` dump has no stack) is interpretable. Default on; set
     # false to disable the recorder.
-    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.saturation_log_enabled | boolean | true | Records host and VM diagnostics when sustained load crosses the saturation threshold. |
     field(:saturation_log_enabled, :boolean, default: true)
     # Minimum seconds a ready-work capacity-starvation condition must persist
