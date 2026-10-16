@@ -18,6 +18,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
                token: "test-gh-token",
                request_fun: request,
                live_observations_fun: fn _, _ -> {:ok, []} end,
+               changed_paths_fun: fn _, _ -> {:ok, []} end,
+               annotations_fun: fn _, _ -> {:ok, []} end,
                job_log_fun: fn _, _ -> {:ok, "failed test ExampleTest regression"} end,
                jobs_fun: fn
                  101, _ ->
@@ -37,7 +39,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
              )
   end
 
-  test "a completed failed run is fetched once across repeated polls" do
+  test "the classifier skips claimed failures while quarantine scanning revisits runs" do
     parent = self()
 
     journal =
@@ -60,6 +62,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
       request_fun: request,
       journal_path: journal,
       live_observations_fun: fn _, _ -> {:ok, []} end,
+      changed_paths_fun: fn _, _ -> {:ok, []} end,
+      annotations_fun: fn _, _ -> {:ok, []} end,
       job_log_fun: fn _, _ -> {:ok, "failed test ExampleTest regression"} end,
       jobs_fun: fn id, _ ->
         send(parent, {:jobs, id})
@@ -78,7 +82,10 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
 
     assert :ok = MergeGroups.cancel_stale([], options)
     assert_received {:jobs, 111}
+    assert_received {:jobs, 111}
+    refute_received {:jobs, _}
     assert :ok = MergeGroups.cancel_stale([], options)
+    assert_received {:jobs, 111}
     refute_received {:jobs, _}
   end
 
@@ -106,6 +113,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
       request_fun: request,
       journal_path: journal,
       live_observations_fun: fn _, _ -> {:ok, []} end,
+      changed_paths_fun: fn _, _ -> {:ok, []} end,
+      annotations_fun: fn _, _ -> {:ok, []} end,
       jobs_fun: fn 121, _ ->
         send(parent, :jobs_requested)
 
@@ -129,6 +138,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureFetchTest do
     assert_received :jobs_requested
     assert :ok = MergeGroups.cancel_stale([], options)
     assert_received :jobs_requested
+    assert_received :jobs_requested
+    refute_received :jobs_requested
   end
 
   defp group_run(id, conclusion, prs) do
