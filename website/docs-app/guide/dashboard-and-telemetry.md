@@ -14,6 +14,8 @@ When `server.port` (or CLI `--port`) is set, Aiur exposes:
 
 The endpoint serves packaged dashboard hooks, styles, fonts, logos, and provider icons from `priv/static` before router dispatch. Explicit allowlists keep the dashboard Basic Auth boundary intact: runtime assets revalidate, stable logo and font files use long-lived caching, and provider icons derive from the coding-agent registry.
 
+The `/build` timeline shows epic columns for whole visible history days, with a shared column set for planned and not-queued tickets. Feature focus locks the columns while scrolling. Counts show server totals; `—` means the count is unavailable. Narrow flow layouts replace headers with “Colour = epic”.
+
 Content-addressed layout vendor files remain on their verified router paths; vendor manifests, provenance, sources, and licenses are not exposed.
 
 The Units catalog reconciles retained current-run membership with the latest fresh orchestrator snapshot. After a daemon generation change, current agents remain visible while membership catches up; counts are marked partial if that membership source is unavailable.
