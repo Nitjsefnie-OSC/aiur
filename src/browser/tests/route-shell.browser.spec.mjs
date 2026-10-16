@@ -213,6 +213,10 @@ test('a stored light theme never paints a dark frame and the toggle persists und
   expect(themes).toContain('light')
   expect(themes).not.toContain('dark')
   expect(await page.evaluate(() => document.fonts.check('16px "Space Grotesk"'))).toBe(true)
+  // The pre-paint work comes from the aiur-style script, not an inline copy, and the toggle imports its module.
+  expect(await page.locator('script[src="/aiur-style/init/theme-init.js"]').count()).toBe(1)
+  expect(await page.evaluate(() => [...document.scripts].some((s) => !s.src && s.textContent.includes('aiur-theme')))).toBe(false)
+  expect(await page.evaluate(() => performance.getEntriesByType('resource').some((r) => r.name.endsWith('/aiur-style/js/theme.js')))).toBe(true)
 
   await page.locator('#theme-toggle').evaluate((button) => button.click())
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
