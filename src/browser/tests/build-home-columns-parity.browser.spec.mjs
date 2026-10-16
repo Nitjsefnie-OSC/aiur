@@ -1,3 +1,4 @@
+import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
 import { readFile } from 'node:fs/promises'
 import { test, expect } from '@playwright/test'
 import { openParityPair, expectDesignParity, waitParityReady, FIXTURE_META, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
@@ -34,11 +35,7 @@ for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`,
     const read = page => page.evaluate(() => [...document.querySelectorAll('.bd-lane, .bd-guide')].map(el => ({ cls: el.className, left: el.style.left, width: el.style.width, hue: el.style.getPropertyValue('--h'), title: el.title, count: el.querySelector('em')?.textContent, paint: Object.fromEntries(['backgroundColor', 'borderLeft', 'font', 'color', 'transition'].map(key => [key, getComputedStyle(el)[key]])) })))
     expect(await read(pair.product)).toEqual(await read(pair.design))
     // Guides sit behind separately owned cards and the Now band; their geometry and paint are compared above.
-    // Use the toolbar parity fixture's integer origin and canvas for translucent chrome.
-    for (const page of [pair.design, pair.product]) await page.locator('.bd-lanes').evaluate(el => {
-      const box = el.getBoundingClientRect()
-      Object.assign(el.style, { position: 'fixed', left: Math.round(box.x) + 'px', top: '100px', width: box.width + 'px', background: 'var(--bg)', zIndex: '9999', transform: 'translateZ(0)' })
-    })
+    await Promise.all([pair.design, pair.product].map(normalizeColumnCapture))
     await expectDesignParity(pair, { name: 'columns-' + cell.mode, region: '.bd-lanes', preserveAnimations: true })
   } finally { await pair.close() }
 })

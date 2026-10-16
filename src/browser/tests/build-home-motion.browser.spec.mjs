@@ -1,3 +1,4 @@
+import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
 import { openVisualRoute } from '../support/visual.mjs'
 import { test, expect } from '@playwright/test'
@@ -259,6 +260,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
       test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
+      if (name.startsWith('columns.')) await Promise.all([pair.design, pair.product].map(normalizeColumnCapture))
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       collectAllowlist(design, product, entries)

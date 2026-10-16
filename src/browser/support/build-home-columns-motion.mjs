@@ -27,3 +27,11 @@ export async function columnSequence(page, ctx, { click, cssMotion, state, scrol
   return { samples, dom: await columnState(), applyAt, removeAt, animation }
 }
 
+
+// Match the toolbar fixture: isolate translucent chrome from unrelated shell geometry.
+export async function normalizeColumnCapture(page) {
+  await page.locator('.bd-lanes').evaluate(el => {
+    const box = el.getBoundingClientRect()
+    Object.assign(el.style, { position: 'fixed', left: Math.round(box.x) + 'px', top: '100px', width: Math.floor(box.width) + 'px', background: 'var(--bg)', zIndex: '9999', transform: 'translateZ(0)' })
+  })
+}
