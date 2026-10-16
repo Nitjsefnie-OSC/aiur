@@ -107,7 +107,6 @@ defmodule Aiur.Workspace.AttributionHooksSetupTest do
     assert File.read!(Path.join(workspace, "pre-push-input")) == push_input
   end
 
-
   # #4623: the pre-push guard scans only the commits a push introduces, never history inherited from main.
   @ai_message "subject\n\nCo-authored-by: Claude <noreply@anthropic.com>"
 
@@ -179,7 +178,6 @@ defmodule Aiur.Workspace.AttributionHooksSetupTest do
 
   defp push(workspace, branch) do
     System.cmd("git", ["-C", workspace, "push", "origin", branch], stderr_to_stdout: true)
-
   end
 
   defp git!(directory, args) do
