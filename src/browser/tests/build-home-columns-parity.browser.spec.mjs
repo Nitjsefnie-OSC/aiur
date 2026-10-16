@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { test, expect } from '@playwright/test'
-import { openParityPair, expectDesignParity, waitParityReady, FIXTURE_META } from '../support/design-parity.mjs'
+import { openParityPair, expectDesignParity, waitParityReady, FIXTURE_META, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
 
 const source = await readFile(new URL('../../test/fixtures/build_home/design-source/assets/build.js', import.meta.url), 'utf8')
 const probe = source.replace('  window.AiurBuild = {', `window.__columns = { prepare(mode) {
@@ -17,7 +17,7 @@ const cells = [
 ]
 for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`, async ({ browser }) => {
   test.setTimeout(120_000)
-  const pair = await openParityPair(browser, { dataset: cell.dataset, viewport: { width: cell.width, height: 900 }, theme: cell.theme, palette: cell.palette }, { motion: true })
+  const pair = await openParityPair(browser, { dataset: cell.dataset, ...PARITY_VIEWPORTS.find(v => v.viewport.width === cell.width), theme: cell.theme, palette: cell.palette }, { motion: true })
   try {
     await pair.design.route('**/assets/build.js*', route => route.fulfill({ contentType: 'text/javascript', body: probe }))
     await pair.design.reload(); await waitParityReady(pair.design, 'board', 'design', true)
@@ -34,6 +34,11 @@ for (const cell of cells) test(`column parity ${Object.values(cell).join(' ')}`,
     const read = page => page.evaluate(() => [...document.querySelectorAll('.bd-lane, .bd-guide')].map(el => ({ cls: el.className, left: el.style.left, width: el.style.width, hue: el.style.getPropertyValue('--h'), title: el.title, count: el.querySelector('em')?.textContent, paint: Object.fromEntries(['backgroundColor', 'borderLeft', 'font', 'color', 'transition'].map(key => [key, getComputedStyle(el)[key]])) })))
     expect(await read(pair.product)).toEqual(await read(pair.design))
     // Guides sit behind separately owned cards and the Now band; their geometry and paint are compared above.
+    // Use the toolbar parity fixture's integer origin and canvas for translucent chrome.
+    for (const page of [pair.design, pair.product]) await page.locator('.bd-lanes').evaluate(el => {
+      const box = el.getBoundingClientRect()
+      Object.assign(el.style, { position: 'fixed', left: Math.round(box.x) + 'px', top: '100px', width: box.width + 'px', background: 'var(--bg)', zIndex: '9999', transform: 'translateZ(0)' })
+    })
     await expectDesignParity(pair, { name: 'columns-' + cell.mode, region: '.bd-lanes', preserveAnimations: true })
   } finally { await pair.close() }
 })
