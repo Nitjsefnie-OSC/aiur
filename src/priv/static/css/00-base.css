@@ -65,6 +65,7 @@
   --progress-bar-height: 0.5rem;
   --pill-bd: rgba(221, 226, 235, 0.14);
   --ack-soft: rgba(79, 214, 196, 0.14);
+  --warning: var(--attention);
   --attn: var(--attention);
   --attn-ink: var(--attention-ink);
   --attn-soft: var(--attention-soft);
