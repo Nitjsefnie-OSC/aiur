@@ -6,10 +6,7 @@ Aiur's resident Python broker reuses one SQLite connection and batches commands 
 
 The request pacer may refuse a read as `:shared_budget` before GitHub. Dispatch retries these holds and escalates after `agent.dispatch_hold_attention_threshold` consecutive declines; `aiur status` reports their per-resource rate as `GITHUB HOLDS`.
 
-A broker deadline is a **local hold**: Aiur backs off, keeps the claim, and
-keeps attempt counters. `Errors.outcome/1` sorts results into `:complete`,
-`:held` (never sent), `:unknown` (may still apply) or `:failed`; an unknown
-review-thread reply is reconciled by reading the thread, never reposted.
+A broker deadline is a **local hold**: Aiur backs off, keeps the claim, and keeps attempt counters. `Errors.outcome/1` sorts results into `:complete`, `:held` (never sent), `:unknown` (may still apply) or `:failed`; an unknown review-thread reply is reconciled by reading the thread, never reposted.
 
 Resident broker exits also back off as local holds; the next call restarts the
 broker. Requests retain independent deadlines while sharing a transaction.
@@ -153,8 +150,3 @@ still exhausts it, just later.
 
 The pool total is also a ceiling rather than a balance, because the credentials'
 windows reset at different moments. Pooling buys margin while the burn itself is reduced.
-
-## Related topics
-
-- [Per-caller costs](/apis/github-costs)
-- [Polling and cadence](/apis/github-polling#poll-cadence)

@@ -25,6 +25,7 @@ If the delivery cannot be resolved to a thread, it is keyed on its own comment i
 
 If the record is unavailable or unreadable, Aiur behaves as though it were absent: it publishes, and the existing one-hour replay window catches short-range duplicates. A duplicate wake is recoverable; a dropped comment is not.
 
+
 ## One record for one resource
 
 The record is not only a set of marks. Aiur keeps the resource GitHub returned — the comment, the issue, the pull request — addressed by what it is: type, owner, repository, id.
@@ -69,6 +70,7 @@ converge on the same state. Partial, stale, poll-only, head-mismatched, or
 unavailable entries fall back to GitHub. A review-comment delivery invalidates
 the complete thread snapshot because one comment cannot prove the collection.
 
+
 ## Optional webhook
 
 The webhook shortens reaction time for repository events while polling continues as a reconciliation path.
@@ -108,8 +110,3 @@ A repo that is not proven (or degraded back to full polling) keeps 30-second TTL
 Repository-configuration reads are the one exception: branch protection, rulesets and workflow-file reads (`:repo_config`) ride a five-minute TTL in polling mode and still rise to an hour under a proven webhook, because every delivery also retires a repository's config reads.
 
 See [Configuration](/reference/configuration#webhooks) for the repository list, silence threshold, sweep interval, and widen factor.
-
-## Related topics
-
-- [Polling and cadence](/apis/github-polling#poll-cadence)
-- [GitHub credentials and security](/apis/github-auth)

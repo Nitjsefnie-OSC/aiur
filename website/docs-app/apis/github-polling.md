@@ -12,6 +12,7 @@ No model/effort/alias labels are seeded and existing labels are neither deleted 
 
 Label read/create failures stop startup before agents start and explain the required Issues permissions. Repository-local configurations keep the explicit init flow.
 
+
 ## What Aiur polls
 | Poll | What it tracks | Why it exists |
 | --- | --- | --- |
@@ -36,13 +37,13 @@ Polling remains the webhook fallback. Delivery-speed cost evaluation resolves el
 
 Measured on aiur-team/aiur on 2026-10-11: facts cost 4 points before bounding branch candidates to five, then 1 point for #3797 (1,610 nodes). Timeline pages cost 1 point; 146 tags require at least two requests per hourly capture. Actual costs appear in `aiur github-cost`; no fleet saving is claimed.
 
-The development `scripts/aiurdev --test` and `--test3` harnesses still read GitHub's issue lists, but pass only their pinned sandbox tickets to dispatch authorization, startup workspace cleanup, and tracker reconciliation. Ordinary runs retain full issue discovery.
+The development `scripts/aiurdev --test` and `--test3` harnesses read GitHub issues but authorize only pinned tickets. Each scoped run gets private budget and state directories, and remote agents receive no GitHub credential. Ordinary runs keep normal discovery and remote credentials.
 
-CI batches and landing require all ruleset checks on PR heads. Startup readiness uses operator-only `AIUR_CI_READINESS_TOKEN` (`ci gate` here) and reports unavailable without it. Main-watch refreshes App auth once after 401; status names the failed request and credential class. Missing/skipped checks fail; lookup errors keep green aggregates pending.
+CI batches and landing require all ruleset checks on PR heads. Startup readiness uses operator-only `AIUR_CI_READINESS_TOKEN` (`ci gate` here) and reports unavailable without it. On a 401, main-watch names the applied credential; logs show a token fingerprint, never the token. Missing/skipped checks fail; lookup errors keep green aggregates pending.
 
 Only required checks decide a failure: a red check that nothing requires does not send the ticket to rework. With no required list, every failure still decides.
 
-Ticket CI holds user-cancelled runs pending. The landing watcher follows approvals, retries infra failures, routes real failures to rework, checks attribution, and cancels stale groups. A same-job pass in an overlapping group proves a flake; it files a test-keyed issue, emits durable evidence, and re-enqueues approved PRs.
+User-cancelled CI runs stay pending. Landing watcher classifies failed groups from Actions logs and requeues approved PRs for infra, inherited, or known non-PR failures. Known tests match an open flake issue or base failure in 24h, and are untouched by the PR. Others route to rework with job/run details. It checks attribution and cancels stale groups.
 
 The agent `git` guard spends one GraphQL read per push of the current branch and refuses the push when that PR is in the merge queue, unless GitHub reports it `CONFLICTING` or changes are requested. A lookup that cannot answer lets the push through.
 
@@ -73,6 +74,7 @@ Where a webhook is proven, the comment sweep becomes a reconciliation pass rathe
 
 The CI poll drops from its batch a target a `check_run` delivery already answered since the last read — the read is not bought again. Displacement is per target: a ticket with no delivery keeps its cadence, and only the read is skipped; no verdict is served from the held body. An unmatched check-run id keeps the target polled; polling stays the fallback.
 
+
 ## Build Order membership recovery
 
 Build Order catalogs normally rebuild from stored issue and membership events. A daemon-owned membership reconciliation also reads GitHub in every webhook mode, including healthy and unproven delivery, because activity in other event families does not prove that sub-issue events arrived.
@@ -88,6 +90,7 @@ If the membership store call times out or its owner exits, processing reports a 
 These reads use the existing planning bounds and governed GitHub transport. This recovery adds bounded reads and claims no quota saving.
 
 A stale single-root CLI read can separately refresh that root's graph. It respects provider retry delays and does not imply that catalog membership was refreshed at the same instant.
+
 
 ## Poll cadence
 
@@ -201,9 +204,3 @@ The ticket backlog, Ad Hoc overlay and Build Order catalog reach the page the mo
 | `aiur --todo`, `aiur set max-agents`, global resume | Admission-changing actions request a fresh sweep, so a ticket is refreshed — and dispatched — before the backed-off timer can hold it up. `aiur --todo` also records the queued identifiers as known demand: the woken poll and one follow-up stay at the base interval even if GitHub has not yet indexed the label, and the command warns on stderr when the daemon did not accept the refresh. |
 
 Aiur's poll is state-based, so a longer interval delays a wake without losing one; the exception is a comment posted and answered between two polls.
-
-## Related topics
-
-- [API budgets](/apis/github-budgets)
-- [Webhooks and resource cache](/apis/github-webhooks)
-- [GitHub credentials and security](/apis/github-auth)

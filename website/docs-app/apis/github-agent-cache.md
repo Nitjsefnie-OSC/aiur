@@ -1,4 +1,4 @@
-# Shared agent GitHub reads
+# GitHub agent read cache
 
 ## Shared agent reads
 
@@ -105,8 +105,3 @@ somebody else — is not seen by the wrapper. Aiur learns of it through the webh
 or the next poll and retires the affected answers then.
 
 That gap is the exposure, and it is why a verdict is never kept at all.
-
-## Related topics
-
-- [API budgets](/apis/github-budgets)
-- [GitHub credentials and security](/apis/github-auth)

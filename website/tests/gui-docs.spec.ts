@@ -260,7 +260,7 @@ test('docs group operator surfaces and API guidance without dense prose', async 
   expect(github).toContain('/apis/github-polling')
   expect(githubPolling).toContain('## Poll cadence')
   expect(githubBudgets).toContain('### Reading these numbers without fooling yourself')
-  expect(githubCosts).toContain('(`ci_recovery` caller)')
+  expect(githubCosts).toContain('Actions attempts (`ci_recovery`)')
   expect(githubWebhooks).toContain('`AIUR_GITHUB_WEBHOOK_SECRET`')
   expect(githubAuth).toContain('## GitHub App authentication')
   expect(githubAuth).toContain('## Human-review base checks')

@@ -8,6 +8,7 @@
 | Unresolvable CODEOWNERS | Failed teams contribute no members, including previously trusted members. Status/dashboard show the cause and age; sanitized comments remain visible to the Executor but untrusted bodies never enter agent digests or commands. Incomplete path ownership is unknown. |
 | The bot identity | Cannot trigger its own work, except a distinct daemon App author filing a marked fixer authorized by `merge_policy.main_watch.on_red: dispatch_fixer`. Shared/PAT identities require human triage. |
 
+
 ## GitHub App authentication
 
 The daemon authenticates with a short-lived GitHub App installation token when App credentials are configured, and falls back to the `GITHUB_TOKEN` personal access token otherwise.
@@ -95,9 +96,8 @@ Git commits keep their configured author; only GitHub API objects are authored b
 
 See `docs/security/daemon-token-posture.md` in this repository for the full setup narrative.
 
-## Agent guard and review-base checks
 
-### What the agent guard governs
+## What the agent guard governs
 
 Agent processes do **not** inherit `GITHUB_TOKEN` or `GH_TOKEN`. The daemon scrubs them from every agent environment and instead writes the bot PAT to a
 credential file (`~/.aiur/github-budget/agent-token`) that the `gh` guard
@@ -141,6 +141,7 @@ Comparison reads are attributed to `human_review_base_ancestry` and always conta
 
 For the next 10 handoffs after rollout, record the tested PR head, observed base SHA and overlap/conflict verdict. Count unsafe handoffs reaching review separately from harmless stale heads; the earlier 3-of-8 stale-base count is context, not an equivalent baseline for this narrower measure.
 
+
 ## Cloudflare tunnel boundary
 
 Cloudflare is transport for the GitHub webhook, not an API Aiur calls.
@@ -160,8 +161,3 @@ The path scope and webhook signature are independent locks:
 | HMAC-SHA256 signature | Requests from anyone who does not know the shared webhook secret. |
 
 Do not remove the catch-all `404`: the same origin serves the operator dashboard, and a host-wide tunnel would expose it to anyone who learned the hostname.
-
-## Related topics
-
-- [Polling](/apis/github-polling)
-- [Webhooks and tunnel boundary](/apis/github-webhooks)
