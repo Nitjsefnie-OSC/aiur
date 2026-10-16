@@ -141,6 +141,7 @@ defmodule Aiur.BrowserHarness.FixtureEndpoint do
 
   plug(Plug.RequestId)
   plug(Plug.Session, @session_options)
+  plug(:fetch_query_params)
   plug(Aiur.BrowserHarness.FixtureRouter)
 end
 
