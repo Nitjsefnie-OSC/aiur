@@ -64,9 +64,6 @@ defmodule Aiur.AffectedTests do
       {selection, candidates, fallback} when is_list(candidates) and is_list(fallback) ->
         {selection, candidates, fallback}
 
-      {selection, candidates} when is_list(candidates) ->
-        {selection, candidates, candidates}
-
       selection ->
         {selection, [], []}
     end

@@ -132,9 +132,10 @@ defmodule Mix.Tasks.Aiur.AffectedTests.XrefSelectionTest do
   test "uses compiled xref callers and bounds the replay selections" do
     root = File.cwd!() |> Path.dirname()
     original_paths = System.get_env("AIUR_CI_CHANGED_PATHS_B64")
+    original_event_name = System.get_env("GITHUB_EVENT_NAME")
 
     replay_cases = [
-      {"#4447", ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"], ["failure_test.exs", "transitions_test.exs"]},
+      {"#4447", ["src/lib/aiur/orchestrator/ci_lifecycle/result_projection.ex"], ["failure_test.exs", "transitions_test.exs"], "full"},
       {"#4593",
        [
          "src/lib/aiur/build_queue/attention.ex",
@@ -145,11 +146,13 @@ defmodule Mix.Tasks.Aiur.AffectedTests.XrefSelectionTest do
          "src/lib/aiur/build_queue/settings.ex",
          "src/lib/aiur/build_queue_cli.ex",
          "src/lib/aiur/tracker.ex"
-       ], ["set_waiting_test.exs", "queue_set_next_test.exs"]}
+       ], ["set_waiting_test.exs", "queue_set_next_test.exs"], "full"}
     ]
 
     try do
-      Enum.each(replay_cases, fn {pr, changed, expected_tests} ->
+      System.delete_env("GITHUB_EVENT_NAME")
+
+      Enum.each(replay_cases, fn {pr, changed, expected_tests, expected_status} ->
         System.put_env("AIUR_CI_CHANGED_PATHS_B64", Base.encode64(Jason.encode!(changed)))
 
         assert {:ok, selected, candidates, fallback, ^changed} =
@@ -160,16 +163,19 @@ defmodule Mix.Tasks.Aiur.AffectedTests.XrefSelectionTest do
                  "#{pr} pre-cap candidates omitted #{expected}"
         end)
 
-        if pr == "#4593", do: assert(length(fallback) > 400)
+        assert length(fallback) > 400, "#{pr} should exceed the fallback cap"
 
-        assert %{"status" => status} = AffectedTests.selection_json(selected) |> Jason.decode!()
-        expected_status = if length(fallback) <= 400, do: "scoped", else: "full"
-        assert status == expected_status, "#{pr} has #{length(fallback)} fallback candidates"
+        assert %{"status" => ^expected_status} =
+                 AffectedTests.selection_json(selected) |> Jason.decode!()
       end)
     after
       if original_paths,
         do: System.put_env("AIUR_CI_CHANGED_PATHS_B64", original_paths),
         else: System.delete_env("AIUR_CI_CHANGED_PATHS_B64")
+
+      if original_event_name,
+        do: System.put_env("GITHUB_EVENT_NAME", original_event_name),
+        else: System.delete_env("GITHUB_EVENT_NAME")
     end
   end
 end
