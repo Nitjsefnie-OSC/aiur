@@ -11,7 +11,7 @@
     "fixture:preflight": "cd .. && mise exec -- mix compile --warnings-as-errors",
     "fixture:server": "node scripts/start-fixture.mjs",
     "test:admission": "node --test scripts/browser-admission.test.mjs",
-    "test": "npm run test:core && npm run test:home-css",
+    "test": "npm run test:core && npm run test:home-css && npm run test:build-home-cards",
     "test:build-home-layout": "npm run fixture:preflight && node scripts/run-browser-tests.mjs tests/build-home-layout.browser.spec.mjs",
     "test:build-home-assets": "node scripts/run-browser-tests.mjs tests/build-home-assets.browser.spec.mjs",
     "test:smoke": "node scripts/run-browser-tests.mjs tests/liveview-smoke.spec.mjs",
@@ -57,7 +57,8 @@
     "test:core": "npm run test:home-css-ci && npm run test:admission && npm run check:elk && npm run check:build-home-fixtures && npm run test:build-home-protocol && npm run test:build-home-now-state && npm run fixture:preflight && npm run test:harness && npm run test:smoke && npm run test:build-home-assets && npm run test:build-home-layout && npm run test:shell && npm run test:shell-chrome && npm run test:shell-width && npm run test:command-history && npm run test:build-order && npm run test:build-queue && npm run test:experiments && npm run test:interaction && npm run test:time-brush && npm run test:performance && npm run test:responsive && npm run test:layout && npm run test:ticket-context && npm run test:units && npm run test:provider-meters && npm run test:meter-row && npm run test:models-panel && npm run test:quota-panel && npm run test:parity && npm run test:streamdeck && npm run test:streamdeck-flow && npm run test:design-parity && npm run test:palette && npm run test:tokens && npm run test:shell-parity && npm run test:build-home && npm run test:build-home-motion && npm run test:build-home-offline && npm run test:build-home-render && npm run test:build-home-tools",
     "test:build-home-render": "node scripts/run-browser-tests.mjs tests/build-home-render.browser.spec.mjs tests/build-home-render-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
     "test:build-home-offline": "node scripts/run-browser-tests.mjs tests/build-home-offline.browser.spec.mjs",
-    "test:build-home-tools": "node scripts/run-browser-tests.mjs tests/build-home-tools.browser.spec.mjs && node scripts/run-browser-tests.mjs tests/build-home-tools-parity.browser.spec.mjs --config playwright.design-parity.config.mjs"
+    "test:build-home-tools": "node scripts/run-browser-tests.mjs tests/build-home-tools.browser.spec.mjs && node scripts/run-browser-tests.mjs tests/build-home-tools-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
+    "test:build-home-cards": "node scripts/run-browser-tests.mjs tests/build-home-cards.browser.spec.mjs --config playwright.design-parity.config.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.11.3",
