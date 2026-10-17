@@ -149,7 +149,7 @@
     "kind": "copy",
     "selector": "#bd-vp",
     "cells": {},
-    "reason": "earlier days could not load \u00b7 scroll up to retry",
+    "reason": "earlier days could not load · scroll up to retry",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -162,7 +162,7 @@
     "kind": "copy",
     "selector": "#bd-vp",
     "cells": {},
-    "reason": "loaded \u00b7 total unknown",
+    "reason": "loaded · total unknown",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -194,6 +194,47 @@
       "by": null,
       "date": null,
       "ref": "https://github.com/aiur-team/aiur/blob/research/refactor-findings/docs/research/experiments/x5/brainstorm.md#open-questions-for-kevin"
+    }
+  },
+  {
+    "id": "edges-flow-wide-hide",
+    "kind": "copy",
+    "selector": "#bd-edges",
+    "cells": {},
+    "reason": "Edges return after a flow to wide resize; the design leaves .hide on",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "S-36 / #3145 decision 2"
+    }
+  },
+  {
+    "id": "edges-now-band-pending",
+    "kind": "copy",
+    "selector": "#bd-edges",
+    "cells": {},
+    "reason": "B1/B1b edges that end on a card in the now band differ until the product band holds live items (C9-T08)",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "C9-T08 / #3145"
+    }
+  },
+  {
+    "id": "edges-dense-columns-pending",
+    "kind": "copy",
+    "selector": "#bd-edges",
+    "cells": {
+      "dataset": "dense"
+    },
+    "reason": "B1/B1b dense: the product draws 7 columns (adds Design, Unsorted), the design 5, so card x differs; owner is the column/data work upstream of C9-T07",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "C9-T04 columns / #3145"
     }
   }
 ]
