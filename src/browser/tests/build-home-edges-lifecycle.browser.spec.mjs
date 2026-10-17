@@ -53,16 +53,18 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
 
 test('B8 destroy cancels pending draws and disconnected content is untouched', async ({ page }) => {
   await open(page)
+  await page.clock.install({ time: 1791408000000 })
+  await page.clock.pauseAt(1791408000000)
   await page.evaluate(() => {
     window.oldSVG = st.ctx.svg; window.mutations = 0
     window.edgeObserver = new MutationObserver(() => { if (!oldSVG.isConnected) mutations++ })
     edgeObserver.observe(oldSVG, { attributes: true, childList: true, subtree: true })
     st.fx.drawEdgesSoon(420)
   })
-  await page.waitForTimeout(50)
+  await page.clock.runFor(50)
   await navigate(page, '/commands')
   await expect(page.locator('#bd-content')).toHaveCount(0)
-  await page.waitForTimeout(600)
+  await page.clock.runFor(600)
   expect(await page.evaluate(() => mutations)).toBe(0)
   // Also exercise the defensive guard independently of lifecycle cancellation.
   expect(await page.evaluate(() => {
