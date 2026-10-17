@@ -51,3 +51,27 @@ test('geometry stacks all agents despite epic filters and never caps tall bands'
   assert.equal(bandLayout({ ...D, now: [] }, S, dims, sizes).h, 86)
   assert.equal(bandLayout({ ...D, now: Array(24).fill(D.now[0]) }, S, dims, sizes).items.length, 24)
 })
+
+test('scrollVP consumes lifecycle frame timestamps, eases, cancels and disposes', async t => {
+  const { ctx } = await import('../../priv/static/build-home/state.js')
+  const { createLife } = await import('../../priv/static/build-home/life.js')
+  const { scrollVP } = await import('../../priv/static/build-home/band-scroll.js')
+  const queued = new Map(); let next = 0
+  t.mock.method(performance, 'now', () => 0)
+  const names = ['window', 'matchMedia', 'requestAnimationFrame', 'cancelAnimationFrame']
+  const previous = names.map(k => Object.getOwnPropertyDescriptor(globalThis, k))
+  Object.assign(globalThis, { window: { matchMedia: true }, matchMedia: () => ({ matches: false }),
+    requestAnimationFrame: fn => { queued.set(++next, fn); return next }, cancelAnimationFrame: id => queued.delete(id) })
+  try {
+    ctx.life = createLife(); ctx.vp = { scrollTop: 300, scrollHeight: 5000, clientHeight: 200 }
+    const frame = now => { const callbacks = [...queued.values()]; queued.clear(); callbacks.forEach(fn => fn(now)) }
+    scrollVP(1300, true); frame(210)
+    assert.equal(ctx.vp.scrollTop, 1175)
+    scrollVP(100, false); frame(420); assert.equal(ctx.vp.scrollTop, 100)
+    scrollVP(-100, false); assert.equal(ctx.vp.scrollTop, 0)
+    scrollVP(9000, false); assert.equal(ctx.vp.scrollTop, 4800)
+    scrollVP(0, true); ctx.life.dispose(); assert.equal(queued.size, 0)
+  } finally {
+    names.forEach((name, i) => previous[i] ? Object.defineProperty(globalThis, name, previous[i]) : delete globalThis[name])
+  }
+})

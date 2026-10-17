@@ -2,7 +2,7 @@
 // the same raster origin. Header/usage height differs outside this ticket.
 export async function alignBoard(pair) {
   for (const page of [pair.design, pair.product]) await page.evaluate(() => {
-    window.scrollTo(0, 0)
+    window.scrollTo(0, 0); document.body.style.background = 'var(--bg)'
     const vp = document.querySelector('#bd-vp'), host = vp.parentElement, box = host.getBoundingClientRect()
     Object.assign(host.style, { position: 'fixed', left: Math.round(box.x) + 'px', top: '100px', width: box.width + 'px', zIndex: '9999' })
   })

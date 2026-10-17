@@ -1,15 +1,24 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import AxeBuilder from '@axe-core/playwright'
+import { openFixture } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles' })
+test.beforeEach(async ({ page }, info) => {
+  const root = info.project.metadata.bandAssetRoot
+  if (root) await page.route('**/build-home/*.js', async route => {
+    const file = new URL(route.request().url()).pathname.split('/').at(-1)
+    await route.fulfill({ contentType: 'text/javascript', body: await readFile(root + '/' + file, 'utf8') })
+  })
+})
 async function open(page, dataset = 'live', query = '') {
   page.on('pageerror', error => { throw error })
   await page.goto('/build-fixture/' + dataset + query)
   await expect(page.locator('.bd-now-h > b')).toHaveText('Live')
   await page.evaluate(async () => { window.m = await import('/build-home/state.js'); window.band = await import('/build-home/band.js') })
 }
-async function settle(page) { await page.clock.runFor(1008) }
+async function settle(page) { for (let i = 0; i < 64; i++) await page.clock.runFor(16) }
 
 test('header, permanent noanim cards, minimize URL and preset toggles are wired', async ({ page }) => {
   await open(page)
@@ -48,7 +57,7 @@ test('empty fleet is 86px, unavailable source has separate copy and no presets',
   await expect(page.locator('.bd-now-st button, .bd-now-sum')).toHaveCount(0)
 })
 test('clock ticks on payload minute boundaries without new diffs and preserves cached timestamps', async ({ page }) => {
-  await page.clock.install(); await open(page)
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page)
   await expect(page.locator('.bd-now-h time')).toHaveText('14:20')
   await page.clock.runFor(59000)
   await expect(page.locator('.bd-now-h time')).toHaveText('14:20')
@@ -60,7 +69,7 @@ test('clock ticks on payload minute boundaries without new diffs and preserves c
   await expect(page.locator('.bd-now-h time')).toHaveText('cached 14:14')
 })
 test('scrolling clears unlocked hover, disables card pointers and settles; reduced motion still snaps', async ({ page }) => {
-  await page.clock.install(); await open(page); await settle(page)
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page); await settle(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.evaluate(() => {
     window.hoverCalls = []; m.ctx.hoverId = m.ctx.D.now[0].id; m.fx.setHover = id => hoverCalls.push(id)
@@ -75,7 +84,7 @@ test('scrolling clears unlocked hover, disables card pointers and settles; reduc
   expect(await page.evaluate(() => Math.abs(m.ctx.vp.scrollTop - (m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h - 46)))).toBeLessThanOrEqual(1)
 })
 test('jump uses 420ms cubic easing, clamps and cancels previous animations', async ({ page }) => {
-  await page.clock.install(); await open(page); await settle(page)
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page); await settle(page)
   await page.evaluate(() => {
     // Tall viewport constraint disables guard so the curve is measured without a second snap.
     m.ctx.vp.style.height = '200px'; m.S.ready = false
@@ -93,7 +102,7 @@ test('jump uses 420ms cubic easing, clamps and cancels previous animations', asy
   expect(await page.evaluate(() => m.ctx.vp.scrollTop)).toBe(0)
 })
 test('tall fleet, paging and scrollbar drag suppress snapping', async ({ page }) => {
-  await page.clock.install(); await open(page, 'now24'); await settle(page)
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page, 'now24'); await settle(page)
   expect(await page.locator('#bd-now .bd-card')).toHaveCount(24)
   const before = await page.evaluate(() => m.ctx.vp.scrollTop)
   await page.evaluate(() => m.ctx.vp.scrollTop -= 100); await settle(page)
@@ -110,16 +119,21 @@ test('tall fleet, paging and scrollbar drag suppress snapping', async ({ page })
   }
 })
 test('destroy cancels band frames, settle locks and clock ticks; remount resets scrolling', async ({ page }) => {
-  await page.clock.install(); await open(page); await settle(page)
-  const initial = await page.evaluate(() => {
+  await openFixture(page)
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page); await settle(page)
+  await page.evaluate(() => {
     m.fx.scrollVP(300, true); m.fx.markScrolling()
     const vp = m.ctx.vp, time = m.ctx.bandEl.querySelector('time')
-    window.old = { vp, time, st: vp.scrollTop, text: time.textContent }
-    document.querySelector('a[href="/commands"]').click(); return old.text
+    window.old = { vp, time, writes: 0 }
+    const scroll = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    Object.defineProperty(vp, 'scrollTop', { get() { return scroll.get.call(this) }, set(value) { old.writes++; scroll.set.call(this, value) } })
+    window.liveSocket.main.pushLinkPatch(new Event('click'), '/commands', null);
   })
   await expect(page.locator('#bd-vp')).toHaveCount(0)
+  const stopped = await page.evaluate(() => ({ writes: old.writes, text: old.time.textContent, disposed: m.ctx.life.disposed }))
+  expect(stopped.disposed).toBe(true)
   await page.clock.runFor(65000)
-  expect(await page.evaluate(() => ({ st: old.vp.scrollTop, text: old.time.textContent, initial: old.st }))).toEqual({ st: await page.evaluate(() => old.st), text: initial, initial: await page.evaluate(() => old.st) })
+  expect(await page.evaluate(() => ({ writes: old.writes, text: old.time.textContent, disposed: m.ctx.life.disposed }))).toEqual(stopped)
   await open(page); await expect(page.locator('.bd-now-h > b')).toHaveText('Live')
   await settle(page)
   expect(await page.evaluate(async () => (await import('/build-home/state.js')).ctx.isScrolling())).toBe(false)
@@ -148,7 +162,7 @@ test('keyboard minimize, expand and preset expansion retain focus', async ({ pag
 
 test('Live button floating state and click use the actual band geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
-  await page.clock.install(); await open(page, 'newrepo'); await settle(page)
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page, 'newrepo'); await settle(page)
   const floating = await page.evaluate(() => {
     m.ctx.vp.scrollTop = 0; m.fx.update()
     const r = m.ctx.bandEl.getBoundingClientRect(), v = m.ctx.vp.getBoundingClientRect()
@@ -159,4 +173,19 @@ test('Live button floating state and click use the actual band geometry', async 
   const error = await page.evaluate(() => Math.abs(m.ctx.vp.scrollTop - (m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h - 46)))
   expect(error).toBeLessThanOrEqual(1)
   await expect(page.locator('#bd-nowbtn')).not.toHaveClass(/at/)
+})
+
+test('source clock states update through real diffs without inventing live time', async ({ page }) => {
+  await open(page)
+  for (const [name, text] of [['agents-stale', 'cached 14:10'], ['daemon-unknown', '—'], ['offline-no-heartbeat', 'cached —']]) {
+    expect((await page.request.get('/build-control/diff?name=' + name)).ok()).toBe(true)
+    await expect(page.locator('.bd-now-h time')).toHaveText(text)
+  }
+})
+test('focused band card survives live relayout', async ({ page }) => {
+  await open(page)
+  const card = page.locator('#bd-now .bd-card').first(), id = await card.getAttribute('data-id')
+  await card.focus()
+  expect((await page.request.get('/build-control/diff?name=card-pct-null')).ok()).toBe(true)
+  await expect(page.locator('#bd-now .bd-card[data-id="' + id + '"]')).toBeFocused()
 })
