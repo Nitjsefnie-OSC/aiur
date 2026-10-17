@@ -94,6 +94,11 @@ The temporary, unlinked `/build` route reads the repository timeline from local 
 It requires dashboard authentication and loads history by active day in the browser’s time zone.
 Live changes are coalesced; snapshots distinguish unavailable sources from empty sections.
 
+The Now band shows every active agent between history and the plan. It settles
+at the nearest viewport edge after scrolling; **Live** returns to it. Minimize
+keeps the state counts visible (`live=min`), and a state preset expands it.
+The clock shows cached observation time when stale and `—` when unknown.
+
 The toolbar selects Timeline, Gantt or List and retains the view in the URL.
 Use Left/Right arrows or Home/End to move between view tabs, then Enter or Space
 to select. The status line shows the daemon state, including unknown before

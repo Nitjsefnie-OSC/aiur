@@ -1,3 +1,4 @@
+import { alignBoard, alignEtaMask } from '../support/build-home-band-canvas.mjs'
 import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
 import { openVisualRoute } from '../support/visual.mjs'
@@ -259,7 +260,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
   for (const name of Object.keys(SEQUENCES).filter(n => !['inventory', 'grain.static'].includes(n))) test(name, async ({ browser }) => {
     test.setTimeout(120_000)
     const owner = ownerFor(name), reduce = selectedCell.reducedMotion === 'reduce'
-    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('columns.') ? undefined : owner.anchor, productPending: owner.pending })
+    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('columns.') || name.startsWith('snap.') ? undefined : owner.anchor, productPending: owner.pending })
     try {
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
@@ -280,6 +281,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
           await normalizeColumnCapture(page)
         }))
       }
+      if (name.startsWith('snap.')) { await alignBoard(pair); await alignEtaMask(pair); pair.allowlist = pair.allowlist.map(e => e.id === 'now-band-eta-pending' ? { ...e, kind: 'pixel-mask' } : e) }
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
@@ -322,6 +324,7 @@ for (const selectedCell of colourCells) test.describe(`product inventory/grain $
     await openDesign(pair.design, selectedCell, { motion: true, phase })
     await openProduct(pair.product, selectedCell, { motion: true, phase })
     const reduce = selectedCell.reducedMotion === 'reduce'
+    if (selector === '.bd-now') { await alignBoard(pair); await alignEtaMask(pair); pair.allowlist = pair.allowlist.map(e => e.id === 'now-band-eta-pending' ? { ...e, kind: 'pixel-mask' } : e) }
     const barrier = frameBarrier(pair, name, reduce)
     const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, selector, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, selector, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
     collectAllowlist(design, product, scopedEntries(pair.allowlist, selectedCell))
