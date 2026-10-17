@@ -225,7 +225,7 @@
   {
     "id": "edges-flow-wide-hide",
     "kind": "copy",
-    "selector": "#bd-edges",
+    "selector": "#build-root",
     "cells": {},
     "reason": "Edges return after a flow to wide resize; the design leaves .hide on",
     "approval": {
@@ -238,7 +238,7 @@
   {
     "id": "edges-now-band-pending",
     "kind": "copy",
-    "selector": "#bd-edges",
+    "selector": "#build-root",
     "cells": {},
     "reason": "B1/B1b edges that end on a card in the now band differ until the product band holds live items (C9-T08)",
     "approval": {
@@ -251,7 +251,7 @@
   {
     "id": "edges-dense-columns-pending",
     "kind": "copy",
-    "selector": "#bd-edges",
+    "selector": "#build-root",
     "cells": {
       "dataset": "dense"
     },

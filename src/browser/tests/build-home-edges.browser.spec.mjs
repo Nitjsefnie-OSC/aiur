@@ -4,13 +4,11 @@ import { dashboardCredentials } from './support/layout-worker.mjs'
 import { openParityPair, applyAllowlist, waitParityReady, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
 
 const cell = { dataset: 'live', ...PARITY_VIEWPORTS[0], theme: 'dark', palette: 'gruvbox' }
-const paths = page => page.evaluate(() => [...document.querySelectorAll('#bd-edges path:not(.bd-eh), .bd-now-e path')]
-  .map(p => `${p.parentElement.closest('.bd-now-e') ? 'band' : 'main'} ${p.getAttribute('class')} ${p.getAttribute('d')}`).sort())
 
 test('edges are decorative for assistive tech', async ({ browser }) => {
   const pair = await openParityPair(browser, cell)
   try {
-    expect(await pair.product.evaluate(() => [...document.querySelectorAll('#bd-edges, .bd-now-e')].map(el => el.getAttribute('aria-hidden')))).not.toContain(null)
+    expect(await pair.product.evaluate(() => [...document.querySelectorAll('#bd-edges, .bd-now-e')].map(el => el.getAttribute('aria-hidden')))).toEqual(['true', 'true'])
   } finally { await pair.close() }
 })
 
@@ -85,12 +83,26 @@ test.describe('product edges on live', () => {
     await expect(page.locator('.bd-lane')).not.toHaveCount(0)
     await page.evaluate(async () => { window.st = await import('/build-home/state.js'); st.ctx.vp.scrollTop = st.ctx.secs.plan.el.offsetTop })
     await expect.poll(() => edge(page, '615')).toBe('bd-e bl')
+    await page.waitForTimeout(500)
   }
   // B6: a dep_states change alone redraws; the signature must carry ctx.proto.generation.
   test('a state change turns the edge ok', async ({ page }) => {
     await open(page)
     expect(await page.request.get('/build-control/diff?name=edge-state-cleared').then(r => r.status())).toBe(200)
     await expect.poll(() => edge(page, '615')).toBe('bd-e ok')
+  })
+  test('B6 generation alone invalidates cached edge classes', async ({ page }) => {
+    await open(page)
+    const diff = await import('../../test/fixtures/build_home/diffs/edge-state-cleared.json', { with: { type: 'json' } })
+    expect(await page.evaluate(async diff => {
+      const { applyDiff } = await import('/build-home/store.js')
+      st.fx.drawEdges(true)
+      const before = st.ctx.svg.innerHTML
+      const result = applyDiff({ ...diff, epoch: st.ctx.proto.epoch, generation: st.ctx.proto.generation + 1 })
+      if (result.error) throw new Error(result.error)
+      st.fx.drawEdges(false)
+      return { changed: st.ctx.svg.innerHTML !== before, cls: st.ctx.svg.querySelector('.bd-eh[data-e="615"]').nextElementSibling.getAttribute('class').trim() }
+    }, diff.default)).toEqual({ changed: true, cls: 'bd-e ok' })
   })
   // B5: unknown stays the base faint solid line.
   test('an unknown state draws the base line', async ({ page }) => {

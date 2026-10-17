@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ctx } from '../../priv/static/build-home/state.js';
+import { ctx, resetState } from '../../priv/static/build-home/state.js';
 import { drawEdges, edgeClass, edgeEmphasis, edgeGeometry } from '../../priv/static/build-home/edges.js';
 
 const t = (dep_states, cue) => ({ dep_states, cue });
@@ -68,4 +68,33 @@ test('drawEdges escapes ids in data-e', () => {
   const id = `a"b<c'd&`;
   const html = draw([{ id, deps: ['b'] }, { id: 'b', deps: [] }], [card(id, 0, 200), card('b', 0, 0)]);
   assert.ok(html.includes('data-e="a&quot;b&lt;c&#39;d&amp;"'));
+});
+
+test('state-only generation invalidates an unforced draw', () => {
+  draw([{ id: 'a', deps: ['b'], dep_states: { b: 'blocking' } }, { id: 'b', deps: [] }], [card('a', 0, 200), card('b', 0, 0)]);
+  ctx.D.byId.a.dep_states.b = 'cleared';
+  drawEdges(false);
+  assert.match(ctx.svg.innerHTML, /class="bd-e bl"/);
+  ctx.proto.generation++;
+  drawEdges(false);
+  assert.match(ctx.svg.innerHTML, /class="bd-e ok"/);
+});
+test('detached content cannot be mutated by a draw', () => {
+  draw([{ id: 'a', deps: ['b'] }, { id: 'b', deps: [] }], [card('a', 0, 200), card('b', 0, 0)]);
+  ctx.content.isConnected = false;
+  ctx.svg.innerHTML = 'detached';
+  drawEdges(true);
+  assert.equal(ctx.svg.innerHTML, 'detached');
+});
+test('reset clears the signature for a new mount', () => {
+  const rows = [{ id: 'a', deps: ['b'] }, { id: 'b', deps: [] }], cards = [card('a', 0, 200), card('b', 0, 0)];
+  draw(rows, cards); ctx.proto.generation = 1; drawEdges(false);
+  const previous = { ...ctx }, svg = { ...ctx.svg, innerHTML: '' };
+  resetState(); Object.assign(ctx, previous, { svg });
+  drawEdges(false);
+  assert.equal(count(svg.innerHTML), 1);
+});
+// Guard against a future recursive rewrite; the original implementation already handles cycles.
+test('guard: cycle stays linear', () => {
+  assert.equal(count(draw([{ id: 'a', deps: ['b'] }, { id: 'b', deps: ['a'] }], [card('a', 0, 0), card('b', 0, 100)])), 2);
 });
