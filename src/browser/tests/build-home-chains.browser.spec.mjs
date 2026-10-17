@@ -1,69 +1,9 @@
-import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { card, tree, tray, open, reveal, lock, whole } from './support/build-home-chains.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
-const card = (page, id) => page.locator(`.bd-card[data-id="${id}"]`).first()
-const tree = page => page.locator('#bd-tree')
-const tray = page => page.locator('.bd-lt')
-
-async function open(page, { trees = true, dataset = 'chains', modal = false } = {}) {
-  if (modal) await page.addInitScript(() => {
-    // Register before the hook: a bubble-only tree handler would close both layers.
-    document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') document.querySelector('#tk-backdrop.show')?.remove()
-    })
-  })
-  await page.route(/\/build-home\/[\w-]+\.js$/, route => route.fulfill({
-    path: fileURLToPath(new URL('../../priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), import.meta.url)),
-    contentType: 'text/javascript',
-  }))
-  await page.goto('/build-fixture/' + dataset)
-  await expect(page.locator('#build-root')).toHaveAttribute('data-bd-trees', 'ready')
-  await page.evaluate(async () => { window.st = await import('/build-home/state.js') })
-  if (trees) {
-    // The fixture's HTTP forwarding drops queries; use the actual LiveView URL path.
-    await page.evaluate(() => window.liveSocket.main.pushLinkPatch(new Event('click'), '/build?trees=1', null))
-    await expect.poll(() => page.evaluate(() => st.S.trees)).toBe(true)
-  }
-  await expect.poll(() => page.evaluate(() => !!st.ctx.D?.byId)).toBe(true)
-  if (modal) await page.evaluate(() => {
-    st.fx.openModal = row => {
-      window.openedTicket = row.id
-      const backdrop = document.createElement('div')
-      backdrop.id = 'tk-backdrop'; backdrop.className = 'show'
-      document.body.append(backdrop)
-    }
-  })
-}
-async function reveal(page, id) {
-  await page.evaluate(id => {
-    const { ctx } = st
-    for (const sx of ['hist', 'plan', 'nq']) {
-      const it = ctx.L.secs[sx].items.find(it => it.t.id === id)
-      if (it) ctx.vp.scrollTop = ctx.secs[sx].el.offsetTop + it.y - 150
-    }
-    st.fx.update()
-  }, String(id))
-  await expect(card(page, id)).toBeVisible()
-  await page.waitForTimeout(450) // Scroll hover suppression must expire before a real pointer enters.
-}
-async function lock(page, id) {
-  await reveal(page, id)
-  await card(page, id).hover()
-  await expect(tray(page)).toHaveClass(/show/)
-  await expect.poll(() => page.evaluate(() => st.ctx.hoverId)).toBe(String(id))
-  await page.waitForTimeout(230) // Let the tab finish moving before aiming at its lock button.
-  await page.locator('[data-lt="lock"]').click()
-  await expect(page.locator('[data-lt="lock"]')).toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe(String(id))
-}
-async function whole(page, id) {
-  await lock(page, id)
-  await page.locator('[data-lt="tree"]').click()
-  await expect(tree(page)).toBeVisible()
-}
 async function diff(page, name) {
   const response = await page.request.get('/build-control/diff?name=' + name)
   expect(response.status(), await response.text()).toBe(200)
