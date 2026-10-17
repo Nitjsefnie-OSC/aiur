@@ -277,21 +277,8 @@ cmd_stop() {
   warn_other_aiur_daemons "$AIUR_RELEASE_NODE"
 }
 
-# Stop, refresh the release, start again — `aiur restart`.
-#
-# The refresh deliberately runs BETWEEN the stop and the start. A dev rebuild
-# rewrites the release directory in place, and a BEAM booted from that directory
-# is exactly what the control-retry path (EX_TEMPFAIL) exists to survive; doing
-# it while the daemon is down means the new daemon boots from a release nothing
-# else is holding half-written.
-#
-# The engine itself never knows how to build: the installed CLI runs a pinned
-# platform release with no source tree beside it, so its restart is a plain
-# bounce. The dev shim supplies its build-if-stale step through
-# AIUR_RESTART_BUILD_CMD, a shell command line run via `bash -c` so the wrapper
-# (not this parser) owns quoting.
+# Restart lifecycle helpers live in restart_rollback.sh; this file owns stop/build/start ordering.
 aiur_restart_daemon_state="untouched"
-aiur_restart_previous_release=""
 
 # Everything between the stop and a confirmed start runs with this armed, so the
 # operator hears about a fleet that is down no matter which step failed — a
@@ -323,46 +310,6 @@ aiur_restart_report_state() {
     echo "aiur: no complete release is left on disk, so --no-build has nothing to start —" >&2
     echo "      fix the build and run 'aiur restart' again" >&2
   fi
-}
-
-restart_first_error_line() {
-  local capture="$1" line
-  line="$(awk 'NF { sub(/^[[:space:]]+/, ""); print; exit }' "$capture" 2>/dev/null || true)"
-  [ -n "$line" ] || line="startup exited before the daemon became ready"
-  printf '%s' "$line"
-}
-
-record_restart_rollback_alert() {
-  local message="$1" ledger_path="${2:-}" timestamp
-  if [ -z "$ledger_path" ] && [ -n "${AIUR_ALERT_LEDGER_PATH_FILE:-}" ] && [ -r "$AIUR_ALERT_LEDGER_PATH_FILE" ]; then
-    IFS= read -r ledger_path <"$AIUR_ALERT_LEDGER_PATH_FILE" || true
-  fi
-  [ -n "$ledger_path" ] || return 0
-  timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || printf unknown)"
-  mkdir -p "$(dirname "$ledger_path")" 2>/dev/null || return 0
-  printf '{"event":"alert","agent":"system","timestamp":"%s","name":"system.restart.rollback","topic":"system.restart.rollback","message":"%s","reason":"The refreshed release failed during startup; the previous release was restored","severity":"critical","needs_attention":true}\n' \
-    "$timestamp" "$(json_escape_alert_field "$message")" >>"$ledger_path" 2>/dev/null || true
-}
-
-rollback_restart_release() {
-  local previous_sha="$1" first_error="$2" failed_release="${AIUR_RELEASE_DIR:-}"
-  [ -n "$aiur_restart_previous_release" ] && [ -x "$aiur_restart_previous_release/bin/aiur" ] || return 1
-  AIUR_RESTART_HANDOFF_ID="${aiur_restart_handoff_id:-${AIUR_RESTART_HANDOFF_ID:-}}"
-  AIUR_RELEASE_DIR="$aiur_restart_previous_release"
-  export AIUR_RELEASE_DIR
-  export AIUR_RESTART_HANDOFF_ID
-  local rollback_status=0
-  dispatch_run --bg "${run_args[@]+"${run_args[@]}"}" || rollback_status=$?
-  if [ "$rollback_status" -ne 0 ]; then
-    AIUR_RELEASE_DIR="$failed_release"
-    export AIUR_RELEASE_DIR
-    return "$rollback_status"
-  fi
-  local message="rolled back to $previous_sha: new release failed with $first_error"
-  printf 'aiur: %s\n' "$message" >&2
-  AIUR_RELEASE_DIR="$failed_release"
-  export AIUR_RELEASE_DIR
-  return 0
 }
 
 # The rebuild runs in a process this command cannot see into, so "the builder
@@ -458,16 +405,11 @@ cmd_restart() {
   aiur_restart_handoff_id="${AIUR_RESTART_HANDOFF_ID:-}"
   export AIUR_RESTART_HANDOFF_ID
 
-  local previous_sha="unknown" previous_release_dir="${AIUR_RELEASE_DIR:-}" snapshot_dir="" snapshot_required=0
-  if [ -n "$previous_release_dir" ] && [ -d "$previous_release_dir" ]; then
-    previous_sha="$(sed -n 's/^source_sha=//p' "$previous_release_dir/AIUR_BUILD_STAMP" 2>/dev/null | head -n 1)"
-    [ -n "$previous_sha" ] || previous_sha="unknown"
-    if [ -n "${AIUR_RESTART_BUILD_CMD:-}" ] && [ "$skip_build" -eq 0 ]; then
-      snapshot_dir="$(mktemp -d "${TMPDIR:-/tmp}/aiur-previous-release.XXXXXX")"
-      cp -a "$previous_release_dir/." "$snapshot_dir/" || { rm -rf "$snapshot_dir"; die "restart aborted before stop: could not preserve the previous release"; }
-      aiur_restart_previous_release="$snapshot_dir"
-      snapshot_required=1
-    fi
+  local previous_sha="unknown" snapshot_dir=""
+  if [ -n "${AIUR_RESTART_BUILD_CMD:-}" ] && [ "$skip_build" -eq 0 ]; then
+    restart_release_snapshot "${AIUR_RELEASE_DIR:-}" || die "restart aborted before stop: could not preserve the previous release"
+    previous_sha="$RESTART_PREVIOUS_SHA"
+    snapshot_dir="$RESTART_SNAPSHOT_DIR"
   fi
 
   # Restarting something that is already down is a start, not an error: the
@@ -547,33 +489,8 @@ cmd_restart() {
   # into the attachable session (`aiur --bg --interactive`), and a purely
   # foreground restart remains `aiur stop && aiur run`.
   aiur_restart_start_attempted=1
-  local new_capture="${AIUR_LOGS_ROOT:-}/log/boot.out.log" start_status=0 first_error=""
+  local new_capture="${AIUR_LOGS_ROOT:-}/log/boot.out.log" start_status=0
   aiur_restart_handoff_id="${AIUR_RESTART_HANDOFF_ID:-}"
   dispatch_run --bg "${run_args[@]+"${run_args[@]}"}" || start_status=$?
-  if [ "$start_status" -ne 0 ] && [ "$snapshot_required" -eq 1 ]; then
-    first_error="$(restart_first_error_line "$new_capture")"
-    # Capture the new release's alert ledger before rollback creates a new launch.
-    local failed_ledger_file="${AIUR_ALERT_LEDGER_PATH_FILE:-}" failed_ledger_path=""
-    if [ -r "$failed_ledger_file" ]; then IFS= read -r failed_ledger_path <"$failed_ledger_file" || true; fi
-    AIUR_RESTART_HANDOFF_ID="$aiur_restart_handoff_id"
-    export AIUR_RESTART_HANDOFF_ID
-    echo "aiur: new release failed during startup; attempting rollback to $previous_sha" >&2
-    if rollback_restart_release "$previous_sha" "$first_error"; then
-      AIUR_RESTART_HANDOFF_ID="$aiur_restart_handoff_id"
-      aiur_restart_daemon_state="running"
-      trap - EXIT INT TERM
-      [ -n "$snapshot_dir" ] && rm -rf "$snapshot_dir"
-      record_restart_rollback_alert "rolled back to $previous_sha: new release failed with $first_error" "$failed_ledger_path"
-      [ "$keep_agents" -eq 0 ] || report_restart_handoff
-      return 0
-    fi
-    echo "aiur: rollback to $previous_sha failed; the daemon remains stopped" >&2
-    return "$start_status"
-  fi
-  if [ "$start_status" -ne 0 ]; then return "$start_status"; fi
-
-  aiur_restart_daemon_state="running"
-  trap - EXIT INT TERM
-  [ -n "$snapshot_dir" ] && rm -rf "$snapshot_dir"
-  [ "$keep_agents" -eq 0 ] || report_restart_handoff
+  restart_after_start_attempt "$start_status" "$new_capture" "$previous_sha" "$snapshot_dir" "$keep_agents"
 }
