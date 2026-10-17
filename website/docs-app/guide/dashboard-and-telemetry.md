@@ -37,9 +37,10 @@ List view and return when you switch to Timeline or Gantt.
 
 On the build timeline, `?trees=1` enables dependency-chain hover. Lock the chain
 with its lock tab, use Fit to bring the loaded chain into view, or select the eye
-button to open the Dependency tree overlay. Clicking a dependency arrow also
-locks its chain, including on touch screens. Escape closes the tree, then
-releases the lock. The tree reports links outside the loaded board separately;
+button to open the Dependency tree overlay.
+
+Clicking a dependency arrow locks its chain on touch screens too. Escape closes
+the tree, then releases the lock. Links outside the loaded board are counted;
 “links not yet known” means the dependency index is incomplete.
 
 ### Shared GitHub quota
