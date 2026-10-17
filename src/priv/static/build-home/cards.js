@@ -72,12 +72,13 @@ function planContent(t, points) {
 function historyContent(t, points) {
   const labels = { done: 'Merged', failed: 'Failed · closed', not_planned: 'Not planned', closed: 'Closed' };
   const label = Object.hasOwn(labels, t.status) ? labels[t.status] : 'State unknown';
-  const end = finite(t.end, 0, 8640000000000000), start = finite(t.start, 0, 8640000000000000);
+  const end = finite(t.end, 0, 8640000000000000), recordedStart = finite(t.start, 0, 8640000000000000);
+  const start = end === null || recordedStart === null ? recordedStart : Math.min(recordedStart, end);
   const hrs = end !== null && start !== null ? Math.max(0, end - start) / 3600000 : null;
   let body = '', value = end === null ? unk('end', 'Close time unknown') : fmtD(end);
   if (S.view === 'gantt') {
     value = hrs === null ? unk('duration', 'Duration unknown') : fmtH(hrs);
-    body = '<div class="bd-time">' + (start === null ? 'Start unknown' : fmtD(Math.min(start, end)) + ' ' + fmtT(Math.min(start, end))) + '<br>→ ' +
+    body = '<div class="bd-time">' + (start === null ? 'Start unknown' : fmtD(start) + ' ' + fmtT(start)) + '<br>→ ' +
       (end === null ? unk('end', 'Close time unknown') : (dayKey(start) === dayKey(end) ? '' : fmtD(end) + ' ') + fmtT(end)) +
       '</div><div class="bd-badges"><span class="h">' + value + '</span><span>' + points + ' pts</span></div>';
     return { body, status: '' };
