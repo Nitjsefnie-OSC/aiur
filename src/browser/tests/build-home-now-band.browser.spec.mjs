@@ -105,7 +105,7 @@ test('jump uses 420ms cubic easing, clamps and cancels previous animations', asy
   expect(await page.evaluate(() => m.ctx.vp.scrollTop)).toBe(100)
   await page.evaluate(() => m.fx.scrollVP(-100, false))
   expect(await page.evaluate(() => m.ctx.vp.scrollTop)).toBe(0)
-  await page.evaluate(() => { m.S.view = 'list'; m.fx.jumpNow(true) })
+  await page.evaluate(() => { m.fx.scrollVP(300, false); m.S.view = 'list'; m.fx.jumpNow(true) })
   expect(await page.evaluate(() => m.ctx.vp.scrollTop)).toBe(0)
 })
 test('tall fleet, paging and scrollbar drag suppress snapping', async ({ page }) => {
