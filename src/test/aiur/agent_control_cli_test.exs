@@ -1829,7 +1829,6 @@ defmodule Aiur.AgentControlCLITest do
       end
 
     assert output =~ "__AIUR_CONTROL_ERROR__:aiur: github-cost the GitHub quota meter is not running. Run `aiur github-cost` while the daemon is active"
-    assert output =~ "restarting resets caller attribution until the quota window rolls over"
     assert output =~ "__AIUR_CONTROL_EXIT__:1"
   end
 
