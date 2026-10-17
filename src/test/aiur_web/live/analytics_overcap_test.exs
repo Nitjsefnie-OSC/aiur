@@ -21,7 +21,8 @@ defmodule AiurWeb.AnalyticsOvercapTest do
     :yes = :global.register_name({__MODULE__, context.test}, publisher)
 
     SnapshotStore.publish(orchestrator, %{
-      capacity: %{effective: 16, max: 20, configured: 16, occupied: 17, available: 0, queued_demand?: true}
+      capacity: %{effective: 16, max: 20, configured: 16, occupied: 17, available: 0, queued_demand?: true},
+      running: Enum.map(1..15, fn _ -> %{work_state: :working} end)
     })
 
     endpoint_config =
@@ -54,7 +55,7 @@ defmodule AiurWeb.AnalyticsOvercapTest do
     {:ok, view, _html} = live(build_conn(), "/analytics")
     html = LiveViewAsync.render_when_complete(view)
 
-    assert html =~ ~r/17 now, 1 over cap \/ 16 cap \(.*session 20\)/
+    assert html =~ ~r/15 running now \(17 slots occupied\), 1 over cap \/ 16 cap \(.*session 20\)/
     assert html =~ "partial: 2 of 17 occupied slots not seen as active"
   end
 
@@ -65,7 +66,8 @@ defmodule AiurWeb.AnalyticsOvercapTest do
     html = LiveViewAsync.render_when_complete(view)
 
     assert html =~ ~s(<table id="analytics-pressure-table">)
-    assert html =~ ~r/15 now \/ 16 cap \(.*session 20\)/
+    assert [subtitle | _] = kpi_subtitles(html)
+    assert subtitle == "15 running now (17 slots occupied), 1 over cap / 16 cap (binding: AIMD envelope, session 20)"
     refute html =~ "(fleet)"
     assert html =~ "16 / 20 / 16"
     assert html =~ ">2<" and html =~ "2 / 8" and html =~ "189s"
@@ -88,7 +90,9 @@ defmodule AiurWeb.AnalyticsOvercapTest do
 
     # The gap row's degraded build must render its missing wait as "—", and a
     # missing fleet figure must never be coerced into a confident "0".
-    assert html =~ "—" and html =~ "occupancy unavailable"
+    assert html =~ "—"
+    assert [subtitle | _] = kpi_subtitles(html)
+    assert subtitle =~ "15 running now"
     assert html =~ ">degraded<"
     refute html =~ ">0s<"
     # The measured row still carries its exact values (not blurred by the gap).
@@ -232,6 +236,13 @@ defmodule AiurWeb.AnalyticsOvercapTest do
 
     File.write!(path, Enum.map_join(List.flatten(records), "\n", &Jason.encode!/1) <> "\n")
     path
+  end
+
+  defp kpi_subtitles(html) do
+    html
+    |> Floki.parse_fragment!()
+    |> Floki.find(".an-kpi-sub")
+    |> Enum.map(&Floki.text/1)
   end
 
   defp agent_resource_records(boot_id, first_sequence, count, timestamp) do

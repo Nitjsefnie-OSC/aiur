@@ -494,7 +494,6 @@ defmodule AiurWeb.AnalyticsLive do
     ]
   end
 
-  # Agents keep their slots when AIMD or contention lowers the cap, so the card names the overage.
   defp over_cap(%{live_occupied: n, cap: cap, cap_available?: true}, true) when is_integer(n) and is_integer(cap) and n > cap,
     do: ", #{n - cap} over cap"
 
