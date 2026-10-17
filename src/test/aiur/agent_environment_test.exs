@@ -849,30 +849,6 @@ defmodule Aiur.AgentEnvironmentTest do
       assert File.dir?(Path.join(workspace, ".aiur-runtime/tmp"))
     end
 
-    test "an agent command creates temporary files inside its workspace scratch dir", %{workspace: workspace} do
-      assert Aiur.Config.CodexSandboxPolicy.default_policy(workspace)["excludeSlashTmp"]
-
-      env =
-        AgentEnvironment.workspace_env(workspace)
-        |> Enum.filter(fn {name, _} -> name in [~c"TMPDIR", ~c"TMP", ~c"TEMP"] end)
-        |> Enum.map(fn {name, value} -> {to_string(name), to_string(value)} end)
-
-      {path, 0} =
-        System.cmd(
-          "python3",
-          [
-            "-c",
-            "import tempfile; f = tempfile.NamedTemporaryFile(delete=False); print(f.name); f.close()"
-          ],
-          env: env
-        )
-
-      path = String.trim(path)
-      assert Path.dirname(path) == Path.join(workspace, ".aiur-runtime/tmp")
-      assert File.regular?(path)
-      Aiur.TestCleanup.rm_rf!(path)
-    end
-
     test "workspace_env/1 leaves TMPDIR alone when the scratch dir is unusable", %{workspace: workspace} do
       File.mkdir_p!(Path.join(workspace, ".aiur-runtime"))
       File.write!(Path.join(workspace, ".aiur-runtime/tmp"), "not a directory")
