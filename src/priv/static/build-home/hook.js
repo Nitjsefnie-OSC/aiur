@@ -13,8 +13,10 @@ import './offline.js';
 import './tools.js';
 import './span.js';
 import './edges.js';
+import './states.js';
 
 export function writeOwnData() {
+  if (ctx.bdStates != null) ctx.root.dataset.bdStates = ctx.bdStates;
   Object.assign(ctx.root.dataset, { buildHomeHook: 'mounted', bdMounted: '', bdPaging: H.state, buildSocket: ctx.socket });
   if (ctx.proto.epoch !== null) {
     ctx.root.dataset.buildEpoch = ctx.proto.epoch;
