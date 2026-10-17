@@ -11,7 +11,7 @@ defmodule Aiur.ExperimentSkillTest do
   test "installs the analyst and every reference into a consumer workspace" do
     workspace = Aiur.TestSupport.tmp_root!("experiment-skill")
     File.mkdir_p!(workspace)
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
 
     assert :ok = AgentSkills.install(workspace)
     installed = Path.join(workspace, ".claude/skills/aiur-experiment")
