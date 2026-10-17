@@ -1,6 +1,6 @@
 defmodule Aiur.MainWatch.Fixer do
   @moduledoc "Files and reconciles fixer tickets from the base-CI background task."
-  alias Aiur.GitHub.{Config, MainFixer, ResourceStore, StatePolicy}
+  alias Aiur.GitHub.{Config, LocalHold, MainFixer, ResourceStore, StatePolicy}
   alias Aiur.MainWatch.{FixerGitHub, FixerWatchdog, State}
 
   @create_hold_retries 3
@@ -96,8 +96,14 @@ defmodule Aiur.MainWatch.Fixer do
       {:error, reason} when retries_left > 0 ->
         case shared_budget_reset(reason) do
           %DateTime{} = reset_at ->
-            wait_until(reset_at)
-            create_with_hold_retry(issue, opts, retries_left - 1)
+            case LocalHold.wait_ms(%{hold: %{reset_at: reset_at}}, LocalHold.max_wait_ms()) do
+              {:wait, delay_ms} ->
+                Keyword.get(opts, :local_hold_sleep_fun, &Process.sleep/1).(delay_ms)
+                create_with_hold_retry(issue, opts, retries_left - 1)
+
+              :no_wait ->
+                result
+            end
 
           nil ->
             result
@@ -113,11 +119,6 @@ defmodule Aiur.MainWatch.Fixer do
 
   defp shared_budget_reset({:aiur, :locally_held, %{reason: :shared_budget, reset_at: %DateTime{} = reset_at}}), do: reset_at
   defp shared_budget_reset(_reason), do: nil
-
-  defp wait_until(reset_at) do
-    delay = max(DateTime.diff(reset_at, DateTime.utc_now(), :millisecond), 0)
-    if delay > 0, do: Process.sleep(delay)
-  end
 
   defp refresh(opts) do
     case Keyword.get(opts, :fixer_refresh, &Aiur.Orchestrator.request_refresh/0).() do
