@@ -1,3 +1,4 @@
+# Cohesive cap/coverage and pressure-table regressions share LiveView endpoint and telemetry setup.
 defmodule AiurWeb.AnalyticsOvercapTest do
   use Aiur.TestSupport
 
