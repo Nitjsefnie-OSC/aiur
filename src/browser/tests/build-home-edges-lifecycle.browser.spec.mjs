@@ -16,18 +16,19 @@ const navigate = (page, path) => page.evaluate(path => window.liveSocket.main.pu
 // B2/B11: the oracle uses payload rows and visible cards, independently of the renderer.
 for (const dataset of ['live', 'dense']) test(`windowed edge count follows visible endpoint pairs: ${dataset}`, async ({ page }) => {
   await open(page, dataset)
-  const samples = await page.evaluate(() => {
+  const snapshot = await import(`../../test/fixtures/build_home/${dataset}.json`, { with: { type: 'json' } })
+  const samples = await page.evaluate(rows => {
     const { ctx, fx } = st, samples = []
     for (const sec of ['hist', 'plan', 'nq']) for (const offset of [1000, 0]) {
       ctx.vp.scrollTop = ctx.secs[sec].el.offsetTop + offset; fx.update(); fx.drawEdges(true)
-      const visible = new Set([...ctx.R.values(), ...ctx.L.band.items.map(it => it.el)].filter(el => el.style.opacity !== '0').map(el => el.dataset.id))
-      const expected = [...visible].flatMap(id => (ctx.D.byId[id]?.deps ?? []).filter(did => visible.has(did)).map(did => [did, id]))
+      const visible = new Set([...ctx.root.querySelectorAll('.bd-card[data-id]')].filter(el => el.style.opacity !== '0').map(el => el.dataset.id))
+      const expected = rows.filter(row => visible.has(row.id)).flatMap(row => row.deps.filter(did => visible.has(did)).map(did => [did, row.id]))
       samples.push({ expected: expected.length, actual: ctx.svg.querySelectorAll('.bd-eh').length,
         missing: [...visible].flatMap(id => (ctx.D.byId[id]?.deps ?? []).filter(did => !visible.has(did))).length,
         rendered: visible.size, total: Object.keys(ctx.D.byId).length })
     }
     return samples
-  })
+  }, Object.values(snapshot.default.sections).flat())
   for (const s of samples) expect(s.actual).toBe(s.expected)
   expect(samples.some(s => s.missing > 0)).toBe(true)
   expect(samples.some(s => s.actual > 0)).toBe(true)
