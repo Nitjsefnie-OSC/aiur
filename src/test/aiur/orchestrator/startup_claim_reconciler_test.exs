@@ -172,6 +172,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconcilerTest do
     assert result.startup_claim_reconciliation_complete?
   end
 
+  # Regression guard: changes-requested PRs must keep the existing rework recovery path.
   test "does not mistake a changes-requested PR for an approved queued PR" do
     issue = issue("requested-changes", "in-progress")
     target = issue.identifier
