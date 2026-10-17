@@ -32,19 +32,21 @@ const histEdges = page => page.evaluate(() => {
   const cr = document.querySelector('#bd-content').getBoundingClientRect(), top = document.querySelector('#bd-sec-hist').getBoundingClientRect().top - cr.top
   return [...document.querySelectorAll('#bd-edges .bd-eh')]
     .filter(h => document.querySelector(`#bd-sec-hist .bd-card[data-id="${CSS.escape(h.dataset.e)}"]`))
-    .map(h => ({ k: `${h.dataset.e.replace(/\D/g, '')} ${[...h.nextElementSibling.classList].join(' ')}`,
-      n: h.getAttribute('d').match(/-?[\d.]+/g).map((v, i) => +v - (i % 2 ? top : 0)) }))
+    .map(h => { const n = h.getAttribute('d').match(/-?[\d.]+/g).map((v, i) => +v - (i % 2 ? top : 0))
+      // Endpoint pair: the dependent id plus the blocker's offset from it (identical on both sides when the cards match).
+      return { k: `${h.dataset.e.replace(/\D/g, '')} ${Math.round(n[0])},${Math.round(n[6])},${Math.round(n[7] - n[1])}`, c: [...h.nextElementSibling.classList].join(' '), n } })
     .sort((a, b) => a.k.localeCompare(b.k) || a.n[1] - b.n[1] || a.n[7] - b.n[7])
 })
 const toHistory = (page, offset) => page.evaluate(o => { document.querySelector('#bd-vp').scrollTop = document.querySelector('#bd-sec-hist').offsetTop + o }, offset)
 // Each side renders its own window around the scroll position, so walk the section and merge what was drawn.
 async function walkHistory(page) {
-  const seen = new Map()
+  const seen = []
   for (let offset = 0; offset < 3000; offset += 500) {
     await toHistory(page, offset); await page.waitForTimeout(500)
-    for (const e of await histEdges(page)) seen.set(e.k + Math.round(e.n[1]) + ',' + Math.round(e.n[7]), e)
+    // The same edge seen in two windows can differ by sub-pixel layout; y within 2 px is the same edge.
+    for (const e of await histEdges(page)) if (!seen.some(o => o.k === e.k && Math.abs(o.n[1] - e.n[1]) < 2 && Math.abs(o.n[7] - e.n[7]) < 2)) seen.push(e)
   }
-  return [...seen.values()].sort((a, b) => a.k.localeCompare(b.k) || a.n[1] - b.n[1] || a.n[7] - b.n[7])
+  return seen.sort((a, b) => a.k.localeCompare(b.k) || a.n[1] - b.n[1] || a.n[7] - b.n[7])
 }
 const styleOf = page => page.evaluate(() => Object.fromEntries([...new Set([...document.querySelectorAll('#bd-edges .bd-e, #bd-edges .bd-ea')].map(p => p.getAttribute('class').trim()))].map(cls => {
   const cs = getComputedStyle(document.querySelector(`#bd-edges path[class^="${cls}"]`))
@@ -65,6 +67,8 @@ for (const cell of PARITY_MATRIX.filter(c => c.dataset === 'live' && c.viewport.
     const [dd, pp] = [design, product].map(list => list.filter(e => shared.has(e.k)))
     expect(shared.size, JSON.stringify({ d: design.map(e => e.k), p: product.map(e => e.k) })).toBeGreaterThanOrEqual(5)
     expect(pp.map(e => e.k)).toEqual(dd.map(e => e.k))
+    // The key is the endpoint pair (dependent, blocker x); the class is a value, so a wrong class on a shared pair fails.
+    expect(pp.map(e => `${e.k} ${e.c}`)).toEqual(dd.map(e => `${e.k} ${e.c}`))
     // The history section sits at a different page y on each side (band and header work belongs to other tickets),
     // so compare the edge geometry relative to the first shared edge.
     const dy = pp[0].n[1] - dd[0].n[1]

@@ -55,7 +55,10 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
       ctx.vp.scrollTop = ctx.secs[item.t.sec].el.offsetTop + item.y - 100; fx.update(); fx.drawEdges(true)
     }, id)
     await expect(page.locator(`.bd-card[data-id="${id}"]`)).toBeVisible()
+    // Hide cards and chrome so the baseline records the edge layer only.
+    const hide = await page.addStyleTag({ content: 'body * { visibility: hidden !important } #bd-edges, #bd-edges * { visibility: visible !important }' })
     await expect(page.locator('#bd-edges')).toHaveScreenshot(`${name}.png`)
+    await hide.evaluate(el => el.remove())
   }
   expect(errors).toEqual([])
 })
@@ -85,12 +88,18 @@ test('B8 destroy cancels pending draws and disconnected content is untouched', a
 
 test('B8b navigating back during a draw loop renders a fresh mount', async ({ page }) => {
   await open(page)
+  // Both mounts count at the same pinned scroll, so the counts are comparable. The onReset signature reset is covered by the unit test (forced remount draws mask it here).
+  const pin = () => page.evaluate(() => { const { ctx, fx } = st; ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update(); fx.drawEdges(true); return ctx.svg.querySelectorAll('.bd-eh').length })
   // Keep the deadline alive across navigation even when the shared host is busy.
-  const count = await page.evaluate(() => { st.fx.drawEdges(true); st.fx.drawEdgesSoon(60_000); return st.ctx.svg.querySelectorAll('.bd-eh').length })
+  await page.evaluate(() => st.fx.drawEdgesSoon(60_000))
+  const count = await pin()
   expect(count).toBeGreaterThan(0)
   await navigate(page, '/commands')
   await expect(page.locator('#bd-content')).toHaveCount(0)
   await navigate(page, '/build')
+  await expect(page.locator('#bd-content')).toHaveCount(1)
+  await expect.poll(() => page.evaluate(() => !!st.ctx.D && st.ctx.vp && !!st.ctx.secs.plan)).toBe(true)
+  await page.evaluate(() => { const { ctx, fx } = st; ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update() })
   await expect.poll(() => page.locator('#bd-edges .bd-eh').count()).toBe(count)
 })
 
