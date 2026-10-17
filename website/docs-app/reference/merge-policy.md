@@ -56,7 +56,10 @@ config or unknown file types. Use the target repository's test-selection tool
 
 `mix pr_body.check --file <body.md>` validates the template and evidence shape.
 CI runs the same checker in the `pr body` check, which reads the current PR
-body and head SHA; stale `Tested head` values fail. Editing the body reruns
+body and head SHA; stale `Tested head` values fail. An older `Tested head`
+still passes when it is an ancestor of the head and the PR's contribution diff
+is identical, as for approval carry, so a merge of the base alone needs no body
+edit. The check logs which mode passed. Editing the body reruns
 `pr body`, and `ci gate` requires its newest run, so a body fix needs no push.
 
 PRs opened at or before rollout are grandfathered out of the CI body gate.
