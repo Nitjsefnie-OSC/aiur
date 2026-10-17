@@ -97,7 +97,7 @@ defmodule Aiur.BuildQueue.MutationCLITest do
   end
 
   test "batch add gives every ID the same first-observation verdict", %{server: pid} do
-    # Exercise both orders against a server in the guarded startup phase.
+    # This server-side rejection already exists; keep both orders covered as a guard against CLI batching bypassing it.
     state = :sys.get_state(pid)
     :sys.replace_state(pid, &%{&1 | phase: :awaiting_first_observation})
 
