@@ -3,6 +3,8 @@ defmodule Aiur.MainWatch.Fixer do
   alias Aiur.GitHub.{Config, MainFixer, ResourceStore, StatePolicy}
   alias Aiur.MainWatch.{FixerGitHub, FixerWatchdog, State}
 
+  @create_hold_retries 3
+
   @spec reconcile([map()], map(), keyword()) :: :ok | {:error, term()}
   def reconcile(observations, watch, opts \\ [])
 
@@ -15,7 +17,7 @@ defmodule Aiur.MainWatch.Fixer do
       FixerWatchdog.check(issues, opts)
     else
       {:error, reason} = error ->
-        alert("system.main.fixer.failed", %{reason: inspect(reason)}, opts)
+        unless shared_budget_hold?(reason), do: alert("system.main.fixer.failed", %{reason: inspect(reason)}, opts)
         error
     end
   end
@@ -81,10 +83,40 @@ defmodule Aiur.MainWatch.Fixer do
     state_label = if app?, do: StatePolicy.state_label(Config.label_prefix(), "todo"), else: "needs-triage"
     issue = %{"title" => "#{Aiur.Config.base_branch()} red at #{String.slice(observation.sha, 0, 12)}", "body" => body, "labels" => [state_label, "priority:1", "complexity:1", watch.fixer_label]}
 
-    with {:ok, created} <- call(opts, :fixer_create, [issue, opts], &FixerGitHub.create/2) do
+    with {:ok, created} <- create_with_hold_retry(issue, opts, @create_hold_retries) do
       if app?, do: refresh(opts), else: alert("system.main.fixer.needs_triage", %{issue: created["number"], reason: "PAT/shared identity cannot authorize daemon-filed work"}, opts)
       :ok
     end
+  end
+
+  defp create_with_hold_retry(issue, opts, retries_left) do
+    result = call(opts, :fixer_create, [issue, opts], &FixerGitHub.create/2)
+
+    case result do
+      {:error, reason} when retries_left > 0 ->
+        case shared_budget_reset(reason) do
+          %DateTime{} = reset_at ->
+            wait_until(reset_at)
+            create_with_hold_retry(issue, opts, retries_left - 1)
+
+          nil ->
+            result
+        end
+
+      _ ->
+        result
+    end
+  end
+
+  defp shared_budget_hold?({:aiur, :locally_held, %{reason: :shared_budget}}), do: true
+  defp shared_budget_hold?(_reason), do: false
+
+  defp shared_budget_reset({:aiur, :locally_held, %{reason: :shared_budget, reset_at: %DateTime{} = reset_at}}), do: reset_at
+  defp shared_budget_reset(_reason), do: nil
+
+  defp wait_until(reset_at) do
+    delay = max(DateTime.diff(reset_at, DateTime.utc_now(), :millisecond), 0)
+    if delay > 0, do: Process.sleep(delay)
   end
 
   defp refresh(opts) do
