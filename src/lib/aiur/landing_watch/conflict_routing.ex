@@ -25,36 +25,39 @@ defmodule Aiur.LandingWatch.ConflictRouting do
     with :ok <- withdraw(observation, opts),
          {:ok, claim} <- Journal.claim_alert(observation.number, observation.head, marker, opts),
          {:ok, completed?} <- follow_up_completed?(observation, opts) do
-      if completed? do
-        :ok
-      else
-        result =
-          rework.(
-            observation,
-            [@failure],
-            opts
-            |> Keyword.put(:conflict_rework_claim, claim)
-            |> Keyword.put(:after_rework, fn issue -> complete_follow_up(observation, issue, opts) end)
-          )
-
-        case result do
-          :conflict_already_rework ->
-            _ = Journal.release_alert(observation.number, observation.head, marker, opts)
-            :ok
-
-          {:error, {:conflict_follow_up, _reason}} = error ->
-            error
-
-          {:error, reason} when claim == :new ->
-            _ = Journal.release_alert(observation.number, observation.head, marker, opts)
-            {:error, reason}
-
-          other ->
-            other
-        end
-      end
+      route_if_incomplete(observation, rework, opts, claim, completed?)
     end
   end
+
+  defp route_if_incomplete(_observation, _rework, _opts, _claim, true), do: :ok
+
+  defp route_if_incomplete(observation, rework, opts, claim, false) do
+    route_result(observation, claim, opts, invoke_rework(observation, rework, opts, claim))
+  end
+
+  defp invoke_rework(observation, rework, opts, claim) do
+    rework.(
+      observation,
+      [@failure],
+      opts
+      |> Keyword.put(:conflict_rework_claim, claim)
+      |> Keyword.put(:after_rework, fn issue -> complete_follow_up(observation, issue, opts) end)
+    )
+  end
+
+  defp route_result(observation, _claim, opts, :conflict_already_rework) do
+    _ = Journal.release_alert(observation.number, observation.head, "conflict-rework", opts)
+    :ok
+  end
+
+  defp route_result(_observation, _claim, _opts, {:error, {:conflict_follow_up, _reason}} = error), do: error
+
+  defp route_result(observation, :new, opts, {:error, reason}) do
+    _ = Journal.release_alert(observation.number, observation.head, "conflict-rework", opts)
+    {:error, reason}
+  end
+
+  defp route_result(_observation, _claim, _opts, result), do: result
 
   defp follow_up_completed?(observation, opts) do
     with {:ok, journal} <- Journal.state(opts) do
