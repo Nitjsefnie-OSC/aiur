@@ -55,6 +55,7 @@ defmodule AiurWeb.AnalyticsOvercapTest do
     html = LiveViewAsync.render_when_complete(view)
 
     assert html =~ ~r/17 now, 1 over cap \/ 16 cap \(.*session 20\)/
+    assert html =~ "partial: 2 of 17 occupied slots not seen as active"
   end
 
   @tag analytics_capacity: %{effective: 16, max: 20, configured: 16, occupied: 15, available: 1, queued_demand?: true}
@@ -225,7 +226,7 @@ defmodule AiurWeb.AnalyticsOvercapTest do
     records = [
       record(boot_id, 1, "restart", ~U[2026-07-11 00:01:00Z], %{"event" => "restart", "boundary" => "point", "event_key" => "route-1"}),
       record(boot_id, 2, "resource", ~U[2026-07-11 00:01:01Z], sample),
-      agent_resource_records(boot_id, 4, 17, ~U[2026-07-11 00:01:01Z]),
+      agent_resource_records(boot_id, 4, 15, ~U[2026-07-11 00:01:01Z]),
       record(boot_id, 3, "lifecycle", ~U[2026-07-11 00:01:02Z], %{"event" => "dispatch", "boundary" => "point", "event_key" => "route-3", "ticket" => "941"})
     ]
 
