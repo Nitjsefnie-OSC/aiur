@@ -39,6 +39,26 @@ defmodule Aiur.LandingWatch.MergeGroupLastingFailureTest do
     assert Map.get(state, "merge_group_run_failures", %{}) == %{}
   end
 
+  for {label, reason} <- [
+        {"a budget hold", {:aiur, :locally_held, %{reset_at: 0}}},
+        {"a wrapped budget hold", {:github, :transport, %{reason: {:aiur, :locally_held, %{reset_at: 0}}}}},
+        {"a GitHub rate limit", {:github, :rate_limited, %{status: 403}}}
+      ] do
+    test "#{label} past the limit is retried without counting or an attention" do
+      reason = unquote(Macro.escape(reason))
+      options = options(fn %{"id" => 5010}, _ -> {:error, reason} end)
+
+      for _poll <- 1..7 do
+        assert {:error, {:job_log, 5010, ^reason}} = MergeGroups.cancel_stale([], options)
+        assert_received {:log_read, 5010}
+        refute_received {:alert, _, _}
+      end
+
+      assert {:ok, state} = Journal.state(options)
+      assert Map.get(state, "merge_group_run_failures", %{}) == %{}
+    end
+  end
+
   test "a run that recovers before the limit is classified and its failure count is cleared" do
     recovered = :atomics.new(1, [])
 

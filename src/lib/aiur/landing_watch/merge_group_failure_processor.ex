@@ -1,7 +1,7 @@
 defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
   @moduledoc "Classifies failed merge-group runs and routes each PR outcome."
   alias Aiur.Alerts
-  alias Aiur.GitHub.{CIRecovery, Transport}
+  alias Aiur.GitHub.{CIRecovery, Errors, Transport}
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.{Journal, MergeFailureClassifier, MergeFailureOptions, MergeGroupFailureEvidence, MergeGroupJournal, MergeGroupRequeue}
 
@@ -58,7 +58,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
         :ok
 
       {:error, reason} = error ->
-        if local_hold?(reason) do
+        if throttled?(reason) do
           _ = Journal.release_merge_group_run(run["id"], opts)
           error
         else
@@ -67,10 +67,10 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
     end
   end
 
-  # Budget holds are ours, not the run's, so they retry without counting toward the limit.
-  defp local_hold?({:job_log, _job_id, reason}), do: local_hold?(reason)
-  defp local_hold?({:github, :local_hold, _}), do: true
-  defp local_hold?(_), do: false
+  # Budget holds and GitHub rate limits throttle every run, not this one, so they retry uncounted.
+  defp throttled?({:job_log, _job_id, reason}), do: throttled?(reason)
+  defp throttled?({:github, :rate_limited, _}), do: true
+  defp throttled?(reason), do: Errors.outcome({:error, reason}) == :held
 
   defp release_counted_failure(run, base, reason, error, opts) do
     case MergeGroupJournal.release_failed_merge_group_run(run["id"], @lasting_failure_polls, opts) do
