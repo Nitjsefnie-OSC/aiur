@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
 import { openParityPair, PARITY_MATRIX, waitParityReady, applyAllowlist } from '../support/design-parity.mjs'
 
+// Two isolated pages, font loading and six scroll windows exceed a single-page budget.
+test.setTimeout(120_000)
 // Full regions retain the two upstream gaps recorded in the shared allowlist.
 // Save both unmasked regions for sign-off; do not turn the product into its own oracle.
 for (const cell of PARITY_MATRIX.filter(c => ['live', 'dense'].includes(c.dataset) && c.viewport.width >= 1024 && !c.reducedMotion)) {

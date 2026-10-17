@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
-test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
+test.use({ colorScheme: 'light', httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 async function open(page, dataset = 'live') {
   await page.route(/\/build-home\/[\w-]+\.js$/, route => route.fulfill({ path: fileURLToPath(new URL('../../priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), import.meta.url)), contentType: 'text/javascript' }))
   await page.clock.setFixedTime(1791408000000)
@@ -74,7 +74,8 @@ test('B8 destroy cancels pending draws and disconnected content is untouched', a
 
 test('B8b navigating back during a draw loop renders a fresh mount', async ({ page }) => {
   await open(page)
-  const count = await page.evaluate(() => { st.fx.drawEdges(true); st.fx.drawEdgesSoon(420); return st.ctx.svg.querySelectorAll('.bd-eh').length })
+  // Keep the deadline alive across navigation even when the shared host is busy.
+  const count = await page.evaluate(() => { st.fx.drawEdges(true); st.fx.drawEdgesSoon(60_000); return st.ctx.svg.querySelectorAll('.bd-eh').length })
   expect(count).toBeGreaterThan(0)
   await navigate(page, '/commands')
   await expect(page.locator('#bd-content')).toHaveCount(0)

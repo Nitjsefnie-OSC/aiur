@@ -262,5 +262,18 @@
       "date": null,
       "ref": "C9-T04 columns / #3145"
     }
+  },
+  {
+    "id": "edges-odd-states",
+    "kind": "copy",
+    "selector": "#build-root",
+    "cells": {},
+    "reason": "S-24: odd-edge order violation, unknown and cyclic dependency captures are regression baselines pending owner sign-off.",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "C4-T05 / DESIGN-E8 S-24 / #3145"
+    }
   }
 ]

@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 import { openParityPair, applyAllowlist, waitParityReady, PARITY_VIEWPORTS, PARITY_MATRIX } from '../support/design-parity.mjs'
 
+// Two isolated pages, font loading and six scroll windows exceed a single-page budget.
+test.setTimeout(120_000)
 const cell = { dataset: 'live', ...PARITY_VIEWPORTS[0], theme: 'dark', palette: 'gruvbox' }
 
 test('edges are decorative for assistive tech', async ({ browser }) => {
