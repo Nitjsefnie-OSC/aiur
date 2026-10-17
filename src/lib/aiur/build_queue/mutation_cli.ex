@@ -66,7 +66,7 @@ defmodule Aiur.BuildQueue.MutationCLI do
     if opts[:build_order] do
       ids == [] and positive?(opts[:build_order]) and is_nil(opts[:after]) and is_nil(opts[:at])
     else
-      ids != [] and valid_after?(opts[:after], ids) and (is_nil(opts[:at]) or position?(opts[:at]))
+      ids != [] and valid_after?(opts[:after]) and (is_nil(opts[:at]) or position?(opts[:at]))
     end
   end
 
@@ -78,8 +78,8 @@ defmodule Aiur.BuildQueue.MutationCLI do
   defp valid_command?(:reorder, [_], opts), do: position?(opts[:to]) and is_nil(opts[:queue])
   defp valid_command?(verb, ids, opts) when verb in [:hold, :release], do: (length(ids) == 1 and is_nil(opts[:queue])) or (ids == [] and is_binary(opts[:queue]))
   defp valid_command?(_, _, _), do: false
-  defp valid_after?(nil, _ids), do: true
-  defp valid_after?(id, ids), do: id?(id) and id not in ids
+  defp valid_after?(nil), do: true
+  defp valid_after?(id), do: id?(id)
 
   defp id?(id), do: is_binary(id) and Regex.match?(~r/\A[1-9][0-9]*\z/, id)
   defp position?(n), do: is_integer(n) and n >= 0
@@ -117,12 +117,27 @@ defmodule Aiur.BuildQueue.MutationCLI do
     if opts[:verb] == :clear and opts[:yes] != true, do: {:error, :confirmation_required}, else: :ok
   end
 
+  defp dispatch(:add, opts) do
+    case server_phase(opts) do
+      :awaiting_first_observation -> {:ok, Enum.map(opts[:ids], &{"##{&1}", {:error, :awaiting_first_observation}})}
+      _ -> if(opts[:after] in opts[:ids], do: dispatch_add_batch(opts), else: dispatch_add_ids(opts))
+    end
+  end
+
   defp dispatch(:order, opts), do: {:ok, [{opts[:queue], call({:mutate, {:order, opts[:queue], opts[:to]}}, opts)}]}
   defp dispatch(:set, opts), do: {:ok, [{opts[:queue], call({:mutate, {:set_trigger, opts[:queue], opts[:start_on]}}, opts)}]}
   defp dispatch(:recover, opts), do: {:ok, [{"recover", call({:recover, Keyword.get(opts, :force, false)}, opts)}]}
   defp dispatch(:clear, opts), do: {:ok, [{"clear", call({:mutate, {:clear, Keyword.take(opts, [:remove_markers, :yes])}}, opts)}]}
+  defp dispatch(:remove, opts), do: {:ok, Enum.map(opts[:ids], &{"##{&1}", call({:mutate, {:remove, &1}}, opts)})}
+  defp dispatch(:reorder, opts), do: {:ok, [{"##{hd(opts[:ids])}", call({:mutate, {:reorder, hd(opts[:ids]), opts[:to]}}, opts)}]}
 
-  defp dispatch(:add, opts) do
+  defp dispatch(verb, opts) do
+    with {:ok, target} <- target(opts) do
+      {:ok, [{opts[:queue] || "##{target}", call({verb, target}, opts)}]}
+    end
+  end
+
+  defp dispatch_add_ids(opts) do
     {results, _} =
       Enum.map_reduce(opts[:ids], {opts[:at], Keyword.take(opts, [:rank])}, fn id, {at, rank} ->
         options = Keyword.take(opts, [:after]) |> Keyword.merge(rank) |> Keyword.put(:queue, opts[:queue] || "default")
@@ -135,13 +150,23 @@ defmodule Aiur.BuildQueue.MutationCLI do
     {:ok, results}
   end
 
-  defp dispatch(:remove, opts), do: {:ok, Enum.map(opts[:ids], &{"##{&1}", call({:mutate, {:remove, &1}}, opts)})}
-  defp dispatch(:reorder, opts), do: {:ok, [{"##{hd(opts[:ids])}", call({:mutate, {:reorder, hd(opts[:ids]), opts[:to]}}, opts)}]}
+  defp dispatch_add_batch(opts) do
+    options = Keyword.take(opts, [:after, :at, :rank]) |> Keyword.put(:queue, opts[:queue] || "default")
+    options = if Keyword.has_key?(opts, :start_on), do: Keyword.put(options, :start_trigger, opts[:start_on]), else: options
 
-  defp dispatch(verb, opts) do
-    with {:ok, target} <- target(opts) do
-      {:ok, [{opts[:queue] || "##{target}", call({verb, target}, opts)}]}
+    case call({:mutate, {:add, opts[:ids], options}}, opts) do
+      {:ok, {:not_observed, ids}} -> {:ok, Enum.map(opts[:ids], fn id -> {"##{id}", if(id in ids, do: {:ok, {:not_observed, [id]}}, else: :ok)} end)}
+      result -> {:ok, Enum.map(opts[:ids], &{"##{&1}", result})}
     end
+  end
+
+  defp server_phase(opts) do
+    case :sys.get_state(server(opts)) do
+      %{status: :running, phase: phase} -> phase
+      _ -> :unavailable
+    end
+  catch
+    :exit, _ -> :unavailable
   end
 
   defp inserted?(:ok), do: true
@@ -191,6 +216,7 @@ defmodule Aiur.BuildQueue.MutationCLI do
   defp message({:error, :confirmation_required}), do: "clear requires --yes; removes all queue membership and markers, keeping todo"
   defp message({:error, :invalid_start_trigger}), do: "--start-on must be one of: #{Enum.join(Aiur.StartTrigger.triggers(), ", ")} (set also accepts default)"
   defp message({:error, :trigger_mismatch}), do: "queue has a different start trigger; use queue set NAME --start-on TRIGGER"
+  defp message({:error, :anchor_not_in_queue}), do: "--after anchor is not in this queue (add it in the same command or choose a queue member)"
   defp message(:ok), do: "ok"
   defp message({:error, {:already_queued, name}}), do: "already in queue #{name}"
   defp message({:error, :agent_workspace}), do: "blocked in agent workspace"

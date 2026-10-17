@@ -96,6 +96,36 @@ defmodule Aiur.BuildQueue.MutationCLITest do
     assert Agent.get(Boundary, & &1.closure_reads) == ["9"]
   end
 
+  test "batch add gives every ID the same first-observation verdict", %{server: pid} do
+    # Exercise both orders against a server in the guarded startup phase.
+    state = :sys.get_state(pid)
+    :sys.replace_state(pid, &%{&1 | phase: :awaiting_first_observation})
+
+    for ids <- [["1", "2"], ["2", "1"]] do
+      assert {:ok, results} = MutationCLI.execute(verb: :add, ids: ids, queue: "e2e", after: "9", server: pid)
+      assert Enum.map(results, &elem(&1, 1)) == [{:error, :awaiting_first_observation}, {:error, :awaiting_first_observation}]
+    end
+
+    assert document() == @empty
+    :sys.replace_state(pid, fn current -> %{current | phase: state.phase} end)
+  end
+
+  test "after anchor must be a member of the target queue unless added in this command", %{server: pid} do
+    assert {:ok, [{"#2", {:error, :anchor_not_in_queue}}]} = MutationCLI.execute(verb: :add, ids: ["2"], queue: "e2e", after: "1", server: pid)
+    assert document() == @empty
+
+    assert {:ok, _} = MutationCLI.execute(verb: :add, ids: ["1", "2"], queue: "e2e", after: "1", server: pid)
+    assert Enum.map(document().edges, &{&1.prerequisite, &1.dependent}) == [{"1", "2"}]
+  end
+
+  test "a batch crossing an already queued ID retains independent additions", %{server: pid} do
+    run(pid, :add, ids: ["1"], queue: "paseo")
+    output = capture_io(fn -> assert Aiur.BuildQueueCLI.run(verb: :add, ids: ["1", "2"], queue: "other", server: pid) == 1 end)
+    assert output =~ "#1: already in queue paseo"
+    assert output =~ "#2: ok"
+    assert Enum.map(document().items, & &1.issue_id) == ["1", "2"]
+  end
+
   test "add reports an unobserved but closed issue closed and does not queue it", %{server: pid} do
     Agent.update(Boundary, &Map.merge(&1, %{observation_labels: Map.delete(&1.labels, "9"), closures: %{"9" => {:ok, %{open?: false, state_reason: "completed"}}}}))
     output = capture_io(fn -> assert Aiur.BuildQueueCLI.run(verb: :add, ids: ["2", "9"], queue: "paseo", server: pid) == 1 end)
@@ -134,7 +164,9 @@ defmodule Aiur.BuildQueue.MutationCLITest do
   end
 
   test "positions edges reorder and remove traverse real persisted commands", %{server: pid} do
-    run(pid, :add, ids: ["1", "2"], after: "3")
+    run(pid, :add, ids: ["3"])
+    assert :ok = GenServer.call(pid, {:mutate, {:add, ["1"], [queue: "default", after: "3"]}})
+    assert :ok = GenServer.call(pid, {:mutate, {:add, ["2"], [queue: "default", after: "3"]}})
     run(pid, :add, ids: ["3"], at: 1)
     assert Enum.map(document().items, &{&1.issue_id, &1.position}) == [{"1", 0}, {"3", 1}, {"2", 2}]
     assert Enum.map(document().edges, &{&1.prerequisite, &1.dependent}) == [{"3", "1"}, {"3", "2"}]
