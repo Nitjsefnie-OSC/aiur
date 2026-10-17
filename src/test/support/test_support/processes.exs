@@ -145,15 +145,8 @@ defmodule Aiur.TestSupport.Processes do
   def stop_test_runners(test_pid) when is_pid(test_pid) do
     kill_all(&(test_pid in callers(&1)))
     kill_all(&(initial_call(&1) == {Aiur.Orchestrator, :init, 1} and test_pid in ancestors(&1)))
-
-    kill_all(&(match?({Aiur.Orchestrator.Dispatcher.Launch, _fun, _arity}, initial_call(&1)) and orphaned?(&1)))
-  end
-
-  defp orphaned?(pid) do
-    case callers(pid) do
-      [dispatcher | _] -> not Process.alive?(dispatcher)
-      [] -> true
-    end
+    kill_all(&(match?({Aiur.Orchestrator.Dispatcher.Launch, _, _}, initial_call(&1)) and test_pid in callers(&1)))
+    :ok
   end
 
   defp kill_all(predicate) do
@@ -262,7 +255,6 @@ defmodule Aiur.TestSupport.Processes do
     end
   end
 
-  # Reads one key so a whole-suite scan does not copy every process dictionary.
   defp callers(pid), do: dictionary_value(pid, :"$callers", [])
   defp initial_call(pid), do: dictionary_value(pid, :"$initial_call", nil)
 

@@ -336,9 +336,9 @@ defmodule Aiur.TestSupport do
         stop_default_http_server()
 
         on_exit(fn ->
-          Aiur.TestSupport.stop_test_runners(lifecycle_test_pid)
           scope_state_violation = Aiur.TestScopeGuard.violation(expected_test_scope_state)
 
+          Aiur.TestSupport.stop_test_runners(lifecycle_test_pid)
           Aiur.TestSupport.quiesce_live_orchestrator()
           Aiur.TestSupport.restore_app_env(previous_app_env)
           Application.delete_env(:aiur, :server_port_override)

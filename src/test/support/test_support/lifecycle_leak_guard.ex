@@ -43,9 +43,20 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
 
   @doc "Teardown's last step: marks the test finished, raises its scope violation, then checks for leaks."
   def finish!(test_pid, scope_violation) do
+    runner_leaks = live_runners(test_pid)
+
+    Enum.each(runner_leaks, fn {runner, _test} ->
+      Process.exit(runner, :kill)
+      await_down(runner)
+    end)
+
     finish(test_pid)
-    if scope_violation, do: raise(scope_violation)
-    check!()
+
+    cond do
+      scope_violation -> raise(scope_violation)
+      runner_leaks != [] -> raise "test left dispatched agent runners alive: #{inspect(Enum.map(runner_leaks, fn {pid, test} -> {test, pid} end))}"
+      true -> check!()
+    end
   end
 
   @doc "Raises once for every lifecycle write a finished test's process made."
@@ -79,6 +90,43 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
     end
   end
 
+  defp live_runners(test_pid) do
+    Process.list()
+    |> Enum.filter(fn pid ->
+      match?({Aiur.Orchestrator.Dispatcher.Launch, _, _}, dictionary_value(pid, :"$initial_call", nil)) and
+        runner_owner(pid, []) == test_pid
+    end)
+    |> Enum.map(&{&1, test_name(test_pid)})
+    |> Enum.filter(fn {runner, _test} -> Process.alive?(runner) end)
+  end
+
+  defp runner_owner(pid, seen) do
+    case :ets.lookup(@owners, pid) do
+      [{^pid, test_pid}] ->
+        test_pid
+
+      [] ->
+        if pid not in seen and Process.alive?(pid), do: Enum.find_value(parents(pid), &runner_owner(&1, [pid | seen]))
+    end
+  end
+
+  defp await_down(pid) do
+    ref = Process.monitor(pid)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      1_000 -> Process.demonitor(ref, [:flush])
+    end
+  end
+
+  defp test_name(test_pid) do
+    case :ets.lookup(@tests, test_pid) do
+      [{^test_pid, test, _finished}] -> test
+      _ -> "unknown test"
+    end
+  end
+
   # Depth-first through live processes' callers and ancestors to a registered
   # test. Each process on the found path is cached, so a runner still resolves
   # after the orchestrator that spawned it has died.
@@ -91,7 +139,10 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
         test_pid
 
       {false, []} ->
-        if pid not in seen and Process.alive?(pid), do: cache_owner(pid, Enum.find_value(parents(pid), &owner(&1, [pid | seen])))
+        if pid not in seen and Process.alive?(pid) do
+          parent_owner = Enum.find_value(parents(pid), &owner(&1, [pid | seen]))
+          cache_owner(pid, parent_owner)
+        end
     end
   end
 
@@ -111,5 +162,16 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
       pid -> pid
     end)
     |> Enum.filter(&is_pid/1)
+  end
+
+  defp callers(pid), do: dictionary_value(pid, :"$callers", [])
+  defp ancestors(pid), do: dictionary_value(pid, :"$ancestors", [])
+
+  defp dictionary_value(pid, key, default) do
+    case Process.info(pid, {:dictionary, key}) do
+      {_key, :undefined} -> default
+      {_key, value} -> value
+      nil -> []
+    end
   end
 end
