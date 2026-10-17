@@ -46,7 +46,7 @@ async function walkHistory(page) {
   }
   return [...seen.values()].sort((a, b) => a.k.localeCompare(b.k) || a.n[1] - b.n[1] || a.n[7] - b.n[7])
 }
-const styleOf = page => page.evaluate(() => Object.fromEntries([...new Set([...document.querySelectorAll('#bd-edges .bd-e')].map(p => p.getAttribute('class').trim()))].map(cls => {
+const styleOf = page => page.evaluate(() => Object.fromEntries([...new Set([...document.querySelectorAll('#bd-edges .bd-e, #bd-edges .bd-ea')].map(p => p.getAttribute('class').trim()))].map(cls => {
   const cs = getComputedStyle(document.querySelector(`#bd-edges path[class^="${cls}"]`))
   return [cls, ['stroke', 'strokeWidth', 'strokeDasharray', 'opacity', 'fill'].map(k => cs[k]).join('|')]
 })))
