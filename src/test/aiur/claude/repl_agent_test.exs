@@ -29,6 +29,9 @@ defmodule Aiur.Claude.ReplAgentTest do
     do: "/tmp/aiur-test-hooks-#{identifier}.json"
 
   test "start_session spawns the REPL, awaits readiness, and returns a session", %{tmux: tmux} do
+    # CI runners can take longer than a second to schedule each REPL startup step.
+    receive_timeout = 5_000
+
     # Normalize up front: start_session stores the expanded path, and on macOS
     # System.tmp_dir!/0 carries a trailing slash that Path.expand strips.
     ws = Path.expand(System.tmp_dir!())
@@ -47,7 +50,7 @@ defmodule Aiur.Claude.ReplAgentTest do
       end)
 
     # 1. new-window spawns the pane.
-    assert_receive {:tmux_mock_out, cmd}, 1_000
+    assert_receive {:tmux_mock_out, cmd}, receive_timeout
     assert String.starts_with?(cmd, "new-window -d -n aiur-repl-test")
     assert String.contains?(cmd, "-e BASH_ENV= -e ENV= -e ZDOTDIR=/dev/null")
     assert String.contains?(cmd, "exec claude")
@@ -57,11 +60,11 @@ defmodule Aiur.Claude.ReplAgentTest do
     respond(tmux, "%99\n")
 
     # 2. pane_pid resolves the OS pid before the containment callback.
-    assert_receive {:tmux_mock_out, "display-message -p -t %99 \#{pane_pid}"}, 1_000
+    assert_receive {:tmux_mock_out, "display-message -p -t %99 \#{pane_pid}"}, receive_timeout
     respond(tmux, "4242\n")
 
     # 3. await_ready captures the pane until the prompt glyph shows.
-    assert_receive {:tmux_mock_out, "capture-pane -p -t %99"}, 1_000
+    assert_receive {:tmux_mock_out, "capture-pane -p -t %99"}, receive_timeout
     respond(tmux, "Welcome\n❯\n")
 
     assert {:ok, session} = Task.await(task, 2_000)
