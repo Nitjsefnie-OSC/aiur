@@ -36,6 +36,20 @@ defmodule Aiur.TestTmpTest do
     assert {:ok, ^unrelated} = File.read_link(Path.join(base, "run-7-#{dead_pid}-9"))
   end
 
+  test "sweep removes a dead run holding read-only hook snapshot directories", %{base: base} do
+    {output, 0} = System.cmd("sh", ["-c", "echo $$"])
+    dead_pid = output |> String.trim() |> String.to_integer()
+    refute Aiur.ProcessIdentity.alive?(dead_pid)
+    stale = Path.join(base, "run-1-#{dead_pid}-3")
+    snapshot = Path.join([stale, "hooks", "snapshot"])
+    File.mkdir_p!(snapshot)
+    File.write!(Path.join(snapshot, "hook"), "read-only")
+    File.chmod!(snapshot, 0o555)
+    File.chmod!(Path.join(stale, "hooks"), 0o555)
+    Aiur.TestTmp.sweep!(base, File.stat!(stale).uid)
+    refute File.exists?(stale)
+  end
+
   test "sweep leaves directories belonging to another owner", %{base: base} do
     {output, 0} = System.cmd("sh", ["-c", "echo $$"])
     dead_pid = output |> String.trim() |> String.to_integer()

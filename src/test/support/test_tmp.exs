@@ -26,7 +26,7 @@ defmodule Aiur.TestTmp do
   defp remove_dead_run!(path, owner, pid) do
     case File.lstat(path) do
       {:ok, %File.Stat{type: :directory, uid: ^owner}} ->
-        unless Aiur.ProcessIdentity.alive?(pid), do: File.rm_rf!(path)
+        unless Aiur.ProcessIdentity.alive?(pid), do: writable_rm_rf!(path)
 
       {:ok, _stat} ->
         :ok
@@ -37,5 +37,12 @@ defmodule Aiur.TestTmp do
       {:error, reason} ->
         raise File.Error, reason: reason, action: "stat", path: path
     end
+  end
+
+  # A leaked build-gate runner leaves read-only hook snapshots, and rm_rf cannot clear a 0555 directory.
+  # chmod -R does not follow symlinks, so this stays inside the run directory.
+  defp writable_rm_rf!(path) do
+    _ = System.cmd("chmod", ["-R", "u+w", path], stderr_to_stdout: true)
+    File.rm_rf!(path)
   end
 end
