@@ -3,6 +3,7 @@ import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 async function open(page, dataset = 'live') {
+  await page.clock.setFixedTime(1791408000000)
   await page.goto('/build-fixture/' + dataset)
   await expect(page.locator('#bd-content')).toHaveCount(1)
   await page.evaluate(async () => { window.st = await import('/build-home/state.js') })
@@ -43,7 +44,8 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
     return result
   })
   expect(edges).toMatchObject({ 12: 'bd-e bad', 19: 'bd-e', 1: 'bd-e bl', 2: 'bd-e bl', 3: 'bd-e bl', 4: 'bd-e bl', 5: 'bd-e bl' })
-  await info.attach('S-24 odd-edge region pending design sign-off', { body: await page.locator('#bd-edges').screenshot(), contentType: 'image/png' })
+  info.annotations.push({ type: 'pending-sign-off', description: 'S-24 odd edges / C4-T05' })
+  await expect(page.locator('#bd-edges')).toHaveScreenshot('odd-edges.png')
   expect(errors).toEqual([])
 })
 
