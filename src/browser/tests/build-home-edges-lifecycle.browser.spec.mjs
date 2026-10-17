@@ -1,8 +1,10 @@
+import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 async function open(page, dataset = 'live') {
+  await page.route(/\/build-home\/[\w-]+\.js$/, route => route.fulfill({ path: fileURLToPath(new URL('../../priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), import.meta.url)), contentType: 'text/javascript' }))
   await page.clock.setFixedTime(1791408000000)
   await page.goto('/build-fixture/' + dataset)
   await expect(page.locator('#bd-content')).toHaveCount(1)
