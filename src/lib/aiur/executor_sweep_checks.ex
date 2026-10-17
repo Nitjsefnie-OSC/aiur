@@ -104,6 +104,8 @@ defmodule Aiur.ExecutorSweep.Checks do
               pull_request: value(entry, :number, nil)
             )
           ]
+        else
+          []
         end
       end)
 
@@ -124,6 +126,8 @@ defmodule Aiur.ExecutorSweep.Checks do
               merge_group: value(group, :name, nil)
             )
           ]
+        else
+          []
         end
       end)
 
@@ -199,20 +203,13 @@ defmodule Aiur.ExecutorSweep.Checks do
 
     stale_triage =
       snapshot
-      |> Map.get(:tickets, [])
-      |> Enum.flat_map(fn ticket ->
-        age = age_ms(date(value(ticket, :created_at, nil)), now)
+      |> Map.get(:open_tickets)
+      |> TriageBacklog.stale_tickets(now)
+      |> Enum.map(fn ticket ->
+        age = age_ms(ticket.created_at, now)
 
-        if TriageBacklog.stale?(labels(ticket), date(value(ticket, :created_at, nil)), now) do
-          # The ticket keys the sweep fingerprint, so each newly stale ticket wakes the Executor.
-          [
-            finding("stale_needs_triage", 10, age, "Triage the ticket and set its queue state.", "Ticket #{value(ticket, :number, "?")} has needed triage for #{duration(age)}.",
-              ticket: value(ticket, :number, nil)
-            )
-          ]
-        else
-          []
-        end
+        # The ticket keys the sweep fingerprint, so each newly stale ticket wakes the Executor.
+        finding("stale_needs_triage", 10, age, "Triage the ticket and set its queue state.", "Ticket #{ticket.identifier} has needed triage for #{duration(age)}.", ticket: ticket.identifier)
       end)
 
     open_prs = MapSet.new(snapshot |> Map.get(:pull_requests, []) |> Enum.filter(&(value(&1, :state, "") == "open")) |> Enum.map(&value(&1, :issue_number, nil)))
