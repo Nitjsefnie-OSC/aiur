@@ -10,6 +10,7 @@ defmodule Aiur.LandingWatch.ConflictRouting do
   """
 
   alias Aiur.{CodeHost, Config, Tracker}
+  alias Aiur.LandingWatch.Journal
 
   @failure %{name: "Merge conflict with base"}
 
@@ -19,8 +20,63 @@ defmodule Aiur.LandingWatch.ConflictRouting do
   @doc "Takes the PR out of the queue, then routes it through `rework` with a rebase-only follow-up."
   @spec route(map(), (map(), [map()], keyword() -> :ok | {:error, term()}), keyword()) :: :ok | {:error, term()}
   def route(observation, rework, opts) do
-    with :ok <- withdraw(observation, opts) do
-      rework.(observation, [@failure], Keyword.put(opts, :after_rework, &follow_up(observation, &1, opts)))
+    marker = "conflict-rework"
+
+    with :ok <- withdraw(observation, opts),
+         {:ok, claim} <- Journal.claim_alert(observation.number, observation.head, marker, opts),
+         {:ok, completed?} <- follow_up_completed?(observation, opts) do
+      if completed? do
+        :ok
+      else
+        result =
+          rework.(
+            observation,
+            [@failure],
+            opts
+            |> Keyword.put(:conflict_rework_claim, claim)
+            |> Keyword.put(:after_rework, fn issue -> complete_follow_up(observation, issue, opts) end)
+          )
+
+        case result do
+          :conflict_already_rework ->
+            _ = Journal.release_alert(observation.number, observation.head, marker, opts)
+            :ok
+
+          {:error, {:conflict_follow_up, _reason}} = error ->
+            error
+
+          {:error, reason} when claim == :new ->
+            _ = Journal.release_alert(observation.number, observation.head, marker, opts)
+            {:error, reason}
+
+          other ->
+            other
+        end
+      end
+    end
+  end
+
+  defp follow_up_completed?(observation, opts) do
+    with {:ok, journal} <- Journal.state(opts) do
+      entry = Map.get(journal, "#{observation.number}:#{observation.head}", %{})
+      alerts = Map.get(entry, "alerts", %{})
+      {:ok, Map.get(alerts, "conflict-rework-follow-up", false)}
+    end
+  end
+
+  defp complete_follow_up(observation, issue, opts) do
+    case follow_up(observation, issue, opts) do
+      :ok ->
+        case Journal.claim_alert(observation.number, observation.head, "conflict-rework-follow-up", opts) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, {:conflict_follow_up, reason}}
+        end
+
+      {:error, reason} ->
+        {:error, {:conflict_follow_up, reason}}
+
+      other ->
+        {:error, {:conflict_follow_up, {:unconfirmed, other}}}
     end
   end
 
