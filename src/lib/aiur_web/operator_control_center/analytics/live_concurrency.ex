@@ -1,36 +1,18 @@
 defmodule AiurWeb.OperatorControlCenter.Analytics.LiveConcurrency do
   @moduledoc false
 
-  alias Aiur.Orchestrator
+  @spec snapshot_opts(term()) :: keyword()
+  def snapshot_opts({:current, %{running: running} = snapshot, _freshness}) when is_list(running),
+    do: [live_concurrency: count(running), live_occupied: occupied(snapshot), live_concurrency_state: :current]
 
-  @spec snapshot_opts(keyword()) :: keyword()
-  def snapshot_opts(opts) do
-    if Keyword.get(opts, :session, :all) == :current do
-      orchestrator = Keyword.get(opts, :orchestrator, Orchestrator)
-      timeout = Keyword.get(opts, :snapshot_timeout_ms, 15_000)
-      snapshot_fun = Keyword.get(opts, :live_snapshot_fun, &Orchestrator.dashboard_snapshot/2)
+  def snapshot_opts({:stale, %{running: running} = snapshot, freshness}) when is_list(running),
+    do: [live_concurrency: count(running), live_occupied: occupied(snapshot), live_concurrency_state: {:stale, age_ms(freshness)}]
 
-      case snapshot_fun.(orchestrator, timeout) do
-        {:current, %{running: running}, _freshness} when is_list(running) ->
-          [live_concurrency: count(running)]
-
-        {:stale, %{running: running}, freshness} when is_list(running) ->
-          [live_concurrency: count(running), live_concurrency_staleness: {:stale, age_ms(freshness)}]
-
-        {:stale, _snapshot, freshness} ->
-          [live_concurrency_staleness: {:stale, age_ms(freshness)}]
-
-        _other ->
-          []
-      end
-    else
-      []
-    end
-  rescue
-    _error -> []
-  catch
-    _kind, _reason -> []
-  end
+  def snapshot_opts({:current, _snapshot, _freshness}), do: [live_concurrency_state: :running_unavailable]
+  def snapshot_opts({:stale, _snapshot, freshness}), do: [live_concurrency_state: {:stale_unavailable, age_ms(freshness)}]
+  def snapshot_opts(:snapshot_unpublished), do: [live_concurrency_state: :snapshot_unpublished]
+  def snapshot_opts(:orchestrator_unavailable), do: [live_concurrency_state: :orchestrator_unavailable]
+  def snapshot_opts(_other), do: [live_concurrency_state: :snapshot_unavailable]
 
   @spec count([map()]) :: non_neg_integer()
   def count(running) do
@@ -41,20 +23,37 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.LiveConcurrency do
     end)
   end
 
+  defp occupied(%{capacity: %{occupied: count}}) when is_integer(count) and count >= 0, do: count
+  defp occupied(_snapshot), do: nil
+
   @doc false
   @spec label(map(), boolean()) :: String.t()
+  @spec label(map(), boolean(), map()) :: String.t()
+  def label(model, present?, %{kind: :build_order}),
+    do: "#{model.kpis.conc_now} #{if(present?, do: "now", else: "at run end")}"
+
+  def label(model, present?, scope), do: label(model, present? and scope == :session)
+
+  @spec label(map(), boolean()) :: String.t()
   def label(model, true) do
-    kpis = Map.fetch!(model, :kpis)
-    count = Map.get(model, :live_concurrency) || Map.fetch!(kpis, :conc_now)
-    freshness = Map.get(model, :live_concurrency_staleness)
-    "#{count} now#{freshness_label(freshness)}"
+    case Map.get(model, :live_concurrency) do
+      count when is_integer(count) -> "#{count} running now#{occupied_label(Map.get(model, :live_occupied), count)}#{freshness_label(Map.get(model, :live_concurrency_state))}"
+      _unknown -> "occupancy unavailable#{freshness_label(Map.get(model, :live_concurrency_state))}"
+    end
   end
 
   def label(model, false), do: "#{model.kpis.conc_now} at run end"
 
+  defp occupied_label(occupied, count) when is_integer(occupied) and occupied != count, do: " (#{occupied} slots occupied)"
+  defp occupied_label(_occupied, _count), do: ""
+
+  defp freshness_label({:stale, nil}), do: " (sample age unknown)"
+  defp freshness_label({:stale_unavailable, nil}), do: " (sample age unknown)"
   defp freshness_label({:stale, age_ms}), do: " (sample #{age_label(age_ms)} old)"
+  defp freshness_label({:stale_unavailable, age_ms}), do: " (sample #{age_label(age_ms)} old)"
   defp freshness_label(_freshness), do: ""
 
+  defp age_label(nil), do: "age unknown"
   defp age_label(age_ms) when age_ms <= 30_000, do: "just now"
   defp age_label(age_ms) when age_ms < 60_000, do: "#{div(age_ms, 1_000)}s"
   defp age_label(age_ms) when age_ms < 3_600_000, do: "#{div(age_ms, 60_000)}m"
