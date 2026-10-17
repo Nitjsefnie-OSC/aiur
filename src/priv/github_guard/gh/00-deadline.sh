@@ -2,8 +2,9 @@
 #!/bin/sh
 # Keep the complete governed call, including broker and real-gh descendants,
 # inside one process group so a deadline can terminate every child.
-if [ "${AIUR_GH_GUARD_SUPERVISED:-0}" != 1 ] && command -v python3 >/dev/null 2>&1; then
-  exec python3 -c '
+if [ "${AIUR_GH_GUARD_SUPERVISED:-0}" != 1 ]; then
+  if command -v python3 >/dev/null 2>&1; then
+    exec python3 -c '
 import os, signal, subprocess, sys
 
 script, *args = sys.argv[1:]
@@ -48,4 +49,8 @@ except subprocess.TimeoutExpired:
     raise SystemExit(124)
 raise SystemExit(status if status >= 0 else 128 - status)
 ' "$0" "$@"
+  elif [ "${1:-}" != --validate-issue-command ]; then
+    printf '%s\n' 'aiur: python3 is required to enforce the governed gh call deadline' >&2
+    exit 127
+  fi
 fi

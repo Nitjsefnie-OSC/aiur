@@ -85,7 +85,9 @@ defmodule Aiur.AgentGitHubGuard.SecondaryLimitsTest do
         )
       end)
 
-    wait_for_calls(context.calls, 1)
+    # The deadline supervisor adds one Python startup before the guarded shell
+    # reaches the fake gh executable.
+    wait_for_calls(context.calls, 1, 300)
 
     second =
       Task.async(fn ->
@@ -108,8 +110,8 @@ defmodule Aiur.AgentGitHubGuard.SecondaryLimitsTest do
       end)
 
     assert Task.yield(second, 80) == nil
-    assert {"ok\n", 0} = Task.await(first, 1_500)
-    assert {"ok\n", 0} = Task.await(second, 1_500)
+    assert {"ok\n", 0} = Task.await(first, 5_000)
+    assert {"ok\n", 0} = Task.await(second, 5_000)
   end
 
   test "the wrapper keeps one admission ledger when its publication token rotates", context do
