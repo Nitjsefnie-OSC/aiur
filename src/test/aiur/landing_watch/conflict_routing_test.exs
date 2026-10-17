@@ -51,6 +51,62 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
     refute_received {:enqueued, _}
   end
 
+  test "a failed follow-up is retried when the ticket is already in rework" do
+    parent = self()
+    path = journal_path()
+    Process.put(:conflict_comment_attempt, 0)
+
+    opts = cycle_opts(parent, conflicting(nil), "human-review") |> Keyword.put(:journal_path, path)
+
+    failing_comment = fn id, body ->
+      attempt = Process.get(:conflict_comment_attempt) + 1
+      Process.put(:conflict_comment_attempt, attempt)
+      send(parent, {:comment_attempt, id, body})
+      if attempt == 1, do: {:error, :temporary}, else: :ok
+    end
+
+    assert {:error, {:conflict_follow_up, :temporary}} = LandingWatch.poll(Keyword.put(opts, :comment_fun, failing_comment))
+    assert_received {:transition, "17", "rework", _}
+    assert_received {:comment_attempt, "17", _}
+    refute_received {:remove_label, _, _}
+
+    assert :ok = LandingWatch.poll(Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "rework"} end) |> Keyword.put(:comment_fun, failing_comment))
+
+    assert_received {:comment_attempt, "17", _}
+    assert_received {:remove_label, "17", "agent:paused"}
+    refute_received {:transition, _, _, _}
+  end
+
+  test "a completed route is not repeated when the ticket returns to review at the same head" do
+    parent = self()
+    path = journal_path()
+    opts = cycle_opts(parent, conflicting(nil), "human-review") |> Keyword.put(:journal_path, path)
+
+    assert :ok = LandingWatch.poll(opts)
+    assert_received {:transition, "17", "rework", _}
+    assert_received {:comment, "17", _}
+
+    assert :ok = LandingWatch.poll(Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "human-review"} end))
+    refute_received {:transition, _, _, _}
+    refute_received {:comment, _, _}
+  end
+
+  test "a ticket that was not routed does not receive a later rework follow-up" do
+    parent = self()
+    path = journal_path()
+    opts = cycle_opts(parent, conflicting(nil), "in-progress") |> Keyword.put(:journal_path, path)
+
+    assert :ok = LandingWatch.poll(opts)
+    refute_received {:transition, _, _, _}
+    refute_received {:comment, _, _}
+    refute_received {:remove_label, _, _}
+
+    assert :ok = LandingWatch.poll(Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "rework"} end))
+    refute_received {:transition, _, _, _}
+    refute_received {:comment, _, _}
+    refute_received {:remove_label, _, _}
+  end
+
   defp cycle_opts(parent, observation, ticket_state) do
     [
       observe_fun: fn _ -> {:ok, [observation]} end,
