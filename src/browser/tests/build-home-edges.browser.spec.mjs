@@ -134,6 +134,9 @@ test.describe('product edges on live', () => {
     expect(found).not.toBeNull()
     const { e, i, ...pt } = found
     const hit = page.locator('#bd-edges .bd-eh').nth(i)
+    expect(await page.locator('#bd-edges .bd-eh').evaluateAll(hits => hits.every(h =>
+      h.nextElementSibling?.matches('.bd-e') && h.nextElementSibling.getAttribute('d') === h.getAttribute('d') &&
+      h.nextElementSibling.nextElementSibling?.matches('.bd-ea')))).toBe(true)
     const top = () => page.evaluate(({ x, y }) => { const el = document.elementFromPoint(x, y); return el.matches('.bd-eh') ? el.dataset.e : 'other' }, pt)
     expect(await top()).toBe(e)
     await page.mouse.move(pt.x, pt.y)
