@@ -249,7 +249,9 @@ defmodule Aiur.TestSupport do
           ensure_workflow_store_running: 0
         ]
 
-      setup do
+      setup context do
+        Aiur.TestSupport.LifecycleLeakGuard.track(context)
+        lifecycle_test_pid = self()
         workflow_base = Application.fetch_env!(:aiur, :test_run_root)
         previous_test_scope_state = Aiur.TestScopeGuard.capture()
 
@@ -339,6 +341,7 @@ defmodule Aiur.TestSupport do
         stop_default_http_server()
 
         on_exit(fn ->
+          Aiur.TestSupport.stop_test_runners(lifecycle_test_pid)
           scope_state_violation = Aiur.TestScopeGuard.violation(expected_test_scope_state)
 
           Aiur.TestSupport.quiesce_live_orchestrator()
@@ -367,7 +370,9 @@ defmodule Aiur.TestSupport do
             Application.ensure_all_started(:aiur)
           end
 
+          Aiur.TestSupport.LifecycleLeakGuard.finish(lifecycle_test_pid)
           if scope_state_violation, do: raise(scope_state_violation)
+          Aiur.TestSupport.LifecycleLeakGuard.check!()
         end)
 
         :ok
@@ -380,6 +385,7 @@ defmodule Aiur.TestSupport do
   defdelegate pgrep_skip_reason(), to: Aiur.TestSupport.Processes
   defdelegate stop_default_http_server(), to: Aiur.TestSupport.Processes
   defdelegate safe_stop(server), to: Aiur.TestSupport.Processes
+  defdelegate stop_test_runners(test_pid), to: Aiur.TestSupport.Processes
   defdelegate start_owned_endpoint!(), to: Aiur.TestSupport.Processes
   defdelegate await_process_down(process, timeout \\ 2_000), to: Aiur.TestSupport.Processes
   defdelegate await_supervised_restart(name, prior, timeout \\ 5_000), to: Aiur.TestSupport.Processes
