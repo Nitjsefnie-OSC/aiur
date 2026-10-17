@@ -5106,8 +5106,7 @@ defmodule AiurWeb.DashboardLiveTest do
       snapshot_timeout_ms: 100,
       control_center_cache: false,
       units_membership_fun: fn -> units_membership(identity) end,
-      units_activity_fun: fn -> units_activity(identity) end,
-      open_tickets_fun: fn -> open_ticket_snapshot([]) end
+      units_activity_fun: fn -> units_activity(identity) end
     )
 
     {:ok, _view, html} = live(build_conn(), "/")
@@ -6126,7 +6125,8 @@ defmodule AiurWeb.DashboardLiveTest do
         secret_key_base: String.duplicate("s", 64),
         dashboard_writable: false,
         dashboard_auth_required: false,
-        control_center_cache: cache
+        control_center_cache: cache,
+        open_tickets_fun: fn -> open_ticket_snapshot([]) end
       )
       |> Keyword.merge(overrides)
 
