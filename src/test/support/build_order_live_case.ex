@@ -12,6 +12,7 @@ defmodule AiurWeb.BuildOrderLiveCase do
   alias Aiur.BuildOrder.GraphProjection.Snapshot
   alias Aiur.BuildOrder.TicketDetail.Snapshot, as: DetailSnapshot
   alias AiurWeb.Endpoint
+  alias Phoenix.LiveView.Channel
 
   defmacro __using__(_opts) do
     quote do
@@ -442,7 +443,7 @@ defmodule AiurWeb.BuildOrderLiveCase do
 
   def settle(view, rounds \\ 5) do
     html = LiveViewAsync.render_when_complete(view)
-    {:ok, pending} = Phoenix.LiveView.Channel.async_pids(view.pid)
+    {:ok, pending} = Channel.async_pids(view.pid)
     if pending == [] or rounds == 0, do: html, else: settle(view, rounds - 1)
   end
 
