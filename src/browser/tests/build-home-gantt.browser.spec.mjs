@@ -71,8 +71,8 @@ test('U4 unknown end is skipped even for direct callers', async ({ page }) => {
 })
 test('U5 zero duration keeps design minimum; negative duration clamps to end', async ({ page }) => {
   const result = await page.evaluate(() => [1, 3].map(span => {
-    const o = histRun([row('zero', NOW - H, NOW - H), row('negative', NOW - H + 300000, NOW - H)], { span })
-    return o.items.map(i => ({ h: i.h, y: i.y, endY: o.tY(i.t.end) }))
+    const o = histRun([row('zero', NOW - H, NOW - H), row('negative', NOW - H + 300000, NOW - H), row('axis', NOW - 2 * H, NOW)], { span })
+    return o.items.filter(i => i.t.id !== 'axis').map(i => ({ h: i.h, y: i.y, endY: o.tY(i.t.end) }))
   }))
   for (const [n, items] of result.entries()) for (const it of items) { expect(it.h).toBeCloseTo(n ? 4 : 29.9, 10); expect(it.y).toBe(it.endY) }
 })
@@ -112,6 +112,13 @@ test('U9 unknown planned estimates are marked and propagate a lower bound; overr
 })
 test('U10 band height honors overrides and unknown estimate uses the floor', async ({ page }) => {
   expect(await page.evaluate(() => [g.bandGanttHeight({ est: 2, override: { hours: 8 } }, context()), g.bandGanttHeight({ est: null }, context()), g.estOf({ est: null, cx: 5 }), g.estOf({ est: 2, override: { hours: 8 } })])).toEqual([144, 32.5, null, 8])
+  expect(await page.evaluate(() => {
+    initCards()
+    const t = row('band-unknown', null, null, { sec: 'now' })
+    state.ctx.D.byId[t.id] = t
+    const el = cards.makeCard({ t, sec: 'now', h: g.bandGanttHeight(t, context()), gt: true })
+    return { marked: el.classList.contains('est-unknown'), planned: el.classList.contains('gplan'), gt: el.classList.contains('gt'), title: el.querySelector('.bd-in').title }
+  })).toEqual({ marked: true, planned: false, gt: false, title: '#7 · Ticket · State unknown · estimate unknown' })
 })
 test('U11 EC-20 design guard: DST nights terminate, labels remain ordered, elapsed time sets heights', async ({ page }) => {
   const result = await page.evaluate(() => [
@@ -119,9 +126,10 @@ test('U11 EC-20 design guard: DST nights terminate, labels remain ordered, elaps
     ['2026-03-08T01:30:00-08:00', '2026-03-08T03:30:00-07:00']
   ].map(([a, b]) => {
     const end = Date.parse(b), o = histRun([row('dst', Date.parse(a), end)], { now: end })
-    return { h: o.items[0].h, count: o.labels.length, finite: o.labels.every(l => Number.isFinite(l.y)), ordered: o.labels.every((l, i) => i === 0 || l.y > o.labels[i - 1].y) }
+    return { h: o.items[0].h, ticks: o.labels.map(l => l.t), count: o.labels.length, finite: o.labels.every(l => Number.isFinite(l.y)), ordered: o.labels.every((l, i) => i === 0 || l.y > o.labels[i - 1].y) }
   }))
   expect(result.map(r => r.h)).toEqual([71, 2.3 * 13])
+  expect(result.map(r => r.ticks)).toEqual([['02:00'], []])
   for (const r of result) { expect(r.count).toBeLessThan(400); expect(r.finite).toBe(true); expect(r.ordered).toBe(true) }
 })
 test('U12 trailing segment uses payload now despite an unrelated browser clock', async ({ page }) => {
@@ -165,6 +173,29 @@ test('B3 unknown cards expose honest markers and escape hostile titles', async (
   })).toEqual({ start: true, title: '#7 · <img src=x onerror="window.__ganttXss=1"> · start unknown', est: true, estTitle: '#7 · Ticket · estimate unknown', imgs: 0, xss: null, nan: false })
 })
 
+test('B3 unknown-start snapshot renders its card end-anchored on the history axis', async ({ page }) => {
+  await page.goto('/build-fixture/live?view=gantt')
+  await expect(page.locator('#bd-content')).toHaveCount(1)
+  const result = await page.evaluate(async () => {
+    const { ctx, S, fx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
+    const { ganttHist } = await import('/build-home/gantt.js'), { CH, colKey } = await import('/build-home/layout.js')
+    const end = ctx.snap.now, title = '<img src=x onerror="window.__ganttXss=1">'
+    const t = { ...ctx.snap.sections.hist[0], id: 'unknown-snapshot', num: 7, start: null, end, title }
+    S.span = 1; S.histFrom = end - 86400000
+    receive({ ...ctx.snap, kind: 'snapshot', generation: ctx.proto.generation + 1, sections: { hist: [t], now: [], plan: [], nq: [] }, history: { ...ctx.snap.history, from: end - 86400000, total: 1, more: false } })
+    S.ready = false; ctx.vp.scrollTop = 0; fx.update()
+    const it = ctx.L.secs.hist.items.find(i => i.t.id === t.id)
+    const hs = { items: [], marks: [], labels: [], h: 0 }
+    const { tY } = ganttHist([{ t }], { now: end, nowRows: [], span: 1, pph: 18, flow: S.flow, colKey, CH, compact: false, hs })
+    const el = document.querySelector('#bd-sec-hist .bd-card[data-id="unknown-snapshot"]')
+    const rect = el.getBoundingClientRect(), origin = ctx.secs.hist.el.getBoundingClientRect().top
+    return { marked: el.classList.contains('start-unknown'), title: el.querySelector('.bd-in').title, axisError: Math.abs(it.y + it.h - tY(end)), renderedError: Math.abs(rect.bottom - origin - tY(end)), h: parseFloat(el.style.height), imgs: el.querySelectorAll('img').length, xss: window.__ganttXss ?? null, nan: document.body.innerText.includes('NaN') }
+  })
+  expect(result.marked).toBe(true); expect(result.title).toBe('#7 · <img src=x onerror="window.__ganttXss=1"> · start unknown')
+  expect(result.axisError).toBeLessThan(1e-9); expect(result.renderedError).toBeLessThan(0.1); expect(result.h).toBeCloseTo(29.9, 9)
+  expect(result.imgs).toBe(0); expect(result.xss).toBe(null); expect(result.nan).toBe(false)
+})
+
 test('B5/B7 fixture route switches Gantt and Timeline with the legend, time label and planned hatching', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/build-fixture/live?view=gantt')
@@ -179,7 +210,8 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
   await expect(page.locator('.bd-leg-h')).toHaveCount(0)
   await expect(page.locator('.bd-lane-g')).toHaveText('Order')
   const first = await page.evaluate(async () => {
-    const { ctx } = await import('/build-home/state.js')
+    const { ctx, fx } = await import('/build-home/state.js')
+    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
     return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
   })
   await page.getByRole('tab', { name: 'Gantt', exact: true }).click()
@@ -187,7 +219,8 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
   await expect(page.locator('#bd-edges')).toHaveClass(/gantt/)
   await page.getByRole('tab', { name: 'Timeline', exact: true }).click()
   expect(await page.evaluate(async () => {
-    const { ctx } = await import('/build-home/state.js')
+    const { ctx, fx } = await import('/build-home/state.js')
+    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
     return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
   })).toEqual(first)
 })
@@ -228,17 +261,25 @@ test('full unknown-start card shows no invented timestamp or duration; skew uses
 test('B5 live now-to-history diff lays out the actual completed interval', async ({ page }) => {
   await page.goto('/build-fixture/live?view=gantt')
   await expect(page.locator('#bd-content')).toHaveCount(1)
-  const result = await page.evaluate(async () => {
+  const id = await page.evaluate(async () => {
     const { ctx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
     const original = ctx.snap.sections.now[0]
     if (!original) throw new Error('live fixture must contain a running ticket')
     const now = ctx.snap.now, t = { ...original, sec: 'hist', status: 'done', start: now - 8 * 3600000, end: now }
     receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now, upsert: [t], remove: [], set: {} })
-    const it = ctx.L.secs.hist.items.find(i => i.t.id === t.id)
-    ctx.vp.scrollTop = ctx.secs.hist.el.offsetTop + it.y; (await import('/build-home/render.js')).update()
-    const el = document.querySelector(`#bd-sec-hist .bd-card[data-id="${CSS.escape(t.id)}"]`)
-    return { hist: !!el, stillNow: ctx.D.now.some(r => r.id === t.id), h: it.h, domH: parseFloat(el.style.height), text: el.querySelector('.bd-badges .h')?.textContent }
+    return t.id
   })
+  await expect.poll(() => page.evaluate(async id => {
+    const { ctx } = await import('/build-home/state.js')
+    return ctx.L.secs.hist.items.some(i => i.t.id === id)
+  }, id)).toBe(true)
+  const result = await page.evaluate(async id => {
+    const { ctx } = await import('/build-home/state.js')
+    const it = ctx.L.secs.hist.items.find(i => i.t.id === id)
+    ctx.vp.scrollTop = ctx.secs.hist.el.offsetTop + it.y; (await import('/build-home/render.js')).update()
+    const el = document.querySelector(`#bd-sec-hist .bd-card[data-id="${CSS.escape(id)}"]`)
+    return { hist: !!el, stillNow: ctx.D.now.some(r => r.id === id), h: it.h, domH: parseFloat(el.style.height), text: el.querySelector('.bd-badges .h')?.textContent }
+  }, id)
   expect(result).toEqual({ hist: true, stillNow: false, h: 143, domH: 143, text: '8h' })
 })
 
@@ -259,26 +300,25 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`B1
       })).sort((a, b) => a.id.localeCompare(b.id) || a.coords[0] - b.coords[0] || a.coords[1] - b.coords[1])
     })
     await pair.product.evaluate(async () => { (await import('/build-home/state.js')).S.ready = false })
-    let checkedEdges = 0
-    for (const offset of [0, 400, 800]) {
+    const height = await pair.design.locator('#bd-sec-hist').evaluate(el => el.offsetHeight)
+    const collected = [[], []]
+    for (let offset = 0; offset <= height + 400; offset += 400) {
       await pair.design.evaluate(offset => __ganttScroll(offset), offset)
       await pair.product.evaluate(async offset => {
         const { ctx, fx } = await import('/build-home/state.js')
         ctx.vp.scrollTop = ctx.secs.hist.el.offsetTop + offset; fx.update()
       }, offset)
-      await Promise.all([pair.design, pair.product].map(p => p.clock.runFor(100)))
+      await Promise.all([pair.design, pair.product].map(p => p.clock.runFor(400)))
       expect(await readMarks(pair.product)).toEqual(await readMarks(pair.design))
-      const d = await readEdges(pair.design), p = await readEdges(pair.product)
-      // Edges stay fully owned by C9-T07; compare all paths whose endpoint is in both render windows.
-      const shared = d.filter(e => p.some(a => a.id === e.id && Math.abs(a.coords[0] - e.coords[0]) < 1))
-      for (const e of shared) {
-        const actual = p.find(a => a.id === e.id && Math.abs(a.coords[0] - e.coords[0]) < 1)
-        expect(actual.cls).toBe(e.cls)
-        actual.coords.forEach((v, i) => expect(Math.abs(v - e.coords[i])).toBeLessThanOrEqual(0.5))
-        checkedEdges++
+      for (const [side, page] of [pair.design, pair.product].entries()) for (const edge of await readEdges(page)) {
+        if (!collected[side].some(e => e.id === edge.id && e.coords.every((v, i) => Math.abs(v - edge.coords[i]) <= 0.5))) collected[side].push(edge)
       }
     }
-    if (width === 1440) expect(checkedEdges).toBeGreaterThan(0)
+    const order = (a, b) => a.id.localeCompare(b.id) || a.coords[0] - b.coords[0] || a.coords[1] - b.coords[1] || a.coords[6] - b.coords[6] || a.coords[7] - b.coords[7]
+    const [expectedEdges, actualEdges] = collected.map(edges => edges.sort(order))
+    if (width === 1440) expect(expectedEdges.length).toBeGreaterThan(0)
+    expect(actualEdges.map(e => [e.id, e.cls])).toEqual(expectedEdges.map(e => [e.id, e.cls]))
+    actualEdges.forEach((edge, n) => edge.coords.forEach((v, i) => expect(Math.abs(v - expectedEdges[n].coords[i])).toBeLessThanOrEqual(0.5)))
     await expect(pair.product.locator('#bd-edges')).toHaveClass(/gantt/)
     // A single idle band is independent of the separately owned Now-band composition.
     const marks = await readMarks(pair.design)
@@ -290,6 +330,8 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`B1
       ctx.vp.scrollTop = ctx.secs.hist.el.offsetTop + offset; fx.update()
     }, Math.max(0, top - 100))
     for (const page of [pair.design, pair.product]) await page.locator('#bd-sec-hist .bd-mk.brk').first().evaluate(el => el.dataset.ganttCapture = 'break')
+    const captureTime = await pair.design.evaluate(() => Date.now())
+    await pair.product.clock.setSystemTime(captureTime)
     await expectDesignParity(pair, { name: `gantt-break-${width}-${theme}`, region: '[data-gantt-capture="break"]', preserveAnimations: true })
   } finally { await pair.close() }
 })

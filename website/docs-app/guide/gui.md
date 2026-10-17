@@ -95,6 +95,7 @@ It requires dashboard authentication and loads history by active day in the brow
 Live changes are coalesced; snapshots distinguish unavailable sources from empty sections.
 
 The toolbar selects Timeline, Gantt or List and retains the view in the URL.
+
 In Gantt, history card height represents elapsed run time; idle gaps over three hours fold into hatched bands.
 Hatched, dashed planned cards show estimates. A “start unknown” card has minimum height and ends at its recorded end time; unknown estimates stay marked as unknown.
 Use Left/Right arrows or Home/End to move between view tabs, then Enter or Space
