@@ -283,19 +283,19 @@ defmodule AiurWeb.AnalyticsLiveTest do
     assert html =~ ~r/15 now \/ 16 cap \(.*session 20\)/
     refute html =~ "(fleet)"
     assert html =~ "16 / 20 / 16"
-    assert html =~ ">2<"
-    assert html =~ "2 / 8"
-    assert html =~ "189s"
-    assert html =~ "2026-07-11T00:00:40.000Z"
-    assert html =~ "2026-07-11T00:00:55.000Z"
-    assert html =~ ">current<"
-    assert html =~ ">measured<"
+    assert html =~ ">2<" and html =~ "2 / 8" and html =~ "189s"
+    assert html =~ "2026-07-11T00:00:40.000Z" and html =~ "2026-07-11T00:00:55.000Z"
+    assert html =~ ">current<" and html =~ ">measured<"
+    # A retained prior run's current fleet sample is history, never "now".
+    Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture!("boot-before-restart", {15, 20, 16}))
+    {:ok, _view, retained} = loaded_live(build_conn(), "/analytics")
+    assert retained =~ ~s(data-source-kind="retained") and retained =~ ~r/an-kpi-sub">\d+ at run end \/ 16 cap/
+    refute retained =~ " now /"
   end
 
   test "renders unavailable pressure evidence as em-dash, never a confident zero" do
     boot_id = RunTelemetry.boot_id()
     Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture_with_gap!(boot_id))
-
     {:ok, _view, html} = loaded_live(build_conn(), "/analytics")
 
     # The gap row's degraded build must render its missing wait as "—", and a
