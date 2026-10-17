@@ -1,5 +1,6 @@
 defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
   @moduledoc "Classifies failed merge-group runs and routes each PR outcome."
+  alias Aiur.Alerts
   alias Aiur.GitHub.{CIRecovery, Transport}
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.{Journal, MergeFailureClassifier, MergeFailureOptions, MergeGroupFailureEvidence, MergeGroupRequeue}
@@ -88,8 +89,28 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
           route_failed_prs(prs, observations, failure, run, opts)
       end
     else
+      # One unreadable job log degrades only this run; the claim stays so the poll moves on.
+      {:error, {:job_log_unavailable, job_id, reason}} -> emit_job_log_attention(run, prs, job_id, reason, opts)
       {:error, _} = error -> error
     end
+  end
+
+  defp emit_job_log_attention(run, prs, job_id, reason, opts) do
+    emitter = Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2)
+
+    message =
+      "Merge-group run #{run["id"]} for PR #{Enum.map_join(prs, ", ", &"##{&1}")} was not classified: " <>
+        "log for job #{inspect(job_id)} is unavailable (#{inspect(reason)})."
+
+    emitter.("system.pr.landing.job_log_unavailable",
+      central: true,
+      durable: true,
+      needs_attention: true,
+      message: message,
+      reason: message
+    )
+
+    :ok
   end
 
   defp classifier_options(run, prs, jobs, opts) do
