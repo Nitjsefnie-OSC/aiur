@@ -164,14 +164,11 @@ defmodule Aiur.BuildQueue.MutationCLITest do
   end
 
   test "positions edges reorder and remove traverse real persisted commands", %{server: pid} do
-    run(pid, :add, ids: ["3"])
-    assert :ok = GenServer.call(pid, {:mutate, {:add, ["1"], [queue: "default", after: "3"]}})
-    assert :ok = GenServer.call(pid, {:mutate, {:add, ["2"], [queue: "default", after: "3"]}})
-    run(pid, :add, ids: ["3"], at: 1)
-    assert Enum.map(document().items, &{&1.issue_id, &1.position}) == [{"1", 0}, {"3", 1}, {"2", 2}]
+    run(pid, :add, ids: ["3", "1", "2"], after: "3")
+    assert Enum.map(document().items, &{&1.issue_id, &1.position}) == [{"3", 0}, {"1", 1}, {"2", 2}]
     assert Enum.map(document().edges, &{&1.prerequisite, &1.dependent}) == [{"3", "1"}, {"3", "2"}]
     run(pid, :reorder, ids: ["2"], to: 0)
-    assert Enum.map(document().items, & &1.issue_id) == ["2", "1", "3"]
+    assert Enum.map(document().items, & &1.issue_id) == ["2", "3", "1"]
     run(pid, :remove, ids: ["1", "3"])
     assert [%Model.Item{issue_id: "2", position: 0}] = document().items
   end
@@ -285,19 +282,21 @@ defmodule Aiur.BuildQueue.MutationCLITest do
 
   test "optimistic add promotes through real reconciliation", %{server: pid} do
     Agent.update(Boundary, &%{&1 | labels: Map.put(&1.labels, "2", %{labels: ["agent:ci-wait"]})})
+    run(pid, :add, ids: ["2"], start_on: "pr_opened")
     run(pid, :add, ids: ["1"], after: "2", start_on: "pr_opened")
     reconcile(pid)
     assert "agent:todo" in labels("1")
-    assert hd(document().items).promoted_at != nil
-    assert hd(hd(Aiur.BuildQueue.show(pid).queues).items).state == :ready
+    assert Enum.find(document().items, &(&1.issue_id == "1")).promoted_at != nil
+    assert Enum.find(hd(Aiur.BuildQueue.show(pid).queues).items, &(&1.number == 1)).state == :ready
   end
 
   test "a merged local prerequisite cannot bypass another native blocker", %{server: pid} do
     Agent.update(Boundary, &Map.merge(&1, %{dependencies: %{"1" => ["3"]}, prs: %{"2" => %{merged?: true, state: :closed}}}))
+    run(pid, :add, ids: ["2"])
     run(pid, :add, ids: ["1"], after: "2")
     reconcile(pid)
     refute "agent:todo" in labels("1")
-    item = hd(hd(Aiur.BuildQueue.show(pid).queues).items)
+    item = Enum.find(hd(Aiur.BuildQueue.show(pid).queues).items, &(&1.number == 1))
     assert item.state == :waiting
     assert Enum.any?(:sys.get_state(pid).planned_edges, &(&1.prerequisite == "3" and &1.dependent == "1"))
   end
@@ -305,6 +304,7 @@ defmodule Aiur.BuildQueue.MutationCLITest do
   test "a merge arriving during reconciliation cannot change unchecked native eligibility", %{server: pid} do
     merged = %{merged?: true, state: :closed}
     Agent.update(Boundary, &Map.merge(&1, %{dependencies: %{"1" => ["3"]}, prs: %{"2" => [nil, merged, merged]}}))
+    run(pid, :add, ids: ["2"])
     run(pid, :add, ids: ["1"], after: "2")
     reconcile(pid)
     refute "agent:todo" in labels("1")
@@ -313,7 +313,7 @@ defmodule Aiur.BuildQueue.MutationCLITest do
     assert :ok = GenServer.call(pid, :reconcile_now)
     reconcile(pid)
     refute "agent:todo" in labels("1")
-    assert hd(:sys.get_state(pid).projections).verdict == :waiting
+    assert Enum.find(:sys.get_state(pid).projections, &(&1.issue_id == "1")).verdict == :waiting
     assert Enum.any?(:sys.get_state(pid).planned_edges, &(&1.prerequisite == "3" and &1.dependent == "1"))
   end
 
@@ -335,6 +335,13 @@ defmodule Aiur.BuildQueue.MutationCLITest do
   end
 
   defp labels(id), do: Agent.get(Boundary, & &1.labels[id].labels)
-  defp run(pid, verb, opts), do: capture_io(fn -> assert Aiur.BuildQueueCLI.run(Keyword.merge(opts, verb: verb, server: pid)) == 0 end)
+
+  defp run(pid, verb, opts) do
+    output = capture_io(fn -> send(self(), {:run_result, Aiur.BuildQueueCLI.run(Keyword.merge(opts, verb: verb, server: pid))}) end)
+    assert_received {:run_result, result}
+    assert result == 0, output
+    output
+  end
+
   defp document, do: Agent.get(Boundary, & &1.document)
 end

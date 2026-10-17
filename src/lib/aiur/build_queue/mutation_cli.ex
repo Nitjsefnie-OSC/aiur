@@ -66,7 +66,7 @@ defmodule Aiur.BuildQueue.MutationCLI do
     if opts[:build_order] do
       ids == [] and positive?(opts[:build_order]) and is_nil(opts[:after]) and is_nil(opts[:at])
     else
-      ids != [] and valid_after?(opts[:after]) and (is_nil(opts[:at]) or position?(opts[:at]))
+      ids != [] and valid_after?(opts[:after], ids) and (is_nil(opts[:at]) or position?(opts[:at]))
     end
   end
 
@@ -78,8 +78,8 @@ defmodule Aiur.BuildQueue.MutationCLI do
   defp valid_command?(:reorder, [_], opts), do: position?(opts[:to]) and is_nil(opts[:queue])
   defp valid_command?(verb, ids, opts) when verb in [:hold, :release], do: (length(ids) == 1 and is_nil(opts[:queue])) or (ids == [] and is_binary(opts[:queue]))
   defp valid_command?(_, _, _), do: false
-  defp valid_after?(nil), do: true
-  defp valid_after?(id), do: id?(id)
+  defp valid_after?(nil, _ids), do: true
+  defp valid_after?(id, ids), do: id?(id) and (id not in ids or length(ids) > 1)
 
   defp id?(id), do: is_binary(id) and Regex.match?(~r/\A[1-9][0-9]*\z/, id)
   defp position?(n), do: is_integer(n) and n >= 0
