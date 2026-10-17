@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { edgeClass, edgeEmphasis, edgeGeometry } from '../../priv/static/build-home/edges.js';
+import { ctx } from '../../priv/static/build-home/state.js';
+import { drawEdges, edgeClass, edgeEmphasis, edgeGeometry } from '../../priv/static/build-home/edges.js';
 
 const t = (dep_states, cue) => ({ dep_states, cue });
 
@@ -35,4 +36,36 @@ test('edgeGeometry vertical, right and left cases', () => {
   assert.equal(r.arrow, 'M191 24 L198 28 L191 32z');
   const l = edgeGeometry(rect(200, 0, 100, 50), rect(0, 10, 100, 50), cr);
   assert.equal(l.arrow, 'M109 24 L102 28 L109 32z');
+});
+
+const card = (id, left, top) => ({
+  dataset: { id }, style: {}, classList: { contains: () => false },
+  getBoundingClientRect: () => rect(left, top, 100, 50),
+});
+function draw(rows, cards) {
+  const svg = { setAttribute() {}, classList: { toggle() {} }, innerHTML: '' };
+  Object.assign(ctx, {
+    content: { isConnected: true, scrollWidth: 1, scrollHeight: 1, getBoundingClientRect: () => rect(0, 0, 1000, 1000) },
+    svg, bandEl: null, cols: [], hoverId: null, proto: { generation: Math.random() },
+    D: { byId: Object.fromEntries(rows.map(r => [r.id, r])) }, L: { band: { items: [] } },
+    R: new Map(cards.map(c => [c.dataset.id, c])),
+  });
+  drawEdges(true);
+  return svg.innerHTML;
+}
+const count = (html) => (html.match(/class="bd-eh"/g) || []).length;
+test('drawEdges skips self-loops, duplicates, missing ids and non-array deps', () => {
+  const html = draw(
+    [{ id: 'a', deps: ['a', 'b', 'b', 'zz'] }, { id: 'b', deps: [] }, { id: 'c', deps: 'b' }],
+    [card('a', 0, 200), card('b', 0, 0), card('c', 300, 0)]);
+  assert.equal(count(html), 1);
+});
+test('drawEdges tolerates cards and blockers without rows', () => {
+  assert.equal(draw([{ id: 'a', deps: ['b'] }], [card('a', 0, 200), card('b', 0, 0), card('x', 0, 400)]), '');
+  assert.equal(draw([{ id: 'b', deps: [] }, { id: 'a', deps: ['x'] }], [card('a', 0, 200), card('b', 0, 0), card('x', 0, 400)]), '');
+});
+test('drawEdges escapes ids in data-e', () => {
+  const id = `a"b<c'd&`;
+  const html = draw([{ id, deps: ['b'] }, { id: 'b', deps: [] }], [card(id, 0, 200), card('b', 0, 0)]);
+  assert.ok(html.includes('data-e="a&quot;b&lt;c&#39;d&amp;"'));
 });

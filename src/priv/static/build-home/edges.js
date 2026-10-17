@@ -52,14 +52,15 @@ export function drawEdgesSoon(ms) {
 
 export function drawEdges(force) {
   const { content, svg, bandEl, D, L } = ctx;
-  if (!content || !svg || !bandEl || !L || !D) return;
+  if (!content || !svg || !L || !D || !content.isConnected) return;
   const cr = content.getBoundingClientRect();
-  const vis = new Map();
+  const vis = new Map(), rects = new Map();
   ctx.R.forEach(el => { if (el.style.opacity !== '0') vis.set(el.dataset.id, el); });
   L.band.items.forEach(it => { if (it.el.style.opacity !== '0') vis.set(it.t.id, it.el); });
+  const rectOf = (id) => { let r = rects.get(id); if (!r) rects.set(id, r = vis.get(id).getBoundingClientRect()); return r; };
   const hid = ctx.hoverId ?? null;
   const sig = [...vis.keys()].join(',') + '|' + ctx.cols.join(',') + '|' + hid + '|' +
-    Math.round(bandEl.getBoundingClientRect().top - cr.top) + '|' + content.scrollWidth;
+    (bandEl ? Math.round(bandEl.getBoundingClientRect().top - cr.top) : '') + '|' + content.scrollWidth + '|' + ctx.proto?.generation;
   if (!force && sig === edgeSig) return;
   edgeSig = sig;
   svg.setAttribute('height', 0); svg.setAttribute('width', content.scrollWidth); svg.setAttribute('height', content.scrollHeight);
@@ -67,11 +68,11 @@ export function drawEdges(force) {
   let out = '', liveOut = '';
   vis.forEach((el, id) => {
     const t = D.byId[id];
-    if (!t) return;
-    for (const did of t.deps || []) {
+    if (!t || !Array.isArray(t.deps)) return;
+    for (const did of new Set(t.deps)) {
       const de = vis.get(did), d = D.byId[did];
-      if (!de || !d) continue;
-      const { path, arrow } = edgeGeometry(de.getBoundingClientRect(), el.getBoundingClientRect(), cr);
+      if (did === id || !de || !d) continue;
+      const { path, arrow } = edgeGeometry(rectOf(did), rectOf(id), cr);
       const cls = edgeClass(t, did, el.classList.contains('ghost') || de.classList.contains('ghost'));
       const c = cls + edgeEmphasis(chain, id, did, el.classList.contains('dim') || de.classList.contains('dim'));
       const lines = `<path class="bd-e ${c}" d="${path}"/><path class="bd-ea ${c}" d="${arrow}"/>`;
@@ -80,17 +81,19 @@ export function drawEdges(force) {
     }
   });
   svg.innerHTML = out;
+  svg.classList.toggle('gantt', S.view === 'gantt' && !hid);
+  svg.classList.toggle('hov', !!hid);
+  if (!bandEl) return;
   let ls = bandEl.querySelector('.bd-now-e');
   if (!ls) {
     ls = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     ls.setAttribute('class', 'bd-now-e bd-edges');
+    ls.setAttribute('aria-hidden', 'true');
     bandEl.insertBefore(ls, bandEl.firstChild);
   }
   const br = bandEl.getBoundingClientRect();
   ls.setAttribute('width', br.width); ls.setAttribute('height', br.height);
   ls.innerHTML = `<g transform="translate(${cr.left - br.left},${cr.top - br.top})">${liveOut}</g>`;
-  svg.classList.toggle('gantt', S.view === 'gantt' && !hid);
-  svg.classList.toggle('hov', !!hid);
 }
 
 Object.assign(fx, { drawEdges, drawEdgesSoon });
