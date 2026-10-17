@@ -1,8 +1,8 @@
 {
   "id": "web-shell",
-  "name": "HTTP endpoint, router, auth, sockets, JSON API",
+  "name": "HTTP and sockets",
   "layer": 4,
-  "kind": "optional",
+  "kind": "in-app",
   "paths": [
     "src/lib/aiur/http_server.ex",
     "src/lib/aiur/http_server/**",
@@ -10,6 +10,7 @@
     "src/lib/aiur_web/controllers/*api*.ex",
     "src/lib/aiur_web/controllers/observability*.ex",
     "src/lib/aiur_web/endpoint.ex",
+    "src/lib/aiur_web/endpoint_config.ex",
     "src/lib/aiur_web/financial_data_access.ex",
     "src/lib/aiur_web/router.ex",
     "src/lib/aiur_web/routes/api.ex",
@@ -23,6 +24,7 @@
     "config",
     "identity",
     "projections",
+    "signal",
     "web-kit"
   ],
   "optional": [
@@ -30,6 +32,7 @@
     "commands",
     "conversations",
     "dashboard-ui",
+    "experiments-page",
     "github-listeners",
     "pairing-discovery",
     "streamdeck-server",
@@ -49,5 +52,23 @@
   },
   "prior": [
     "WEB"
-  ]
+  ],
+  "dependency_kind": "optional",
+  "summary": "Hosts authenticated APIs, sockets and web routes for operator clients.",
+  "status": "optional",
+  "install": {
+    "type": "included"
+  },
+  "docs": [
+    "guide/gui.md"
+  ],
+  "config": [
+    "observability",
+    "server"
+  ],
+  "env": [
+    "AIUR_DASHBOARD_PASSWORD",
+    "AIUR_DASHBOARD_USERNAME"
+  ],
+  "capabilities": []
 }
