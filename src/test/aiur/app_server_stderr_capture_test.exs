@@ -2,7 +2,8 @@ defmodule Aiur.AppServerStderrCaptureTest.LogHandler do
   @moduledoc false
 
   def log(%{level: level, msg: message}, %{config: %{owner: owner}}) do
-    send(owner, {:captured_app_server_log, level, render(message)})
+    rendered = render(message)
+    send(owner, {:captured_app_server_log, level, rendered})
     :ok
   end
 
@@ -40,6 +41,9 @@ defmodule Aiur.AppServerStderrCaptureTest do
           3) printf '%s\\n' '{"id":3,"result":{"turn":{"id":"turn-92"}}}' ;;
           4)
             printf '%s\\n' 'warning: this is stderr noise' >&2
+            while [ ! -f "#{Path.join(test_root, "release")}" ]; do
+              sleep 0.01
+            done
             printf '%s\\n' '{"method":"turn/completed"}'
             exit 0
             ;;
@@ -68,11 +72,14 @@ defmodule Aiur.AppServerStderrCaptureTest do
       assert :ok = :logger.add_handler(handler_id, LogHandler, %{config: %{owner: self()}})
 
       try do
-        assert {:ok, _result} = AppServer.run(workspace, "Capture stderr log", issue)
-        assert :ok = Logger.flush()
+        turn_task = Task.async(fn -> AppServer.run(workspace, "Capture stderr log", issue) end)
 
         assert_receive {:captured_app_server_log, :warning, "Codex turn stream output: warning: this is stderr noise"},
                        1_000
+
+        File.write!(Path.join(test_root, "release"), "ok")
+        assert {:ok, _result} = Task.await(turn_task, 5_000)
+        assert :ok = Logger.flush()
       after
         :logger.remove_handler(handler_id)
       end
