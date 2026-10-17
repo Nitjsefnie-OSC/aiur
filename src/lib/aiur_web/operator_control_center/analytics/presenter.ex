@@ -39,6 +39,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
           session_cap: non_neg_integer() | nil,
           cap_binding: String.t() | nil,
           cap_staleness: {:stale | :retained, non_neg_integer()} | nil,
+          live_concurrency: non_neg_integer() | nil,
+          live_concurrency_staleness: {:stale | :retained, non_neg_integer()} | nil,
           cores: pos_integer(),
           cpu_ceiling: number(),
           host_mem_bytes: number(),
@@ -112,10 +114,58 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
   # burned nothing when in truth none of its members has run yet.
   defp analyzable(dataset, opts) do
     if dataset_analyzable?(dataset) do
-      {:ok, model(dataset, runtime_opts(opts))}
+      {:ok, model(dataset, runtime_opts(opts) ++ live_concurrency_opts(opts))}
     else
       {:unavailable, :no_telemetry}
     end
+  end
+
+  defp live_concurrency_opts(opts) do
+    if Keyword.get(opts, :session, :all) == :current do
+      orchestrator = Keyword.get(opts, :orchestrator, Orchestrator)
+      timeout = Keyword.get(opts, :snapshot_timeout_ms, 15_000)
+
+      snapshot_fun = Keyword.get(opts, :live_snapshot_fun, &Orchestrator.dashboard_snapshot/2)
+
+      case snapshot_fun.(orchestrator, timeout) do
+        {:current, %{running: running}, _freshness} when is_list(running) ->
+          [live_concurrency: live_concurrency_count(running)]
+
+        {:stale, %{running: running}, freshness} when is_list(running) ->
+          [
+            live_concurrency: live_concurrency_count(running),
+            live_concurrency_staleness: {:stale, freshness_age_ms(freshness)}
+          ]
+
+        {:stale, _snapshot, freshness} ->
+          [live_concurrency_staleness: {:stale, freshness_age_ms(freshness)}]
+
+        _other ->
+          []
+      end
+    else
+      []
+    end
+  rescue
+    _error -> []
+  catch
+    _kind, _reason -> []
+  end
+
+  @doc false
+  @spec live_concurrency_count([map()]) :: non_neg_integer()
+  def live_concurrency_count(running) do
+    Enum.count(running, fn
+      %{work_state: :paused} -> false
+      %{work_state: "paused"} -> false
+      %{work_state: :error} -> false
+      %{work_state: "error"} -> false
+      %{work_state: :completed} -> false
+      %{work_state: "completed"} -> false
+      %{work_state: :deactivated} -> false
+      %{work_state: "deactivated"} -> false
+      _row -> true
+    end)
   end
 
   defp dataset_analyzable?(dataset) do
@@ -187,6 +237,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
     session_cap = Keyword.get(opts, :session_cap, cap)
     cap_binding = Keyword.get(opts, :cap_binding)
     cap_staleness = Keyword.get(opts, :cap_staleness)
+    live_concurrency = Keyword.get(opts, :live_concurrency)
+    live_concurrency_staleness = Keyword.get(opts, :live_concurrency_staleness)
     cores = Keyword.get(opts, :cores, System.schedulers_online())
     host_mem = Keyword.get(opts, :host_mem_bytes, @default_host_mem_bytes)
     buckets = Keyword.get(opts, :buckets, @default_buckets)
@@ -252,6 +304,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
       session_cap: session_cap,
       cap_binding: cap_binding,
       cap_staleness: cap_staleness,
+      live_concurrency: live_concurrency,
+      live_concurrency_staleness: live_concurrency_staleness,
       cores: cores,
       cpu_ceiling: cores * 100,
       host_mem_bytes: host_mem,
@@ -943,6 +997,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Presenter do
     |> Keyword.put_new(:cores, System.schedulers_online())
     |> Keyword.put_new(:host_mem_bytes, host_mem_bytes())
     |> Keyword.put_new(:buckets, @default_buckets)
+    |> Keyword.put_new(:live_concurrency, nil)
   end
 
   defp runtime_caps(opts) do

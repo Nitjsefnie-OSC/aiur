@@ -469,7 +469,7 @@ defmodule AiurWeb.AnalyticsLive do
       %{
         label: "Peak concurrency",
         val: k.peak_conc,
-        sub: "#{k.conc_now} #{if(present?, do: "now", else: "at run end")} / #{Presenter.cap_label(model)}",
+        sub: "#{live_concurrency_label(model, present?)} / #{Presenter.cap_label(model)}",
         tone: nil
       },
       %{
@@ -500,6 +500,17 @@ defmodule AiurWeb.AnalyticsLive do
       }
     ]
   end
+
+  defp live_concurrency_label(model, true) do
+    count = model.live_concurrency || model.kpis.conc_now
+    freshness = model.live_concurrency_staleness
+    "#{count} now#{freshness_label(freshness)}"
+  end
+
+  defp live_concurrency_label(model, false), do: "#{model.kpis.conc_now} at run end"
+
+  defp freshness_label({:stale, age_ms}), do: " (sample #{age_label(age_ms)} old)"
+  defp freshness_label(_freshness), do: ""
 
   defp provider_spend_item(%{state: :available, amount: amount, source: source}),
     do: %{label: "Provider spend", val: amount, sub: source, tone: nil}

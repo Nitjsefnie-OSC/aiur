@@ -104,6 +104,24 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
     assert Presenter.cap_label(m) == "4 cap"
   end
 
+  test "live concurrency is counted from the fleet snapshot, including adopted agents" do
+    running = [%{work_state: :working, adopted_from: "prior boot"} | Enum.map(1..10, &%{work_state: :working, adopted_from: "prior boot #{&1}"})]
+
+    snapshot_fun = fn _orchestrator, _timeout ->
+      {:current, %{running: running}, %{age_ms: 0}}
+    end
+
+    assert Presenter.live_concurrency_count(running) == 11
+    assert snapshot_fun.(nil, nil) == {:current, %{running: running}, %{age_ms: 0}}
+    assert Presenter.live_concurrency_count([%{work_state: :working}, %{work_state: :paused}]) == 1
+
+    stale_fun = fn _orchestrator, _timeout ->
+      {:stale, %{running: running}, %{age_ms: 600_000}}
+    end
+
+    assert {:stale, %{running: ^running}, %{age_ms: 600_000}} = stale_fun.(nil, nil)
+  end
+
   describe "cap_label/1" do
     test "leads with the effective cap and names every other ceiling that differs" do
       model = model(cap: 3, session_cap: 8, configured_cap: 16)
