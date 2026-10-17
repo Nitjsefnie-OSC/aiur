@@ -186,8 +186,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.PresenterTest do
     assert measured.fleet_capacity_observed_at_ms == @t0 + 19_998
     assert measured.build_gate_observed_at_ms == @t0 + 19_999
     assert Enum.any?(model.series, &(&1.pressure_state == :stale_fleet))
-    # The first sample is "current" despite an unavailable process table, so
-    # its binding signal and host load are part of the exact pressure evidence.
+    # A newer stale or degraded fleet status clears the latest current-sample
+    # values, so the first sample's binding signal is no longer reported.
     assert model.pressure.latest_admission_signal == nil
     assert model.pressure.latest_load == 3.77
     assert model.pressure.latest_load_threshold == 24

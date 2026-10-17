@@ -293,6 +293,14 @@ defmodule AiurWeb.AnalyticsLiveTest do
     refute retained =~ " now /"
   end
 
+  # The sample's own effective (20) differs from the live snapshot's (16), so the cap must come from the snapshot.
+  @tag analytics_capacity: %{effective: 16, max: 20, configured: 16, occupied: 17, available: 0, queued_demand?: true}
+  test "names the overage when live occupancy exceeds the effective cap" do
+    Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture!(RunTelemetry.boot_id(), {17, 20, 20}))
+    {:ok, _view, html} = loaded_live(build_conn(), "/analytics")
+    assert html =~ ~r/17 now, 1 over cap \/ 16 cap \(.*session 20\)/
+  end
+
   test "renders unavailable pressure evidence as em-dash, never a confident zero" do
     boot_id = RunTelemetry.boot_id()
     Application.put_env(:aiur, :analytics_telemetry_file, pressure_fixture_with_gap!(boot_id))

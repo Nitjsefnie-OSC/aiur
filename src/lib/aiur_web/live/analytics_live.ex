@@ -468,7 +468,7 @@ defmodule AiurWeb.AnalyticsLive do
     [
       Map.merge(
         %{label: "Peak concurrency", tone: nil},
-        ConcurrencyCoverage.tile(model, scope, "#{LiveConcurrency.label(model, present?, scope)} / #{Presenter.cap_label(model)}")
+        ConcurrencyCoverage.tile(model, scope, "#{LiveConcurrency.label(model, present?, scope)}#{over_cap(model, present?)} / #{Presenter.cap_label(model)}")
       ),
       %{
         label: "Mean utilization",
@@ -499,7 +499,20 @@ defmodule AiurWeb.AnalyticsLive do
     ]
   end
 
-  defp concurrency_count(%{pressure: %{latest_occupied: n}}, true) when is_integer(n), do: "#{n} now"
+  defp over_cap(%{live_occupied: n, cap: cap, cap_available?: true}, true) when is_integer(n) and is_integer(cap) and n > cap,
+    do: ", #{n - cap} over cap"
+
+  defp over_cap(_model, _present?), do: ""
+
+  # Agents keep their slots when AIMD or contention lowers the cap, so the card names the overage.
+  defp concurrency_count(%{pressure: %{latest_occupied: n}} = model, true) when is_integer(n) do
+    case model do
+      %{cap_available?: false} -> "#{n} now"
+      %{cap: cap} when is_integer(cap) and n > cap -> "#{n} now, #{n - cap} over cap"
+      _within_cap -> "#{n} now"
+    end
+  end
+
   defp concurrency_count(_model, true), do: "occupancy unavailable"
   defp concurrency_count(model, false), do: "#{model.kpis.conc_now} at run end"
 
