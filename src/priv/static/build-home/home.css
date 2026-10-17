@@ -21,7 +21,8 @@
 /* MP-E8-C10-T04: states the design lacks */
 .ax-seg.none { background: none; border: 1px dashed var(--line-strong); box-sizing: border-box; }
 .ax-r2.stale .ax-lns, .ax-ln.stale { opacity: .55; }
-span.ax-cnt { display: inline-block; cursor: default; }
+span.ax-cnt { display: inline-block; }
+#ax-cnt { cursor: default; }
 span.ax-cnt:hover { color: var(--muted); background: none; }
 .ax-usage.locked { grid-template-columns: 1fr; }
 .ax-uc.lock p { margin: 0; font: .68rem/1.4 "JetBrains Mono", monospace; }
