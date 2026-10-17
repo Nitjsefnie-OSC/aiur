@@ -8,6 +8,7 @@ import { LOGOS } from './logos.js';
 import { agentState, progress, modelLabel } from './now-state.js';
 import { colKey, match } from './match.js';
 import { place } from './render.js';
+import { estOf } from './gantt.js';
 
 const CX = ['❶', '❷', '❸', '❹', '❺'], CXH = [145, 110, 80, 50, 25];
 export const finite = (x, lo = 0, hi = Number.MAX_SAFE_INTEGER) => Number.isFinite(x) && x >= lo && x <= hi ? x : null;
@@ -87,11 +88,11 @@ function historyContent(t, points) {
   const labels = { done: 'Merged', failed: 'Failed · closed', not_planned: 'Not planned', closed: 'Closed' };
   const label = Object.hasOwn(labels, t.status) ? labels[t.status] : 'State unknown';
   const end = finite(t.end, 0, 8640000000000000), start = finite(t.start, 0, 8640000000000000);
-  const hrs = end !== null && start !== null ? (end - start) / 3600000 : null;
+  const hrs = end !== null && start !== null ? Math.max(0, end - start) / 3600000 : null;
   let body = '', value = end === null ? unk('end', 'Close time unknown') : fmtD(end);
   if (S.view === 'gantt') {
     value = hrs === null ? unk('duration', 'Duration unknown') : fmtH(hrs);
-    body = '<div class="bd-time">' + (start === null ? unk('start', 'Start time unknown') : fmtD(start) + ' ' + fmtT(start)) + '<br>→ ' +
+    body = '<div class="bd-time">' + (start === null ? 'Start unknown' : fmtD(Math.min(start, end)) + ' ' + fmtT(Math.min(start, end))) + '<br>→ ' +
       (end === null ? unk('end', 'Close time unknown') : (dayKey(start) === dayKey(end) ? '' : fmtD(end) + ' ') + fmtT(end)) +
       '</div><div class="bd-badges"><span class="h">' + value + '</span><span>' + points + ' pts</span></div>';
     return { body, status: '' };
@@ -102,9 +103,11 @@ export function makeCard(it) {
   const t = it.t, e = epic(colKey(t)), det = cardDetail(it), ag = t.sec === 'now' ? agentState(t.agent?.state) : null;
   const pg = t.sec === 'now' ? progress(finite(t.pct, 0, 100)) : null, m = modelOf(t.agent);
   const el = document.createElement('div');
+  const startUnknown = it.startUnknown || (S.view === 'gantt' && t.sec === 'hist' && t.start == null);
+  const estUnknown = it.estUnknown || (S.view === 'gantt' && t.sec === 'now' && estOf(t) === null);
   el._it = it; el.dataset.id = t.id; el.tabIndex = -1;
   el.className = 'bd-card ' + det + ' ' + t.sec + (t.status === 'failed' ? ' failed' : '') + (ag?.cls ? ' ag-' + ag.cls : '') +
-    (it.ghost ? ' ghost' : '') + (e.unsorted ? ' unsorted' : '') + (it.gantt ? ' gplan' : '') +
+    (startUnknown ? ' start-unknown' : '') + (estUnknown ? ' est-unknown' : '') + (it.ghost ? ' ghost' : '') + (e.unsorted ? ' unsorted' : '') + (it.gantt ? ' gplan' : '') +
     (t.sec === 'plan' && (t.cue?.failed || t.cue?.blockedChain) ? ' blk' : '') + (t.agent && det === 'full' ? ' has-ag' : '') + (t.status === 'not_planned' ? ' np' : '');
   const hue = finite(e.hue, 0, 360);
   if (hue !== null) el.style.setProperty('--h', hue);
@@ -114,7 +117,7 @@ export function makeCard(it) {
   const glow = ag?.cls ? '<span class="bd-glow"></span>' : '';
   const unfiled = t.id.startsWith('pack:') && t.num === null;
   const id = unfiled ? '<span title="Not filed yet">—</span>' : '#' + number(t.num, 'num', 'Ticket number unknown');
-  const tip = (unfiled ? '—' : '#' + (finite(t.num) ?? '—')) + ' · ' + t.title + (ag ? ' · ' + ag.label : '');
+  const tip = (unfiled ? '—' : '#' + (finite(t.num) ?? '—')) + ' · ' + t.title + (ag ? ' · ' + ag.label : '') + (startUnknown ? ' · start unknown' : '') + (estUnknown ? ' · estimate unknown' : '');
   const bar = pg?.known ? '<span class="bd-bar"><i style="width:' + finite(t.pct, 0, 100) + '%"></i></span>' : '';
   if (det === 'bar') el.innerHTML = glow + '<div class="bd-in" title="' + esc(tip) + '"></div>';
   else if (det === 'line' || det === 'mini') el.innerHTML = glow + '<div class="bd-in" title="' + esc(tip) + '"><span class="bd-dot"></span><span class="bd-id">' + id + '</span>' +
@@ -128,7 +131,7 @@ export function makeCard(it) {
     else if (t.sec === 'now') status = '<div class="bd-status"><span>' + ag.label + '</span><span>' + (pg.known ? pg.text : unk('pct', 'Progress unknown')) + '</span></div>' + bar;
     else if (t.sec === 'plan') ({ body, status } = planContent(t, points));
     else status = '<div class="bd-status"><span>Open · not queued</span><span>' + points + ' pts</span></div>';
-    el.innerHTML = glow + '<div class="bd-in">' + top + '<div class="bd-title">' + esc(t.title) + '</div>' + body + status + '</div>' + fullLogo(m, ag);
+    el.innerHTML = glow + '<div class="bd-in"' + (startUnknown || estUnknown ? ' title="' + esc(tip) + '"' : '') + '>' + top + '<div class="bd-title">' + esc(t.title) + '</div>' + body + status + '</div>' + fullLogo(m, ag);
   }
   decorate(el); return el;
 }
