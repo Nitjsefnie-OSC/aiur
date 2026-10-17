@@ -26,6 +26,7 @@ defmodule Aiur.AgentGitHubGuard.DeadlineTest do
                AIUR_GITHUB_BUDGET_ROOT: Path.join(context.state_path, "budget"),
                AIUR_GITHUB_BUDGET_KEY: String.duplicate("a", 64),
                AIUR_GITHUB_BUDGET_BROKER: broker,
+               AIUR_GH_GUARD_SUPERVISED: "1",
                AIUR_GH_NEVER_ANSWERS_CHILD_PID_FILE: child_pid_file,
                AIUR_GH_NEVER_ANSWERS_PID_FILE: pid_file
              )

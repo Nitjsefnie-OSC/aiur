@@ -70,6 +70,10 @@ defmodule Aiur.AgentGitHubGuard.SecondaryLimitsTest do
     :ok = AgentGitHubGuard.install(other_workspace)
 
     budget_root = Path.join(context.state_path, "host-budget")
+    calls_fifo = Path.join(context.workspace, "first-gh-call.fifo")
+    assert {"", 0} = System.cmd("mkfifo", [calls_fifo])
+    cat = System.find_executable("cat") || flunk("cat executable is required for this Linux-only guard test")
+    call_reader = Port.open({:spawn_executable, cat}, [:binary, :exit_status, args: [calls_fifo]])
 
     first =
       Task.async(fn ->
@@ -81,13 +85,13 @@ defmodule Aiur.AgentGitHubGuard.SecondaryLimitsTest do
           AIUR_GITHUB_MAX_INFLIGHT_PER_ENDPOINT: "1",
           AIUR_GITHUB_REQUESTS_PER_MINUTE: "20",
           AIUR_GITHUB_STAGGER_MS: "0",
+          FAKE_GH_CALLS: calls_fifo,
           FAKE_GH_SLEEP: "0.3"
         )
       end)
 
-    # The deadline supervisor adds one Python startup before the guarded shell
-    # reaches the fake gh executable.
-    wait_for_calls(context.calls, 1, 300)
+    assert_receive {^call_reader, {:data, "api repos/owner/repo/issues/1670\n"}}, 5_000
+    assert_receive {^call_reader, {:exit_status, 0}}, 5_000
 
     second =
       Task.async(fn ->
