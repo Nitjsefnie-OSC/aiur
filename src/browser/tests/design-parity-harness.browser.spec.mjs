@@ -300,7 +300,7 @@ for (const [designPath, productPath] of [
     }, designPath)
     const product = await request.get(productPath)
     expect(product.ok()).toBe(true)
-    expect(Buffer.from(designBytes)).toEqual(await product.body())
+    expect(Buffer.from(designBytes).equals(await product.body()), 'design and product logo response bytes match').toBe(true)
     await verifyDesignSource()
     checkPage(page)
   })
