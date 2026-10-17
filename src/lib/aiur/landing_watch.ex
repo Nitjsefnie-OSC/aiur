@@ -364,7 +364,7 @@ defmodule Aiur.LandingWatch do
         case transition_rework(observation, failures, opts) do
           {:error, :pull_request_not_linked_to_ticket_branch} ->
             log_unlinked_head_once(observation, opts)
-            if Keyword.has_key?(opts, :conflict_rework_claim), do: :conflict_not_routed, else: :ok
+            not_routed(opts)
 
           result ->
             result
@@ -401,12 +401,15 @@ defmodule Aiur.LandingWatch do
         end
 
       {:ok, _issue, _state} ->
-        if Keyword.has_key?(opts, :conflict_rework_claim), do: :conflict_not_routed, else: :ok
+        not_routed(opts)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  # A conflict route that moved nothing must release its claim (#4729).
+  defp not_routed(opts), do: if(Keyword.has_key?(opts, :conflict_rework_claim), do: :conflict_not_routed, else: :ok)
 
   defp emit_rework_alert(observation, failures, issue, opts) do
     run_link = Keyword.get(opts, :run_url)
