@@ -45,10 +45,7 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
   def finish!(test_pid, scope_violation) do
     runner_leaks = live_runners(test_pid)
 
-    Enum.each(runner_leaks, fn {runner, _test} ->
-      Process.exit(runner, :kill)
-      await_down(runner)
-    end)
+    stop_owned_runners(test_pid)
 
     finish(test_pid)
 
@@ -57,6 +54,16 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
       runner_leaks != [] -> raise "test left dispatched agent runners alive: #{inspect(Enum.map(runner_leaks, fn {pid, test} -> {test, pid} end))}"
       true -> check!()
     end
+  end
+
+  def stop_owned_runners(test_pid) when is_pid(test_pid) do
+    live_runners(test_pid)
+    |> Enum.each(fn {runner, _test} ->
+      Process.exit(runner, :kill)
+      await_down(runner)
+    end)
+
+    :ok
   end
 
   @doc "Raises once for every lifecycle write a finished test's process made."
@@ -101,12 +108,18 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
   end
 
   defp runner_owner(pid, seen) do
-    case :ets.lookup(@owners, pid) do
-      [{^pid, test_pid}] ->
+    cond do
+      :ets.member(@tests, pid) ->
+        pid
+
+      [{^pid, test_pid}] <- :ets.lookup(@owners, pid) ->
         test_pid
 
-      [] ->
-        if pid not in seen and Process.alive?(pid), do: Enum.find_value(parents(pid), &runner_owner(&1, [pid | seen]))
+      pid not in seen and Process.alive?(pid) ->
+        Enum.find_value(parents(pid), &runner_owner(&1, [pid | seen]))
+
+      true ->
+        nil
     end
   end
 

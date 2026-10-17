@@ -1,5 +1,6 @@
 defmodule Aiur.TestSupport.Processes do
   alias Aiur.TestSupport.EndpointStubs
+  alias Aiur.TestSupport.LifecycleLeakGuard
   alias Aiur.TestSupport.RuntimeChildren
 
   @doc "Waits for tracked task completions until the orchestrator satisfies a state predicate."
@@ -145,6 +146,7 @@ defmodule Aiur.TestSupport.Processes do
   @spec stop_test_runners(pid()) :: :ok
   def stop_test_runners(test_pid) when is_pid(test_pid) do
     kill_all(&(test_pid in callers(&1)))
+    LifecycleLeakGuard.stop_owned_runners(test_pid)
     kill_all(&(initial_call(&1) == {Aiur.Orchestrator, :init, 1} and test_pid in ancestors(&1)))
     kill_all(&(match?({Aiur.Orchestrator.Dispatcher.Launch, _, _}, initial_call(&1)) and test_pid in callers(&1)))
     :ok
