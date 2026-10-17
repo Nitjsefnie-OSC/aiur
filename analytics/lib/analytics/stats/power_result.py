@@ -21,7 +21,7 @@ def attach(result, metric, groups, settings, snapshot, spec, snapshot_hash):
     power['baseline_group'] = a
     result['power'] = power
     flags = result['flags']
-    if not metric['primary']:
+    if not metric['primary'] or 'strata_rows' in metric:
         flags.append('power_estimate_approximate')
     if any(metric['censored'].values()):
         flags.append('power_ignores_censoring')

@@ -172,7 +172,10 @@
           "type": "object"
         },
         "primary_effect": {
-          "type": "string"
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "p_raw": {
           "type": [
@@ -187,10 +190,37 @@
           ]
         },
         "strata": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/metric"
+          }
         },
         "power": {
           "$ref": "#/$defs/power"
+        },
+        "stratified": {
+          "type": "object"
+        },
+        "unstratified": {
+          "type": "object"
+        },
+        "strata_dropped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "composition": {
+          "type": "object"
+        },
+        "strata_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "p_raw_source": {
+          "const": "stratified"
         }
       },
       "required": [
@@ -394,46 +424,25 @@
       ],
       "properties": {
         "power_at_current_n": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "mde_at_current_n": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "projected_p_if_effect_holds": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "mc_se": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "days_needed": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "accrual_per_day": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "allocation_ratio": {
-          "type": [
-            "number",
-            "null"
-          ]
+          "type": ["number", "null"]
         },
         "status": {
           "enum": [
@@ -450,10 +459,7 @@
         "samples_needed_per_group": {
           "oneOf": [
             {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": ["integer", "null"],
               "minimum": 5
             },
             {
@@ -462,17 +468,11 @@
           ]
         },
         "samples_needed_noether": {
-          "type": [
-            "integer",
-            "null"
-          ],
+          "type": ["integer", "null"],
           "minimum": 5
         },
         "eta_date": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "format": "date"
         },
         "simulations": {
