@@ -62,9 +62,9 @@ test('B8 destroy cancels pending draws and disconnected content is untouched', a
   expect(await page.evaluate(() => mutations)).toBe(0)
   // Also exercise the defensive guard independently of lifecycle cancellation.
   expect(await page.evaluate(() => {
-    const html = oldSVG.innerHTML
+    edgeObserver.takeRecords()
     st.fx.drawEdges(true)
-    return oldSVG.innerHTML === html
+    return edgeObserver.takeRecords().length === 0
   })).toBe(true)
 })
 

@@ -12,7 +12,7 @@ test('edgeClass maps server dep states', () => {
   assert.equal(edgeClass(t({ a: 'cleared' }), 'a', true), 'gh');
 });
 test('edgeClass keeps unknown edges neutral', () => {
-  for (const row of [t({ a: 'unknown' }), t({ a: 'cyclic' }), t({}), t(undefined), t('x')]) assert.equal(edgeClass(row, 'a'), '');
+  for (const row of [t({ a: 'unknown' }), t({ a: 'cyclic' }), t({ a: 'bogus' }), t({}), t(null), t(undefined), t('x')]) assert.equal(edgeClass(row, 'a'), '');
 });
 test('edgeClass cue failure wins over blocking and unknown, not cleared', () => {
   assert.equal(edgeClass(t({ a: 'blocking' }, { failed: true }), 'a'), 'bad');

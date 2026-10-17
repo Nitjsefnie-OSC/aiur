@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
-import { openParityPair, applyAllowlist, waitParityReady, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
+import { openParityPair, applyAllowlist, waitParityReady, PARITY_VIEWPORTS, PARITY_MATRIX } from '../support/design-parity.mjs'
 
 const cell = { dataset: 'live', ...PARITY_VIEWPORTS[0], theme: 'dark', palette: 'gruvbox' }
 
@@ -51,7 +51,7 @@ const styleOf = page => page.evaluate(() => Object.fromEntries([...new Set([...d
 
 // B1b/B1c on the history region at matched scroll. Edges that end in the now band wait for C9-T08 (edges-now-band-pending);
 // the dense fixture waits on the column gap (edges-dense-columns-pending).
-test('history edge paths and styles match the design', async ({ browser }) => {
+for (const cell of PARITY_MATRIX.filter(c => c.dataset === 'live' && c.viewport.width >= 1024 && !c.reducedMotion)) test(`history edge paths and styles match the design: ${cell.viewport.width} ${cell.theme} ${cell.palette}`, async ({ browser }) => {
   const pair = await openParityPair(browser, cell)
   try {
     await Promise.all([pair.design, pair.product].map(page => waitParityReady(page, 'board', page === pair.design ? 'design' : 'product', true)))
