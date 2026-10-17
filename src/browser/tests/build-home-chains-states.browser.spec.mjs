@@ -20,5 +20,7 @@ for (const width of [1440, 390]) for (const state of states) test(`product-only 
   await page.evaluate(id => st.fx.lockTree(id), state.id)
   await page.locator('[data-lt="tree"]').click()
   await settleAnimations(page, '#bd-tree')
+  // The phone shell can scroll the document past its fixed nav at the board end.
+  await page.evaluate(() => window.scrollTo(0, 0))
   await expect(tree(page)).toHaveScreenshot(`${state.name}-${width}.png`)
 })
