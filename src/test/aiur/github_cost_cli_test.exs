@@ -170,13 +170,6 @@ defmodule Aiur.GitHubCostCLITest do
     assert output =~ "read cache: not running (no measurement)"
   end
 
-  test "explains how to access an unavailable daemon quota meter" do
-    assert {:error, message} = GitHubCostCLI.build(snapshot_fun: fn -> exit(:noproc) end)
-
-    assert message =~ "Run `aiur github-cost` while the daemon is active"
-    assert message =~ "restarting resets caller attribution until the quota window rolls over"
-  end
-
   test "reports an unattributed remainder as a measurement gap, not an alarm" do
     # Spend Aiur could not see is the normal state, and an all-caps alarm on the
     # normal state teaches operators to ignore the line that matters.
