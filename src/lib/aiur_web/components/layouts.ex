@@ -421,7 +421,6 @@ defmodule AiurWeb.Layouts do
           });
         </script>
         <link rel="stylesheet" href="/aiur-style/tokens.css" />
-        <link rel="stylesheet" href="/aiur-style/fonts.css" />
         <link rel="stylesheet" href="/dashboard.css" />
         <link rel="stylesheet" href="/build-home/home.css" />
       </head>

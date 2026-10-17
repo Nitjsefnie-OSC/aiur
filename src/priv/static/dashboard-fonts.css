@@ -1,4 +1,12 @@
 /* Google css2 discrete faces preserve the design's 550/650 weight matching. */
+/* Bungee ships with aiur-style; its fonts.css is not linked because its variable Space Grotesk and JetBrains Mono faces would duplicate the faces below. */
+@font-face {
+  font-family: 'Bungee';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/aiur-style/fonts/Bungee-Regular.woff2') format('woff2');
+}
 /* cyrillic-ext */
 @font-face {
   font-family: 'JetBrains Mono';

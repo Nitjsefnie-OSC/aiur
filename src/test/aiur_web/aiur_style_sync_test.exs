@@ -31,11 +31,12 @@ defmodule AiurWeb.AiurStyleSyncTest do
     end
   end
 
-  test "the layout loads tokens and fonts before dashboard.css and replaces the inline theme script" do
+  test "the layout loads tokens before dashboard.css, which carries the fonts, and replaces the inline theme script" do
     html = "/" |> get_authed() |> html_response(200)
-    order = Enum.map(["/aiur-style/tokens.css", "/aiur-style/fonts.css", "/dashboard.css"], &:binary.match(html, &1))
+    order = Enum.map(["/aiur-style/tokens.css", "/dashboard.css"], &:binary.match(html, &1))
     assert Enum.all?(order, &(&1 != :nomatch))
     assert order == Enum.sort(order)
+    refute html =~ "/aiur-style/fonts.css"
     assert html =~ ~s(<script src="/aiur-style/init/theme-init.js" data-default="dark">)
     refute html =~ "dataset.theme = theme"
   end

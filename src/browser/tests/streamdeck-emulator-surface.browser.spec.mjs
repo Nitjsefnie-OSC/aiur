@@ -300,6 +300,16 @@ test('Stream Deck design geometry holds at desktop and mobile widths in both the
     return [selector, style.backgroundImage, style.borderColor, style.boxShadow, style.color]
   }))
   expect(lightSurface).toEqual(darkSurface)
+  const chassisTokens = ['--fg', '--muted', '--accent', '--accent-ink', '--attention', '--attention-ink', '--blocking-ink', '--blocking-soft', '--good', '--good-ink', '--super', '--ack']
+  const readTokens = () => page.evaluate((tokens) => {
+    const style = getComputedStyle(document.querySelector('.sd-device'))
+    return tokens.map((token) => style.getPropertyValue(token).trim())
+  }, chassisTokens)
+  await page.locator('html').evaluate((html) => { html.setAttribute('data-palette', 'gruvbox'); html.setAttribute('data-theme', 'dark') })
+  const gruvboxDarkTokens = await readTokens()
+  await page.locator('html').evaluate((html) => html.setAttribute('data-theme', 'light'))
+  expect(await readTokens()).toEqual(gruvboxDarkTokens)
+  await page.locator('html').evaluate((html) => html.removeAttribute('data-palette'))
   await device.screenshot({ path: testInfo.outputPath('streamdeck-desktop-light.png') })
 
   await page.locator('html').evaluate((html) => html.removeAttribute('data-theme'))

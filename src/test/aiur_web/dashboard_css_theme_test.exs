@@ -127,6 +127,16 @@ defmodule AiurWeb.DashboardCssThemeTest do
     end
   end
 
+  test "the gruvbox light Stream Deck chassis pins every themed ink token to the gruvbox dark value" do
+    pinned = declarations(css_rule(~s(html[data-palette="gruvbox"][data-theme="light"] .sd-device)))
+    gruvbox_dark = declarations(css_rule(~s(html[data-palette="gruvbox"])))
+
+    for token <- @streamdeck_dark_root_pins -- ["--ack"] do
+      assert Map.fetch!(pinned, token) == Map.fetch!(gruvbox_dark, token),
+             "gruvbox light .sd-device must pin #{token} to the gruvbox dark value"
+    end
+  end
+
   # A meter that has reached 100% used is critical: the fill turns red so an
   # exhausted window is never mistaken for a healthy one (#1532). The rule must
   # keep using the themed blocking token so it stays legible in both themes.
