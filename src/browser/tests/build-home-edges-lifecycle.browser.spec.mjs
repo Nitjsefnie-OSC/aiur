@@ -47,7 +47,15 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
   })
   expect(edges).toMatchObject({ 12: 'bd-e bad', 19: 'bd-e', 1: 'bd-e bl', 2: 'bd-e bl', 3: 'bd-e bl', 4: 'bd-e bl', 5: 'bd-e bl' })
   info.annotations.push({ type: 'pending-sign-off', description: 'S-24 odd edges / C4-T05' })
-  await expect(page.locator('#bd-edges')).toHaveScreenshot('odd-edges.png')
+  for (const [name, id] of [['order-violation', '12'], ['unknown', '19'], ['two-cycle', '1'], ['three-cycle', '3']]) {
+    await page.evaluate(id => {
+      const { ctx, fx } = st
+      const item = Object.values(ctx.L.secs).flatMap(sec => sec.items).find(it => it.t.id === id)
+      ctx.vp.scrollTop = ctx.secs[item.t.sec].el.offsetTop + item.y - 100; fx.update(); fx.drawEdges(true)
+    }, id)
+    await expect(page.locator(`.bd-card[data-id="${id}"]`)).toBeVisible()
+    await expect(page.locator('#bd-edges')).toHaveScreenshot(`${name}.png`)
+  }
   expect(errors).toEqual([])
 })
 
