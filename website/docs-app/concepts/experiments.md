@@ -498,13 +498,3 @@ Telemetry uses the shared windowed reader: 32 MiB scanned, 10,000 records and
 4 MiB retained across sources. Known outside ranges are skipped. Retained boots
 without a range index remain eligible; missing, malformed or truncated evidence
 marks telemetry incomplete instead of implying a complete history.
-
-## Reports and labels
-
-The [aiur-experiment analyst](/skills#agent-workspace-skills) ships to every workspace. Spec mode registers blind hypotheses and pack metrics; report mode interprets engine statistics. Analysis tickets publish through the validated CLI, verify persistence and finish without a PR.
-
-Register with `aiur experiments preregister <id> --file prereg.json`. The server sets time and post-hoc status; amendments need `reason` and retain originals. Spec stops without a baseline-only read and X4 power plan: current `show` can expose outcomes and `stats` has no planning or exclusion flags. Contracts live in `src/priv/experiments/schema/`.
-
-Labels, weakest first: `not-enough-data`, `underpowered`, `inconclusive`, `no-effect-detected`, `significant`. Analysts only downgrade, with reasons. Primary chips carry n, effect and CI; unavailable values stay explicit. Every event ID appears once. High/noted effects require `confounded`; sensitivity needs a linked analysis, or disclose unavailable reruns.
-
-Freeze windows and collect events, then run `aiur experiments stats <id> --json`. `aiur experiments report submit <id> --file report.json` validates hashes, registration and engine numbers. Summary verdicts need numbers; below-n confirmatory reports become interim. Results are versioned; `show --json` exposes history.
