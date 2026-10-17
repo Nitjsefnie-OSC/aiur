@@ -3,13 +3,14 @@ import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { readFileSync } from 'node:fs'
 
 const require = createRequire(import.meta.url)
 const browserRoot = fileURLToPath(new URL('..', import.meta.url))
 const spec = 'tests/build-home-motion.browser.spec.mjs'
 
-function collect(config, full) {
-  const child = spawnSync(process.execPath, [require.resolve('@playwright/test/cli'), 'test', spec, '--config', config, '--list', '--reporter=json'], {
+function collect(config, full, grep) {
+  const child = spawnSync(process.execPath, [require.resolve('@playwright/test/cli'), 'test', spec, '--config', config, '--list', '--reporter=json', ...(grep ? ['--grep', grep] : [])], {
     cwd: browserRoot,
     env: { ...process.env, AIUR_BROWSER_PORT: '43210', AIUR_PARITY_FULL: full ? '1' : '' },
     encoding: 'utf8',
@@ -44,4 +45,18 @@ test('routine motion collects every determinism case; full mode preserves the or
   assert.ok(full.titles.includes('full sign-off: no missing ports or stale motion entries'))
   assert.equal(full.config.workers, 1)
   assert.equal(full.config.fullyParallel, false)
+})
+
+test('band suite collects every product snap and the required live grain and pulse cells', () => {
+  const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts
+  const script = scripts['test:build-home-band-motion'], grep = /--grep '([^']+)'/.exec(script)?.[1]
+  assert.ok(grep, 'band motion script must select its product cases')
+  const { titles } = collect('playwright.design-parity.config.mjs', false, grep)
+  for (const name of ['settle-near-top', 'settle-near-bottom', 'pinned', 'guard-up', 'guard-down', 'tall-band', 'list-view', 'scroll-curve', 'scrollbar-drag', 'reduce']) {
+    assert.equal(titles.filter(title => title === 'snap.' + name).length, 3, name)
+  }
+  assert.equal(titles.filter(title => title === 'grain.static .bd-now').length, 1)
+  assert.equal(titles.filter(title => title === 'inventory .bd-now-h > b i').length, 1)
+  assert.equal(titles.length, 32)
+  assert.ok(scripts['test:core'].includes('npm run test:build-home-band-motion'))
 })

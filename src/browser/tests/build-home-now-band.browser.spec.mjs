@@ -15,6 +15,7 @@ test.beforeEach(async ({ page }, info) => {
 async function open(page, dataset = 'live', query = '') {
   page.on('pageerror', error => { throw error })
   await page.goto('/build-fixture/' + dataset + query)
+  await expect(page.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/, { timeout: 10000 })
   await expect(page.locator('.bd-now-h > b')).toHaveText('Live')
   await page.evaluate(async () => { window.m = await import('/build-home/state.js'); window.band = await import('/build-home/band.js') })
 }
@@ -71,6 +72,12 @@ test('clock ticks on payload minute boundaries without new diffs and preserves c
 test('scrolling clears unlocked hover, disables card pointers and settles; reduced motion still snaps', async ({ page }) => {
   await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page); await settle(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })
+  const instant = await page.evaluate(() => {
+    m.fx.scrollVP(0, false); m.fx.jumpNow(false)
+    return { actual: m.ctx.vp.scrollTop, target: m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h - 46 }
+  })
+  expect(Math.abs(instant.actual - instant.target)).toBeLessThanOrEqual(1)
+  await settle(page)
   await page.evaluate(() => {
     window.hoverCalls = []; m.ctx.hoverId = m.ctx.D.now[0].id; m.fx.setHover = id => hoverCalls.push(id)
     m.ctx.vp.scrollTop -= 20
@@ -119,8 +126,20 @@ test('tall fleet, paging and scrollbar drag suppress snapping', async ({ page })
   }
 })
 test('destroy cancels band frames, settle locks and clock ticks; remount resets scrolling', async ({ page }) => {
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000)
+  await page.addInitScript(() => {
+    window.bandTimerCalls = { registered: 0, afterDestroy: 0 }
+    for (const method of ['setTimeout', 'requestAnimationFrame']) {
+      const native = window[method].bind(window)
+      window[method] = (fn, ...args) => {
+        const band = new Error().stack.includes('/build-home/band')
+        if (band) bandTimerCalls.registered++
+        return native((...values) => { if (band && window.bandDestroyed) bandTimerCalls.afterDestroy++; return fn(...values) }, ...args)
+      }
+    }
+  })
   await openFixture(page)
-  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page); await settle(page)
+  await open(page); await settle(page)
   await page.evaluate(() => {
     m.fx.scrollVP(300, true); m.fx.markScrolling()
     const vp = m.ctx.vp, time = m.ctx.bandEl.querySelector('time')
@@ -132,7 +151,10 @@ test('destroy cancels band frames, settle locks and clock ticks; remount resets 
   await expect(page.locator('#bd-vp')).toHaveCount(0)
   const stopped = await page.evaluate(() => ({ writes: old.writes, text: old.time.textContent, disposed: m.ctx.life.disposed }))
   expect(stopped.disposed).toBe(true)
+  await page.evaluate(() => { window.bandDestroyed = true })
+  expect(await page.evaluate(() => bandTimerCalls.registered)).toBeGreaterThan(0)
   await page.clock.runFor(65000)
+  expect(await page.evaluate(() => bandTimerCalls.afterDestroy)).toBe(0)
   expect(await page.evaluate(() => ({ writes: old.writes, text: old.time.textContent, disposed: m.ctx.life.disposed }))).toEqual(stopped)
   await open(page); await expect(page.locator('.bd-now-h > b')).toHaveText('Live')
   await settle(page)
@@ -169,8 +191,14 @@ test('Live button floating state and click use the actual band geometry', async 
     return { top: r.top - v.top, bottom: v.bottom - r.bottom, at: document.querySelector('#bd-nowbtn').classList.contains('at') }
   })
   expect(floating.top).toBeGreaterThan(76); expect(floating.bottom).toBeGreaterThan(30); expect(floating.at).toBe(true)
+  await open(page); await settle(page)
+  await page.evaluate(() => { m.ctx.vp.scrollTop = m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h - 146; m.fx.update() })
+  await expect(page.locator('#bd-nowbtn')).toHaveClass(/at/)
   await page.locator('#bd-nowbtn').evaluate(el => el.click()); await settle(page)
-  const error = await page.evaluate(() => Math.abs(m.ctx.vp.scrollTop - (m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h - 46)))
+  const error = await page.evaluate(() => {
+    const vp = m.ctx.vp, target = Math.max(0, Math.min(m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h - 46, vp.scrollHeight - vp.clientHeight))
+    return Math.abs(vp.scrollTop - target)
+  })
   expect(error).toBeLessThanOrEqual(1)
   await expect(page.locator('#bd-nowbtn')).not.toHaveClass(/at/)
 })
@@ -188,4 +216,37 @@ test('focused band card survives live relayout', async ({ page }) => {
   await card.focus()
   expect((await page.request.get('/build-control/diff?name=card-pct-null')).ok()).toBe(true)
   await expect(page.locator('#bd-now .bd-card[data-id="' + id + '"]')).toBeFocused()
+})
+
+// Future-regression guard for the design's CSS-only re-pin; not counted as change coverage.
+test('future guard: added agents stay pinned at the bottom without a new scroll animation', async ({ page }) => {
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page); await settle(page)
+  await page.evaluate(() => m.fx.scrollVP(m.ctx.secs.hist.el.offsetTop + m.ctx.L.secs.hist.h + m.ctx.L.band.h - m.ctx.vp.clientHeight, false))
+  await settle(page)
+  await page.evaluate(() => {
+    window.scrollFrames = []
+    const frame = m.ctx.life.frame
+    m.ctx.life.frame = (key, fn) => { if (typeof key === 'string' && key.startsWith('scrollVP:')) scrollFrames.push(key); return frame(key, fn) }
+  })
+  expect((await page.request.get('/build-control/diff?name=add-four-agents')).ok()).toBe(true)
+  await settle(page)
+  await expect(page.locator('#bd-now .bd-card')).toHaveCount(12)
+  expect(await page.evaluate(() => Math.abs(m.ctx.bandEl.getBoundingClientRect().bottom - m.ctx.vp.getBoundingClientRect().bottom))).toBeLessThanOrEqual(1)
+  expect(await page.evaluate(() => scrollFrames)).toEqual([])
+})
+
+// Before the first snapshot renderBand is guarded by ctx.D; B3 mutates the null-clock presenter separately.
+test('future guard: a mounted hook awaiting its first snapshot never presents midnight', async ({ page }) => {
+  await openFixture(page)
+  const state = await page.evaluate(async () => {
+    const { createBuildHomeHook } = await import('/build-home/hook.js')
+    const { ctx } = await import('/build-home/state.js'), clock = await import('/build-home/clock.js')
+    document.body.innerHTML = '<main id="build-root" class="bd-root">' + ['bd-usage', 'bd-offline', 'bd-fh', 'bd-tools-l', 'bd-filters', 'bd-tools', 'bd-vp', 'bd-sb', 'bd-tree', 'bd-status'].map(id => `<div id="${id}">${id === 'bd-sb' ? '<i></i>' : ''}</div>`).join('') + '</main>'
+    const hook = Object.assign(createBuildHomeHook(), { el: document.querySelector('#build-root'), handleEvent() {}, pushEvent: () => new Promise(() => {}) })
+    hook.mounted()
+    const result = { now: clock.nowMs(), data: ctx.D, text: document.querySelector('.bd-now-h time')?.textContent ?? null }
+    hook.destroyed(); return result
+  })
+  expect(state.now).toBeNull(); expect(state.data).toBeNull()
+  expect([null, '—']).toContain(state.text)
 })

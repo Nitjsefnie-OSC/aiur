@@ -279,7 +279,7 @@
   {
     "id": "now-band-eta-pending",
     "kind": "copy",
-    "selector": ".bd-now-eta",
+    "selector": "#bd-vp",
     "cells": {},
     "reason": "C7-T03 replaces ETA placeholder with capacity-aware etaLabel; removed by C7-T03",
     "approval": {

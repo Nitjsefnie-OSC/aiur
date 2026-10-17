@@ -1,12 +1,18 @@
 import { readFile } from 'node:fs/promises'
 import { test, expect } from '@playwright/test'
 import { openParityPair, waitParityReady, expectDesignParity, PARITY_VIEWPORTS, FIXTURE_META } from '../support/design-parity.mjs'
-import { alignBoard, alignEtaMask } from '../support/build-home-band-canvas.mjs'
+import { alignBoard, alignEtaMask, primeBoardPaint } from '../support/build-home-band-canvas.mjs'
 import { nowPatch } from '../scripts/build-home-now-patch.mjs'
 
+test.use({ trace: 'off' })
 test.setTimeout(120000)
 const source = await readFile(new URL('../../test/fixtures/build_home/design-source/assets/build.js', import.meta.url), 'utf8')
 async function freeze(pair, dataset) {
+  const assets = test.info().project.metadata.bandAssetRoot
+  if (assets) {
+    await pair.product.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(assets + '/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
+    await pair.product.reload(); await waitParityReady(pair.product, 'board', 'product', true)
+  }
   const anchor = '  window.AiurBuild = {'
   const probe = nowPatch(source, dataset).replace(anchor, `window.__bandProbe = { stop() { S.ready = false; snapping = true; }, scroll(st) { vp.scrollTop = st; update(); } };\n${anchor}`)
   await pair.design.route('**/assets/build.js*', route => route.fulfill({ contentType: 'text/javascript', body: probe }))
@@ -19,9 +25,9 @@ async function freeze(pair, dataset) {
   await Promise.all([pair.design, pair.product].map(page => page.clock.setSystemTime(FIXTURE_META.now)))
 }
 // The ETA copy is the sole pending C7-T03 exception; no header/card masks are added.
-for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0', 'now24']) for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) {
-  test(`band pixels and card geometry: ${dataset} ${viewport.viewport.width} ${theme}`, async ({ browser }) => {
-    const cell = { ...viewport, theme, palette: theme === 'dark' ? 'gruvbox' : 'aiur', dataset: ['now0', 'now24'].includes(dataset) ? 'live' : dataset }
+for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0', 'now24']) for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) {
+  test(`band pixels and card geometry: ${dataset} ${viewport.viewport.width} ${theme} ${palette}`, async ({ browser }) => {
+    const cell = { ...viewport, theme, palette, dataset: ['now0', 'now24'].includes(dataset) ? 'live' : dataset }
     const pair = await openParityPair(browser, cell, { motion: true })
     try {
       if (['now0', 'now24'].includes(dataset)) {
@@ -29,7 +35,7 @@ for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0',
         await waitParityReady(pair.product, 'board', 'product', true)
       }
       await freeze(pair, dataset)
-      pair.allowlist = pair.allowlist.map(entry => entry.id === 'now-band-eta-pending' ? { ...entry, kind: 'pixel-mask' } : entry)
+      pair.allowlist = pair.allowlist.map(entry => entry.id === 'now-band-eta-pending' ? { ...entry, kind: 'pixel-mask', selector: '.bd-now-eta' } : entry)
       await alignEtaMask(pair)
       const geometry = page => page.evaluate(() => ({
         h: document.querySelector('#bd-now').style.height,
@@ -38,6 +44,9 @@ for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0',
       const [d, p] = await Promise.all([geometry(pair.design), geometry(pair.product)])
       expect(p.h).toBe(d.h); expect(p.cards.map(c => c.id)).toEqual(d.cards.map(c => c.id))
       for (let i = 0; i < d.cards.length; i++) for (const key of ['top', 'left', 'width', 'height']) expect(Math.abs(p.cards[i][key] - d.cards[i][key])).toBeLessThanOrEqual(1)
+      // Tall bands extend beyond the scrollport. Compare the whole visible
+      // composition there; a bounding-box clip would include off-page pixels.
+      const region = await pair.design.locator('#bd-vp').evaluate((vp, h) => parseFloat(h) > vp.clientHeight ? '#bd-vp' : '#bd-now', d.h)
       for (const position of ['top', 'bottom']) {
         const st = await pair.design.evaluate(position => {
           const vp = document.querySelector('#bd-vp'), band = document.querySelector('#bd-now'), hist = document.querySelector('#bd-sec-hist')
@@ -45,11 +54,19 @@ for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0',
         }, position)
         await pair.design.evaluate(st => window.__bandProbe.scroll(st), st)
         await pair.product.evaluate(async st => { const { ctx, fx } = await import('/build-home/state.js'); ctx.vp.scrollTop = st; fx.update() }, st)
-        await expectDesignParity(pair, { name: `band-${dataset}-${viewport.viewport.width}-${theme}-${position}`, region: '#bd-now' })
+        await primeBoardPaint(pair)
+        await expectDesignParity(pair, { name: `band-${dataset}-${viewport.viewport.width}-${theme}-${palette}-${position}`, region, preserveAnimations: true })
       }
       await Promise.all([pair.design, pair.product].map(page => page.locator('[data-min]').evaluate(el => el.click())))
       await alignEtaMask(pair)
-      await expectDesignParity(pair, { name: `band-${dataset}-${viewport.viewport.width}-${theme}-min`, region: '#bd-now' })
+      await primeBoardPaint(pair)
+      await expectDesignParity(pair, { name: `band-${dataset}-${viewport.viewport.width}-${theme}-${palette}-min`, region: '#bd-now', preserveAnimations: true })
+      for (const ast of await pair.design.locator('.bd-now-st [data-ast]').evaluateAll(els => els.map(el => el.dataset.ast))) {
+        await Promise.all([pair.design, pair.product].map(page => page.locator('.bd-now-h [data-ast="' + ast + '"]').first().evaluate(el => el.click())))
+        await alignEtaMask(pair); await primeBoardPaint(pair)
+        // Filter dimming behind the blurred band belongs to C10-T02.
+        await expectDesignParity(pair, { name: `band-${dataset}-${viewport.viewport.width}-${theme}-${palette}-${ast}`, region: '.bd-now-st', preserveAnimations: true })
+      }
     } finally { await pair.close() }
   })
 }
@@ -64,7 +81,9 @@ for (const theme of ['dark', 'light']) for (const dataset of ['live', 'dense', '
       const st = await pair.design.locator('#bd-sec-' + sec).evaluate(el => el.offsetTop - 160)
       await pair.design.evaluate(st => window.__bandProbe.scroll(st), st)
       await pair.product.evaluate(async st => { const { ctx, fx } = await import('/build-home/state.js'); ctx.vp.scrollTop = st; fx.update() }, st)
-      await expectDesignParity(pair, { name: `mobile-composed-${dataset}-${theme}-${sec}`, region: `#bd-sec-${sec} .bd-sech` })
+      const [dy, py] = await Promise.all([pair.design, pair.product].map(page => page.locator(`#bd-sec-${sec} .bd-sech`).evaluate(el => el.getBoundingClientRect().top)))
+      expect(Math.abs(py - dy)).toBeLessThanOrEqual(1)
+      await expectDesignParity(pair, { name: `mobile-composed-${dataset}-${theme}-${sec}`, region: `#bd-sec-${sec} .bd-sech`, preserveAnimations: true })
       const cards = page => page.locator('.bd-sec .bd-card').evaluateAll(els => els.map(el => ({ id: el.dataset.id.replace('AIUR-', ''), top: el.getBoundingClientRect().top })).sort((a, b) => a.id.localeCompare(b.id)))
       const [d, p] = await Promise.all([cards(pair.design), cards(pair.product)])
       expect(p.map(c => c.id)).toEqual(d.map(c => c.id))
