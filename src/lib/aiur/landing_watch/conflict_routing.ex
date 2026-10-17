@@ -45,7 +45,7 @@ defmodule Aiur.LandingWatch.ConflictRouting do
     )
   end
 
-  defp route_result(observation, _claim, opts, :conflict_already_rework) do
+  defp route_result(observation, _claim, opts, result) when result in [:conflict_already_rework, :conflict_not_routed] do
     _ = Journal.release_alert(observation.number, observation.head, "conflict-rework", opts)
     :ok
   end

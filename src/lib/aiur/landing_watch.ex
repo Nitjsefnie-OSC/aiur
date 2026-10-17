@@ -364,7 +364,7 @@ defmodule Aiur.LandingWatch do
         case transition_rework(observation, failures, opts) do
           {:error, :pull_request_not_linked_to_ticket_branch} ->
             log_unlinked_head_once(observation, opts)
-            :ok
+            if Keyword.has_key?(opts, :conflict_rework_claim), do: :conflict_not_routed, else: :ok
 
           result ->
             result
@@ -401,7 +401,7 @@ defmodule Aiur.LandingWatch do
         end
 
       {:ok, _issue, _state} ->
-        :ok
+        if Keyword.has_key?(opts, :conflict_rework_claim), do: :conflict_not_routed, else: :ok
 
       {:error, reason} ->
         {:error, reason}

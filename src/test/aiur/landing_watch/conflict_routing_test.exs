@@ -91,6 +91,22 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
     refute_received {:comment, _, _}
   end
 
+  test "a ticket that was not routed does not receive a later rework follow-up" do
+    parent = self()
+    path = journal_path()
+    opts = cycle_opts(parent, conflicting(nil), "in-progress") |> Keyword.put(:journal_path, path)
+
+    assert :ok = LandingWatch.poll(opts)
+    refute_received {:transition, _, _, _}
+    refute_received {:comment, _, _}
+    refute_received {:remove_label, _, _}
+
+    assert :ok = LandingWatch.poll(Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "rework"} end))
+    refute_received {:transition, _, _, _}
+    refute_received {:comment, _, _}
+    refute_received {:remove_label, _, _}
+  end
+
   defp cycle_opts(parent, observation, ticket_state) do
     [
       observe_fun: fn _ -> {:ok, [observation]} end,
