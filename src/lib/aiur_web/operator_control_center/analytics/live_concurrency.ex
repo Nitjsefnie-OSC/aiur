@@ -60,5 +60,5 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.LiveConcurrency do
   defp age_label(age_ms), do: "#{Float.round(age_ms / 3_600_000, 1)}h"
 
   defp age_ms(%{age_ms: age_ms}) when is_integer(age_ms) and age_ms >= 0, do: age_ms
-  defp age_ms(_freshness), do: 0
+  defp age_ms(_freshness), do: nil
 end

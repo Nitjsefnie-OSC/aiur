@@ -61,6 +61,12 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.LiveConcurrencyTest do
 
     assert LiveConcurrency.label(%{live_concurrency_state: {:stale_unavailable, nil}}, true) ==
              "occupancy unavailable (sample age unknown)"
+
+    stale_without_age = LiveConcurrency.snapshot_opts({:stale, %{capacity: %{}}, %{}})
+    assert stale_without_age[:live_concurrency_state] == {:stale_unavailable, nil}
+
+    assert LiveConcurrency.label(Map.new(stale_without_age), true) ==
+             "occupancy unavailable (sample age unknown)"
   end
 
   test "presenter reads live count and cap from one injected dashboard snapshot" do
