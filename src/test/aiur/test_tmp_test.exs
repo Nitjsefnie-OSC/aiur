@@ -50,6 +50,26 @@ defmodule Aiur.TestTmpTest do
     refute File.exists?(stale)
   end
 
+  test "sweep warns and continues past a dead run it cannot remove", %{base: base} do
+    {output, 0} = System.cmd("sh", ["-c", "echo $$"])
+    dead_pid = output |> String.trim() |> String.to_integer()
+    refute Aiur.ProcessIdentity.alive?(dead_pid)
+    stuck = Path.join(base, "run-1-#{dead_pid}-3")
+    stale = Path.join(base, "run-2-#{dead_pid}-4")
+    for path <- [stuck, stale], do: File.mkdir!(path)
+
+    rm = fn
+      ^stuck -> {:error, :eacces, Path.join(stuck, "foreign")}
+      path -> File.rm_rf(path)
+    end
+
+    warning = ExUnit.CaptureIO.capture_io(:stderr, fn -> Aiur.TestTmp.sweep!(base, File.stat!(stuck).uid, rm) end)
+    assert warning =~ stuck
+    assert warning =~ "permission denied"
+    assert File.dir?(stuck)
+    refute File.exists?(stale)
+  end
+
   test "sweep leaves directories belonging to another owner", %{base: base} do
     {output, 0} = System.cmd("sh", ["-c", "echo $$"])
     dead_pid = output |> String.trim() |> String.to_integer()
