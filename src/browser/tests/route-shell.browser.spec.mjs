@@ -89,6 +89,29 @@ test('active navigation follows the design corners on desktop and phone', async 
   }
 })
 
+test('dashboard background stays fixed across long dark-theme pages', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await openFixture(page)
+  await page.goto('/')
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'))
+
+  const background = await page.evaluate(() => {
+    const spacer = document.createElement('div')
+    spacer.style.height = '1200px'
+    spacer.setAttribute('aria-hidden', 'true')
+    document.querySelector('section.dashboard-shell').append(spacer)
+
+    return {
+      documentHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+      attachment: getComputedStyle(document.body).backgroundAttachment
+    }
+  })
+
+  expect(background.documentHeight).toBeGreaterThan(background.viewportHeight)
+  expect(background.attachment).toBe('fixed')
+})
+
 const routeShellViewports = [
   { width: 320, isMobile: true },
   { width: 390, isMobile: true },

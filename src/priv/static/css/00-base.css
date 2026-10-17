@@ -140,6 +140,7 @@ body {
   background:
     radial-gradient(1200px 520px at 78% -8%, var(--accent-soft) 0%, transparent 60%),
     var(--bg);
+  background-attachment: fixed;
   color: var(--fg);
   font-family: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
   line-height: 1.5;
