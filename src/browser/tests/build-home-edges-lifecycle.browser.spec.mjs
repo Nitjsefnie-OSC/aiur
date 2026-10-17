@@ -86,21 +86,44 @@ test('B8 destroy cancels pending draws and disconnected content is untouched', a
   })).toBe(true)
 })
 
-test('B8b navigating back during a draw loop renders a fresh mount', async ({ page }) => {
+test('B8b navigating back during a draw loop renders a fresh mount', async ({ page, context }) => {
   await open(page)
-  // Both mounts count at the same pinned scroll, so the counts are comparable. The onReset signature reset is covered by the unit test (forced remount draws mask it here).
-  const pin = () => page.evaluate(() => { const { ctx, fx } = st; ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update(); fx.drawEdges(true); return ctx.svg.querySelectorAll('.bd-eh').length })
-  // Keep the deadline alive across navigation even when the shared host is busy.
-  await page.evaluate(() => st.fx.drawEdgesSoon(60_000))
-  const count = await pin()
-  expect(count).toBeGreaterThan(0)
+  const fresh = await context.newPage()
+  await open(fresh)
+  const expected = await fresh.evaluate(() => {
+    const { ctx, fx } = st
+    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
+    return ctx.svg.querySelectorAll('.bd-eh').length
+  })
+  await fresh.close()
+  expect(expected).toBeGreaterThan(0)
+
+  // Freeze performance.now across navigation: the old 420 ms deadline stays active.
+  await page.clock.install({ time: 1791408000000 })
+  await page.clock.pauseAt(1791408010000)
+  await page.clock.runFor(600)
+  await page.evaluate(() => {
+    window.soon = st.fx.drawEdgesSoon
+    soon(420)
+    // Mount/layout also draw directly and schedule short loops. Isolate the pending-loop
+    // restart through the public fx seams; the real loop calls drawEdges lexically.
+    st.fx.drawEdges = () => {}
+    st.fx.drawEdgesSoon = () => {}
+  })
   await navigate(page, '/commands')
   await expect(page.locator('#bd-content')).toHaveCount(0)
   await navigate(page, '/build')
   await expect(page.locator('#bd-content')).toHaveCount(1)
-  await expect.poll(() => page.evaluate(() => !!st.ctx.D && st.ctx.vp && !!st.ctx.secs.plan)).toBe(true)
-  await page.evaluate(() => { const { ctx, fx } = st; ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update() })
-  await expect.poll(() => page.locator('#bd-edges .bd-eh').count()).toBe(count)
+  await expect.poll(() => page.evaluate(() => !!st.ctx.D && !!st.ctx.secs.plan)).toBe(true)
+  await page.evaluate(() => {
+    const { ctx, fx } = st
+    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
+    fx.drawEdgesSoon = soon
+    fx.drawEdgesSoon(420)
+  })
+  // No forced draw: only the restarted animation-frame loop can populate the new SVG.
+  await page.clock.runFor(100)
+  expect(await page.locator('#bd-edges .bd-eh').count()).toBe(expected)
 })
 
 test('B3 an unloaded blocker has no edge until earlier history is loaded', async ({ page }) => {
