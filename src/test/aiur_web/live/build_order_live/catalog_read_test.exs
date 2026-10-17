@@ -20,7 +20,7 @@ defmodule AiurWeb.BuildOrderLive.CatalogReadTest do
 
   defp assert_down(pid) do
     ref = Process.monitor(pid)
-    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 1_000
   end
 
   defp catalog_reads(source), do: Enum.count(FakeDataSource.calls(source), &(&1 == {:catalog, []}))
@@ -47,7 +47,7 @@ defmodule AiurWeb.BuildOrderLive.CatalogReadTest do
 
     send(view.pid, {:current_run_membership_changed, %{}})
     assert render(view) =~ "build-orders-refresh-catalog"
-    assert_receive {:catalog_reading, task}
+    assert_receive {:catalog_reading, task}, 1_000
 
     # A second event and a reset while the read is held queue one rerun rather
     # than stacking reads on the stuck one.
@@ -57,7 +57,7 @@ defmodule AiurWeb.BuildOrderLive.CatalogReadTest do
     assert catalog_reads(source) == reads + 1
 
     send(task, {:release_catalog, ready_catalog()})
-    assert_receive {:catalog_reading, rerun}
+    assert_receive {:catalog_reading, rerun}, 1_000
     assert rerun != task
     send(rerun, {:release_catalog, put_in(ready_catalog().authority_epoch, 2)})
     assert settle(view) =~ "Recovered root"
@@ -71,7 +71,7 @@ defmodule AiurWeb.BuildOrderLive.CatalogReadTest do
     install_source(catalog: held_catalog())
 
     assert {:ok, view, _html} = live(build_conn(), "/build-orders")
-    assert_receive {:catalog_reading, task}
+    assert_receive {:catalog_reading, task}, 1_000
     html = render(view)
 
     assert html =~ ~s(data-build-order-catalog-state="read_failed")
@@ -85,7 +85,7 @@ defmodule AiurWeb.BuildOrderLive.CatalogReadTest do
     install_source(catalog: held_catalog())
 
     assert {:ok, view, _html} = live(build_conn(), "/build-orders")
-    assert_receive {:catalog_reading, task}
+    assert_receive {:catalog_reading, task}, 1_000
     advance(view, clock, 3)
     send(task, :crash_catalog)
     assert_down(task)
@@ -102,7 +102,7 @@ defmodule AiurWeb.BuildOrderLive.CatalogReadTest do
     source = install_source(catalog: held_catalog())
 
     assert {:ok, view, _html} = live(build_conn(), "/build-orders")
-    assert_receive {:catalog_reading, stuck}
+    assert_receive {:catalog_reading, stuck}, 1_000
 
     :ok = FakeDataSource.put_catalog(source, ready_catalog())
     view |> element("#build-orders-refresh-catalog") |> render_click()
