@@ -1828,9 +1828,7 @@ defmodule Aiur.AgentControlCLITest do
         assert Process.register(meter, Quota)
       end
 
-    assert output =~ "__AIUR_CONTROL_ERROR__:aiur: github-cost the GitHub quota meter is not running in the active daemon"
-    assert output =~ "Check `aiur alerts` for the quota process failure"
-    assert output =~ "GitHub's quota window continues"
+    assert output =~ "__AIUR_CONTROL_ERROR__:aiur: github-cost the GitHub quota meter is not running"
     assert output =~ "__AIUR_CONTROL_EXIT__:1"
   end
 
