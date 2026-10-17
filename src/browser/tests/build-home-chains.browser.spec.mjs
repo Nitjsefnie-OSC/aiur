@@ -153,16 +153,16 @@ test('B5 unknown node text and hostile titles stay honest and escaped', async ({
 test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
-    const push = st.ctx.push; window.earlierCalls = []; st.S.histFrom = new Date(st.ctx.snap.now).setHours(0, 0, 0, 0)
+    const push = st.ctx.push; window.earlierCalls = []
     st.ctx.push = (event, params) => { if (event === 'load-earlier') earlierCalls.push(params); return push(event, params) }
   })
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => earlierCalls.length)).toBeGreaterThan(0)
   await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe('9012')
-  // Only loaded timestamps can guide Fit; unloaded blocker dates are intentionally unknown.
-  await expect(card(page, '9005')).toBeVisible()
-  const oldest = await card(page, '9005').boundingBox(), vp = await page.locator('#bd-vp').boundingBox()
+  await expect.poll(() => page.evaluate(() => !!st.ctx.D.byId['9001'])).toBe(true)
+  await expect(card(page, '9001')).toBeVisible()
+  const oldest = await card(page, '9001').boundingBox(), vp = await page.locator('#bd-vp').boundingBox()
   expect(oldest.y).toBeGreaterThanOrEqual(vp.y)
   expect(oldest.y + oldest.height).toBeLessThanOrEqual(vp.y + vp.height)
   const span = await page.evaluate(() => st.S.span)
@@ -173,7 +173,6 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
 
 for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim a released lock`, async ({ page }) => {
   await open(page); await lock(page, '9012')
-  await page.evaluate(() => { st.S.histFrom = new Date(st.ctx.snap.now).setHours(0, 0, 0, 0) })
   await page.request.get('/build-control/earlier?' + (mode === 'cancel' ? 'delay=500' : 'fail=1'))
   await page.locator('[data-lt="fit"]').click()
   if (mode === 'cancel') {
@@ -268,7 +267,6 @@ test('B12 browser Back disabling trees clears a lock', async ({ page }) => {
 test('B13 navigation cancels a pending Fit and removes tree document listeners', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message))
   await open(page); await lock(page, '9012')
-  await page.evaluate(() => { st.S.histFrom = new Date(st.ctx.snap.now).setHours(0, 0, 0, 0) })
   await page.request.get('/build-control/earlier?delay=500')
   await page.evaluate(() => {
     window.lateTreeCalls = []; const life = st.ctx.life

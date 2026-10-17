@@ -2,7 +2,7 @@ import { S, ctx, fx, onReset, SPANS, LH } from './state.js';
 import { chainOf, chainGaps, fitFrom, treeLayout, treeStatus, NW, NH } from './chains.js';
 import { edgeClass } from './edges.js';
 import { agentState } from './now-state.js';
-import { ensureFrom } from './history.js';
+import { ensureFrom, loadEarlier, H } from './history.js';
 import { writeURL } from './url.js';
 import { colKey } from './layout.js';
 import { esc, $ } from './dom.js';
@@ -73,8 +73,14 @@ export function treeRange(id) {
   return [a, b];
 }
 export async function fitTree(id) {
-  const token = ++fitToken, life = ctx.life, from = fitFrom(ctx.D, id);
+  const token = ++fitToken, life = ctx.life;
   const current = () => token === fitToken && ctx.life === life && !life.disposed && ctx.content?.isConnected && !!ctx.D.byId[id];
+  // Unloaded links carry no dates; discover their rows through the bounded history pager.
+  while (current() && ctx.lockId === id && H.more && chainGaps(ctx.D, chainOf(ctx.D, id)).unloaded) {
+    if (!await loadEarlier()) break;
+  }
+  if (!current() || ctx.lockId !== id) return;
+  const from = fitFrom(ctx.D, id);
   if (from != null && S.histFrom > from) await ensureFrom(from, () => current() && ctx.lockId === id);
   if (!current() || ctx.lockId !== id) return;
   const room = ctx.vp.clientHeight - LH - 70;
