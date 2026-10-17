@@ -13,7 +13,7 @@ defmodule Aiur.Config.Schema.Github do
   @default_max_inflight 4
   @default_max_inflight_per_endpoint 2
   @default_requests_per_minute 300
-  @default_stagger_ms 0
+  @default_stagger_ms 75
   @default_daemon_core_limit_per_hour 3000
   @default_daemon_graphql_limit_per_hour 4500
   @default_daemon_search_limit_per_hour 600
@@ -87,7 +87,7 @@ defmodule Aiur.Config.Schema.Github do
     # @config-detail tracker.github.requests_per_minute | integer | 300 | Requests per minute shared by every consumer of one GitHub token (1-10000). Keep it above the hourly ceiling divided by 60 so sustained pacing never binds before the hourly ceiling; bursts above it still hold; lower it when GitHub answers with secondary rate limits. |
     field(:requests_per_minute, :integer, default: @default_requests_per_minute)
     # @config-reference config-configuration-01 tracker.github.stagger_ms
-    # @config-detail tracker.github.stagger_ms | integer | 0 | Random delay cap between tracker requests, in milliseconds (0-5000). Use only when the per-minute limit alone still creates bursts. |
+    # @config-detail tracker.github.stagger_ms | integer | 75 | Delay inserted between tracker requests, in milliseconds (0-5000), so a poll cycle does not burst. |
     field(:stagger_ms, :integer, default: @default_stagger_ms)
     # Per-actor hourly GitHub ceilings (#2181): how many billable Core / GraphQL
     # / search responses one actor may consume in a rolling hour before its own

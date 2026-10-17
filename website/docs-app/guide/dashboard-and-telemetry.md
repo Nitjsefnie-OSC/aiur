@@ -57,7 +57,7 @@ tracker:
     max_inflight: 4
     max_inflight_per_endpoint: 2
     requests_per_minute: 300
-    stagger_ms: 0
+    stagger_ms: 75
 ```
 
 When active consumers of the same token disagree, the broker uses the most
