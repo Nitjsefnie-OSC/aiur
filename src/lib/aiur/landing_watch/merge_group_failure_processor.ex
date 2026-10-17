@@ -122,7 +122,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
       end
     else
       # A log GitHub no longer serves degrades only this run; the claim stays so the poll moves on.
-      # Other read errors (budget holds, timeouts) release the claim and retry next poll.
+      # Other errors release the claim; process_new_failed_group caps their retries.
       {:error, {:job_log, job_id, {:github, :http, %{status: status}} = reason}} when status in [404, 410] ->
         emit_unclassified_attention(
           "system.pr.landing.job_log_unavailable",
