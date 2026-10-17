@@ -96,7 +96,7 @@ defmodule Aiur.GitHubCostCLI do
   rescue
     error -> {:error, Exception.message(error)}
   catch
-    :exit, _reason -> {:error, "the GitHub quota meter is not running"}
+    :exit, _reason -> {:error, "the GitHub quota meter is not running. Run `aiur github-cost` while the daemon is active; restarting resets caller attribution until the quota window rolls over"}
   end
 
   defp validate_budget(budget) when budget in ["graphql", "core", "all"], do: {:ok, budget}

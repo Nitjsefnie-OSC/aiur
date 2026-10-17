@@ -62,7 +62,7 @@ defmodule Aiur.Config.SchemaGithubTest do
       assert defaults.tracker.github.max_inflight == 4
       assert defaults.tracker.github.max_inflight_per_endpoint == 2
       assert defaults.tracker.github.requests_per_minute == 300
-      assert defaults.tracker.github.stagger_ms == 75
+      assert defaults.tracker.github.stagger_ms == 0
 
       assert {:ok, settings} =
                Schema.parse(%{
