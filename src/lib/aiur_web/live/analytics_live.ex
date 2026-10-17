@@ -455,7 +455,7 @@ defmodule AiurWeb.AnalyticsLive do
 
   defp assign_time_domain(socket, _domain), do: socket
 
-  # Retained and cross-boot views end in history, so only a live boot says "now".
+  # Only a live boot says "now": retained and cross-boot views, fleet samples included, are history.
   defp kpi_items(model, provider_spend, source_kind) do
     k = model.kpis
     present? = source_kind == :live
@@ -464,7 +464,7 @@ defmodule AiurWeb.AnalyticsLive do
       %{
         label: "Peak concurrency",
         val: k.peak_conc,
-        sub: concurrency_subtitle(model, present?),
+        sub: "#{concurrency_count(model, present?)} / #{Presenter.cap_label(model)}",
         tone: nil
       },
       %{
@@ -496,9 +496,9 @@ defmodule AiurWeb.AnalyticsLive do
     ]
   end
 
-  defp concurrency_subtitle(model, present?),
-    do:
-      "#{if(is_integer(model.pressure.latest_occupied), do: "#{model.pressure.latest_occupied} now", else: if(present?, do: "occupancy unavailable", else: "#{model.kpis.conc_now} at run end"))} / #{Presenter.cap_label(model)}"
+  defp concurrency_count(%{pressure: %{latest_occupied: n}}, true) when is_integer(n), do: "#{n} now"
+  defp concurrency_count(_model, true), do: "occupancy unavailable"
+  defp concurrency_count(model, false), do: "#{model.kpis.conc_now} at run end"
 
   defp provider_spend_item(%{state: :available, amount: amount, source: source}),
     do: %{label: "Provider spend", val: amount, sub: source, tone: nil}
