@@ -1,5 +1,6 @@
 defmodule Aiur.AgentGitHubGuard.SecondaryLimitsTest do
   use Aiur.AgentGitHubGuardCase, async: true
+  import Aiur.TestSupport, only: [receive_barrier: 1]
 
   # The field failure: `gh` refused with a rate-limit error while both primary
   # windows still read healthy. Without a secondary hold the guard recorded
@@ -90,8 +91,8 @@ defmodule Aiur.AgentGitHubGuard.SecondaryLimitsTest do
         )
       end)
 
-    assert_receive {^call_reader, {:data, "api repos/owner/repo/issues/1670\n"}}, 5_000
-    assert_receive {^call_reader, {:exit_status, 0}}, 5_000
+    receive_barrier({^call_reader, {:data, "api repos/owner/repo/issues/1670\n"}})
+    receive_barrier({^call_reader, {:exit_status, 0}})
 
     second =
       Task.async(fn ->
