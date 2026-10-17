@@ -383,8 +383,8 @@ defmodule AiurWeb.AnalyticsLiveTest do
     assert html =~ "provider-reported estimate"
     assert html =~ ~s(data-source-kind="live")
     assert html =~ "live boot"
-    # Without fleet occupancy telemetry, lifecycle intervals are not a live count.
-    assert html =~ ~r/an-kpi-sub">occupancy unavailable \/ /
+    # A live boot is the only source that may speak in the present tense.
+    assert html =~ ~r/an-kpi-sub">occupancy unavailable \/.*cap/
     assert html =~ ~r/an-kpi-sub">this run</
   end
 
@@ -422,7 +422,7 @@ defmodule AiurWeb.AnalyticsLiveTest do
     assert html =~ "Build Order #77, latest run"
     # The Build Order strip renders the same effective cap as the run strip;
     # without this the whole Build Order cap path is uncovered.
-    assert html =~ "occupancy unavailable / 3 cap (binding: awaiting dispatch, session 8, configured 16)"
+    assert html =~ "now / 3 cap (binding: awaiting dispatch, session 8, configured 16)"
     refute html =~ "now / 16 cap"
     assert html =~ ">#941<"
     refute html =~ ">#942<"

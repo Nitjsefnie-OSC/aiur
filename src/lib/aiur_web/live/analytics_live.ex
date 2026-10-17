@@ -22,7 +22,7 @@ defmodule AiurWeb.AnalyticsLive do
     UsageSummaryPresenter
   }
 
-  alias AiurWeb.OperatorControlCenter.Analytics.{Charts, ConcurrencyCoverage, Loading, Presenter, Runtime, ScopeResolver, Styles}
+  alias AiurWeb.OperatorControlCenter.Analytics.{Charts, ConcurrencyCoverage, LiveConcurrency, Loading, Presenter, Runtime, ScopeResolver, Styles}
 
   @usage_summary_max_age_ms 30_000
   # Matches the CLI: telemetry within this window is "just now", older telemetry shows elapsed age.
@@ -461,7 +461,10 @@ defmodule AiurWeb.AnalyticsLive do
     present? = source_kind == :live
 
     [
-      Map.merge(%{label: "Peak concurrency", tone: nil}, ConcurrencyCoverage.tile(model, scope, "#{concurrency_count(model, present?)} / #{Presenter.cap_label(model)}")),
+      Map.merge(
+        %{label: "Peak concurrency", tone: nil},
+        ConcurrencyCoverage.tile(model, scope, "#{LiveConcurrency.label(model, present?, scope)}#{over_cap(model, present?)} / #{Presenter.cap_label(model)}")
+      ),
       %{label: "Mean utilization", val: "#{k.mean_util_pct}%", sub: "of #{model.cores} cores", tone: nil},
       %{
         label: "Memory headroom",
@@ -486,12 +489,11 @@ defmodule AiurWeb.AnalyticsLive do
     ]
   end
 
-  defp concurrency_count(%{pressure: %{latest_occupied: n}, cap: cap, cap_available?: true}, true) when is_integer(n) and is_integer(cap) and n > cap,
-    do: "#{n} now, #{n - cap} over cap"
+  # Occupied slots and the cap come from the same dashboard snapshot as the live count.
+  defp over_cap(%{live_occupied: n, cap: cap, cap_available?: true}, true) when is_integer(n) and is_integer(cap) and n > cap,
+    do: ", #{n - cap} over cap"
 
-  defp concurrency_count(%{pressure: %{latest_occupied: n}}, true) when is_integer(n), do: "#{n} now"
-  defp concurrency_count(_model, true), do: "occupancy unavailable"
-  defp concurrency_count(model, false), do: "#{model.kpis.conc_now} at run end"
+  defp over_cap(_model, _present?), do: ""
 
   defp provider_spend_item(%{state: :available, amount: amount, source: source}),
     do: %{label: "Provider spend", val: amount, sub: source, tone: nil}
