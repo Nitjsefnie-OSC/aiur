@@ -290,7 +290,8 @@ test('B5 live now-to-history diff lays out the actual completed interval', async
     const el = document.querySelector(`#bd-sec-hist .bd-card[data-id="${CSS.escape(id)}"]`)
     return { hist: !!el, stillNow: ctx.D.now.some(r => r.id === id), h: it.h, domH: parseFloat(el.style.height) }
   }, id)
-  expect(result).toEqual({ hist: true, stillNow: false, h: 143, domH: 143 })
+  expect(result).toMatchObject({ hist: true, stillNow: false })
+  expect(result.h).toBeCloseTo(143, 9); expect(result.domH).toBeCloseTo(143, 9)
 })
 
 const parityProbe = design.replace(anchor, `window.__ganttScroll = offset => {
