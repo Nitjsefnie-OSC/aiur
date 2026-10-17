@@ -6,6 +6,10 @@ const fixture = name => JSON.parse(readFileSync(new URL(`../../test/fixtures/bui
 const NOW = 1791408000000
 
 test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('aiur-theme', 'light')
+    localStorage.setItem('aiur-palette', 'gruvbox')
+  })
   await openFixture(page)
   await page.context().setHTTPCredentials(dashboardCredentials)
   await page.clock.install({ time: NOW-1000 })
@@ -157,6 +161,8 @@ test('hidden ticks wait for visibility and remount owns one popover', async ({ p
 })
 
 test('edge state screenshots for S-50 owner sign-off', async ({ page }, info) => {
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'gruvbox')
   for (const name of ['unknown','partial','none','credits','onewin','stale','ended','hold','locked','unavailable','hostile','empty','one']) {
     await paint(page,fixture(name))
     await expect(page.locator('#bd-usage')).toHaveScreenshot(`usage-${name}.png`)
