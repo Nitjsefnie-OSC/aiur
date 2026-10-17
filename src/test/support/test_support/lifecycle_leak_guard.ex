@@ -24,7 +24,7 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
     :ok
   end
 
-  @doc "Registers the calling test process and makes sure the guard sink is installed."
+  @doc "Registers the calling test process, makes sure the guard sink is installed, and returns the test pid."
   def track(%{module: module, test: test}) do
     :ets.insert(@tests, {self(), "#{inspect(module)} #{test}", false})
     signal = Application.get_env(:aiur, :signal, [])
@@ -32,13 +32,20 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
     if signal[:lifecycle_sink] == Lifecycle,
       do: Application.put_env(:aiur, :signal, Keyword.put(signal, :lifecycle_sink, __MODULE__))
 
-    :ok
+    self()
   end
 
   @doc "Marks a test finished; its processes' teardown writes before this point are not leaks."
   def finish(test_pid) do
     :ets.update_element(@tests, test_pid, {3, true})
     :ok
+  end
+
+  @doc "Teardown's last step: marks the test finished, raises its scope violation, then checks for leaks."
+  def finish!(test_pid, scope_violation) do
+    finish(test_pid)
+    if scope_violation, do: raise(scope_violation)
+    check!()
   end
 
   @doc "Raises once for every lifecycle write a finished test's process made."
@@ -84,12 +91,15 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
         test_pid
 
       {false, []} ->
-        if pid not in seen and Process.alive?(pid) do
-          test_pid = Enum.find_value(parents(pid), &owner(&1, [pid | seen]))
-          if test_pid, do: :ets.insert(@owners, {pid, test_pid})
-          test_pid
-        end
+        if pid not in seen and Process.alive?(pid), do: cache_owner(pid, Enum.find_value(parents(pid), &owner(&1, [pid | seen])))
     end
+  end
+
+  defp cache_owner(_pid, nil), do: nil
+
+  defp cache_owner(pid, test_pid) do
+    :ets.insert(@owners, {pid, test_pid})
+    test_pid
   end
 
   defp parents(pid) do

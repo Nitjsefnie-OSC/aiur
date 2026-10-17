@@ -250,8 +250,7 @@ defmodule Aiur.TestSupport do
         ]
 
       setup context do
-        Aiur.TestSupport.LifecycleLeakGuard.track(context)
-        lifecycle_test_pid = self()
+        lifecycle_test_pid = Aiur.TestSupport.track_lifecycle(context)
         workflow_base = Application.fetch_env!(:aiur, :test_run_root)
         previous_test_scope_state = Aiur.TestScopeGuard.capture()
 
@@ -259,11 +258,7 @@ defmodule Aiur.TestSupport do
         # two `mix test` runs on one host pick the same `workflow-<integer>` name
         # routinely and then write each other's `.aiur/config`, so a case reads a
         # sibling VM's tracker settings. See `Aiur.TestSupport.tmp_root!/1`.
-        workflow_root =
-          Path.join(
-            workflow_base,
-            "workflow-#{System.pid()}-#{System.unique_integer([:positive])}"
-          )
+        workflow_root = Path.join(workflow_base, "workflow-#{System.pid()}-#{System.unique_integer([:positive])}")
 
         test_state_dir = Path.join(workflow_root, "test-state")
 
@@ -370,9 +365,7 @@ defmodule Aiur.TestSupport do
             Application.ensure_all_started(:aiur)
           end
 
-          Aiur.TestSupport.LifecycleLeakGuard.finish(lifecycle_test_pid)
-          if scope_state_violation, do: raise(scope_state_violation)
-          Aiur.TestSupport.LifecycleLeakGuard.check!()
+          Aiur.TestSupport.finish_lifecycle!(lifecycle_test_pid, scope_state_violation)
         end)
 
         :ok
@@ -386,6 +379,8 @@ defmodule Aiur.TestSupport do
   defdelegate stop_default_http_server(), to: Aiur.TestSupport.Processes
   defdelegate safe_stop(server), to: Aiur.TestSupport.Processes
   defdelegate stop_test_runners(test_pid), to: Aiur.TestSupport.Processes
+  defdelegate track_lifecycle(context), to: Aiur.TestSupport.LifecycleLeakGuard, as: :track
+  defdelegate finish_lifecycle!(test_pid, scope_violation), to: Aiur.TestSupport.LifecycleLeakGuard, as: :finish!
   defdelegate start_owned_endpoint!(), to: Aiur.TestSupport.Processes
   defdelegate await_process_down(process, timeout \\ 2_000), to: Aiur.TestSupport.Processes
   defdelegate await_supervised_restart(name, prior, timeout \\ 5_000), to: Aiur.TestSupport.Processes
