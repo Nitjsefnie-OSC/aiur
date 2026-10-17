@@ -98,6 +98,7 @@ The toolbar selects Timeline, Gantt or List and retains the view in the URL.
 
 In Gantt, history card height represents elapsed run time; idle gaps over three hours fold into hatched bands.
 Hatched, dashed planned cards show estimates. A “start unknown” card has minimum height and ends at its recorded end time; unknown estimates stay marked as unknown.
+
 Use Left/Right arrows or Home/End to move between view tabs, then Enter or Space
 to select. The status line shows the daemon state, including unknown before
 the first snapshot, and the legend for the selected view.
