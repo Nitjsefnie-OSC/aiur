@@ -238,6 +238,25 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
                end)
     end
 
+    test "handoff fallback retry prefers the current by-id state over a stale candidate" do
+      stale = %Issue{id: "issue-handoff", identifier: "27", title: "Ticket", state: "in-progress"}
+      current = %{stale | state: "ci-wait"}
+      parent = self()
+
+      assert {:ok, ^current} =
+               RetryEngine.fetch_retry_issue(
+                 [stale],
+                 stale.id,
+                 fn ["issue-handoff"] ->
+                   send(parent, :fresh_state_read)
+                   {:ok, [current]}
+                 end,
+                 true
+               )
+
+      assert_receive :fresh_state_read, 1000
+    end
+
     test "records terminal membership before cleanup and claim release" do
       issue = %Issue{
         id: "issue-terminal",

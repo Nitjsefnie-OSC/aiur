@@ -58,6 +58,15 @@ probe_named_node_liveness() {
   printf '%s' "$state"
 }
 
+wait_for_node_name_release() {
+  local node="$1" ticks="${2:-300}" tick
+  for ((tick = 0; tick < ticks; tick++)); do
+    [ "$(probe_named_node_liveness "$node")" = "down" ] && return 0
+    sleep 0.1
+  done
+  [ "$(probe_named_node_liveness "$node")" = "down" ]
+}
+
 load_aiur_instance_record() {
   local file="$1"
   AIUR_RECORD_NODE=""

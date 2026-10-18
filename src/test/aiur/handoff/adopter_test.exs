@@ -100,12 +100,25 @@ defmodule Aiur.Handoff.AdopterTest do
       end
     end
 
-    state = Adopter.adopt(%State{}, options(dir, runner: runner, stop_agent: fn a -> send(parent, {:stopped, a["identifier"]}) end))
+    state =
+      Adopter.adopt(
+        %State{},
+        options(dir,
+          runner: runner,
+          stop_agent: fn a -> send(parent, {:stopped, a["identifier"]}) end,
+          issue_state_fetcher: fn ids ->
+            send(parent, {:fallback_batch, ids})
+            {:ok, Enum.map(ids, &%Aiur.Issue{id: &1, identifier: &1, title: "existing", state: "in-progress"})}
+          end
+        )
+      )
+
     assert Map.keys(state.running) == ["good"]
     assert_receive {:continued, pid}, 1000
     send(pid, :stop)
     assert_receive {:stopped, "changed"}, 1000
     assert_receive {:stopped, "gone"}, 1000
+    assert_receive {:fallback_batch, ["changed", "gone"]}, 1000
     assert {:ok, %{"outcome" => [changed, gone, good]}} = Aiur.JsonStore.read(Record.path(dir: dir) <> ".consumed")
     assert changed["reason"] == ":config_changed"
     assert gone["reason"] == ":relay_gone"
@@ -208,6 +221,25 @@ defmodule Aiur.Handoff.AdopterTest do
     assert_receive :provider_stopped, 1000
     refute Map.has_key?(state.retry_attempts, "unavailable")
     assert state.claimed == MapSet.new()
+  end
+
+  test "fallback seeds retry capacity from the freshly fetched state", %{dir: dir} do
+    stale = Map.put(agent(dir, "one"), "issue", %{"state" => "in-progress"})
+    current = %Aiur.Issue{id: "one", identifier: "one", title: "existing", state: "todo"}
+    assert :ok = Record.write(record([stale]), dir: dir)
+    runner = fn _, _, recipient, _ -> send(recipient, {:handoff_adopted, self(), {:error, :relay_gone}}) end
+
+    state =
+      Adopter.adopt(
+        %State{},
+        options(dir,
+          runner: runner,
+          stop_agent: fn _ -> :ok end,
+          issue_state_fetcher: fn ["one"] -> {:ok, [current]} end
+        )
+      )
+
+    assert state.retry_attempts["one"].issue_state == "todo"
   end
 
   test "consume failure stops staged runners before they resume", %{dir: dir} do

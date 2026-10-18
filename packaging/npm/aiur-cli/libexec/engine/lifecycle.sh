@@ -277,11 +277,16 @@ cmd_stop() {
   warn_other_aiur_daemons "$AIUR_RELEASE_NODE"
 }
 
-# `aiur restart` stops, refreshes the release while down, then starts detached.
-# The dev shim supplies its build-if-stale step through AIUR_RESTART_BUILD_CMD.
+# Stop, refresh the release, start again — `aiur restart`.
+#
+# Refresh runs between stop and start because a dev rebuild rewrites the release
+# in place. The dev shim supplies the build-if-stale step; installed aiur has no
+# source tree and performs a plain bounce.
 aiur_restart_daemon_state="untouched"
 
-# Report any failure after stop so an unsuccessful restart cannot look harmless.
+# Keep the failure trap armed from stop through confirmed start. Otherwise a
+# failed rebuild, missing tmux, boot failure or interruption can leave the fleet
+# down while the command sounds like nothing changed.
 aiur_restart_report_state() {
   [ "$aiur_restart_daemon_state" = "stopped" ] || return 0
 
@@ -423,6 +428,12 @@ cmd_restart() {
     die "restart aborted: the previous session still answers after the stop; nothing was rebuilt or restarted"
   fi
 
+  # TERM can end the BEAM process just before epmd releases its node name.
+  # Wait here before an in-place release rebuild or a new distribution boot.
+  if [ -n "${release_bin:-}" ] && ! wait_for_node_name_release "${AIUR_RELEASE_NODE}"; then
+    die "restart aborted: node name ${AIUR_RELEASE_NODE} is still registered; nothing was rebuilt or restarted"
+  fi
+
   aiur_restart_daemon_state="stopped"
   trap aiur_restart_report_state EXIT INT TERM
 
@@ -472,7 +483,8 @@ cmd_restart() {
     echo "aiur: --no-build — restarting on the release already on disk" >&2
   fi
 
-  # A restart stays detached; --interactive still opts into the attachable session.
+  # Always detached; --interactive opts into an attachable session, while a
+  # foreground restart remains `aiur stop && aiur run`.
   aiur_restart_start_attempted=1
   local start_status=0
   aiur_restart_start_with_retry || start_status=$?

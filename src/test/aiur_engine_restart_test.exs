@@ -72,6 +72,8 @@ defmodule AiurEngineRestartTest do
 
   test "restart retries a failed distribution boot and succeeds on the next launch" do
     tmp = Aiur.TestSupport.tmp_root!("restart-boot-retry")
+    File.mkdir_p!(tmp)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(tmp) end)
 
     {out, 0} =
       run_sourced_engine(
@@ -81,7 +83,7 @@ defmodule AiurEngineRestartTest do
           count=0
           [ ! -f "$attempts" ] || count="$(cat "$attempts")"
           count=$((count + 1)); printf '%s' "$count" > "$attempts"
-          if [ "$count" -eq 1 ]; then echo 'nodistribution'; return 1; fi
+          if [ "$count" -eq 1 ]; then echo 'nodistribution'; exit 1; fi
           echo "RUN:$*"
         }
         cmd_stop() { echo STOP; }

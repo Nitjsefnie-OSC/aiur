@@ -43,6 +43,8 @@ defmodule Aiur.Handoff.Adopter do
   defp finish_consumption(previous, next, agents, record, outcomes, opts) do
     case Record.consume(Enum.reverse(outcomes), opts) do
       :ok ->
+        failed_ids = outcomes |> Enum.filter(&(Map.get(&1, :status) == "fallback")) |> Enum.map(& &1.issue_id)
+        next = fallback_agents(next, Enum.filter(agents, &(&1["issue_id"] in failed_ids)), opts)
         next = AdoptedBoot.restore(next)
         for {_id, entry} <- next.running, entry[:adopted_from] == record["handoff_id"], do: send(entry.pid, :handoff_continue)
         Report.notify(opts)
@@ -52,7 +54,7 @@ defmodule Aiur.Handoff.Adopter do
         for {id, entry} <- next.running, not Map.has_key?(previous.running, id), do: Task.Supervisor.terminate_child(Aiur.TaskSupervisor, entry.pid)
         alert({:consume_failed, reason}, opts)
 
-        Enum.reduce(agents, previous, fn agent, state -> fallback(agent, state, opts) end)
+        fallback_agents(previous, agents, opts)
     end
   end
 
@@ -70,11 +72,11 @@ defmodule Aiur.Handoff.Adopter do
     else
       {:error, reason} ->
         Logger.warning("Handoff fallback ticket=#{agent["identifier"]} reason=#{inspect(reason)}")
-        {fallback(agent, state, opts), [outcome(agent, "fallback", reason) | outcomes]}
+        {state, [outcome(agent, "fallback", reason) | outcomes]}
     end
   rescue
     error ->
-      {fallback(agent, state, opts), [outcome(agent, "fallback", {:invalid_snapshot, Exception.message(error)}) | outcomes]}
+      {state, [outcome(agent, "fallback", {:invalid_snapshot, Exception.message(error)}) | outcomes]}
   end
 
   # Adoption takes a slot under the configured cap like any other start; an
@@ -144,58 +146,52 @@ defmodule Aiur.Handoff.Adopter do
     Fallback.restore_ownership(agent, opts)
   end
 
-  defp fallback(agent, state, opts) do
-    stop_fallback_agent(agent, opts)
+  defp fallback_agents(state, [], _opts), do: state
 
-    case current_fallback_issue(agent, opts) do
-      {:ok, %Aiur.Issue{} = issue} ->
-        if issue_dispatchable?(issue) do
-          Fallback.resume(state, agent)
-        else
-          Logger.info("Handoff fallback skipped non-dispatchable ticket=#{agent["identifier"]} state=#{inspect(issue.state)}")
-          state
-        end
-
-      {:ok, nil} ->
-        Logger.info("Handoff fallback skipped ticket no longer present identifier=#{agent["identifier"]}")
-        state
-
-      {:error, reason} ->
-        Logger.warning("Handoff fallback deferred ticket=#{agent["identifier"]} reason=#{inspect(reason)}")
-        state
-    end
-  end
-
-  defp issue_dispatchable?(issue) do
-    DispatchPolicy.candidate_issue?(
-      issue,
-      DispatchPolicy.active_state_set(),
-      DispatchPolicy.terminal_state_set()
-    ) and
-      not DispatchPolicy.issue_held_by_dependency?(
-        issue,
-        DispatchPolicy.terminal_state_set()
-      )
-  end
-
-  defp current_fallback_issue(agent, opts) do
+  defp fallback_agents(state, agents, opts) do
+    Enum.each(agents, &stop_fallback_agent(&1, opts))
+    ids = agents |> Enum.map(& &1["issue_id"]) |> Enum.filter(&is_binary/1)
     fetch = Keyword.get(opts, :issue_state_fetcher, &Tracker.fetch_issue_states_by_ids/1)
 
-    case fetch.([agent["issue_id"]]) do
-      {:ok, issues} when is_list(issues) ->
-        issue = Enum.find(issues, &(&1.id == agent["issue_id"]))
-        {:ok, issue}
+    fetched =
+      case fetch.(ids) do
+        {:ok, issues} when is_list(issues) -> {:ok, Map.new(issues, &{&1.id, &1})}
+        {:error, reason} -> {:error, reason}
+        result -> {:error, {:invalid_issue_state_result, result}}
+      end
 
-      {:error, reason} ->
-        {:error, reason}
+    Enum.reduce(agents, state, fn agent, current ->
+      case fetched do
+        {:ok, issues} ->
+          fallback_one(agent, Map.get(issues, agent["issue_id"]), current)
 
-      result ->
-        {:error, {:invalid_issue_state_result, result}}
-    end
+        {:error, reason} ->
+          Logger.warning("Handoff fallback deferred ticket=#{agent["identifier"]} reason=#{inspect(reason)}")
+          current
+      end
+    end)
   rescue
-    error -> {:error, {:issue_state_fetch_failed, Exception.message(error)}}
+    error ->
+      Logger.warning("Handoff fallback state lookup failed: #{Exception.message(error)}")
+      state
   catch
-    kind, reason -> {:error, {:issue_state_fetch_failed, kind, reason}}
+    kind, reason ->
+      Logger.warning("Handoff fallback state lookup failed: #{inspect({kind, reason})}")
+      state
+  end
+
+  defp fallback_one(agent, %Aiur.Issue{} = issue, state) do
+    if DispatchPolicy.retry_candidate_issue?(issue, DispatchPolicy.terminal_state_set()) do
+      Fallback.resume(state, Map.update(agent, "issue", %{"state" => issue.state}, &Map.put(&1, "state", issue.state)))
+    else
+      Logger.info("Handoff fallback skipped non-dispatchable ticket=#{agent["identifier"]} state=#{inspect(issue.state)}")
+      state
+    end
+  end
+
+  defp fallback_one(agent, nil, state) do
+    Logger.info("Handoff fallback skipped ticket no longer present identifier=#{agent["identifier"]}")
+    state
   end
 
   defp generation(opts) do

@@ -34,7 +34,9 @@ aiur_restart_start_with_retry() {
   local attempt=1 status=0 max_attempts="${AIUR_RESTART_START_ATTEMPTS:-2}"
   if ! [[ "$max_attempts" =~ ^[1-9][0-9]*$ ]]; then max_attempts=2; fi
   while [ "$attempt" -le "$max_attempts" ]; do
-    if dispatch_run --bg "${run_args[@]+"${run_args[@]}"}"; then return 0; else status=$?; fi
+    # Background startup failure exits from run_session, so contain that exit
+    # here; otherwise it terminates cmd_restart before retry/report handling.
+    if ( dispatch_run --bg "${run_args[@]+"${run_args[@]}"}" ); then return 0; else status=$?; fi
     [ "$attempt" -lt "$max_attempts" ] || break
     echo "aiur: restart startup attempt $attempt failed (exit $status); retrying after cleanup" >&2
     if [ -n "${release_bin:-}" ]; then
@@ -44,7 +46,11 @@ aiur_restart_start_with_retry() {
       session="${socket}-default"
       conf="$(resolve_tmux_conf)"
       [ -z "$tmux_bin" ] || "$tmux_bin" -L "$socket" -f "$conf" kill-session -t "$session" 2>/dev/null || true
-      kill_beams_matching "-name ${AIUR_RELEASE_NODE}"
+      kill_beams_matching "-name ${AIUR_RELEASE_NODE}" 300
+      wait_for_node_name_release "${AIUR_RELEASE_NODE}" || {
+        echo "aiur: restart retry aborted; node name ${AIUR_RELEASE_NODE} is still held" >&2
+        return 1
+      }
     fi
     sleep "${AIUR_RESTART_RETRY_DELAY_SECONDS:-1}"
     attempt=$((attempt + 1))
