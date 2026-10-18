@@ -7,10 +7,15 @@ import { nowPatch } from '../scripts/build-home-now-patch.mjs'
 test.use({ trace: 'off' })
 test.setTimeout(120000)
 const source = await readFile(new URL('../../test/fixtures/build_home/design-source/assets/build.js', import.meta.url), 'utf8')
-async function freeze(pair, dataset) {
+async function freeze(pair, dataset, initial = false) {
   const assets = test.info().project.metadata.bandAssetRoot
-  if (assets) {
-    await pair.product.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(assets + '/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
+  if (assets) await pair.product.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(assets + '/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
+  if (initial) await pair.product.route('**/build-home/hook.js', async route => {
+    const hook = await readFile(assets ? assets + '/hook.js' : new URL('../../priv/static/build-home/hook.js', import.meta.url), 'utf8')
+    expect(hook.split('S.ready = true;')).toHaveLength(2)
+    await route.fulfill({ contentType: 'text/javascript', body: hook.replace('S.ready = true;', 'S.ready = false;') })
+  })
+  if (assets || initial) {
     await pair.product.reload(); await waitParityReady(pair.product, 'board', 'product', true)
   }
   const anchor = '  window.AiurBuild = {'
@@ -70,11 +75,13 @@ for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0',
     } finally { await pair.close() }
   })
 }
-// #3141 acceptance: same global scrollTop, full composed mobile headers, no masks.
-for (const theme of ['dark', 'light']) for (const dataset of ['live', 'dense', 'newrepo', 'noqueue']) test(`mobile composed headers without masks: ${dataset} ${theme}`, async ({ browser }) => {
-  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS[2], theme, palette: 'aiur', dataset }, { motion: true })
+// #3141 acceptance: same global scrollTop, rendered mobile cards and headers, no masks.
+for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) for (const dataset of ['live', 'dense', 'newrepo', 'noqueue']) test(`mobile composed headers without masks: ${dataset} ${theme} ${palette}`, async ({ browser }) => {
+  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS[2], theme, palette, dataset }, { motion: true })
   try {
-    await freeze(pair, dataset)
+    // Freeze readiness before the product's first scroll event can page history;
+    // freeze() reloads the reference, so both sides keep their initial payload.
+    await freeze(pair, dataset, true)
     pair.allowlist = pair.allowlist.filter(entry => entry.kind !== 'pixel-mask')
     await Promise.all([pair.design, pair.product].map(page => page.locator('[data-min]').evaluate(el => el.click())))
     for (const sec of ['hist', 'plan', 'nq']) {
@@ -83,7 +90,13 @@ for (const theme of ['dark', 'light']) for (const dataset of ['live', 'dense', '
       await pair.product.evaluate(async st => { const { ctx, fx } = await import('/build-home/state.js'); ctx.vp.scrollTop = st; fx.update() }, st)
       const [dy, py] = await Promise.all([pair.design, pair.product].map(page => page.locator(`#bd-sec-${sec} .bd-sech`).evaluate(el => el.getBoundingClientRect().top)))
       expect(Math.abs(py - dy)).toBeLessThanOrEqual(1)
-      await expectDesignParity(pair, { name: `mobile-composed-${dataset}-${theme}-${sec}`, region: `#bd-sec-${sec} .bd-sech`, preserveAnimations: true })
+      const scroll = page => page.evaluate(() => ({ top: document.querySelector('#bd-vp').scrollTop, x: scrollX, y: scrollY }))
+      const before = await Promise.all([pair.design, pair.product].map(scroll))
+      expect(before[1].top).toBe(before[0].top)
+      await primeBoardPaint(pair)
+      await expectDesignParity(pair, { name: `mobile-composed-${dataset}-${theme}-${palette}-${sec}`, region: `#bd-sec-${sec} .bd-sech` })
+      await expectDesignParity(pair, { name: `mobile-composed-cards-${dataset}-${theme}-${palette}-${sec}`, region: '#bd-vp' })
+      expect(await Promise.all([pair.design, pair.product].map(scroll))).toEqual(before)
       const cards = page => page.locator('.bd-sec .bd-card').evaluateAll(els => els.map(el => ({ id: el.dataset.id.replace('AIUR-', ''), top: el.getBoundingClientRect().top })).sort((a, b) => a.id.localeCompare(b.id)))
       const [d, p] = await Promise.all([cards(pair.design), cards(pair.product)])
       expect(p.map(c => c.id)).toEqual(d.map(c => c.id))
