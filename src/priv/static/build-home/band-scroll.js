@@ -40,6 +40,7 @@ export function liveGuard() {
   snap(guardTarget({ ...p, dir }), p.nat, 460, true);
 }
 export function snapLive() {
+  // J:593's rmOn() === "x" never skips snapping; reduced motion jumps instantly.
   if (unavailable() || ctx.root.querySelector('.bd-sb.drag')) return;
   const p = position();
   snap(settleTarget(p), p.nat, 480);

@@ -249,6 +249,14 @@ function frameBarrier(pair, name, reduce) {
     try {
       // Column application can cross different clock frames; numeric records retain that timing.
       if (name.startsWith('columns.')) await Promise.all([pair.design, pair.product].map(page => page.clock.setSystemTime(FIXTURE_META.now)))
+      if (name.startsWith('snap.')) {
+        // Span changes rebuild the header, replacing the pending ETA slot.
+        await alignEtaMask(pair)
+        // Tall fixed viewports must fit inside both screenshot documents.
+        for (const page of [pair.design, pair.product]) await page.locator('#bd-vp').evaluate(el => {
+          document.body.style.minHeight = Math.ceil(el.getBoundingClientRect().bottom + scrollY) + 'px'
+        })
+      }
       if (name.startsWith('snap.') && fraction === 0) await primeBoardPaint(pair)
       await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true })
     }
