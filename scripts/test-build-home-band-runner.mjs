@@ -32,7 +32,7 @@ test('actual full-band CLI runs each owned spec in partition two and clears shar
   const result = invoke(t)
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.calls.length, 2)
-  const options = ['--config', 'playwright.design-parity.config.mjs', '--fully-parallel', '--workers=2', '--shard=2/4']
+  const options = ['--config', 'playwright.design-parity.config.mjs', '--fully-parallel', '--workers=1', '--shard=2/4']
   assert.deepEqual(result.calls[0].argv, ['tests/build-home-now-band-parity.browser.spec.mjs', ...options])
   assert.deepEqual(result.calls[1].argv, [
     'tests/build-home-motion.browser.spec.mjs', '--grep',
