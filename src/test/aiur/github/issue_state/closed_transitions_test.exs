@@ -62,7 +62,10 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
             {:ok,
              %{
                status: 200,
-               body: %{"state" => "open", "labels" => [%{"name" => "sym:done"}, %{"name" => "sym:in-progress"}]}
+               body: %{
+                 "state" => "open",
+                 "labels" => [%{"name" => "sym:done"}, %{"name" => "sym:in-progress"}]
+               }
              }}
 
           {:delete, 3} ->
@@ -91,7 +94,7 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
                [:get, :post, :get, :delete, :patch]
     end
 
-    test "closed-issue active-target branch strips active labels and reports no state label written" do
+    test "closed-issue active-target branch preserves done while removing stale active labels" do
       test_pid = self()
 
       request_fun = fn req ->
@@ -112,6 +115,13 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
                }
              }}
 
+          :post ->
+            assert req.body == %{"labels" => ["sym:done"]}
+            {:ok, %{status: 200, body: [%{"name" => "sym:done"}]}}
+
+          :delete ->
+            {:ok, %{status: 200, body: []}}
+
           _ ->
             {:ok, %{status: 200}}
         end
@@ -123,11 +133,46 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
       assert {:error, {:no_state_label_written, _issue}} =
                IssueState.update_issue_state("42", "rework", request_fun: request_fun)
 
-      # Only deletes non-terminal active labels; does not POST a new label or PATCH close
+      # The terminal label is already present, so only stale active labels are
+      # removed. It does not POST the requested active label or PATCH the
+      # already-closed issue.
       assert_receive {:request, %{method: :get}}, 1000
+      assert_receive {:request, %{method: :delete}}, 1000
       assert_receive {:request, %{method: :delete}}, 1000
       refute_receive {:request, %{method: :post}}, 100
       refute_receive {:request, %{method: :patch}}, 100
+    end
+
+    test "closed zero-label issue gets done before stale active labels are removed" do
+      test_pid = self()
+
+      request_fun = fn req ->
+        send(test_pid, {:request, req})
+
+        case req.method do
+          :get ->
+            {:ok,
+             %{
+               status: 200,
+               body: %{"state" => "closed", "labels" => [%{"name" => "sym:rework"}]}
+             }}
+
+          :post ->
+            assert req.body == %{"labels" => ["sym:done"]}
+            {:ok, %{status: 200}}
+
+          _ ->
+            {:ok, %{status: 200}}
+        end
+      end
+
+      assert {:error, {:no_state_label_written, _issue}} =
+               IssueState.update_issue_state("42", "rework", request_fun: request_fun)
+
+      assert_receive {:request, %{method: :get}}, 1000
+      assert_receive {:request, %{method: :post, body: %{"labels" => ["sym:done"]}}}, 1000
+      assert_receive {:request, %{method: :delete}}, 1000
+      refute_receive {:request, %{method: :post}}, 100
     end
 
     test "add_active_issue_label re-checks issue closed state before adding (stale-label race)" do
@@ -170,12 +215,13 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
       end
 
       # The active-label add is the first step of the swap; it discovers the
-      # issue is closed, strips the stale active label, and reports that no
-      # state label was written rather than claiming success (#2420).
+      # issue is closed, sees the existing done label, strips the stale active
+      # label, and reports that no active state label was written (#2420).
       assert {:error, {:no_state_label_written, _issue}} =
                IssueState.update_issue_state("42", "rework", request_fun: request_fun)
 
-      # Two GETs, one DELETE (the stale rework label), no POST
+      # Two GETs then DELETE the stale rework label. The existing done label
+      # makes another POST unnecessary.
       assert_receive {:request, %{method: :get}}, 1000
       assert_receive {:request, %{method: :get}}, 1000
       assert_receive {:request, %{method: :delete}}, 1000

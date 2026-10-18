@@ -158,6 +158,7 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       case request.method do
         :get -> {:ok, %{status: 200, body: issue}}
         :delete -> {:ok, %{status: 200, body: []}}
+        :post -> {:ok, %{status: 200, body: []}}
         other -> flunk("unexpected write: #{other}")
       end
     end

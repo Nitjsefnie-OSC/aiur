@@ -88,6 +88,31 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
     refute opts[:reason] =~ "atomic"
   end
 
+  test "repairs a closed zero-label ticket from its recent merged branch identity" do
+    issue = %Issue{id: "1570", identifier: "1570", state: "Closed", state_labels: []}
+    merge = %{merged_pr(nil) | ticket_id: "1570"}
+    parent = self()
+
+    {state, []} =
+      MergedTicketReconciler.reconcile(%State{}, [issue],
+        recent_merges_fun: fn -> [merge] end,
+        now_fun: fn -> @now end,
+        update_issue_state_fun: fn identifier, state_name, expected_state ->
+          send(parent, {:transition, identifier, state_name, expected_state})
+          :ok
+        end,
+        resume_blockees_fun: fn state, _identifier -> state end,
+        emit_alert_fun: fn topic, opts -> send(parent, {:alert, topic, opts}) end,
+        open_pull_requests_fun: fn _identifier ->
+          flunk("a closed zero-label repair must not inspect open PRs")
+        end
+      )
+
+    assert_receive {:transition, "1570", "done", :none}, 1000
+    assert_receive {:alert, "ticket.1570.dependency.merged_blocker_reconciled", _opts}, 1000
+    assert MapSet.member?(state.merged_ticket_reconciliations, {"1570", merge.id})
+  end
+
   test "a merge that already closed a ticket cannot close it again after a reopen" do
     issue = %Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}
     parent = self()
@@ -150,7 +175,9 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
       MergedTicketReconciler.reconcile(state, [blocker],
         recent_merges_fun: fn -> [merged_pr("Closes #1570")] end,
         now_fun: fn -> @now end,
-        update_issue_state_fun: fn _identifier, _state_name, _expected_state -> {:error, :forbidden} end,
+        update_issue_state_fun: fn _identifier, _state_name, _expected_state ->
+          {:error, :forbidden}
+        end,
         emit_alert_fun: fn topic, opts -> send(parent, {:alert, topic, opts}) end,
         open_pull_requests_fun: fn _identifier -> {:ok, []} end
       )
@@ -158,7 +185,9 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
     assert result.running == state.running
     assert issues == [blocker]
 
-    assert_receive {:alert, "ticket.1570.agent.attention.merged_pr_reconciliation_failed", opts}, 1000
+    assert_receive {:alert, "ticket.1570.agent.attention.merged_pr_reconciliation_failed", opts},
+                   1000
+
     assert opts[:needs_attention]
     assert opts[:message] =~ "could not reconcile ticket 1570"
     assert opts[:reason] =~ "PR #1600"
@@ -179,12 +208,16 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
 
     {state, [^issue]} = MergedTicketReconciler.reconcile(%State{}, [issue], opts)
 
-    assert_receive {:alert, "ticket.1570.agent.attention.merged_pr_reconciliation_failed", alert_opts}, 1000
+    assert_receive {:alert, "ticket.1570.agent.attention.merged_pr_reconciliation_failed", alert_opts},
+                   1000
+
     assert alert_opts[:needs_attention]
     assert alert_opts[:reason] =~ "will keep being retried"
 
     {_state, [^issue]} = MergedTicketReconciler.reconcile(state, [issue], opts)
-    refute_receive {:alert, "ticket.1570.agent.attention.merged_pr_reconciliation_failed", _opts}, 100
+
+    refute_receive {:alert, "ticket.1570.agent.attention.merged_pr_reconciliation_failed", _opts},
+                   100
   end
 
   test "audits the merger recorded on the merge instead of trusting every login" do
