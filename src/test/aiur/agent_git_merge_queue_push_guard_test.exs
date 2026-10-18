@@ -17,7 +17,7 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
     # Stands in for the governed gh: answers the guard's one GraphQL lookup.
     File.write!(
       Path.join(bin, "gh"),
-      "#!/bin/sh\ncase \"$*\" in *graphql*) printf '%s\\n' \"${FAKE_QUEUE_STATE:-false MERGEABLE APPROVED}\" ;; *issues/*) printf '%s\\n' \"${FAKE_TICKET_STATE:-agent:in-progress}\" ;; *) exit 1 ;; esac\n"
+      "#!/bin/sh\ncase \"$*\" in *graphql*) printf '%s\\n' \"${FAKE_QUEUE_STATE:-false MERGEABLE APPROVED}\" ;; *issues/*join*) printf '%s %s\\n' 'priority:2' \"${FAKE_TICKET_STATE:-agent:in-progress}\" ;; *issues/*) printf '%s\\n%s\\n' 'priority:2' \"${FAKE_TICKET_STATE:-agent:in-progress}\" ;; *) exit 1 ;; esac\n"
     )
 
     File.chmod!(Path.join(bin, "gh"), 0o755)

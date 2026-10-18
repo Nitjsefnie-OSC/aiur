@@ -45,7 +45,7 @@ if [ "$push_command" = true ] && [ "$queue_install" = true ] && [ -x "$(dirname 
   case "$ticket_number" in *[!0-9]* | '') ticket_number= ;; esac
   if [ -n "$queue_branch" ] && [ "$queue_hits_branch" = true ] && [ "$queue_slug" != "$push_url" ] &&
     [ -n "$ticket_number" ]; then
-    ticket_state=$("$(dirname "$0")/gh" api "repos/$queue_slug/issues/$ticket_number" --jq '.labels[].name' 2>/dev/null || true)
+    ticket_state=$("$(dirname "$0")/gh" api "repos/$queue_slug/issues/$ticket_number" --jq '[.labels[].name] | join(" ")' 2>/dev/null || true)
     case " $ticket_state " in
       *" agent:human-review "*|*" agent:ci-wait "*)
         printf '%s\n' "aiur: refusing git push: ticket #$ticket_number is handed off for review or CI" >&2
