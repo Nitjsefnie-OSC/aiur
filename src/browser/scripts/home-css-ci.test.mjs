@@ -31,7 +31,7 @@ test('required full CI gate rejects failures, cancellations and skipped browser 
   for (const browser of ['success', 'failure', 'cancelled', 'skipped']) {
     for (const css of ['success', 'failure', 'cancelled', 'skipped']) {
       const needs = Object.fromEntries(gate.needs.map(job => [job, { result: 'success' }]))
-      needs.changes.outputs = { full_ci: 'true', dialyzer: 'false' }
+      needs.changes.outputs = { full_ci: 'true', dialyzer: 'false', home_changed: 'false' }
       needs.browser.result = browser
       needs['home-css'].result = css
       const result = spawnSync('bash', ['-c', step.run], {
@@ -107,7 +107,7 @@ test('browser shards execute every core suite exactly once', () => {
     assert.deepEqual(selected, expected)
     assert.equal(selected.length, new Set(selected).size, 'each core suite runs exactly once across shards')
     const runner = readFileSync(fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), 'utf8')
-    assert.match(runner, /export const budgetMs = 19 \* 60_000/)
+    assert.match(runner, /export const budgetMs = 20 \* 60_000/)
     assert.match(runner, /slowest completed suites/)
   } finally { rmSync(scratch, { recursive: true, force: true }) }
 })
