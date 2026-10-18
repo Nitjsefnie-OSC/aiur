@@ -35,13 +35,13 @@ def write_body(fd, contents):
         pass
 
 child = subprocess.Popen(
-    ["/bin/sh", "-c", "source_path=$1; shift; . \"$source_path\"", script, "/dev/fd/" + str(body_read), *args],
+    ["/bin/sh", "-c", "source_path=$1; shift; if [ -f \"$source_path\" ]; then echo \"aiur: refusing regular-file deadline body\" >&2; exit 127; fi; . \"$source_path\"", script, "/dev/fd/" + str(body_read), *args],
     stdin=None,
     pass_fds=(body_read,),
     start_new_session=True,
 )
 os.close(body_read)
-writer = threading.Thread(target=lambda: write_body(body_write, body))
+writer = threading.Thread(target=lambda: write_body(body_write, body), daemon=True)
 writer.start()
 
 def terminate_process_group():
@@ -99,7 +99,7 @@ def descendant_pids(root):
 
 def stop_child(signum, _frame):
     terminate_process_group()
-    writer.join()
+    writer.join(timeout=0.5)
     raise SystemExit(128 + signum)
 
 signal.signal(signal.SIGTERM, stop_child)
@@ -109,10 +109,10 @@ try:
     child.wait(timeout=seconds)
 except subprocess.TimeoutExpired:
     terminate_process_group()
-    writer.join()
+    writer.join(timeout=0.5)
     print(f"aiur: governed gh call exceeded {seconds}s deadline; terminated process group", file=sys.stderr)
     raise SystemExit(124)
-writer.join()
+writer.join(timeout=0.5)
 status = child.returncode
 raise SystemExit(status if status >= 0 else 128 - status)
 ' "$0" "$@" 3</dev/null
