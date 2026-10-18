@@ -4,9 +4,10 @@
 # inside one process group so a deadline can terminate every child.
 if command -v python3 >/dev/null 2>&1; then
   exec python3 -c '
-import os, signal, subprocess, sys
+import os, signal, subprocess, sys, tempfile
 
-script, *args = sys.argv[1:]
+script = sys.argv[1]
+args = sys.argv[2:]
 with open(script, encoding="utf-8") as source:
     assembled = source.read()
 marker = "# @aiur-deadline-body@\n"
@@ -19,11 +20,14 @@ try:
 except ValueError:
     seconds = 120
 seconds = max(1, min(seconds, 120))
-env = os.environ.copy()
-env.pop("AIUR_GH_GUARD_DEPTH", None)
-env.pop("AIUR_GH_GUARD_CALL", None)
-env.pop("AIUR_GH_GUARD_SUPERVISED", None)
-child = subprocess.Popen(["/bin/sh", "-s", "--", *args], env=env, stdin=subprocess.PIPE, start_new_session=True)
+fd, body_path = tempfile.mkstemp(prefix="aiur-gh-guard.", suffix=".sh")
+with os.fdopen(fd, "w", encoding="utf-8") as body_file:
+    body_file.write(body)
+child = subprocess.Popen(
+    ["/bin/sh", "-c", "script=$1; shift; . \"$script\"", script, body_path, *args],
+    stdin=None,
+    start_new_session=True,
+)
 
 def terminate_process_group():
     try:
@@ -48,11 +52,13 @@ signal.signal(signal.SIGTERM, stop_child)
 signal.signal(signal.SIGINT, stop_child)
 signal.signal(signal.SIGHUP, stop_child)
 try:
-    child.communicate(body.encode(), timeout=seconds)
+    child.wait(timeout=seconds)
 except subprocess.TimeoutExpired:
     terminate_process_group()
     print(f"aiur: governed gh call exceeded {seconds}s deadline; terminated process group", file=sys.stderr)
     raise SystemExit(124)
+finally:
+    os.unlink(body_path)
 status = child.returncode
 raise SystemExit(status if status >= 0 else 128 - status)
 ' "$0" "$@"
