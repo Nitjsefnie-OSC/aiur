@@ -63,6 +63,8 @@ export function scrollVP(y, smooth) {
     if (seq !== animSeq) return;
     const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
     vp.scrollTop = y0 + (y - y0) * e;
+    // A native scroll callback can arrive after this frame; keep sticky edges current.
+    fx.drawEdges(false);
     if (k < 1) ctx.life.frame('scrollVP:' + seq, step);
   };
   ctx.life.frame('scrollVP:' + seq, step);

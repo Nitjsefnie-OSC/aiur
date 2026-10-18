@@ -108,6 +108,30 @@ test('jump uses 420ms cubic easing, clamps and cancels previous animations', asy
   await page.evaluate(() => { m.fx.scrollVP(300, false); m.S.view = 'list'; m.fx.jumpNow(true) })
   expect(await page.evaluate(() => m.ctx.vp.scrollTop)).toBe(0)
 })
+test('animated scrolling redraws sticky edges within each animation frame', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000)
+  await open(page); await settle(page)
+  await page.evaluate(() => {
+    m.ctx.vp.style.height = m.ctx.vp.style.maxHeight = (m.ctx.bandEl.offsetHeight + 40) + 'px'
+    m.fx.relayout(); m.fx.scrollVP(300, false); m.fx.update()
+    window.edgeFrames = []
+    const frame = m.ctx.life.frame.bind(m.ctx.life)
+    m.ctx.life.frame = (key, fn) => frame(key, now => {
+      fn(now)
+      if (!String(key).startsWith('scrollVP:')) return
+      const g = m.ctx.bandEl.querySelector('.bd-now-e g')
+      edgeFrames.push({ scroll: m.ctx.vp.scrollTop, drawn: g.transform.baseVal.consolidate().matrix.f,
+        actual: m.ctx.content.getBoundingClientRect().top - m.ctx.bandEl.getBoundingClientRect().top })
+    })
+    m.fx.scrollVP(1300, true)
+  })
+  await page.clock.runFor(432)
+  const frames = await page.evaluate(() => edgeFrames)
+  expect(frames.length).toBeGreaterThan(20)
+  expect(new Set(frames.map(frame => frame.scroll)).size).toBeGreaterThan(10)
+  for (const frame of frames) expect(frame.drawn).toBe(frame.actual)
+})
 test('tall fleet, paging and scrollbar drag suppress snapping', async ({ page }) => {
   await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page, 'now24'); await settle(page)
   expect(await page.locator('#bd-now .bd-card')).toHaveCount(24)
