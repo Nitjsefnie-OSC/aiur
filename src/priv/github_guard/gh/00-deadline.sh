@@ -25,8 +25,14 @@ seconds = max(1, min(seconds, 120))
 # end and sources it by descriptor; no agent-writable pathname exists.
 body_read, body_write = os.pipe()
 def write_body(fd, contents):
-    with os.fdopen(fd, "w", encoding="utf-8") as body_file:
-        body_file.write(contents)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as body_file:
+            body_file.write(contents)
+    except BrokenPipeError:
+        # A guard rejection can exit before reading the entire body. The
+        # supervisor still joins this writer, so it must treat the closed
+        # source pipe as normal child completion.
+        pass
 
 child = subprocess.Popen(
     ["/bin/sh", "-c", "source_path=$1; shift; . \"$source_path\"", script, "/dev/fd/" + str(body_read), *args],
@@ -35,7 +41,7 @@ child = subprocess.Popen(
     start_new_session=True,
 )
 os.close(body_read)
-writer = threading.Thread(target=lambda: write_body(body_write, body), daemon=True)
+writer = threading.Thread(target=lambda: write_body(body_write, body))
 writer.start()
 
 def terminate_process_group():
@@ -93,6 +99,7 @@ def descendant_pids(root):
 
 def stop_child(signum, _frame):
     terminate_process_group()
+    writer.join()
     raise SystemExit(128 + signum)
 
 signal.signal(signal.SIGTERM, stop_child)
@@ -102,8 +109,10 @@ try:
     child.wait(timeout=seconds)
 except subprocess.TimeoutExpired:
     terminate_process_group()
+    writer.join()
     print(f"aiur: governed gh call exceeded {seconds}s deadline; terminated process group", file=sys.stderr)
     raise SystemExit(124)
+writer.join()
 status = child.returncode
 raise SystemExit(status if status >= 0 else 128 - status)
 ' "$0" "$@" 3</dev/null
