@@ -126,7 +126,15 @@ defmodule Aiur.DecisionStore.WithdrawalsTest do
   end
 
   test "expiration is durable, idempotent, historic, and auditable", %{dir: dir} do
-    pid = start_store!(dir)
+    test_pid = self()
+
+    dispatcher = fn dispatched, opts ->
+      item = correlated_queue_item(dispatched, dispatched.answer, opts[:attempt_id], 3801)
+      send(test_pid, {:expired_answer_queued, item})
+      {:ok, %{status: :accepted, item: item}}
+    end
+
+    pid = start_store!(dir, dispatcher: dispatcher, dispatch_delay_ms: 0)
     created_at = ~U[2026-07-24 12:00:00Z]
     expired_at = DateTime.add(created_at, 600, :second)
 
@@ -148,8 +156,22 @@ defmodule Aiur.DecisionStore.WithdrawalsTest do
     assert {:ok, %{status: :accepted, decision: answered}} = answer(pid, decision.decision_id, answer_payload)
     assert answered.decision_status == :decided
     assert answered.answer.custom_response == "Continue waiting"
+    assert_receive {:expired_answer_queued, item}, 1_000
+    assert {:ok, :accepted} = DecisionStore.record_delivery(item, pid)
+    assert :ok = DecisionStore.record_transport_async(:consumed, item, nil, pid)
+    delivered = wait_for_decision(pid, decision.decision_id, &(&1.delivery_status == :consumed))
+    assert delivered.answer.custom_response == "Continue waiting"
+
     assert {:ok, audit} = DecisionStore.audit_history(decision.decision_id, pid)
-    assert Enum.map(audit, & &1.type) == [:requested, :decision_expired, :answer_recorded]
+
+    assert Enum.map(audit, & &1.type) == [
+             :requested,
+             :decision_expired,
+             :answer_recorded,
+             :dispatch_queued,
+             :delivered,
+             :consumed
+           ]
 
     assert {:ok, %{decisions: [historic], total: 1}} =
              DecisionStore.retained_query(
