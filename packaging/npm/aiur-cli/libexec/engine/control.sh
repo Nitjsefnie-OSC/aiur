@@ -75,7 +75,10 @@ wait_for_node_name_release() {
           return 0
         fi
       done
-      [ "$found" -eq 1 ] || return 1
+      if [ "$found" -eq 0 ]; then
+        echo "aiur: cannot verify node-name release because this release has no epmd binary; proceeding with startup retry handling" >&2
+        return 0
+      fi
     fi
     sleep 0.1
   done

@@ -24,10 +24,21 @@ prepare_restart_handoff() {
 
 report_restart_handoff() {
   # The daemon's report wait is bounded; leave room for its RPC envelope.
-  AIUR_CONTROL_RPC_TIMEOUT_SECONDS=130 run_control_rpc \
-    "Aiur.Handoff.CLI.report(expected_id: \"$AIUR_RESTART_HANDOFF_ID\", wait_ms: 120_000)" || {
+  local output status=0 fallback_count reasons
+  output="$(AIUR_CONTROL_RPC_TIMEOUT_SECONDS=130 run_control_rpc \
+    "Aiur.Handoff.CLI.report(expected_id: \"$AIUR_RESTART_HANDOFF_ID\", wait_ms: 120_000)" 2>&1)" || status=$?
+  if [ "$status" -ne 0 ]; then
     echo "aiur: daemon started; handoff outcome unavailable. Run 'aiur status --handoff --json'." >&2
-  }
+    [ -z "$output" ] || printf '%s\n' "$output" >&2
+    return 0
+  fi
+
+  fallback_count="$(printf '%s\n' "$output" | sed -n 's/.*fallback=\([0-9][0-9]*\).*/\1/p' | head -n 1)"
+  reasons="$(printf '%s\n' "$output" | awk '$2 == "fallback" { split($3, parts, ":"); print parts[1] }' | sort -u | paste -sd, -)"
+  if [ -n "$fallback_count" ] && [ "$fallback_count" -gt 0 ]; then
+    echo "aiur: $fallback_count handoff session(s) lost: ${reasons:-fallback reason unavailable}" >&2
+  fi
+  [ -z "$output" ] || printf '%s\n' "$output"
 }
 
 aiur_restart_start_with_retry() {
