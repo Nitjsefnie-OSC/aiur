@@ -5,6 +5,22 @@ defmodule Aiur.DecisionProjection.Reducers do
   alias Aiur.DecisionProjection.{AuthorityReclassification, DeliveryReducers, TransitionValidation}
 
   @spec transition(term(), term()) :: {:ok, term()} | {:error, term()}
+  def transition(%Decision{decision_status: :expired, blocking: true, answer: nil} = decision, %DecisionEvent{type: :answer_recorded, data: answer} = event) do
+    with :ok <- TransitionValidation.require_current_version(decision, event.decision_version),
+         :ok <- TransitionValidation.require_answer_identity(decision, answer),
+         :ok <- TransitionValidation.require_option(decision, answer),
+         :ok <- TransitionValidation.require_unanswered(decision) do
+      {:ok,
+       %{
+         decision
+         | answer: answer,
+           active_action_id: answer.action_id,
+           decision_status: :decided,
+           delivery_status: :pending
+       }}
+    end
+  end
+
   def transition(%Decision{} = decision, %DecisionEvent{type: :answer_recorded, data: answer} = event) do
     with :ok <- TransitionValidation.require_current_version(decision, event.decision_version),
          :ok <- TransitionValidation.require_answer_identity(decision, answer),

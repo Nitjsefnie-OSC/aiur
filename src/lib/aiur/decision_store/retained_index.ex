@@ -230,14 +230,15 @@ defmodule Aiur.DecisionStore.RetainedIndex do
   defp decrement_counts(counts, decision), do: adjust_counts(counts, decision, -1)
 
   defp adjust_counts(counts, %Decision{decision_status: status, blocking: blocking}, delta)
-       when status in [:open, :deferred] do
-    blocking_delta = if blocking, do: delta, else: 0
+       when status in [:open, :deferred, :expired] do
+    recoverable_expiry? = status == :expired and blocking
+    blocking_delta = if blocking and status in [:open, :deferred, :expired], do: delta, else: 0
     deferred_delta = if status == :deferred, do: delta, else: 0
     deferred_blocking_delta = if status == :deferred and blocking, do: delta, else: 0
 
     %{
       counts
-      | open: counts.open + delta,
+      | open: counts.open + if(status in [:open, :deferred] or recoverable_expiry?, do: delta, else: 0),
         blocking: counts.blocking + blocking_delta,
         deferred: counts.deferred + deferred_delta,
         deferred_blocking: counts.deferred_blocking + deferred_blocking_delta

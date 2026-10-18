@@ -84,6 +84,8 @@ defmodule Aiur.DecisionStore.Withdrawals do
       when status in [:open, :deferred],
       do: true
 
+  def open_blocking_command?(%Decision{decision_status: :expired, blocking: true, answer: nil}), do: true
+
   def open_blocking_command?(%Decision{}), do: false
 
   @spec open_nonblocking_agent_question?(term()) :: term()

@@ -144,8 +144,12 @@ defmodule Aiur.DecisionStore.WithdrawalsTest do
 
     assert duplicate.decision_status == :expired
 
-    answer_payload = %{"idempotency_key" => "too-late", "expected_version" => 1, "custom_response" => "Ship"}
-    assert {:error, {:conflict, :expired}} = answer(pid, decision.decision_id, answer_payload)
+    answer_payload = %{"idempotency_key" => "answer-after-expiry", "expected_version" => 1, "custom_response" => "Continue waiting"}
+    assert {:ok, %{status: :accepted, decision: answered}} = answer(pid, decision.decision_id, answer_payload)
+    assert answered.decision_status == :decided
+    assert answered.answer.custom_response == "Continue waiting"
+    assert {:ok, audit} = DecisionStore.audit_history(decision.decision_id, pid)
+    assert Enum.map(audit, & &1.type) == [:requested, :decision_expired, :answer_recorded]
 
     assert {:ok, %{decisions: [historic], total: 1}} =
              DecisionStore.retained_query(
@@ -154,18 +158,12 @@ defmodule Aiur.DecisionStore.WithdrawalsTest do
              )
 
     assert historic.decision_id == decision.decision_id
-
-    assert {:ok, audit} = DecisionStore.audit_history(decision.decision_id, pid)
-
-    assert [
-             %DecisionEvent{type: :requested},
-             %DecisionEvent{type: :decision_expired, data: %{reason_class: "agent_not_running"}}
-           ] = audit
+    assert Enum.any?(audit, &match?(%DecisionEvent{type: :decision_expired, data: %{reason_class: "agent_not_running"}}, &1))
 
     GenServer.stop(pid)
     restarted = start_store!(dir)
     assert {:ok, replayed} = DecisionStore.get(decision.decision_id, restarted)
-    assert replayed.decision_status == :expired
+    assert replayed.decision_status == :decided
   end
 
   describe "moot disposition (#2099)" do

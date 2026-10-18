@@ -211,6 +211,9 @@ defmodule Aiur.DecisionStore.Requests do
 
   defp evaluate_against_existing(decision, requested_version, existing) do
     cond do
+      expired_unanswered_blocking?(existing) ->
+        {:reject, {:expired_decision_requires_reraise, existing.decision_id}}
+
       requested_version == existing.version and decision.content_hash == existing.content_hash ->
         {:duplicate, existing}
 
@@ -226,6 +229,10 @@ defmodule Aiur.DecisionStore.Requests do
       true ->
         {:reject, {:version_gap, requested_version, existing.version}}
     end
+  end
+
+  defp expired_unanswered_blocking?(decision) do
+    decision.decision_status == :expired and decision.blocking and is_nil(decision.answer)
   end
 
   @spec accept(term(), term()) :: term()

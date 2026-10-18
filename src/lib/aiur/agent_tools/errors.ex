@@ -175,6 +175,15 @@ defmodule Aiur.AgentTools.Errors do
     }
   end
 
+  def payload({:decision_rejected, {:conflict, {:expired_decision_requires_reraise, decision_id}}}) do
+    %{
+      "error" => %{
+        "message" => "Decision #{decision_id} expired. Re-raise it with a new decision request.",
+        "reason" => "expired_decision_requires_reraise"
+      }
+    }
+  end
+
   def payload({:decision_rejected, reason}) do
     %{
       "error" => %{

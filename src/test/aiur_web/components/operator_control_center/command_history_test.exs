@@ -31,6 +31,16 @@ defmodule AiurWeb.OperatorControlCenterComponentsCommandHistoryTest do
     refute html =~ ~s(class="decision-card)
   end
 
+  test "keeps an expired unanswered blocking Command answerable in the open inbox" do
+    expired = inbox_decision("dec-expired-blocking", decision_status: :expired, blocking: true)
+
+    html = render_inbox([expired], :open)
+
+    assert html =~ "Question dec-expired-blocking"
+    assert html =~ "Expired"
+    assert html =~ ~s(class="decision-card)
+  end
+
   test "quotes the answer the operator actually recorded in the Decision column" do
     custom =
       inbox_decision("dec-history-custom",
