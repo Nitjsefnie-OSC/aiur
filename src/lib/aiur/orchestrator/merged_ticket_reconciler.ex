@@ -271,7 +271,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
   end
 
   @doc "Returns the post-merge ticket state based on remaining open PRs."
-  @spec merged_ticket_target(String.t(), keyword()) :: String.t() | nil
+  @spec merged_ticket_target(String.t() | integer(), keyword()) ::
+          {:ok, String.t()} | {:error, term()}
   def merged_ticket_target(identifier, opts),
     do: OpenPullRequestTarget.merged_ticket_target(identifier, opts)
 
