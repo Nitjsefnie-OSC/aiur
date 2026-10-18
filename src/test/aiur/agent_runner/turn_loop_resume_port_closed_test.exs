@@ -7,6 +7,7 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
 
   alias Aiur.AgentRunner.TurnLoop
   alias Aiur.SessionHandle
+  alias Aiur.AppServer.Rpc.StreamDiagnostics
   alias Aiur.Workspace.Provisioner
 
   defmodule FakeOrchestrator do
@@ -44,15 +45,20 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
   end
 
   test "two dispatches whose resumed first turn loses the port drop the thread", ctx do
-    capture_log(fn ->
-      assert @port_closed = dispatch(ctx, fn _turn -> @port_closed end)
-      assert {:ok, %{thread_id: "big"}} = SessionHandle.load(ctx.issue.identifier, "codex")
+    StreamDiagnostics.record(self(), "provider startup banner: thread transport closed")
 
-      assert @port_closed = dispatch(ctx, fn _turn -> @port_closed end)
-    end)
+    log =
+      capture_log(fn ->
+        assert @port_closed = dispatch(ctx, fn _turn -> @port_closed end)
+        assert {:ok, %{thread_id: "big"}} = SessionHandle.load(ctx.issue.identifier, "codex")
+
+        assert @port_closed = dispatch(ctx, fn _turn -> @port_closed end)
+      end)
 
     assert SessionHandle.load(ctx.issue.identifier, "codex") == :none
     assert SessionHandle.abandoned_thread?(ctx.issue.identifier)
+    assert log =~ ~s(stream_diagnostics="provider startup banner: thread transport closed")
+    StreamDiagnostics.clear(self())
   end
 
   test "a port loss after the first turn completed does not count", ctx do
@@ -100,7 +106,7 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
     end
 
     TurnLoop.run_turns(
-      %{backend: "codex", resumed: true, thread_id: "big", workspace: ctx.workspace, worker_host: nil},
+      %{backend: "codex", resumed: true, thread_id: "big", port: self(), workspace: ctx.workspace, worker_host: nil},
       ctx.workspace,
       ctx.issue,
       nil,
