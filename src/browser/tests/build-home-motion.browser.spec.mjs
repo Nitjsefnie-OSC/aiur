@@ -1,4 +1,5 @@
 import { alignBoard, alignEtaMask, primeBoardPaint } from '../support/build-home-band-canvas.mjs'
+import { installScrollPaint, flushScrollPaint } from '../support/build-home-scroll-paint.mjs'
 import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
 import { prepareTreeMotion, prepareTreeFrame } from '../support/build-home-tree-motion.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
@@ -57,6 +58,23 @@ import { motionPathMatches, compareRecords, domState, pausedAnimations, scrollFr
 
 const record = value => ({ name: 'probe', samples: [{ scrollTop: value }], dom: { nodes: [] } })
 const motionEntry = { id: 'probe-motion', kind: 'motion', path: 'probe.samples[*].scrollTop', approval: { status: 'pending-sign-off' } }
+
+test('harness self-check: scroll paint drains without advancing the animator', async ({ page }) => {
+  await page.clock.install({ time: FIXTURE_META.now - 1000 }); await page.clock.pauseAt(FIXTURE_META.now)
+  await page.setContent('<div id="bd-vp" style="height:100px;overflow:auto"><div style="height:1000px"></div></div>')
+  await page.evaluate(() => {
+    window.painted = 0; window.animated = false
+    const vp = document.querySelector('#bd-vp')
+    vp.addEventListener('scroll', () => requestAnimationFrame(() => { painted = vp.scrollTop }))
+    requestAnimationFrame(() => { animated = true })
+  })
+  await installScrollPaint(page)
+  await page.locator('#bd-vp').evaluate(vp => new Promise(resolve => {
+    vp.addEventListener('scroll', resolve, { once: true }); vp.scrollTop = 25
+  }))
+  expect(await flushScrollPaint(page)).toBe(1)
+  expect(await page.evaluate(() => ({ painted, animated }))).toEqual({ painted: 25, animated: false })
+})
 
 test('harness self-check: empty measurements are unreachable', () => {
   expect(compareRecords(record(10), { ...record(10), samples: [] })).toEqual([{ path: 'probe', reason: 'unreachable' }])
@@ -263,6 +281,7 @@ function frameBarrier(pair, name, reduce) {
           document.body.style.minHeight = Math.ceil(el.getBoundingClientRect().bottom + scrollY) + 'px'
         })
       }
+      if (name === 'snap.scroll-curve') await Promise.all([pair.design, pair.product].map(flushScrollPaint))
       if (name.startsWith('snap.')) await primeBoardPaint(pair)
       const captureRegion = name.startsWith('tree.') ? await prepareTreeFrame(pair, region) : region
       await expectDesignParity(pair, { name: [name, pair.cell.dataset, pair.cell.viewport.width, pair.cell.theme, pair.cell.palette, pair.cell.reducedMotion, fraction].join("-"), region: captureRegion, preserveAnimations: true })
@@ -298,6 +317,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
           })
           await page.reload(); await waitParityReady(page, 'board', page === pair.design ? 'design' : 'product', true)
           await page.clock.setSystemTime(FIXTURE_META.now)
+          if (name === 'snap.scroll-curve') await installScrollPaint(page)
           if (name.startsWith('columns.')) await normalizeColumnCapture(page)
         }))
       }

@@ -74,11 +74,11 @@ test('band parity shards collect the complete matrix exactly once', () => {
     const shard = /--shard=(\d+\/\d+)/.exec(script)?.[1]
     assert.ok(shard)
     const { titles } = collect('playwright.design-parity.config.mjs', false, undefined, parity, ['--fully-parallel', '--shard=' + shard])
-    assert.equal(titles.length, 23)
+    assert.equal(titles.length, 26)
     placed.push(...titles)
     assert.ok(scripts['test:core'].includes('npm run ' + name))
   }
-  assert.equal(whole.length, 92)
-  assert.equal(new Set(placed).size, 92)
+  assert.equal(whole.length, 104)
+  assert.equal(new Set(placed).size, 104)
   assert.deepEqual(placed.sort(), whole)
 })

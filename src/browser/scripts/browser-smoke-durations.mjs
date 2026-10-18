@@ -20,6 +20,8 @@ export const recordedSeconds = {
   // PR #5020 local focused npm wall times (2026-10-18), rounded up to 0.1s.
   // Source heads (per-command results in PR): dd3fef20e, b31b9cc85; motion a08f421bb.
   // These are local measurements, not CI performance or savings claims.
+  // Parity values below measured the earlier 92-case matrix, not the revised 104-case matrix.
+  // Current-head CI must measure the new partition wall times; these remain historical observations.
   'test:build-home-band-parity:1': 507.9,
   'test:build-home-band-parity:2': 480.8,
   'test:build-home-band-parity:3': 373.7,
