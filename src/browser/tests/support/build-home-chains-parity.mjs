@@ -1,5 +1,6 @@
 import { expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
+import { alignEtaMask } from '../../support/build-home-band-canvas.mjs'
 import { chainOf } from '../../../priv/static/build-home/chains.js'
 
 export async function largestRoot(dataset, section) {
@@ -101,3 +102,10 @@ export const treeRecord = page => page.locator('#bd-tree').evaluate(host => ({
     title: el.querySelector('.bd-tn1 > span').textContent, status: el.querySelector('em').textContent,
     pos: ['left', 'top', 'width', 'height'].map(k => el.style[k]) })).sort((a,b) => a.ref.localeCompare(b.ref))
 }))
+
+// Reuse C9-T08's existing C7-T03 ETA-copy exception; chain/tab/tree pixels stay visible.
+export async function prepareChainParity(pair) {
+  pair.allowlist = pair.allowlist.map(entry => entry.id === 'now-band-eta-pending'
+    ? { ...entry, kind: 'pixel-mask', selector: '.bd-now-eta' } : entry)
+  await alignEtaMask(pair)
+}

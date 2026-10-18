@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { openParityPair, expectDesignParity, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
 import { settleAnimations } from './support/browser-helpers.mjs'
-import { largestRoot, hoverRoot, assertChainPaint, fitState, installFitObserver, waitForFit, treeRecord } from './support/build-home-chains-parity.mjs'
+import { prepareChainParity, largestRoot, hoverRoot, assertChainPaint, fitState, installFitObserver, waitForFit, treeRecord } from './support/build-home-chains-parity.mjs'
 
 test.setTimeout(120_000)
 const root = await largestRoot('live'), denseRoot = await largestRoot('dense', 'plan')
@@ -13,6 +13,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   const pixels = (pair, name, region) => check(name, () => expectDesignParity(pair, { name, region }))
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
   try {
+    await prepareChainParity(pair)
     for (const page of [pair.design, pair.product]) await hoverRoot(page, root, page === pair.product)
     await check('P1 hover classes and tab position', () => assertChainPaint(pair, root, false))
     await pixels(pair, 'P1-chain-hover', '#bd-vp')
@@ -46,6 +47,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   if (cell.viewport.width === 390 && cell.theme === 'dark' && cell.palette === 'gruvbox') {
     const dense = await openParityPair(browser, { ...cell, dataset: 'dense' }, { query: '?trees=1' })
     try {
+      await prepareChainParity(dense)
       for (const page of [dense.design, dense.product]) {
         await hoverRoot(page, denseRoot, page === dense.product)
         await page.locator('[data-lt="lock"]').click()

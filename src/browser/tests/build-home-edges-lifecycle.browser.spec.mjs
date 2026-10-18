@@ -42,6 +42,8 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
   await open(page, 'odd-edges')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await expect(page.locator('html')).toHaveAttribute('data-palette', 'gruvbox')
+  // Edge-only captures isolate deliberate scroll positions from live snapping.
+  await page.evaluate(() => { st.ctx.snapping = true })
   const edges = await page.evaluate(() => {
     const { ctx, fx } = st, result = {}
     for (const sec of ['hist', 'nq']) {
@@ -59,10 +61,18 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
       ctx.vp.scrollTop = ctx.secs[item.t.sec].el.offsetTop + item.y - 100; fx.update(); fx.drawEdges(true)
     }, id)
     await expect(page.locator(`.bd-card[data-id="${id}"]`)).toBeVisible()
-    // Hide cards and chrome so the baseline records the edge layer only.
-    const hide = await page.addStyleTag({ content: 'body * { visibility: hidden !important } #bd-edges, #bd-edges * { visibility: visible !important }' })
-    await expect(page.locator('#bd-edges')).toHaveScreenshot(`${name}.png`)
+    // Freeze the rendered paths: capturing the tall SVG must not scroll and
+    // recycle the very windowed cards whose edge geometry is under test.
+    await page.evaluate(() => {
+      const svg = st.ctx.svg, copy = svg.cloneNode(true), box = svg.getBoundingClientRect()
+      copy.id = 'edge-capture'
+      Object.assign(copy.style, { position: 'fixed', top: '0px', left: '0px', width: box.width + 'px', height: box.height + 'px', zIndex: '99999' })
+      st.ctx.root.appendChild(copy)
+    })
+    const hide = await page.addStyleTag({ content: 'body * { visibility: hidden !important } #edge-capture, #edge-capture * { visibility: visible !important }' })
+    await expect(page.locator('#edge-capture')).toHaveScreenshot(`${name}.png`)
     await hide.evaluate(el => el.remove())
+    await page.locator('#edge-capture').evaluate(el => el.remove())
   }
   expect(errors).toEqual([])
 })
