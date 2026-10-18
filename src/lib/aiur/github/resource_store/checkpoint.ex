@@ -28,7 +28,7 @@ defmodule Aiur.GitHub.ResourceStore.Checkpoint do
   @spec mark_entry_dirty(term()) :: :ok
   def mark_entry_dirty(key) do
     :ets.delete(@entry_cache, key)
-    :ets.update_counter(@key_revision_table, key, 1, {key, 0})
+    :ets.insert(@key_revision_table, {key, make_ref()})
     mark_dirty()
     :ok
   rescue
@@ -56,8 +56,8 @@ defmodule Aiur.GitHub.ResourceStore.Checkpoint do
     ArgumentError -> :ok
   end
 
-  @spec cached_entry(term(), term(), (term() -> iodata())) :: iodata()
-  def cached_entry(key, entry, encode) do
+  @spec cached_entry(:ets.table(), term(), term(), (term() -> iodata())) :: iodata() | nil
+  def cached_entry(table, key, entry, encode) do
     revision = key_revision(key)
 
     case :ets.lookup(@entry_cache, key) do
@@ -65,9 +65,15 @@ defmodule Aiur.GitHub.ResourceStore.Checkpoint do
         cached_encoded
 
       _other ->
-        encoded_entry = encode.(entry)
-        true = :ets.insert(@entry_cache, {key, {revision, encoded_entry}})
-        encoded_entry
+        case :ets.lookup(table, key) do
+          [{^key, current_entry}] ->
+            encoded_entry = encode.(current_entry)
+            true = :ets.insert(@entry_cache, {key, {revision, encoded_entry}})
+            encoded_entry
+
+          _deleted_during_render ->
+            nil
+        end
     end
   rescue
     ArgumentError -> encode.(entry)

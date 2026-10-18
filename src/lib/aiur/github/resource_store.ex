@@ -1902,9 +1902,7 @@ defmodule Aiur.GitHub.ResourceStore do
     # recently written *bodies* — never whole entries, because the `:etag` and
     # the processed mark beside a body are state a later read is still entitled
     # to — and reports what the table holds.
-    memory = Memory.enforce(table)
-    if memory.shed > 0, do: Checkpoint.mark_dirty()
-
+    Memory.enforce(table)
     :ok
   end
 
@@ -1953,19 +1951,18 @@ defmodule Aiur.GitHub.ResourceStore do
   # key revision, so an ordinary periodic checkpoint only encodes changed
   # entries before writing the complete restart document.
   #
-  # The document is rendered one entry at a time; a second decoded copy of every
-  # body caused memory pressure (#3997). Callbacks hibernate because this process is idle between timers, so allocations would otherwise
+  # Process hibernation releases transient checkpoint and boot allocations between timers (#3997).
   # sit on its heap until the next one.
   defp checkpoint(state, opts \\ []), do: Checkpoint.run(state, &render/1, opts)
 
   defp render(table) do
-    entries = :ets.foldl(&encode_entry/2, [], table)
+    entries = :ets.foldl(fn entry, acc -> encode_entry(entry, table, acc) end, [], table)
     {:ok, [~s({"version":1,"entries":{), Enum.intersperse(entries, ?,), "}}"]}
   rescue
     error -> {:error, Exception.message(error)}
   end
 
-  defp encode_entry({key, entry}, acc) do
+  defp encode_entry({key, entry}, table, acc) do
     case encode_key(key) do
       nil ->
         # Loud, because this is the one place an entry can be lost with nothing
@@ -1977,12 +1974,12 @@ defmodule Aiur.GitHub.ResourceStore do
         acc
 
       encoded ->
-        [
-          Checkpoint.cached_entry(key, entry, fn current ->
-            [Jason.encode!(encoded), ?:, Jason.encode!(encode_fields(key, current))]
-          end)
-          | acc
-        ]
+        case Checkpoint.cached_entry(table, key, entry, fn current ->
+               [Jason.encode!(encoded), ?:, Jason.encode!(encode_fields(key, current))]
+             end) do
+          nil -> acc
+          cached -> [cached | acc]
+        end
     end
   end
 
