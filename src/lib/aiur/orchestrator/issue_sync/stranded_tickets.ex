@@ -100,9 +100,16 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   def owned_or_scheduled?(%State{} = state, issue_id) do
     Map.has_key?(state.running, issue_id) or
       MapSet.member?(state.claimed, issue_id) or
-      Map.has_key?(state.retry_attempts, issue_id) or
+      retry_scheduled?(state, issue_id) or
       Map.has_key?(state.auto_resume, issue_id) or
       TrackerTasks.issue_pending?(state, issue_id)
+  end
+
+  # Retry exhaustion leaves both the retry record (for the dispatcher hold)
+  # and released-claim evidence. That pair is stranded work, not a scheduled
+  # retry; clearing it after a successful state restore permits a fresh claim.
+  defp retry_scheduled?(%State{} = state, issue_id) do
+    Map.has_key?(state.retry_attempts, issue_id) and not Map.has_key?(state.released_claims, issue_id)
   end
 
   # States where an open ticket is deliberately unowned need no claim: an
@@ -116,7 +123,7 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
       Issue.queued?(issue) or
       MissingLabels.parked_marker?(issue) or
       DispatchPolicy.issue_held_by_dependency?(issue, DispatchPolicy.terminal_state_set()) or
-      external_wait_state?(issue.state) or
+      external_wait_state?(issue) or
       DispatchPolicy.normalize_issue_state(issue.state) == "todo"
   end
 
@@ -156,16 +163,20 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   defp apply_stranded_repair(state, issue, restored, result) do
     case result do
       :ok ->
-        alert_stranded_ticket_requeued(state, issue, restored)
+        state = alert_stranded_ticket_requeued(state, issue, restored)
 
         Logger.warning("Re-queueing stranded ticket #{State.issue_context(issue)} -> #{restored}")
 
-        %{state | released_claims: Map.delete(state.released_claims, issue.id)}
+        %{
+          state
+          | released_claims: Map.delete(state.released_claims, issue.id),
+            retry_attempts: Map.delete(state.retry_attempts, issue.id)
+        }
 
       {:error, reason} ->
         Logger.warning("Stranded ticket re-queue failed for #{State.issue_context(issue)}: #{inspect(reason)}")
 
-        state
+        alert_stranded_ticket_requeue_failed(state, issue, restored, reason)
     end
   end
 
@@ -191,10 +202,31 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
     state
   end
 
+  defp alert_stranded_ticket_requeue_failed(%State{} = state, %Issue{} = issue, restored, reason) do
+    topic = "ticket.#{issue.identifier}.agent.attention.stranded-requeue-failed"
+
+    unless TransitionAlerts.active_attention?(state, topic) do
+      Alerts.emit_system(topic,
+        issue: issue.identifier,
+        message: "Ticket #{issue.identifier} could not be re-queued to #{restored}.",
+        reason: "The tracker rejected the stranded-ticket state restore: #{inspect(reason)}.",
+        needs_attention: true,
+        severity: "warning",
+        central: true
+      )
+    end
+
+    state
+  end
+
   # States where an open ticket is deliberately waiting on something external
   # (CI, human review, or an operator/error recovery) need no agent claim, so a
   # lack of one is not a strand.
-  defp external_wait_state?(state_name) do
-    DispatchPolicy.normalize_issue_state(state_name) in ["ci-wait", "human-review", "error"]
+  defp external_wait_state?(%Issue{} = issue) do
+    DispatchPolicy.normalize_issue_state(issue.state) in ["ci-wait", "human-review", "error", "merging"] or
+      Enum.any?(issue.state_labels || [], fn label ->
+        normalized = DispatchPolicy.normalize_issue_state(label)
+        normalized in ["ci-wait", "human-review", "error", "merging"]
+      end)
   end
 end
