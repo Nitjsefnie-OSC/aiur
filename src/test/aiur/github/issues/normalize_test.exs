@@ -31,6 +31,16 @@ defmodule Aiur.GitHub.Issues.NormalizeTest do
   end
 
   describe "normalize_issue/4" do
+    test "extracts Executor owner marker without treating it as workflow state" do
+      gh = %{"number" => 811, "title" => "Held", "state" => "open", "labels" => [%{"name" => "sym:todo"}, %{"name" => "sym:executor:codex"}]}
+
+      issue = Issues.normalize_issue(gh, "owner", "repo", "sym")
+
+      assert issue.executor_owner == "codex"
+      assert issue.state == "todo"
+      assert issue.state_labels == ["todo"]
+    end
+
     test "maps github issue fields to Issue struct" do
       gh = %{
         "number" => 10,

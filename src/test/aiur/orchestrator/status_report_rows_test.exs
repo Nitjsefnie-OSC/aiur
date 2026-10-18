@@ -55,6 +55,14 @@ defmodule Aiur.Orchestrator.StatusReportRowsTest do
     assert [%{identifier: "repo#20", state: :paused, title: nil, reason: {:transient, _, _}}] = statuses
   end
 
+  test "status exposes Executor owner on an idle ticket without a worker row" do
+    issue = %Issue{id: "owner-42", identifier: "repo#42", state: "todo", title: "Executor work", executor_owner: "codex"}
+    state = %State{last_polled_issues: %{issue.id => issue}, candidate_snapshot_fresh?: true}
+
+    assert [%{executor_owner: "codex", reason: {:executor_owned, "codex"}, work_state: :idle}] =
+             StatusReport.agent_statuses(state)
+  end
+
   test "startup and retry rows expose no live turn and retain failure time" do
     issue = %Issue{id: "2895", identifier: "2895", state: "in-progress", title: "Startup"}
     now = DateTime.utc_now()

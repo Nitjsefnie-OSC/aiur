@@ -1051,13 +1051,15 @@ defmodule Aiur.Orchestrator.CommentWake do
       # silent-decline pattern; this is the one on the rework-comment path.
       paused = issue.paused
       parked = issue.parked
+      executor_owned = Aiur.Issue.executor_owner(issue)
       running = Map.has_key?(state.running, issue.id)
 
       reason_details =
-        case {paused, parked, running} do
-          {true, _, _} -> "issue is paused"
-          {_, true, _} -> "issue is parked"
-          {_, _, true} -> "issue is already running"
+        case {paused, parked, executor_owned, running} do
+          {true, _, _, _} -> "issue is paused"
+          {_, true, _, _} -> "issue is parked"
+          {_, _, owner, _} when is_binary(owner) -> "issue is Executor-owned"
+          {_, _, _, true} -> "issue is already running"
           _ -> "dispatch policy does not permit this state"
         end
 
@@ -1081,6 +1083,9 @@ defmodule Aiur.Orchestrator.CommentWake do
 
   defp dispatch_decline_reason("issue is parked", _issue),
     do: "Dispatch policy refused to wake the parked issue. Remedy: resume it explicitly to clear the park marker."
+
+  defp dispatch_decline_reason("issue is Executor-owned", issue),
+    do: "Dispatch policy refused to wake this ticket, held by #{Aiur.Issue.executor_owner(issue)}. Remedy: release the Executor hold first."
 
   defp dispatch_decline_reason("issue is already running", _issue),
     do: "Dispatch policy refused a duplicate wake for an issue with a running agent. Remedy: let that agent finish or send the comment to its session."

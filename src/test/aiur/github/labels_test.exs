@@ -27,10 +27,12 @@ defmodule Aiur.GitHub.LabelsTest do
       assert "agent:watch" in labels
       assert "agent:paused" in labels
       assert "agent:parked" in labels
+      assert "agent:executor" in labels
       assert "agent:rate-limit-fallback" in labels
       refute "agent:watch" in Labels.state_labels("agent")
       refute "agent:paused" in Labels.state_labels("agent")
       refute "agent:parked" in Labels.state_labels("agent")
+      refute "agent:executor" in Labels.state_labels("agent")
       refute "agent:rate-limit-fallback" in Labels.state_labels("agent")
       assert Labels.marker_suffix?("rate-limit-fallback")
     end
@@ -51,6 +53,14 @@ defmodule Aiur.GitHub.LabelsTest do
       assert Labels.marker_suffix?("parked")
       refute Labels.marker_suffix?("agent:parked")
       refute "agent:parked" in Labels.state_labels("agent")
+    end
+
+    test "Executor owner suffix is a marker, not a workflow state" do
+      assert Labels.executor_label_prefix("agent") == "agent:executor:"
+      assert Labels.marker_suffix?("executor:codex")
+      refute Labels.marker_suffix?("executorfake")
+      refute Labels.marker_suffix?("agent:executor:codex")
+      assert Labels.describe("agent:executor:codex") == "Executor-owned by codex: no dispatch, no fleet slot"
     end
 
     test "fallback labels use the configured fallback pair" do

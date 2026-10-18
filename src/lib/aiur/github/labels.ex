@@ -32,9 +32,10 @@ defmodule Aiur.GitHub.Labels do
   @watch_suffix "watch"
   @paused_suffix "paused"
   @parked_suffix "parked"
+  @executor_suffix "executor"
   @queued_suffix "queued"
   @rate_limit_fallback_suffix "rate-limit-fallback"
-  @marker_suffixes [@watch_suffix, @paused_suffix, @parked_suffix, @queued_suffix, @rate_limit_fallback_suffix]
+  @marker_suffixes [@watch_suffix, @paused_suffix, @parked_suffix, @executor_suffix, @queued_suffix, @rate_limit_fallback_suffix]
 
   @type request :: %{
           method: :post,
@@ -70,6 +71,10 @@ defmodule Aiur.GitHub.Labels do
   @spec parked_labels(String.t()) :: [String.t()]
   def parked_labels(prefix), do: ["#{prefix}:#{@parked_suffix}"]
 
+  @doc "Prefix for the owner-valued Executor hold marker."
+  @spec executor_label_prefix(String.t()) :: String.t()
+  def executor_label_prefix(prefix), do: "#{prefix}:#{@executor_suffix}:"
+
   @doc "The build-queue marker label, given the prefix (e.g. `agent:queued`)."
   @spec queued_labels(String.t()) :: [String.t()]
   def queued_labels(prefix), do: ["#{prefix}:#{@queued_suffix}"]
@@ -98,9 +103,12 @@ defmodule Aiur.GitHub.Labels do
   @doc "Whether a prefixed-label suffix is a marker rather than a workflow state."
   @spec marker_suffix?(term()) :: boolean()
   def marker_suffix?(suffix) when is_binary(suffix),
-    do: String.downcase(String.trim(suffix)) in @marker_suffixes
+    do: marker_name?(String.downcase(String.trim(suffix)))
 
   def marker_suffix?(_suffix), do: false
+
+  defp marker_name?("executor:" <> _owner), do: true
+  defp marker_name?(suffix), do: suffix in @marker_suffixes
 
   @spec model_labels([String.t()], (String.t() -> [String.t()])) :: [String.t()]
   def model_labels(backends, ids_for \\ &CodingAgent.models/1), do: CodingAgent.override_labels(backends, ids_for)
@@ -130,6 +138,7 @@ defmodule Aiur.GitHub.Labels do
   def describe("flake"), do: "known intermittent test failure"
   def describe("complexity:" <> n), do: "story-point complexity #{n}"
   def describe("model:remote"), do: "Supports claude remote-control"
+  def describe("agent:executor:" <> owner), do: "Executor-owned by #{owner}: no dispatch, no fleet slot"
 
   def describe("model:" <> spec = label) do
     if label in effort_labels(),

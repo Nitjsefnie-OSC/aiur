@@ -77,6 +77,10 @@ defmodule Aiur.Orchestrator.ResumeDeclineReasonTest do
     assert translate(:parked) == :ticket_parked
   end
 
+  test "Executor-owned tickets get a named refusal" do
+    assert translate(:executor_owned) == :ticket_executor_owned
+  end
+
   test "an unknown decline reason is a named refusal, not a crash" do
     log =
       capture_log(fn ->
