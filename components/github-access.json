@@ -25,6 +25,7 @@
     "src/lib/aiur/github/errors**",
     "src/lib/aiur/github/graphql_cost**",
     "src/lib/aiur/github/graphql_errors**",
+    "src/lib/aiur/github/hold_sweep**",
     "src/lib/aiur/github/host_command**",
     "src/lib/aiur/github/local_hold**",
     "src/lib/aiur/github/membership_access**",
@@ -76,14 +77,14 @@
     "config": [],
     "env": [
       "AIUR_GITHUB_BUDGET_CONSUMER",
+      "AIUR_GITHUB_BUDGET_DIR",
       "AIUR_GITHUB_BUDGET_IDENTITY_KEY",
       "GH_TOKEN",
       "GITHUB_APP_ID",
       "GITHUB_APP_INSTALLATION_ID",
       "GITHUB_APP_PRIVATE_KEY",
       "GITHUB_APP_PRIVATE_KEY_PATH",
-      "GITHUB_TOKEN",
-      "AIUR_GITHUB_BUDGET_DIR"
+      "GITHUB_TOKEN"
     ],
     "state": [],
     "capabilities": []
@@ -106,14 +107,14 @@
   "config": [],
   "env": [
     "AIUR_GITHUB_BUDGET_CONSUMER",
+    "AIUR_GITHUB_BUDGET_DIR",
     "AIUR_GITHUB_BUDGET_IDENTITY_KEY",
     "GH_TOKEN",
     "GITHUB_APP_ID",
     "GITHUB_APP_INSTALLATION_ID",
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_PRIVATE_KEY_PATH",
-    "GITHUB_TOKEN",
-    "AIUR_GITHUB_BUDGET_DIR"
+    "GITHUB_TOKEN"
   ],
   "capabilities": [],
   "facade_pending": "MP-R1-GHA-4"
