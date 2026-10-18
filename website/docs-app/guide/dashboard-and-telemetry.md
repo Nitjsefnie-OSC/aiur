@@ -37,7 +37,8 @@ List view and return when you switch to Timeline or Gantt.
 
 On the build timeline, `?trees=1` enables dependency-chain hover. Lock the chain
 with its lock tab, use Fit to bring the loaded chain into view, or select the eye
-button to open the Dependency tree overlay.
+button to open the Dependency tree overlay. Each Fit action searches at most
+three earlier pages for undated, unloaded links; unresolved links stay counted.
 
 Clicking a dependency arrow locks its chain on touch screens too. Escape closes
 the tree, then releases the lock. Links outside the loaded board are counted;

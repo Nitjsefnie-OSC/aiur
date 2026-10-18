@@ -75,8 +75,10 @@ export function treeRange(id) {
 export async function fitTree(id) {
   const token = ++fitToken, life = ctx.life;
   const current = () => token === fitToken && ctx.life === life && !life.disposed && ctx.content?.isConnected && !!ctx.D.byId[id];
-  // Unloaded links carry no dates; discover their rows through the bounded history pager.
-  while (current() && ctx.lockId === id && H.more && chainGaps(ctx.D, chainOf(ctx.D, id)).unloaded) {
+  // Unknown dates cannot define a history range. Bound discovery per Fit action;
+  // any remaining links stay visible as gaps instead of draining all history.
+  let pages = 0;
+  while (pages++ < 3 && current() && ctx.lockId === id && H.more && chainGaps(ctx.D, chainOf(ctx.D, id)).unloaded) {
     if (!await loadEarlier()) break;
   }
   if (!current() || ctx.lockId !== id) return;
