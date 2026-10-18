@@ -1,4 +1,4 @@
-import { columnSequence } from './build-home-columns-motion.mjs'
+import { columnSequence, alignColumnPolls } from './build-home-columns-motion.mjs'
 import { spanState } from './build-home-span-state.mjs'
 import { historySequence } from './build-home-history-motion.mjs'
 import { scrollbar } from './build-home-scrollbar-motion.mjs'
@@ -244,6 +244,7 @@ async function scrollCurve(page, ctx) {
   })
   await scrollTo(page, 270)
   await page.clock.runFor(704)
+  await alignColumnPolls(page)
   const input = await page.evaluate(() => ({ from: document.querySelector('#bd-vp').scrollTop,
     to: document.querySelector('#bd-sec-hist').offsetTop + document.querySelector('#bd-sec-hist').offsetHeight - 46, at: performance.now() }))
   await click(page, '#bd-nowbtn', ctx.reduce)

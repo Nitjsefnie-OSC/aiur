@@ -264,7 +264,7 @@ function frameBarrier(pair, name, reduce) {
         })
       }
       if (name.startsWith('snap.')) await primeBoardPaint(pair)
-      await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true })
+      await expectDesignParity(pair, { name: [name, pair.cell.dataset, pair.cell.viewport.width, pair.cell.theme, pair.cell.palette, pair.cell.reducedMotion, fraction].join("-"), region, preserveAnimations: true })
     }
     catch (error) { errors.push(error) }
     finally {
@@ -284,7 +284,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
       test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
-      if (name.startsWith('columns.')) {
+      if (name.startsWith('columns.') || name === 'snap.scroll-curve') {
         await Promise.all([pair.design, pair.product].map(async page => {
           await page.addInitScript(() => {
             const every = window.setInterval.bind(window)
@@ -297,7 +297,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
           })
           await page.reload(); await waitParityReady(page, 'board', page === pair.design ? 'design' : 'product', true)
           await page.clock.setSystemTime(FIXTURE_META.now)
-          await normalizeColumnCapture(page)
+          if (name.startsWith('columns.')) await normalizeColumnCapture(page)
         }))
       }
       if (name.startsWith('snap.')) { await alignBoard(pair); await alignEtaMask(pair); pair.allowlist = pair.allowlist.map(e => e.id === 'now-band-eta-pending' ? { ...e, kind: 'pixel-mask', selector: '.bd-now-eta' } : e) }
