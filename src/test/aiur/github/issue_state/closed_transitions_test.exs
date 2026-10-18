@@ -33,7 +33,7 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
   end
 
   describe "update_issue_state/3" do
-    test "terminal target state closes the issue" do
+    test "future regression guard: terminal target adds done before removing old state" do
       calls = :ets.new(:calls, [:set, :public])
       :ets.insert(calls, {:count, 0})
 
@@ -43,6 +43,8 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
 
         case {req.method, n} do
           {:get, 0} ->
+            send(self(), {:state_write_method, :get})
+
             {:ok,
              %{
                status: 200,
@@ -50,10 +52,13 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
              }}
 
           {:post, 1} ->
+            send(self(), {:state_write_method, :post})
             assert req.body == %{"labels" => ["sym:done"]}
             {:ok, %{status: 200}}
 
           {:get, 2} ->
+            send(self(), {:state_write_method, :get})
+
             {:ok,
              %{
                status: 200,
@@ -61,9 +66,11 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
              }}
 
           {:delete, 3} ->
+            send(self(), {:state_write_method, :delete})
             {:ok, %{status: 200}}
 
           {:patch, 4} ->
+            send(self(), {:state_write_method, :patch})
             assert req.body == %{"state" => "closed"}
             {:ok, %{status: 200}}
 
@@ -73,6 +80,15 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
       end
 
       assert :ok = IssueState.update_issue_state("42", "Done", request_fun: request_fun)
+
+      assert for(
+               _ <- 1..5,
+               do:
+                 receive do
+                   {:state_write_method, method} -> method
+                 end
+             ) ==
+               [:get, :post, :get, :delete, :patch]
     end
 
     test "closed-issue active-target branch strips active labels and reports no state label written" do

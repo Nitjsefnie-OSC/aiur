@@ -11,6 +11,7 @@ defmodule Aiur.Orchestrator.MergeTransition do
   def normalize(outcome), do: outcome
 
   @spec reason_name(term()) :: atom()
+  def reason_name({:github, classification, _detail}) when is_atom(classification), do: classification
   def reason_name(reason) when is_atom(reason), do: reason
   def reason_name(reason) when is_tuple(reason) and tuple_size(reason) > 0, do: reason_name(elem(reason, 0))
   def reason_name(_reason), do: :unknown
