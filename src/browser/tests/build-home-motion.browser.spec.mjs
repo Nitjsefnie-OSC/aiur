@@ -257,7 +257,7 @@ function frameBarrier(pair, name, reduce) {
           const value = el.style.visibility; el.style.visibility = 'hidden'; return value
         })])
         // Span changes rebuild the header, replacing the pending ETA slot.
-        await alignEtaMask(pair)
+        if (name !== 'snap.list-view') await alignEtaMask(pair)
         // Tall fixed viewports must fit inside both screenshot documents.
         for (const page of [pair.design, pair.product]) await page.locator('#bd-vp').evaluate(el => {
           document.body.style.minHeight = Math.ceil(el.getBoundingClientRect().bottom + scrollY) + 'px'
@@ -284,7 +284,6 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
       test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
-      if (name === 'snap.list-view') { await pair.product.locator('[data-v="list"]').evaluate(el => el.click()); await expect(pair.product.locator('.bd-list')).toHaveCount(1) }
       if (name.startsWith('columns.')) {
         await Promise.all([pair.design, pair.product].map(async page => {
           await page.addInitScript(() => {
@@ -306,6 +305,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
         throw new Error(JSON.stringify({ design: design.reason, product: product.reason }))
+      if (name === 'snap.list-view') await expect(pair.product.locator('.bd-list')).toHaveCount(1)
       collectAllowlist(design, product, entries)
       if (name === 'snap.scroll-curve') console.log('Numeric scroll curve matched all 27 frames')
       if (barrier.errors.length) throw barrier.errors[0]
