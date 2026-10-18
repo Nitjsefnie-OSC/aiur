@@ -1937,10 +1937,11 @@ defmodule Aiur.GitHub.ResourceStore do
   end
 
   # Writes land in ETS directly from the poll fan-out rather than through this
-  # process, so there is no dirty flag to trust: the checkpoint compares a
-  # digest of the rendered document against the last one written and skips an
-  # identical one. That keeps a steady-state cycle — the case this whole change
-  # exists to make free — from also becoming a disk write every 30 seconds.
+  # process, so each mutation advances a shared revision. Periodic checkpoints
+  # skip rendering when that revision is already persisted; forced flush and
+  # shutdown checkpoints still render, then compare the digest to avoid writing
+  # an identical document. This keeps a steady-state cycle free of table scans
+  # and disk writes every 30 seconds.
   #
   # The document is rendered one entry at a time and only its digest is kept.
   # Snapshotting the table and holding the previous document for the comparison

@@ -29,6 +29,36 @@ defmodule Aiur.GitHub.ResourceStore.CheckpointTest do
     assert ResourceStore.data(key) == %{"number" => 9901}
   end
 
+  test "a mutation after flush makes the next periodic checkpoint write", %{path: path} do
+    restart_store!(path)
+    first_key = ResourceStore.key(:issue, "owner", "repo", 9901)
+    second_key = ResourceStore.key(:issue, "owner", "repo", 9902)
+    ResourceStore.put_resource(first_key, %{"number" => 9901})
+    assert :ok = ResourceStore.flush()
+
+    test_pid = self()
+    handler_id = "resource-store-checkpoint-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:aiur, :github, :resource_store, :checkpoint],
+        fn _event, measurements, metadata, pid ->
+          send(pid, {:checkpoint, measurements, metadata})
+        end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    ResourceStore.put_resource(second_key, %{"number" => 9902})
+    send(Process.whereis(ResourceStore), :checkpoint)
+
+    assert_receive {:checkpoint, %{entries: 2}, %{result: :written}}, 1_000
+    assert {:ok, contents} = File.read(path)
+    assert %{"entries" => entries} = Jason.decode!(contents)
+    assert Map.has_key?(entries, Jason.encode!(second_key))
+  end
+
   setup do
     dir = Aiur.TestSupport.tmp_root!("aiur-resource-store-checkpoint")
     File.mkdir_p!(dir)
