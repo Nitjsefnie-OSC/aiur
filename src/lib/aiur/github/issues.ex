@@ -4,8 +4,7 @@ defmodule Aiur.GitHub.Issues do
   """
 
   require Logger
-  alias Aiur.{Bounded, Config, GitHub, Issue, TestTicketScope, TrackerIdentity}
-  alias Aiur.GitHub.IssueExecutorOwner
+  alias Aiur.{Bounded, Config, GitHub, GitHub.IssueExecutorOwner, Issue, TestTicketScope, TrackerIdentity}
 
   alias Aiur.GitHub.{
     BoundedBlockedBy,
@@ -29,9 +28,8 @@ defmodule Aiur.GitHub.Issues do
   # bodies are full specifications measured 2.9 MiB across 45 issues (#2533).
   # The bound is sized to the endpoint's real ceiling rather than an observed
   # backlog: GitHub caps a page at 100 issues and a body at 64 KiB, so one page
-  # of maximal bodies plus metadata stays under 16 MiB. A response that still
-  # exceeds it is reported as `:response_too_large` by `conditional_get/4`
-  # instead of the self-contradictory `{:github, :http, %{status: 200}}`.
+  # of maximal bodies plus metadata stays under 16 MiB. A response that still exceeds it
+  # is reported as `:response_too_large` by `conditional_get/4` instead of the self-contradictory `{:github, :http, %{status: 200}}`.
   @max_issue_list_response_bytes 16_777_216
 
   @spec max_issue_response_bytes() :: pos_integer()
