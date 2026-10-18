@@ -229,12 +229,21 @@ defmodule Aiur.DecisionStore.Requests do
     do: {:reject, {:version_gap, requested_version, nil}}
 
   defp evaluate_against_existing(decision, requested_version, existing) do
+    case identical_expired_retry(decision, requested_version, existing) do
+      true -> {:accept, %{decision | version: existing.version + 1}}
+      false -> evaluate_existing_version(decision, requested_version, existing)
+    end
+  end
+
+  defp identical_expired_retry(decision, requested_version, existing) do
+    expired_unanswered_blocking?(existing) and requested_version == existing.version and
+      decision.content_hash == existing.content_hash
+  end
+
+  defp evaluate_existing_version(decision, requested_version, existing) do
     cond do
       requested_version == existing.version + 1 ->
         {:accept, %{decision | version: requested_version}}
-
-      expired_unanswered_blocking?(existing) ->
-        {:reject, {:expired_decision_requires_reraise, existing.decision_id}}
 
       requested_version == existing.version and decision.content_hash == existing.content_hash ->
         {:duplicate, existing}

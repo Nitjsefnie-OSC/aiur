@@ -72,8 +72,8 @@ version. A separate `aiur executor-answer` must use the new version.
 
 Aiur warns when reversible human-required Commands offer only low-risk options
 and when an Executor-unanswerable nonblocking Command expires. Expired blockers
-remain answerable until answered or mooted. Re-raise with a new `source_id` to
-supersede one, or use a higher version to reopen the same Command.
+remain answerable until answered or mooted. An identical agent retry reopens
+the same Command at its next version; changed content can use the next version.
 
 A blocking Command never waits in silence. When it is created, the Executor gets
 one `ticket.<N>.agent.attention.operator-decision` wake with the decision id,

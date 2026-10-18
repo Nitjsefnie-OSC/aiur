@@ -158,7 +158,7 @@ defmodule Aiur.DecisionStore.RequestsTest do
       assert {:ok, [^first]} = DecisionStore.history(first.decision_id, pid)
     end
 
-    test "an expired blocking request returns an explicit re-raise signal", %{dir: dir} do
+    test "an identical retry reopens an expired blocking request at the next version", %{dir: dir} do
       pid = start_store!(dir)
       payload = %{"question" => "Deploy now?", "blocking" => true, "source_id" => "expired-retry"}
 
@@ -167,15 +167,13 @@ defmodule Aiur.DecisionStore.RequestsTest do
       assert {:ok, %{decision: %{decision_status: :expired}}} =
                DecisionStore.expire(decision.decision_id, "agent_not_running", [now: DateTime.add(decision.created_at, 600, :second)], pid)
 
-      assert {:error, {:conflict, {:expired_decision_requires_reraise, id}}} = request(pid, payload)
-      assert id == decision.decision_id
-
-      assert {:ok, %{status: :accepted, decision: rearmed}} =
-               request(pid, Map.put(payload, "version", 2))
+      assert {:ok, %{status: :accepted, decision: rearmed}} = request(pid, payload)
 
       assert rearmed.decision_id == decision.decision_id
       assert rearmed.version == 2
       assert rearmed.decision_status == :open
+      assert {:ok, ids} = DecisionStore.blocked_ticket_ids(pid)
+      assert MapSet.member?(ids, "979")
     end
 
     test "changed content re-arms a dismissed Command that is not a legacy attention", %{dir: dir} do

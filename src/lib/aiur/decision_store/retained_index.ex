@@ -248,10 +248,10 @@ defmodule Aiur.DecisionStore.RetainedIndex do
   defp increment_counts(counts, decision), do: adjust_counts(counts, decision, 1)
   defp decrement_counts(counts, decision), do: adjust_counts(counts, decision, -1)
 
-  defp adjust_counts(counts, %Decision{decision_status: status, blocking: blocking}, delta)
+  defp adjust_counts(counts, %Decision{decision_status: status, blocking: blocking, answer: answer}, delta)
        when status in [:open, :deferred, :expired] do
-    recoverable_expiry? = status == :expired and blocking
-    blocking_delta = if blocking and status in [:open, :deferred, :expired], do: delta, else: 0
+    recoverable_expiry? = recoverable_expiry?(status, blocking, answer)
+    blocking_delta = dispatch_blocking_delta(status, blocking, delta)
     deferred_delta = if status == :deferred, do: delta, else: 0
     deferred_blocking_delta = if status == :deferred and blocking, do: delta, else: 0
 
@@ -265,6 +265,13 @@ defmodule Aiur.DecisionStore.RetainedIndex do
   end
 
   defp adjust_counts(counts, %Decision{}, _delta), do: counts
+
+  defp recoverable_expiry?(:expired, true, nil), do: true
+  defp recoverable_expiry?(_status, _blocking, _answer), do: false
+
+  defp dispatch_blocking_delta(status, true, delta) when status in [:open, :deferred], do: delta
+  defp dispatch_blocking_delta(_status, _blocking, _delta), do: 0
+
   defp first_accepted_key(_decision, [%Decision{} = first | _history]), do: audit_key(first)
   defp first_accepted_key(decision, _history), do: audit_key(decision)
   defp entries(index, :audit), do: index

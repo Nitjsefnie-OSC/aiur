@@ -387,6 +387,40 @@ defmodule Aiur.DecisionStore.WithdrawalsTest do
                DecisionStore.retained_counts(pid)
     end
 
+    test "an expired blocker for a closed ticket can be mooted", %{dir: dir} do
+      pid = start_store!(dir)
+
+      assert {:ok, %{decision: decision}} =
+               request(pid, %{"question" => "Should closed ticket be deployed?", "blocking" => true})
+
+      assert {:ok, %{decision: expired}} =
+               DecisionStore.expire(
+                 decision.decision_id,
+                 "agent_not_running",
+                 [now: DateTime.add(decision.created_at, 600, :second)],
+                 pid
+               )
+
+      assert expired.decision_status == :expired
+
+      assert {:ok, %{status: :accepted, decision: mooted}} =
+               DecisionStore.moot(
+                 decision.decision_id,
+                 %{"reason_class" => "ticket_closed", "reason" => "The ticket is closed."},
+                 [actor: %{kind: :operator, id: "dashboard"}],
+                 pid
+               )
+
+      assert mooted.decision_status == :moot
+      assert mooted.answer == nil
+
+      assert {:ok, %{decisions: [], total: 0}} =
+               DecisionStore.retained_query(
+                 %{limit: 25, cursor: nil, lifecycle: :open, search: nil, ticket: nil},
+                 pid
+               )
+    end
+
     test "moot requires a reason class and is write-gated", %{dir: dir} do
       pid = start_store!(dir)
       opts = [actor: %{kind: :operator, id: "dashboard"}]
