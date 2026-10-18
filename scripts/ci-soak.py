@@ -22,6 +22,7 @@ SPEC_REPEATS, SPEC_REDUCED_REPEATS, SPEC_FULL_LIMIT, SPEC_MAX_FILES = 5, 2, 3, 1
 RUN_TIMEOUT_SECONDS = float(os.environ.get('AIUR_SOAK_TEST_TIMEOUT', '300'))
 BROWSER_RUN_TIMEOUT_SECONDS = float(os.environ.get('AIUR_SOAK_BROWSER_TIMEOUT', str(20 * 60)))
 MAX_BROWSER_TESTS_PER_SPEC = 200
+BROWSER_LIST_TIMEOUT_SECONDS = float(os.environ.get('AIUR_SOAK_LIST_TIMEOUT', '60'))
 BUDGET_SECONDS = int(os.environ.get('AIUR_SOAK_BUDGET_SECONDS', str(12 * 60)))
 BROWSER_ROOT = Path(os.environ.get('AIUR_SOAK_BROWSER_ROOT', Path(__file__).resolve().parent.parent / 'src/browser'))
 
@@ -188,7 +189,9 @@ def soak_browser():
             # motion repetitions can exceed 300s. Keep total browser runtime within
             # 20 minutes, leaving setup/cleanup time inside the 25-minute job.
             timeout = max(1, BROWSER_RUN_TIMEOUT_SECONDS - elapsed)
-            status = run_browser(command, spec, sampled, min(timeout, RUN_TIMEOUT_SECONDS) if sampled else timeout)
+            run_timeout = (min(timeout, RUN_TIMEOUT_SECONDS)
+                           if sampled or len(listed) <= MAX_BROWSER_TESTS_PER_SPEC else timeout)
+            status = run_browser(command, spec, sampled, len(listed), run_timeout)
             print('::endgroup::', flush=True)
             if status != 0:
                 notice(f'Playwright soak failed for {spec}. Reproduce: cd src/browser && {shlex.join(command)}', 'error')
@@ -204,11 +207,11 @@ def browser_test_list(invocation):
         command = ['env', *invocation[1:runner - 1], *command]
     try:
         result = subprocess.run(command, cwd=BROWSER_ROOT, capture_output=True, text=True,
-                                timeout=RUN_TIMEOUT_SECONDS)
+                                timeout=BROWSER_LIST_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        notice(f'Playwright soak skipped: over budget while listing tests; command: {shlex.join(command)}',
-               'warning')
-        return []
+        notice(f'Playwright test listing timed out for {args[0]}; command: {shlex.join(command)}',
+               'error')
+        return None
     if result.returncode:
         notice(f'Playwright soak could not list {args[0]}: {shlex.join(command)}; {result.stderr.strip()}', 'error')
         return None
@@ -251,12 +254,15 @@ def sample_grep(command, title_parts):
     return command[:runner + 1] + args
 
 
-def run_browser(command, spec, sampled, timeout):
+def run_browser(command, spec, sampled, test_count, timeout):
     try:
         return subprocess.run(command, cwd=BROWSER_ROOT, timeout=timeout).returncode
     except subprocess.TimeoutExpired:
-        classification = 'soak skipped: suspected hang' if sampled else 'soak skipped: over budget'
-        notice(f'Playwright {classification}: {spec}; command: {shlex.join(command)} '
+        if sampled or test_count <= MAX_BROWSER_TESTS_PER_SPEC:
+            notice(f'Playwright suspected hang: {spec}; command: {shlex.join(command)} '
+                   f'(timed out after {timeout:g}s)', 'error')
+            return 124
+        notice(f'Playwright soak skipped: over budget: {spec}; command: {shlex.join(command)} '
                f'(timed out after {timeout:g}s)', 'warning')
         return 0
 

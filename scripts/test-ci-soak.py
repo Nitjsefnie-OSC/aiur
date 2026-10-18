@@ -28,6 +28,9 @@ FAKE_NPX = '''#!/usr/bin/env python3
 import json, os, sys
 with open(os.environ['LIST_CALLS'], 'a') as out:
     out.write(json.dumps([os.getcwd(), *sys.argv[1:]]) + '\\n')
+if os.environ.get('LIST_TIMEOUT_ON'):
+    import time
+    time.sleep(1)
 count = int(os.environ.get('PLAYWRIGHT_LIST_COUNT', '1'))
 title = os.environ.get('PLAYWRIGHT_LIST_TITLE', 'sample title')
 print(json.dumps({'suites': [{'specs': [{'title': f'{title} {i}' if count > 1 else title} for i in range(count)]}]}))
@@ -208,7 +211,7 @@ class SoakTest(unittest.TestCase):
             self.assertEqual(module.soak_browser(), 0)
         runner.assert_called_once_with(
             ['node', 'scripts/run-browser-tests.mjs', 'tests/a.spec.mjs', '--repeat-each=5'],
-            'tests/a.spec.mjs', False, 1200)
+            'tests/a.spec.mjs', False, 1, 300)
         notices.assert_called_once_with('Playwright soak stopped at its 720s budget before tests/p.spec.mjs')
 
     def test_later_invocation_cannot_exceed_the_browser_job_runtime_bound(self):
@@ -220,7 +223,7 @@ class SoakTest(unittest.TestCase):
                 patch.object(module.time, 'monotonic', side_effect=[0, 0, 700]), \
                 patch.object(module, 'run_browser', return_value=0) as runner:
             self.assertEqual(module.soak_browser(), 0)
-        self.assertEqual([call.args[3] for call in runner.call_args_list], [1200, 500])
+        self.assertEqual([call.args[4] for call in runner.call_args_list], [300, 300])
 
     def test_browser_timeout_fails_instead_of_claiming_a_pass(self):
         loader = importlib.util.spec_from_file_location('ci_soak', SCRIPT)
@@ -266,22 +269,30 @@ class SoakTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn('::error::soak run timed out after 0.05s: mix test --seed 11', result.stdout)
 
-    def test_browser_timeout_warns_and_does_not_fail_gate(self):
+    def test_browser_timeout_of_small_spec_fails_as_suspected_hang(self):
         result, calls = self.soak('browser', SOAK_SPECS='["tests/a.spec.mjs"]',
-                                  TIMEOUT_ON='tests/a.spec.mjs', AIUR_SOAK_BROWSER_TIMEOUT='0.05')
-        self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('::warning::Playwright soak skipped: over budget: tests/a.spec.mjs; command:', result.stdout)
+                                  TIMEOUT_ON='tests/a.spec.mjs', AIUR_SOAK_TEST_TIMEOUT='0.05')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('::error::Playwright suspected hang: tests/a.spec.mjs; command:', result.stdout)
         self.assertIn('node scripts/run-browser-tests.mjs tests/a.spec.mjs --repeat-each=5', result.stdout)
 
-    def test_sample_timeout_warns_as_suspected_hang_and_does_not_fail_gate(self):
+    def test_sample_timeout_fails_as_suspected_hang(self):
         result, calls = self.soak(
             'browser', SOAK_SPECS='["tests/build-home-motion.browser.spec.mjs"]',
             PLAYWRIGHT_LIST_COUNT='201', TIMEOUT_ON='tests/build-home-motion.browser.spec.mjs',
             AIUR_SOAK_TEST_TIMEOUT='0.05')
-        self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('::warning::Playwright soak skipped: suspected hang:', result.stdout)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('::error::Playwright suspected hang:', result.stdout)
         self.assertIn('node scripts/run-browser-tests.mjs tests/build-home-motion.browser.spec.mjs --grep',
                       result.stdout)
+
+    def test_browser_listing_timeout_fails_instead_of_reporting_no_tests(self):
+        result, calls = self.soak(
+            'browser', SOAK_SPECS='["tests/a.spec.mjs"]',
+            LIST_TIMEOUT_ON='1', AIUR_SOAK_LIST_TIMEOUT='0.05')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('::error::Playwright test listing timed out for tests/a.spec.mjs; command:', result.stdout)
+        self.assertNotIn('registration lists no tests', result.stdout)
 
 if __name__ == '__main__':
     unittest.main()
