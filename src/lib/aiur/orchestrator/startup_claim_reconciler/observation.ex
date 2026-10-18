@@ -32,7 +32,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Observation do
   def dispatch_candidates(state, issues) do
     Enum.reject(
       issues,
-      &(is_nil(Issue.executor_owner(&1)) and DispatchPolicy.state_slug(&1.state) == "in-progress" and
+      &(DispatchPolicy.state_slug(&1.state) == "in-progress" and
           Map.has_key?(state.orphaned_claim_since, &1.identifier))
     )
   end

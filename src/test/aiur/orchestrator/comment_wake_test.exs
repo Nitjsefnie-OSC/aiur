@@ -367,6 +367,23 @@ defmodule Aiur.Orchestrator.CommentWakeTest do
       assert state.comment_rework_retries == %{}
     end
 
+    test "does not write rework for a ticket held by an Executor" do
+      state = base_state()
+
+      event = %{
+        author_trusted?: true,
+        comment: %{"body" => "please fix"},
+        issue_state_fetcher: fn _ids ->
+          {:ok, [%{rework_labelled_issue("2075") | executor_owner: "codex"}]}
+        end,
+        open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 42, "head" => %{"sha" => "abc123"}}} end,
+        unresolved_threads_fetcher: fn _pr -> {:ok, [%{"id" => "thread-1"}]} end
+      }
+
+      assert CommentWake.maybe_transition_idle_issue_to_rework(state, "2075", "issue comment", event, 1) == state
+      refute_received {:memory_tracker_update_issue_state, _, _, _}
+    end
+
     test "writes rework when an open PR exists with unresolved review threads" do
       # Control: with an open PR that still has unresolved review threads, the
       # trusted-comment writer reaches the tracker update. The unset tracker

@@ -570,8 +570,8 @@ defmodule Aiur.Orchestrator.CommentWake do
     case result do
       {:ok, %Issue{} = issue} ->
         cond do
-          Issue.parked?(issue) ->
-            {:skip, :parked}
+          Issue.held?(issue) ->
+            {:skip, if(Issue.parked?(issue), do: :parked, else: :executor_owned)}
 
           DispatchPolicy.normalize_issue_state(issue.state) == "" ->
             {:skip, :unlabeled_issue}

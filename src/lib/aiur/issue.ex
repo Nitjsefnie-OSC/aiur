@@ -124,6 +124,10 @@ defmodule Aiur.Issue do
   @spec parked?(t(), map()) :: boolean()
   def parked?(issue, running_entry), do: parked?(issue) or Map.get(running_entry, :operator_parked) == true
 
+  @doc "Returns whether an issue is held from automatic fleet work."
+  @spec held?(t()) :: boolean()
+  def held?(issue), do: parked?(issue) or not is_nil(executor_owner(issue))
+
   @spec executor_owner(t()) :: String.t() | nil
   def executor_owner(%__MODULE__{executor_owner: owner}) when is_binary(owner) and owner != "", do: owner
   def executor_owner(_issue), do: nil

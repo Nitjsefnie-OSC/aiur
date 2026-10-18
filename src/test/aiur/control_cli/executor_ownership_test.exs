@@ -43,4 +43,22 @@ defmodule Aiur.ControlCLI.ExecutorOwnershipTest do
     assert released =~ "Executor hold released for #5077"
     assert_received {:memory_tracker_remove_label, "5077", "agent:executor:cli-owner"}
   end
+
+  test "take refuses a ticket already held by another Executor" do
+    issue = %Issue{
+      id: "5077",
+      identifier: "5077",
+      title: "Executor work",
+      state: "todo",
+      labels: ["agent:executor:alice"]
+    }
+
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
+
+    output = capture_io(fn -> AgentControlCLI.take(["5077"], "bob") end)
+
+    assert output =~ "owned by another Executor"
+    refute_received {:memory_tracker_add_label, "5077", "agent:executor:bob"}
+    refute_received {:memory_tracker_remove_label, "5077", "agent:executor:alice"}
+  end
 end

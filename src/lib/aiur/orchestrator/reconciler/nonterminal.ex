@@ -73,7 +73,7 @@ defmodule Aiur.Orchestrator.Reconciler.Nonterminal do
         terminal_states,
         observe_membership_fun
       ) do
-    if Issue.parked?(issue) or not is_nil(Issue.executor_owner(issue)) do
+    if Issue.held?(issue) do
       park_running_issue(state, issue)
     else
       reconcile_unparked_issue_state(
@@ -242,7 +242,7 @@ defmodule Aiur.Orchestrator.Reconciler.Nonterminal do
 
   defp park_running_issue(state, issue) do
     case Map.get(state.running, issue.id) do
-      %{control: %{status: status}} when status in [:working, :starting, :resuming] ->
+      %{control: %{status: status}} when status in [:working, :starting, :resuming, :paused] ->
         {state, [{:terminate, issue.id, false}]}
 
       _ ->

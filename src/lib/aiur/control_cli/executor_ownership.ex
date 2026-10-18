@@ -39,43 +39,28 @@ defmodule Aiur.ControlCLI.ExecutorOwnership do
   end
 
   defp ensure_marker_label(label, :add, identifier, current) do
-    with :ok <- Tracker.ensure_labels([label]) do
-      replace_owner_marker(identifier, current, label, :add)
+    case Enum.find(current, &(&1 != label and String.contains?(&1, ":executor:"))) do
+      nil ->
+        with :ok <- Tracker.ensure_labels([label]) do
+          replace_owner_marker(identifier, current, label, :add)
+        end
+
+      _other_owner ->
+        {:error, :not_owner}
     end
   end
 
   defp ensure_marker_label(label, action, identifier, current),
     do: replace_owner_marker(identifier, current, label, action)
 
-  defp replace_owner_marker(identifier, current, desired, :add) do
-    case remove_other_owners(identifier, current, desired) do
-      :ok -> TicketTransition.write_marker(identifier, :add, desired, writer: :executor_ownership)
-      error -> error
-    end
-  end
+  defp replace_owner_marker(identifier, _current, desired, :add),
+    do: TicketTransition.write_marker(identifier, :add, desired, writer: :executor_ownership)
 
   defp replace_owner_marker(identifier, current, desired, :remove) do
     if desired in current do
       TicketTransition.write_marker(identifier, :remove, desired, writer: :executor_ownership)
     else
       {:error, :not_owner}
-    end
-  end
-
-  defp remove_other_owners(identifier, current, desired) do
-    Enum.reduce_while(current, :ok, fn label, :ok ->
-      if label == desired do
-        {:cont, :ok}
-      else
-        remove_other_owner(identifier, label)
-      end
-    end)
-  end
-
-  defp remove_other_owner(identifier, label) do
-    case TicketTransition.write_marker(identifier, :remove, label, writer: :executor_ownership) do
-      :ok -> {:cont, :ok}
-      error -> {:halt, error}
     end
   end
 
