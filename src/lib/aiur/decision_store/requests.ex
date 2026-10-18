@@ -190,10 +190,23 @@ defmodule Aiur.DecisionStore.Requests do
         accept(decision, state)
 
       {:supersede_expired, decision, expired} ->
-        case Dedup.moot_expired_reraise(state, expired, decision) do
-          {:ok, next_state} -> accept(decision, next_state)
-          {:error, reason} -> {:reply, {:error, reason}, Persistence.journal_failure_state(state, reason)}
+        accept_expired_reraise(decision, expired, state)
+    end
+  end
+
+  # Persist and publish the replacement before retiring the old expired row.
+  # If the replacement append fails, the existing answerable record stays
+  # available for an Executor instead of being lost to a premature moot.
+  defp accept_expired_reraise(decision, expired, state) do
+    case accept(decision, state) do
+      {:reply, {:ok, result}, accepted_state} ->
+        case Dedup.moot_expired_reraise(accepted_state, expired, decision) do
+          {:ok, next_state} -> {:reply, {:ok, result}, next_state}
+          {:error, reason} -> {:reply, {:ok, result}, Persistence.journal_failure_state(accepted_state, reason)}
         end
+
+      other ->
+        other
     end
   end
 

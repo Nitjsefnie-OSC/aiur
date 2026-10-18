@@ -2,7 +2,7 @@ defmodule Aiur.Orchestrator.Dispatcher.CommandGateTest do
   use Aiur.DispatcherTestSupport
 
   describe "blocking Command dispatch gate (#1965)" do
-    test "an expired unanswered blocking Command stays gated until its answer" do
+    test "an expired unanswered blocking Command no longer gates dispatch" do
       write_workflow_file!(Workflow.workflow_file_path(), max_concurrent_agents: 4)
       candidate = issue("decision-cycle-#{System.unique_integer([:positive])}")
 
@@ -37,13 +37,12 @@ defmodule Aiur.Orchestrator.Dispatcher.CommandGateTest do
         %State{max_concurrent_agents: 4, effective_concurrent_agents: 4}
         |> Dispatcher.refresh_blocked_ticket_ids()
 
-      assert Dispatcher.choose_issues(state, [candidate]).dispatch_declines[candidate.id] ==
-               :blocked_on_decision
+      assert Dispatcher.choose_issues(state, [candidate]).dispatch_declines[candidate.id] == :blocked_on_decision
 
       assert {:ok, %{status: :accepted, decision: expired}} = Aiur.DecisionStore.expire(decision.decision_id, "agent_not_running")
       assert expired.decision_status == :expired
       expired_state = Dispatcher.refresh_blocked_ticket_ids(state)
-      assert Dispatcher.choose_issues(expired_state, [candidate]).dispatch_declines[candidate.id] == :blocked_on_decision
+      assert Dispatcher.choose_issues(expired_state, [candidate]).dispatch_declines[candidate.id] == :tracker_revalidation_failed
 
       assert {:ok, %{status: :accepted}} =
                Aiur.DecisionStore.answer(

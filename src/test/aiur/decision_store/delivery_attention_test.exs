@@ -4,6 +4,32 @@ defmodule Aiur.DecisionStore.DeliveryAttentionTest do
   use Aiur.DecisionStoreCase, async: false
 
   describe "answer outbox" do
+    test "boot moots expired unanswered blockers for confirmed closed tickets", %{dir: dir} do
+      resolver = fn ["closed-42"] -> {:ok, MapSet.new(["closed-42"])} end
+      pid = start_store!(dir, terminal_ticket_resolver: resolver, dispatch_delay_ms: 60_000)
+
+      assert {:ok, %{decision: decision}} =
+               DecisionStore.request(
+                 %{"question" => "Should this closed ticket proceed?", "blocking" => true},
+                 [ticket: %{identifier: "closed-42", title: "Closed ticket", url: nil}, source: %{agent_id: "closed-boot-test", session_id: "session", event_id: nil}],
+                 pid
+               )
+
+      assert {:ok, %{decision: expired}} = DecisionStore.expire(decision.decision_id, "agent_not_running", [], pid)
+      assert expired.decision_status == :expired
+      GenServer.stop(pid)
+
+      pid = start_store!(dir, terminal_ticket_resolver: resolver, dispatch_delay_ms: 60_000)
+      on_exit(fn -> Aiur.TestSupport.safe_stop(pid) end)
+
+      mooted = wait_for_decision(pid, decision.decision_id, &(&1.decision_status == :moot))
+      assert mooted.decision_status == :moot
+      assert {:ok, audit} = DecisionStore.audit_history(decision.decision_id, pid)
+      assert Enum.any?(audit, &match?(%{type: :decision_mooted, data: %{reason_class: "ticket_closed"}}, &1))
+
+      assert {:ok, %{counts: %{blocking: 0}}} = DecisionStore.retained_counts(pid)
+    end
+
     test "durable transport failure opens one stable attention and restoration resolves it", %{dir: dir} do
       parent = self()
       original_log_file = Application.get_env(:aiur, :log_file)
