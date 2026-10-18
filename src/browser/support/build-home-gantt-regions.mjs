@@ -19,6 +19,7 @@ export async function loadGanttRegionHistory(pair, dataset) {
 }
 
 export async function markGanttRegion(pair, name, target, width) {
+  await restoreCards(pair)
   await scrollGanttComposition(pair, Math.max(0, target.y - 100))
   const records = []
   for (const page of [pair.design, pair.product]) records.push(await page.evaluate(({ name, target, width }) => {
@@ -40,6 +41,7 @@ export async function markGanttRegion(pair, name, target, width) {
       const boxes = cluster.map(card => card.getBoundingClientRect()), x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y))
       const clip = document.createElement('div'); clip.dataset.ganttClip = ''
       Object.assign(clip.style, { position: 'fixed', left: x + 'px', top: y + 'px', width: Math.max(...boxes.map(b => b.right)) - x + 'px', height: Math.max(...boxes.map(b => b.bottom)) - y + 'px', pointerEvents: 'none' })
+      clip._ganttCards = cluster
       document.body.appendChild(clip); el = clip
     }
     el.dataset.ganttRegion = name
@@ -52,11 +54,13 @@ export async function markGanttRegion(pair, name, target, width) {
     expect(records[1].time).toBe(width <= 150 ? 'none' : 'block')
     expect(parseFloat(records[1].badgeFont)).toBeCloseTo(13 * (width <= 150 ? 0.62 : 0.7), 2)
   }
+  if (['full', 'two', 'three'].includes(name)) await isolateCards(pair, name)
   await primeBoardPaint(pair)
   return `[data-gantt-region="${name}"]`
 }
 
 export async function markFixedGanttRegion(pair, selector, name) {
+  await restoreCards(pair)
   const records = []
   for (const page of [pair.design, pair.product]) records.push(await page.locator(selector).first().evaluate((el, name) => {
     document.querySelectorAll('[data-gantt-region]').forEach(node => node.removeAttribute('data-gantt-region'))
@@ -71,6 +75,41 @@ export async function markFixedGanttRegion(pair, selector, name) {
     }) }
   }, name))
   expect(records[1]).toEqual(records[0])
+  if (name === 'planned') await isolateCards(pair, name)
   await primeBoardPaint(pair)
   return `[data-gantt-region="${name}"]`
+}
+
+async function restoreCards(pair) {
+  for (const page of [pair.design, pair.product]) await page.evaluate(() => window.restoreGanttCards?.())
+}
+
+async function isolateCards(pair, name) {
+  for (const page of [pair.design, pair.product]) await page.evaluate(name => {
+    const target = document.querySelector(`[data-gantt-region="${name}"]`)
+    const cards = target._ganttCards ?? [target], box = target.getBoundingClientRect()
+    const records = cards.map(card => {
+      const rect = card.getBoundingClientRect(), anchor = document.createComment('Gantt card origin')
+      card.before(anchor)
+      return { card, anchor, style: card.getAttribute('style'), rect, fontSize: getComputedStyle(card).fontSize }
+    })
+    // Use the card suite's integer-origin canvas for static detail captures.
+    // Preserve every card dimension and relative lane position; the B1 viewport
+    // matrix separately checks the real sticky composition without this canvas.
+    const holder = document.createElement('div'); holder.className = 'bd-root'
+    Object.assign(holder.style, { position: 'fixed', left: '0', top: '100px', width: Math.ceil(box.width + 16) + 'px', height: Math.ceil(box.height + 16) + 'px', background: 'var(--bg)', zIndex: '99999', display: 'block', margin: '0', padding: '0', minHeight: '0', overflow: 'visible' })
+    document.body.append(holder)
+    target.removeAttribute('data-gantt-region'); holder.dataset.ganttRegion = name
+    for (const { card, rect, fontSize } of records) {
+      holder.append(card)
+      Object.assign(card.style, { position: 'absolute', left: 8 + rect.x - box.x + 'px', top: 8 + rect.y - box.y + 'px', width: rect.width + 'px', height: rect.height + 'px', fontSize, transition: 'none' })
+    }
+    window.restoreGanttCards = () => {
+      for (const { card, anchor, style } of records) {
+        anchor.replaceWith(card)
+        if (style === null) card.removeAttribute('style'); else card.setAttribute('style', style)
+      }
+      holder.remove(); delete window.restoreGanttCards
+    }
+  }, name)
 }

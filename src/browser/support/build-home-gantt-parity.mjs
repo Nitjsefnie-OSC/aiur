@@ -61,6 +61,15 @@ export async function freezeGanttComposition(pair) {
 }
 
 export async function scrollGanttComposition(pair, top) {
+  // Restore isolated static cards before the render window can recycle them.
+  for (const page of [pair.design, pair.product]) await page.evaluate(() => window.restoreGanttCards?.())
+  // A paused JS clock also pauses Phoenix's heartbeat timer. Keep the actual
+  // transport alive during long capture batches without changing app state/time.
+  await pair.product.evaluate(() => {
+    const socket = window.liveSocket.getSocket()
+    if (!socket.isConnected()) throw new Error('Gantt capture lost its live transport')
+    socket.sendHeartbeat()
+  })
   await pair.design.evaluate(top => __ganttComposition.scroll(top), top)
   await pair.product.evaluate(async top => {
     const { ctx, fx } = await import('/build-home/state.js'); ctx.vp.scrollTop = top; fx.update()
