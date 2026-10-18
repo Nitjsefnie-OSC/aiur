@@ -9,12 +9,14 @@ defmodule Aiur.DecisionStore.RetainedIndex do
   @type t :: %{
           all: :gb_sets.set(),
           lifecycle: %{Decision.decision_status() => :gb_sets.set()},
+          recoverable_expired: :gb_sets.set(),
           tickets: %{String.t() => :gb_sets.set()},
           searches: %{String.t() => :gb_sets.set()},
           audit_keys: %{String.t() => {integer(), String.t()}},
           current: %{
             all: :gb_sets.set(),
             lifecycle: %{Decision.decision_status() => :gb_sets.set()},
+            recoverable_expired: :gb_sets.set(),
             tickets: %{String.t() => :gb_sets.set()},
             searches: %{String.t() => :gb_sets.set()},
             keys: %{String.t() => {integer(), String.t()}}
@@ -64,6 +66,9 @@ defmodule Aiur.DecisionStore.RetainedIndex do
   @spec lifecycle(t(), Decision.decision_status(), :audit | :current) :: :gb_sets.set()
   def lifecycle(index, status, order \\ :audit), do: entries(index, order).lifecycle |> Map.fetch!(status)
 
+  @spec recoverable_expired(t(), :audit | :current) :: :gb_sets.set()
+  def recoverable_expired(index, order \\ :audit), do: entries(index, order).recoverable_expired
+
   @spec ticket(t(), String.t(), :audit | :current) :: :gb_sets.set()
   def ticket(index, value, order \\ :audit), do: bucket_entries(entries(index, order).tickets, value)
 
@@ -99,6 +104,7 @@ defmodule Aiur.DecisionStore.RetainedIndex do
     %{
       all: :gb_sets.empty(),
       lifecycle: lifecycle,
+      recoverable_expired: :gb_sets.empty(),
       tickets: %{},
       searches: %{},
       audit_keys: %{},
@@ -115,6 +121,7 @@ defmodule Aiur.DecisionStore.RetainedIndex do
       index
       | all: :gb_sets.add(key, index.all),
         lifecycle: Map.update!(index.lifecycle, decision.decision_status, &:gb_sets.add(key, &1)),
+        recoverable_expired: update_recoverable_expired(index.recoverable_expired, decision, key, :add),
         tickets: add_buckets(index.tickets, ticket_buckets, key),
         searches: add_buckets(index.searches, search_buckets, key),
         audit_keys: Map.put(index.audit_keys, decision.decision_id, key),
@@ -132,6 +139,7 @@ defmodule Aiur.DecisionStore.RetainedIndex do
       index
       | all: :gb_sets.delete_any(key, index.all),
         lifecycle: Map.update!(index.lifecycle, decision.decision_status, &:gb_sets.delete_any(key, &1)),
+        recoverable_expired: update_recoverable_expired(index.recoverable_expired, decision, key, :delete),
         tickets: remove_buckets(index.tickets, ticket_buckets, key),
         searches: remove_buckets(index.searches, search_buckets, key),
         audit_keys: Map.delete(index.audit_keys, decision.decision_id),
@@ -142,10 +150,19 @@ defmodule Aiur.DecisionStore.RetainedIndex do
 
   defp remove(index, _prior), do: index
 
+  defp update_recoverable_expired(set, %Decision{decision_status: :expired, blocking: true, answer: nil}, key, :add),
+    do: :gb_sets.add(key, set)
+
+  defp update_recoverable_expired(set, %Decision{decision_status: :expired, blocking: true, answer: nil}, key, :delete),
+    do: :gb_sets.delete_any(key, set)
+
+  defp update_recoverable_expired(set, _decision, _key, _action), do: set
+
   defp empty_entries do
     %{
       all: :gb_sets.empty(),
       lifecycle: Map.new(@lifecycle_statuses, &{&1, :gb_sets.empty()}),
+      recoverable_expired: :gb_sets.empty(),
       tickets: %{},
       searches: %{},
       keys: %{}
@@ -160,6 +177,7 @@ defmodule Aiur.DecisionStore.RetainedIndex do
       entries
       | all: :gb_sets.add(key, entries.all),
         lifecycle: Map.update!(entries.lifecycle, decision.decision_status, &:gb_sets.add(key, &1)),
+        recoverable_expired: update_recoverable_expired(entries.recoverable_expired, decision, key, :add),
         tickets: add_buckets(entries.tickets, ticket_buckets, key),
         searches: add_buckets(entries.searches, search_buckets, key),
         keys: Map.put(entries.keys, decision.decision_id, key)
@@ -175,6 +193,7 @@ defmodule Aiur.DecisionStore.RetainedIndex do
       entries
       | all: :gb_sets.delete_any(key, entries.all),
         lifecycle: Map.update!(entries.lifecycle, decision.decision_status, &:gb_sets.delete_any(key, &1)),
+        recoverable_expired: update_recoverable_expired(entries.recoverable_expired, decision, key, :delete),
         tickets: remove_buckets(entries.tickets, ticket_buckets, key),
         searches: remove_buckets(entries.searches, search_buckets, key),
         keys: Map.delete(entries.keys, decision.decision_id)

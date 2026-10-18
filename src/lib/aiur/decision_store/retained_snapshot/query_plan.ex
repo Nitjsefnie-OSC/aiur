@@ -6,7 +6,7 @@ defmodule Aiur.DecisionStore.RetainedSnapshot.QueryPlan do
 
   @lifecycle_statuses [:deferred, :expired, :dismissed, :moot, :decided, :acknowledged, :resolved]
   @open_statuses [:open, :deferred]
-  @awaiting_statuses [:open, :expired]
+  @awaiting_statuses [:open]
   @historic_statuses [:expired, :dismissed, :moot, :decided, :acknowledged, :resolved]
   # Command history as the operator reads it: everything they have finished
   # with. A deferral is finished for them — the Executor owns the answer — so it
@@ -44,10 +44,13 @@ defmodule Aiur.DecisionStore.RetainedSnapshot.QueryPlan do
 
   defp candidate(index, %{lifecycle: :open} = query) do
     union(index, @open_statuses, query)
-    |> :gb_sets.union(RetainedIndex.lifecycle(index, :expired, ordering(query)))
+    |> :gb_sets.union(RetainedIndex.recoverable_expired(index, ordering(query)))
   end
 
-  defp candidate(index, %{lifecycle: :awaiting} = query), do: union(index, @awaiting_statuses, query)
+  defp candidate(index, %{lifecycle: :awaiting} = query) do
+    union(index, @awaiting_statuses, query)
+    |> :gb_sets.union(RetainedIndex.recoverable_expired(index, ordering(query)))
+  end
 
   defp candidate(index, %{lifecycle: lifecycle} = query) when lifecycle in @lifecycle_statuses,
     do: RetainedIndex.lifecycle(index, lifecycle, ordering(query))
