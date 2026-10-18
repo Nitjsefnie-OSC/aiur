@@ -35,6 +35,11 @@ assert.deepEqual(selected('pull_request', false, false, { action: 'ready_for_rev
 const website = readFileSync(new URL('../.github/workflows/website.yml', import.meta.url), 'utf8');
 assert.ok(website.includes('types: [opened, synchronize, reopened, ready_for_review, closed]'), 'website starts on ready and cancels on close');
 assert.ok(website.includes("  guards:\n    if: ${{ github.event.pull_request.draft != true && github.event.action != 'closed' }}"), 'website skips drafts and closed PRs');
+const websiteBun = website.match(/bun-version: "([^"]+)"/)?.[1];
+const visualDocker = JSON.parse(readFileSync(new URL('../website/package.json', import.meta.url), 'utf8')).scripts['test:visual:docker'];
+assert.ok(websiteBun, 'website workflow pins Bun for its docs build');
+assert.equal(visualDocker.match(/npm install -g bun@([^ '\"]+)/)?.[1], websiteBun,
+  'Docker visual build uses the same Bun version as the host docs build');
 const aiurStyle = readFileSync(new URL('../.github/workflows/aiur-style.yml', import.meta.url), 'utf8');
 assert.ok(/^  merge_group:$/m.test(aiurStyle.split(/^jobs:/m)[0]), 'aiur-style checks dist on merge queue candidates (#4983)');
 const [queueDist, buildAndTest] = aiurStyle.split(/^  build-and-test:\n/m);
