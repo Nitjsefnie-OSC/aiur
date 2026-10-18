@@ -29,7 +29,8 @@ test('B1 hover requires trees=1; arrow click still locks without it', async ({ p
   await expect(page.locator('.bd-content')).not.toHaveClass(/hovering/)
   await expect(page.locator('.bd-card.hl')).toHaveCount(0)
   await expect(tray(page)).not.toHaveClass(/show/)
-  const point = await arrowPoint(page)
+  await expect.poll(() => arrowPoint(page, '9012')).not.toBeNull()
+  const point = await arrowPoint(page, '9012')
   expect(point).not.toBeNull()
   await page.mouse.click(point.x, point.y)
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe(point.id)
@@ -37,8 +38,8 @@ test('B1 hover requires trees=1; arrow click still locks without it', async ({ p
 
 test('B2 hover clears after 280ms on empty content and 200ms on leaving', async ({ page }) => {
   await open(page); await reveal(page, '9012')
-  await page.clock.install(); await page.clock.pauseAt(new Date())
   await card(page, '9012').hover()
+  await page.clock.install(); await page.clock.pauseAt(new Date())
   await expect(page.locator('.bd-content')).toHaveClass(/hovering/)
   // Dispatch on the real listener target; fixed clock makes the two boundaries exact.
   await page.locator('#bd-content').dispatchEvent('pointerover', { pointerType: 'mouse' })
@@ -114,6 +115,10 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
 
 for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim a released lock`, async ({ page }) => {
   await open(page); await lock(page, '9012')
+  await page.evaluate(() => {
+    const push = st.ctx.push; window.fitFailureRequests = 0
+    st.ctx.push = (event, params) => { if (event === 'load-earlier') fitFailureRequests++; return push(event, params) }
+  })
   await page.request.get('/build-control/earlier?' + (mode === 'cancel' ? 'delay=500' : 'fail=1'))
   await page.locator('[data-lt="fit"]').click()
   if (mode === 'cancel') {
@@ -122,7 +127,10 @@ for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim 
   } else await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'error')
   await page.waitForTimeout(700)
   if (mode === 'cancel') expect(await page.evaluate(() => st.ctx.lockId)).toBeNull()
-  else await expect(page.locator('#bd-sec-hist')).toContainText('earlier days could not load')
+  else {
+    await expect(page.locator('#bd-sec-hist')).toContainText('earlier days could not load')
+    expect(await page.evaluate(() => fitFailureRequests)).toBe(1)
+  }
 })
 
 test('B6 Fit limits discovery when an unloaded link never resolves', async ({ page }) => {
@@ -261,7 +269,20 @@ test.describe('B10 phone touch', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
   test('card tap opens the ticket without hover; arrow tap locks and opens tree', async ({ page }) => {
     await open(page, { modal: true }); await reveal(page, '9012')
-    await card(page, '9012').tap()
+    let cardTouch
+    await expect.poll(async () => {
+      cardTouch = await card(page, '9012').evaluate(el => {
+        const r = el.getBoundingClientRect()
+        for (const fy of [0.2, 0.5, 0.8]) for (const fx of [0.5, 0.25, 0.75]) {
+          const x = r.x + r.width * fx, y = r.y + r.height * fy, hit = document.elementFromPoint(x, y)
+          if (el.contains(hit) && !hit.closest('button, a')) return { x, y, ready: true }
+        }
+        return { ready: false, rect: { x: r.x, y: r.y, w: r.width, h: r.height },
+          hit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.outerHTML.slice(0, 160) }
+      })
+      return cardTouch.ready ? true : JSON.stringify(cardTouch)
+    }, { message: 'the visible card must receive the touch' }).toBe(true)
+    await page.touchscreen.tap(cardTouch.x, cardTouch.y)
     expect(await page.evaluate(() => window.openedTicket)).toBe('9012')
     await expect(page.locator('.bd-content')).not.toHaveClass(/hovering/)
     await page.keyboard.press('Escape')

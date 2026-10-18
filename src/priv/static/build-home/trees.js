@@ -88,12 +88,12 @@ export async function fitTree(id) {
     // any remaining links stay visible as gaps instead of draining all history.
     let pages = 0;
     while (pages++ < 3 && current() && ctx.lockId === id && H.more && chainGaps(ctx.D, chainOf(ctx.D, id)).unloaded) {
-      if (!await loadEarlier()) break;
+      if (!await loadEarlier()) return;
     }
-    if (!current() || ctx.lockId !== id) return;
+    if (!current() || ctx.lockId !== id || H.state === 'error') return;
     const from = fitFrom(ctx.D, id);
     if (from != null && S.histFrom > from) await ensureFrom(from, () => current() && ctx.lockId === id);
-    if (!current() || ctx.lockId !== id) return;
+    if (!current() || ctx.lockId !== id || H.state === 'error') return;
     const room = ctx.vp.clientHeight - LH - 70;
     // Density depends on the requested span's loaded days. Wait before measuring,
     // with a separate finite budget even if an empty page makes no density progress.
@@ -101,9 +101,9 @@ export async function fitTree(id) {
     for (const span of SPANS) {
       while (current() && ctx.lockId === id && H.more && histDays(ctx.D.hist).length < span && densityPages < 30) {
         densityPages++;
-        if (!await loadEarlier(Math.min(31, span - histDays(ctx.D.hist).length))) break;
+        if (!await loadEarlier(Math.min(31, span - histDays(ctx.D.hist).length))) return;
       }
-      if (!current() || ctx.lockId !== id) return;
+      if (!current() || ctx.lockId !== id || H.state === 'error') return;
       S.span = span; fx.relayout();
       // Full relayout releases the lock synchronously. Restore it before yielding
       // for another page so user cancellation still supersedes this Fit.

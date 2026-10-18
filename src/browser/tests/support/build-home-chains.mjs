@@ -5,7 +5,7 @@ export const card = (page, id) => page.locator(`.bd-card[data-id="${id}"]`).firs
 export const tree = page => page.locator('#bd-tree')
 export const tray = page => page.locator('.bd-lt')
 
-export async function open(page, { trees = true, dataset = 'chains', modal = false } = {}) {
+export async function open(page, { trees = true, dataset = 'chains', modal = false, minimize = true } = {}) {
   if (modal) await page.addInitScript(() => {
     // Register before the hook: a bubble-only tree handler would close both layers.
     document.addEventListener('keydown', e => {
@@ -19,12 +19,22 @@ export async function open(page, { trees = true, dataset = 'chains', modal = fal
   await page.goto('/build-fixture/' + dataset)
   await expect(page.locator('#build-root')).toHaveAttribute('data-bd-trees', 'ready')
   await page.evaluate(async () => { window.st = await import('/build-home/state.js') })
-  if (trees) {
-    // The fixture's HTTP forwarding drops queries; use the actual LiveView URL path.
-    await page.evaluate(() => window.liveSocket.main.pushLinkPatch(new Event('click'), '/build?trees=1', null))
-    await expect.poll(() => page.evaluate(() => st.S.trees)).toBe(true)
+  if (trees || minimize) {
+    // Nested fixture forwarding drops queries; navigate the real LiveView URL.
+    await page.evaluate(({ trees, minimize }) => {
+      const query = new URLSearchParams()
+      if (trees) query.set('trees', '1')
+      if (minimize) query.set('live', 'min')
+      window.liveSocket.main.pushLinkPatch(new Event('click'), '/build?' + query, null)
+    }, { trees, minimize })
+    await expect.poll(() => page.evaluate(() => st.S.trees)).toBe(trees)
   }
   await expect.poll(() => page.evaluate(() => !!st.ctx.D?.byId)).toBe(true)
+  if (minimize) await expect(page.locator('#bd-now')).toHaveClass(/min/)
+  await page.evaluate(() => document.fonts.ready)
+  await page.evaluate(() => window.scrollTo(0,
+    Math.max(0, document.querySelector('#bd-vp').getBoundingClientRect().top + scrollY - 20)))
+  await expect.poll(() => page.evaluate(() => st.ctx.snapping || st.ctx.content.classList.contains('scrolling'))).toBe(false)
   if (modal) await page.evaluate(() => {
     st.fx.openModal = row => {
       window.openedTicket = row.id
@@ -44,7 +54,10 @@ export async function reveal(page, id) {
     st.fx.update()
   }, String(id))
   await expect(card(page, id)).toBeVisible()
-  await page.waitForTimeout(450) // Scroll hover suppression must expire before a real pointer enters.
+  await expect.poll(() => page.evaluate(() =>
+    st.ctx.snapping || st.ctx.content.classList.contains('scrolling'))).toBe(false)
+  await page.waitForTimeout(650) // Column transitions finish after scroll suppression.
+  await expect(card(page, id)).toBeVisible()
 }
 export async function lock(page, id) {
   await reveal(page, id)

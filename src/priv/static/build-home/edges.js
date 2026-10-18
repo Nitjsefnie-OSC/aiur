@@ -44,8 +44,10 @@ export function drawEdgesSoon(ms) {
   edgeUntil = performance.now() + (ms || 0);
   if (was) return;
   const loop = () => {
-    drawEdges(true);
-    if (performance.now() < edgeUntil) ctx.life.frame('edges', loop);
+    const done = performance.now() >= edgeUntil;
+    if (done && (ctx.hoverId || ctx.treeId) && fx.reapply) fx.reapply();
+    else drawEdges(true);
+    if (!done) ctx.life.frame('edges', loop);
   };
   ctx.life.frame('edges', loop);
 }
