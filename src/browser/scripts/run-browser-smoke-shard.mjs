@@ -8,12 +8,16 @@ import { shardCommands } from './browser-suites.mjs';
 // The key count is the shard count: it must match the browser matrix in .github/workflows/ci.yml.
 // Balanced by recorded durations (browser-smoke-durations.mjs); check-browser-smoke-shards.mjs keeps each shard under 75% of budgetMs.
 export const shards = {
-  1: ['test:build-home-band-parity:1', 'test:home-css-ci', 'test:admission', 'check:elk', 'check:build-home-fixtures', 'test:build-home-protocol', 'test:build-home-now-state', 'test:harness', 'test:interaction', 'test:ticket-context', 'test:meter-row', 'test:models-panel', 'test:design-parity', 'test:build-home', 'test:build-home-cards:2', 'test:streamdeck', 'test:build-home-edges-unit'],
-  2: ['test:build-home-band-motion', 'test:build-home-layout', 'test:experiments', 'test:build-home-offline', 'test:build-home-tools', 'test:build-home-span', 'test:build-home-states-parity', 'test:build-home-list-unit', 'test:shell', 'test:build-home-edges'],
-  3: ['test:build-home-band-parity:2', 'test:command-history', 'test:quota-panel', 'test:parity', 'test:shell-parity', 'test:build-home-span-parity', 'test:build-home-cards:3', 'test:provider-meters', 'test:palette'],
-  4: ['test:build-home-band-parity:3', 'test:build-queue', 'test:performance', 'test:build-home-columns', 'test:shell-width'],
-  5: ['test:build-home-now-band', 'test:build-order', 'test:time-brush', 'test:responsive', 'test:streamdeck-flow', 'test:build-home-render', 'test:build-home-cards:1', 'test:build-home-cards:4', 'test:units'],
-  6: ['test:build-home-band-parity:4', 'test:build-home-assets', 'test:shell-chrome', 'test:layout', 'test:tokens', 'test:build-home-motion', 'test:build-home-edges-parity', 'test:smoke'],
+  1: ['test:build-home-band-parity:4', 'test:shell-parity', 'test:command-history', 'test:harness', 'check:elk', 'test:build-home-now-state'],
+  2: ['test:build-home-cards:2', 'test:build-home-states-parity', 'test:build-home', 'test:build-home-span', 'test:streamdeck-flow'],
+  3: ['test:build-home-tools', 'test:build-home-span-parity', 'test:shell-width', 'test:tokens', 'test:build-queue', 'test:meter-row'],
+  4: ['test:build-home-columns', 'test:layout', 'test:build-home-offline'],
+  5: ['test:build-home-motion', 'test:build-home-edges-parity', 'test:shell', 'test:parity', 'test:quota-panel', 'check:build-home-fixtures'],
+  6: ['test:build-home-band-parity:1', 'test:build-home-edges', 'test:build-order', 'test:palette', 'test:models-panel', 'test:home-css-ci'],
+  7: ['test:build-home-cards:4', 'test:build-home-cards:3', 'test:streamdeck', 'test:interaction', 'test:smoke', 'test:provider-meters'],
+  8: ['test:build-home-band-parity:2', 'test:build-home-cards:1', 'test:build-home-layout', 'test:responsive', 'test:time-brush', 'test:build-home-list-unit', 'test:build-home-edges-unit'],
+  9: ['test:build-home-band-motion', 'test:build-home-render', 'test:build-home-now-band', 'test:performance', 'test:experiments', 'test:admission', 'test:build-home-protocol'],
+  10: ['test:build-home-band-parity:3', 'test:design-parity', 'test:units', 'test:shell-chrome', 'test:ticket-context', 'test:build-home-assets'],
 };
 
 // Below the job's timeout-minutes, so a slow shard reports its slowest suites instead of being cancelled.
