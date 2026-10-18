@@ -128,7 +128,7 @@ defmodule Aiur.Orchestrator.StatusReport.AgentStatuses do
         work_state: :retrying,
         tracker_state: Map.get(issue || %{}, :state),
         tracker_paused: tracker_paused,
-        executor_owner: Issue.executor_owner(issue),
+        executor_owner: status_executor_owner(issue),
         tag: State.issue_tag(issue),
         title: Map.get(issue || %{}, :title),
         url: Map.get(issue || %{}, :url),
@@ -163,6 +163,9 @@ defmodule Aiur.Orchestrator.StatusReport.AgentStatuses do
       |> WaitingReason.attach(state)
     end)
   end
+
+  defp status_executor_owner(%Issue{} = issue), do: Issue.executor_owner(issue)
+  defp status_executor_owner(_issue), do: nil
 
   defp tracker_paused?(%Issue{} = issue), do: Issue.paused?(issue)
   defp tracker_paused?(issue) when is_map(issue), do: Map.get(issue, :paused) == true
