@@ -12,12 +12,12 @@ defmodule Aiur.GitHub.Tracker do
   def code_host, do: __MODULE__
   @behaviour Aiur.Tracker.CodeHost
 
-  alias Aiur.BuildOrder.History
   alias Aiur.GitHub.BoundedBlockedBy
   alias Aiur.GitHub.Client
   alias Aiur.GitHub.Config
   alias Aiur.GitHub.Issues
   alias Aiur.GitHub.Labels
+  alias Aiur.GitHub.LocalHold
   alias Aiur.GitHub.OpenIssueSnapshot
   alias Aiur.GitHub.TicketPullRequest
   alias Aiur.GitHub.Transport
@@ -88,6 +88,17 @@ defmodule Aiur.GitHub.Tracker do
     end
   end
 
+  @impl Aiur.Tracker.IssueTracker
+  def workspace_repo_segment, do: Config.repo()
+
+  @impl Aiur.Tracker.IssueTracker
+  def clone_url do
+    case Config.repo() do
+      repo when is_binary(repo) and repo != "" -> "https://github.com/#{repo}.git"
+      _ -> nil
+    end
+  end
+
   @spec project_identity() :: String.t() | nil
   def project_identity, do: Config.repo()
 
@@ -112,6 +123,7 @@ defmodule Aiur.GitHub.Tracker do
   @spec fetch_candidate_issues() :: {:ok, [term()]} | {:error, term()}
   def fetch_candidate_issues, do: client_module().fetch_candidate_issues()
 
+  @impl Aiur.Tracker.IssueTracker
   @spec fetch_candidate_issues_conditional(map()) ::
           {:ok, [term()], map()} | {:error, term()}
   def fetch_candidate_issues_conditional(cache) when is_map(cache) do
@@ -126,6 +138,10 @@ defmodule Aiur.GitHub.Tracker do
 
     TestTicketScope.filter_result(result)
   end
+
+  @impl Aiur.Tracker.IssueTracker
+  @spec with_transient_retry((-> term()), keyword()) :: term()
+  def with_transient_retry(fun, opts), do: LocalHold.run(fun, LocalHold.caller_opts(opts))
 
   @spec auth_preflight() :: :ok | {:error, term()}
   def auth_preflight do
@@ -194,12 +210,17 @@ defmodule Aiur.GitHub.Tracker do
   than by tracker size. A failed dependency read returns `{:error, reason}` and
   the dispatcher holds dispatch (fail-closed).
   """
+  @impl Aiur.Tracker.IssueTracker
   @spec hydrate_blocked_by(Issue.t()) :: {:ok, Issue.t()} | {:error, term()}
   def hydrate_blocked_by(%Issue{} = issue), do: client_module().hydrate_blocked_by(issue)
 
   @doc "Reads bounded dependency evidence without fetching missing or stale resources."
   @spec cached_blocked_by(Issue.t()) :: {:ok, Issue.t()} | {:error, term()}
   def cached_blocked_by(%Issue{} = issue), do: Issues.hydrate_blocked_by(issue, revalidate: :cached)
+
+  @doc "Reads the last-known dependency evidence, whatever its age. For ordering only, never for a dispatch decision."
+  @spec last_known_blocked_by(Issue.t()) :: {:ok, Issue.t()} | {:error, term()}
+  def last_known_blocked_by(%Issue{} = issue), do: Issues.hydrate_blocked_by(issue, revalidate: :cached, record_max_age_ms: :infinity)
 
   @impl Aiur.Tracker.IssueTracker
   @spec fetch_issue_states_by_ids_conditional([String.t()], map()) ::
@@ -270,6 +291,15 @@ defmodule Aiur.GitHub.Tracker do
   @impl Aiur.Tracker.CodeHost
   defdelegate comment_optimistic_park(dependent, blocker, cause), to: Aiur.GitHub.OptimisticFailure
 
+  @impl Aiur.Tracker.CodeHost
+  defdelegate withdraw_landing(number), to: Aiur.GitHub.LandingWithdrawal, as: :withdraw
+
+  @impl Aiur.Tracker.CodeHost
+  defdelegate pull_request_body_edited_at(number), to: Aiur.GitHub.PullRequestBodyEdit, as: :last_edited_at
+
+  @impl Aiur.Tracker.IssueTracker
+  defdelegate reopen_issue(issue_id), to: Aiur.GitHub.IssueReopen, as: :reopen
+
   @impl Aiur.Tracker.IssueTracker
   @spec update_issue_state(String.t(), String.t()) :: :ok | {:error, term()}
   def update_issue_state(issue_id, state_name)
@@ -300,9 +330,16 @@ defmodule Aiur.GitHub.Tracker do
 
   defp note_in_progress(result, issue_id, state_name) do
     if result == :ok and DispatchPolicy.state_slug(state_name) == "in-progress",
-      do: History.note_start(issue_id, :label, DateTime.utc_now())
+      do: record_start(issue_id)
 
     result
+  end
+
+  defp record_start(issue_id) do
+    case Application.get_env(:aiur, :github_state_start_recorder) do
+      {module, function} -> apply(module, function, [issue_id, :label, DateTime.utc_now()])
+      nil -> :ok
+    end
   end
 
   @impl Aiur.Tracker.IssueTracker

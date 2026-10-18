@@ -30,6 +30,16 @@ defmodule Aiur.Tracker do
     if Code.ensure_loaded?(tracker) and function_exported?(tracker, :blocked_by, 1), do: dispatch_blocked_by(tracker, issue_id), else: {:error, :unsupported}
   end
 
+  @doc "Reads native prerequisites from the tracker's cache without revalidation."
+  @spec cached_blocked_by(Aiur.Issue.t()) :: {:ok, Aiur.Issue.t()} | {:error, term()}
+  def cached_blocked_by(%Aiur.Issue{} = issue) do
+    tracker = adapter()
+
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :cached_blocked_by, 1),
+      do: tracker.cached_blocked_by(issue),
+      else: {:error, :unsupported}
+  end
+
   defp dispatch_blocked_by(tracker, issue_id), do: tracker.blocked_by(issue_id)
 
   @doc "Reads closure evidence, failing closed when the tracker does not support it."
@@ -68,6 +78,37 @@ defmodule Aiur.Tracker do
   @spec fetch_candidate_issues() :: {:ok, [term()]} | {:error, term()}
   def fetch_candidate_issues do
     adapter().fetch_candidate_issues() |> TestTicketScope.filter_result()
+  end
+
+  @doc "Fetches candidates with adapter-owned filtering and cache validation, or preserves the caller's cache."
+  @spec fetch_candidate_issues_conditional(map()) :: {:ok, [term()], map()} | {:error, term()}
+  def fetch_candidate_issues_conditional(cache) do
+    tracker = adapter()
+
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :fetch_candidate_issues_conditional, 1) do
+      tracker.fetch_candidate_issues_conditional(cache)
+    else
+      with {:ok, issues} <- fetch_candidate_issues(), do: {:ok, issues, cache}
+    end
+  end
+
+  @doc "Hydrates dispatch prerequisites; missing config and adapters without hydration preserve the issue."
+  @spec hydrate_blocked_by(Aiur.Issue.t()) :: {:ok, Aiur.Issue.t()} | {:error, term()}
+  def hydrate_blocked_by(issue) do
+    with {:ok, %{tracker: %{kind: kind}}} <- Config.settings(),
+         tracker = Aiur.Tracker.Registry.adapter_for(kind),
+         true <- Code.ensure_loaded?(tracker) and function_exported?(tracker, :hydrate_blocked_by, 1) do
+      tracker.hydrate_blocked_by(issue)
+    else
+      _ -> {:ok, issue}
+    end
+  end
+
+  @doc "Runs an operation under the adapter's transient retry policy when provided."
+  @spec with_transient_retry((-> term()), keyword()) :: term()
+  def with_transient_retry(fun, opts) do
+    tracker = adapter()
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :with_transient_retry, 2), do: tracker.with_transient_retry(fun, opts), else: fun.()
   end
 
   @spec fetch_issues_by_states([String.t()]) :: {:ok, [term()]} | {:error, term()}
@@ -109,6 +150,13 @@ defmodule Aiur.Tracker do
   @spec create_comment(String.t(), String.t()) :: :ok | {:error, term()}
   def create_comment(issue_id, body) do
     adapter().create_comment(issue_id, body)
+  end
+
+  @doc "Reopens a closed issue; trackers that never auto-close an issue have nothing to undo."
+  @spec reopen_issue(String.t()) :: :ok | {:error, term()}
+  def reopen_issue(issue_id) do
+    tracker_adapter = adapter()
+    if Code.ensure_loaded?(tracker_adapter) and function_exported?(tracker_adapter, :reopen_issue, 1), do: tracker_adapter.reopen_issue(issue_id), else: :ok
   end
 
   @spec update_issue_state(String.t(), String.t()) :: :ok | {:error, term()}
@@ -191,6 +239,17 @@ defmodule Aiur.Tracker do
     if Code.ensure_loaded?(tracker_adapter) and function_exported?(tracker_adapter, :project_identity, 0) do
       tracker_adapter.project_identity()
     end
+  end
+
+  @spec clone_url() :: String.t() | nil
+  def clone_url, do: optional_workspace_callback(:clone_url)
+
+  @spec workspace_repo_segment() :: String.t() | nil
+  def workspace_repo_segment, do: optional_workspace_callback(:workspace_repo_segment)
+
+  defp optional_workspace_callback(callback) do
+    tracker_adapter = adapter()
+    if Code.ensure_loaded?(tracker_adapter) and function_exported?(tracker_adapter, callback, 0), do: apply(tracker_adapter, callback, [])
   end
 
   @spec adapter() :: module()

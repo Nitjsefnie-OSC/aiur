@@ -25,9 +25,19 @@ defmodule Aiur.Orchestrator.ReworkGate do
   """
 
   alias Aiur.Alerts
+  alias Aiur.Events.GithubCIPoller
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.GitHub.ReviewThreads
-  alias Aiur.Orchestrator.{ReviewFindings, State}
+  alias Aiur.Orchestrator.{OperatorMessages, ReviewFindings, ReworkHandoffChecks, State}
+
+  @doc false
+  @spec operator_queue_empty?(GenServer.server(), String.t()) :: boolean()
+  def operator_queue_empty?(orchestrator, issue_identifier) do
+    case OperatorMessages.control_capabilities(orchestrator, issue_identifier) do
+      {:ok, %{queue_depth: 0}} -> true
+      _queued_or_unavailable -> false
+    end
+  end
 
   @doc """
   Returns the open pull request for the rework target.
@@ -285,26 +295,83 @@ defmodule Aiur.Orchestrator.ReworkGate do
 
   def head_sha(_pr), do: nil
 
+  @doc "True when the PR's approval carries to its head: approved at the head, or only merge drift since (#4965)."
+  @spec approval_carries_to_head?(integer(), keyword()) :: boolean()
+  def approval_carries_to_head?(number, opts \\ []) do
+    approval = Keyword.get(opts, :pull_request_approval_fetcher, &default_approval_fetcher/1)
+    classifier = Keyword.get(opts, :approval_carry_classifier, &GithubCIPoller.classify_approval_carry/4)
+
+    case approval.(number) do
+      {:ok, {head, head}} when is_binary(head) -> true
+      {:ok, {head, approved}} when is_binary(approved) -> classifier.(approved, head, number, []) == :carried
+      _unapproved_or_unreadable -> false
+    end
+  end
+
+  defp default_approval_fetcher(number) do
+    if available?(), do: GitHubClient.pull_request_approval(number, caller: "approved_handoff"), else: {:error, :unavailable}
+  end
+
   @doc "Returns the safest handoff state when a stopped agent has an open PR."
   @spec stopped_agent_handoff(String.t(), String.t() | atom() | nil, keyword()) ::
           :none | {:handoff, String.t()}
   def stopped_agent_handoff(issue_key, original_head, opts \\ []) do
     case open_pr(issue_key, opts) do
-      {:ok, pr} ->
-        current_head = head_sha(pr)
+      {:ok, pr} -> open_pr_handoff(issue_key, pr, original_head, opts)
+      {:error, _reason} -> {:handoff, "human-review"}
+      {:skip, :no_open_pr} -> :none
+    end
+  end
 
-        if is_binary(current_head) and current_head != "" and
-             (not is_binary(original_head) or original_head == "" or current_head != original_head) do
-          {:handoff, ci_handoff_state(current_head, opts)}
-        else
-          superseded_review_handoff(pr, current_head, opts)
-        end
+  defp open_pr_handoff(issue_key, pr, original_head, opts) do
+    current_head = head_sha(pr)
 
-      {:error, _reason} ->
-        {:handoff, "human-review"}
+    if head_moved?(current_head, original_head) do
+      {:handoff, ci_handoff_state(current_head, opts)}
+    else
+      pr
+      |> superseded_review_handoff(current_head, opts)
+      |> alert_no_op_rework(issue_key, pr, original_head, opts)
+    end
+  end
 
-      {:skip, :no_open_pr} ->
-        :none
+  defp head_moved?(current_head, original_head) when is_binary(current_head) and current_head != "" do
+    not is_binary(original_head) or original_head == "" or current_head != original_head
+  end
+
+  defp head_moved?(_current_head, _original_head), do: false
+
+  defp alert_no_op_rework(:none, issue_key, pr, original_head, opts) do
+    ReworkHandoffChecks.alert_no_op_rework(issue_key, original_head, head_sha(pr), opts)
+    :none
+  end
+
+  defp alert_no_op_rework(handoff, _issue_key, _pr, _original_head, _opts), do: handoff
+
+  @doc false
+  @spec agent_handoff_blockers(String.t(), String.t() | atom() | nil, keyword()) ::
+          {:blocked, [String.t()]} | :allow
+  def agent_handoff_blockers(issue_key, dispatch_head, opts \\ []) do
+    if is_binary(dispatch_head) and dispatch_head not in ["", :pending, :lookup_failed] do
+      case open_pr(issue_key, opts) do
+        {:ok, pr} -> ReworkHandoffChecks.agent_handoff_blockers(dispatch_head, head_sha(pr), opts)
+        _unknown -> :allow
+      end
+    else
+      :allow
+    end
+  end
+
+  @doc "Returns a handoff only when a completed turn pushed a new open-PR head."
+  @spec completed_agent_handoff(String.t(), term(), keyword()) :: :none | {:handoff, String.t()}
+  def completed_agent_handoff(issue_key, original_head, opts \\ []) do
+    with original when is_binary(original) and original != "" <- original_head,
+         {:ok, pr} <- open_pr(issue_key, opts),
+         head when is_binary(head) and head != "" <- head_sha(pr),
+         true <- head != original do
+      {:handoff, ci_handoff_state(head, opts)}
+    else
+      _ -> :none
     end
   end
 

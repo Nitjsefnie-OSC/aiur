@@ -1,6 +1,25 @@
 defmodule AiurWeb.DashboardCssThemeTest do
   use ExUnit.Case, async: true
 
+  test "home sheet literal inks are frozen" do
+    directory = Application.app_dir(:aiur, "priv/static/build-home")
+    entry = File.read!(Path.join(directory, "home.css"))
+    imports = Regex.scan(~r/@import\s+url\("([^"]+)"\)\s*;/, entry, capture: :all_but_first) |> List.flatten()
+    assert length(imports) == length(Regex.scan(~r/@import\b/, entry)), "every home stylesheet import must be checked"
+
+    home =
+      Enum.map_join(imports, "\n", fn path ->
+        assert path =~ ~r/\A(?:\.\/)?home\/[a-z0-9-]+\.css\z/, "home imports must stay inside build-home/home"
+        File.read!(Path.join(directory, path))
+      end)
+
+    home = entry <> "\n" <> home
+
+    # Design H:1345/1349 and C:59/544/564; preserve approved white-on-fill ink.
+    colors = Regex.scan(~r/(?<![\w-])color:\s*(#[0-9a-fA-F]{3,8})\b/, home, capture: :all_but_first)
+    assert colors |> List.flatten() |> Enum.sort() == List.duplicate("#fff", 5)
+  end
+
   defp css do
     {:ok, "text/css", css} = AiurWeb.StaticAssets.fetch("/dashboard.css")
     css
@@ -87,7 +106,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
   test "the light-mode Stream Deck chassis pins every token it paints ink with" do
     pinned = declarations(css_rule(~s(html[data-theme="light"] .sd-device)))
-    dark_root = declarations(css_rule(":root"))
+    dark_root = css_rule(":root") |> declarations() |> resolve_all("dark")
 
     for token <- @streamdeck_chassis_pins ++ @streamdeck_dark_root_pins do
       assert Map.has_key?(pinned, token), """
@@ -105,6 +124,16 @@ defmodule AiurWeb.DashboardCssThemeTest do
              "html[data-theme=\"light\"] .sd-device pins #{token} to " <>
                "#{inspect(Map.fetch!(pinned, token))}, but the dark :root value is " <>
                "#{inspect(Map.fetch!(dark_root, token))}. The pin must match :root exactly."
+    end
+  end
+
+  test "the gruvbox light Stream Deck chassis pins every themed ink token to the gruvbox dark value" do
+    pinned = declarations(css_rule(~s(html[data-palette="gruvbox"][data-theme="light"] .sd-device)))
+    gruvbox_dark = declarations(css_rule(~s(html[data-palette="gruvbox"])))
+
+    for token <- @streamdeck_dark_root_pins -- ["--ack"] do
+      assert Map.fetch!(pinned, token) == Map.fetch!(gruvbox_dark, token),
+             "gruvbox light .sd-device must pin #{token} to the gruvbox dark value"
     end
   end
 
@@ -143,7 +172,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
   test "dashboard progress bars match the Stream Deck progress contract" do
     contract =
-      Path.expand("../../../packages/streamdeck/src/key-face-contract.json", __DIR__)
+      Path.expand("../../priv/streamdeck/key-face-contract.json", __DIR__)
       |> File.read!()
       |> Jason.decode!()
 
@@ -219,7 +248,11 @@ defmodule AiurWeb.DashboardCssThemeTest do
           if(palette == "gruvbox", do: [~s(html[data-palette="gruvbox"])], else: []) ++
           if(palette == "gruvbox" and theme == "light", do: [~s(html[data-palette="gruvbox"][data-theme="light"])], else: [])
 
-      tokens = Enum.reduce(selectors, %{}, fn selector, acc -> Map.merge(acc, declarations(css_rule(selector))) end)
+      tokens =
+        selectors
+        |> Enum.reduce(%{}, fn selector, acc -> Map.merge(acc, declarations(css_rule(selector))) end)
+        |> resolve_all(theme)
+
       theme = "#{theme}/#{palette}"
       surface = tokens["--surface"]
       panel = blend(tokens["--super-soft"], surface)
@@ -310,6 +343,19 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
     hex |> String.to_charlist() |> Enum.chunk_every(2) |> Enum.map(&List.to_integer(&1, 16))
   end
+
+  @aiur_tokens Path.expand("../../../packages/aiur-style/src/tokens/tokens.json", __DIR__) |> File.read!() |> Jason.decode!()
+
+  # Resolve `var(--aiur-*)` aliases to the theme's literal so value comparisons
+  # and contrast maths keep working on aliased dashboard variables.
+  defp resolve(value, theme) do
+    Regex.replace(~r/var\(--aiur-([a-z0-9-]+)\)/, value, fn _full, name ->
+      {_key, token} = Enum.find(@aiur_tokens, fn {key, _} -> String.replace(key, ".", "-") == name end)
+      Map.fetch!(token, theme)
+    end)
+  end
+
+  defp resolve_all(tokens, theme), do: Map.new(tokens, fn {name, value} -> {name, resolve(value, theme)} end)
 
   defp declarations(rule) do
     ~r/(--[a-z0-9-]+)\s*:\s*([^;]+);/
