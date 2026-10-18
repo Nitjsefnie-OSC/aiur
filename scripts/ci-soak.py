@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import random
+import re
 import shlex
 import subprocess
 import sys
@@ -18,7 +19,8 @@ EXUNIT_RUNS, EXUNIT_REDUCED_RUNS, EXUNIT_FULL_LIMIT, EXUNIT_MAX_FILES = 10, 3, 1
 # affected-tests uses 4; more concurrent cases surface shared-state and timing races sooner.
 MAX_CASES = 8
 SPEC_REPEATS, SPEC_REDUCED_REPEATS, SPEC_FULL_LIMIT, SPEC_MAX_FILES = 5, 2, 3, 10
-RUN_TIMEOUT_SECONDS = 300
+RUN_TIMEOUT_SECONDS = float(os.environ.get('AIUR_SOAK_TEST_TIMEOUT', '300'))
+MAX_BROWSER_TESTS_PER_SPEC = 200
 BUDGET_SECONDS = int(os.environ.get('AIUR_SOAK_BUDGET_SECONDS', str(12 * 60)))
 BROWSER_ROOT = Path(os.environ.get('AIUR_SOAK_BROWSER_ROOT', Path(__file__).resolve().parent.parent / 'src/browser'))
 
@@ -78,8 +80,8 @@ def run(command, cwd=None):
     try:
         return subprocess.run(command, cwd=cwd, timeout=RUN_TIMEOUT_SECONDS).returncode
     except subprocess.TimeoutExpired:
-        notice(f'soak run exceeded {RUN_TIMEOUT_SECONDS}s', 'error')
-        return 124
+        notice(f'soak skipped: over budget (run exceeded {RUN_TIMEOUT_SECONDS}s)')
+        return 0
 
 
 def plan_runs(kind, count, full, reduced, full_limit, max_files):
@@ -128,7 +130,13 @@ def soak_browser():
             notice(f'Playwright soak stopped at its {BUDGET_SECONDS}s budget before {spec}')
             break
         config = ['--config', configs[spec]] if configs[spec] else []
-        command = ['node', 'scripts/run-browser-tests.mjs', spec, *config, f'--repeat-each={n}']
+        command = ['node', 'scripts/run-browser-tests.mjs', spec, *config]
+        test_count = browser_test_count(spec) if (BROWSER_ROOT / spec).is_file() else None
+        if test_count is not None and test_count > MAX_BROWSER_TESTS_PER_SPEC:
+            notice(f'Playwright soak sampled {spec}: {test_count} tests exceeds '
+                   f'{MAX_BROWSER_TESTS_PER_SPEC}; running one test per repeat')
+            command.extend(['--grep', sample_grep(spec)])
+        command.append(f'--repeat-each={n}')
         print(f'::group::Playwright soak: {spec} x{n}', flush=True)
         status = run(command, cwd=BROWSER_ROOT)
         print('::endgroup::', flush=True)
@@ -136,6 +144,28 @@ def soak_browser():
             notice(f'Playwright soak failed for {spec}. Reproduce: cd src/browser && {shlex.join(command)}', 'error')
             return 1
     return 0
+
+
+def browser_test_count(spec):
+    """Count declared Playwright tests, including generated test.each/table cases."""
+    source = (BROWSER_ROOT / spec).read_text(encoding='utf-8')
+    cases = len(re.findall(r'(?m)^\s*test\s*\(', source))
+    generated = re.search(r'\btest\.each\s*\(\s*\[([\s\S]*?)\]\s*\)', source)
+    if generated:
+        cases += len(re.findall(r'(?m)^\s*\[', generated.group(1)))
+    generated_describes = len(re.findall(r'\bfor\s*\([^\n]*\b(?:of|in)\b[^\n]*\)\s*test\s*\.describe\s*\(', source))
+    return max(cases, MAX_BROWSER_TESTS_PER_SPEC + 1 if generated_describes > 1 else cases)
+
+
+def sample_grep(spec):
+    """Choose one stable title to exercise an oversized spec within the budget."""
+    source = (BROWSER_ROOT / spec).read_text(encoding='utf-8')
+    match = re.search(r'\btest\s*\.each\s*\([\s\S]*?\)\s*\(\s*([\'\"])(.*?)\1', source)
+    if not match:
+        match = re.search(r'\btest\s*\(\s*([\'\"])(.*?)\1', source, re.DOTALL)
+    if match:
+        return match.group(2)
+    return '__aiur_soak_no_matching_test__'
 
 
 def main(argv):

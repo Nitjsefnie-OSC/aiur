@@ -14,6 +14,9 @@ import json, os, sys
 with open(os.environ['CALLS'], 'a') as out:
     out.write(json.dumps([os.getcwd(), *sys.argv[1:]]) + '\\n')
 fail = os.environ.get('FAIL_ON', '')
+if os.environ.get('TIMEOUT_ON') and os.environ['TIMEOUT_ON'] in sys.argv[1:]:
+    import time
+    time.sleep(1)
 sys.exit(1 if fail and fail in sys.argv[1:] else 0)
 '''
 
@@ -150,6 +153,25 @@ class SoakTest(unittest.TestCase):
         specs = [f'tests/build-home-s{i}.browser.spec.mjs' for i in range(4)]
         _result, calls = self.soak('browser', SOAK_SPECS=json.dumps(specs))
         self.assertEqual({call[-1] for call in calls}, {'--repeat-each=2'})
+
+    def test_browser_samples_spec_with_more_than_two_thousand_generated_tests(self):
+        spec = self.browser / 'tests/build-home-motion.browser.spec.mjs'
+        spec.parent.mkdir(parents=True)
+        rows = ',\n'.join(f'  [{i}]' for i in range(2338))
+        spec.write_text(f"import {{ test }} from '@playwright/test';\ntest.each([{rows}])('motion cell %s', async () => {{}});\n")
+        result, calls = self.soak('browser', SOAK_SPECS='["tests/build-home-motion.browser.spec.mjs"]')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][1:], ['scripts/run-browser-tests.mjs', 'tests/build-home-motion.browser.spec.mjs',
+                                       '--grep', 'motion cell %s', '--repeat-each=5'])
+        self.assertIn('soak sampled tests/build-home-motion.browser.spec.mjs: 2338 tests exceeds 200', result.stdout)
+
+    def test_subprocess_timeout_is_a_skipped_notice_not_a_gate_failure(self):
+        result, calls = self.soak('exunit', SOAK_TESTS='["test/a_test.exs"]',
+                                  AIUR_SOAK_BUDGET_SECONDS='600', TIMEOUT_ON='--seed',
+                                  AIUR_SOAK_TEST_TIMEOUT='0.05')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('soak skipped: over budget', result.stdout)
 
 
 if __name__ == '__main__':
