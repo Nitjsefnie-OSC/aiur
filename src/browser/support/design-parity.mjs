@@ -190,7 +190,6 @@ async function settleRegionImages(page, region) {
   await page.locator(region).evaluate(async root => {
     const images = [...root.querySelectorAll('img')]
     await Promise.all(images.map(image => image.decode()))
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
   })
 }
 
