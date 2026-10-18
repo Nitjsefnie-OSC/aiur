@@ -34,6 +34,8 @@ async function normalize(page) {
   })
 }
 async function isolateFilters(page) {
+  // Freeze the fixture socket before moving the root; a server patch would otherwise mount a second copy.
+  await page.evaluate(() => window.liveSocket?.disconnect())
   // Keep inherited paint and container queries, but align capture to an integer pixel origin.
   await page.locator('#bd-filters').evaluate(host => {
     const fields = ['fontFamily', 'fontSize', 'lineHeight', 'color'], before = fields.map(k => getComputedStyle(host)[k])
