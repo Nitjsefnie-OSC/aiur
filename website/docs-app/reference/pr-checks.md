@@ -28,7 +28,7 @@ Run counts depend on how many test files the pull request changes.
   Dormant full-matrix aliases are excluded.
 - Each job stops starting new runs after 12 minutes and reports how many runs
   passed. An ExUnit invocation times out after 5 minutes; a browser invocation after
-  20 minutes. A timeout counts as a failure. An in-flight invocation may finish
+  the remainder of a 20-minute browser runtime bound. A timeout counts as a failure. An in-flight invocation may finish
   beyond the 12-minute launch budget; unstarted selections are reported.
 - A failure prints the exact command to reproduce it, including the seed.
 

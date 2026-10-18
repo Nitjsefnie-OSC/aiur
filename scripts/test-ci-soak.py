@@ -194,6 +194,17 @@ class SoakTest(unittest.TestCase):
             cwd=self.browser, timeout=1200)
         notices.assert_called_once_with('Playwright soak stopped at its 720s budget before tests/p.spec.mjs')
 
+    def test_later_invocation_cannot_exceed_the_browser_job_runtime_bound(self):
+        loader = importlib.util.spec_from_file_location('ci_soak', SCRIPT)
+        module = importlib.util.module_from_spec(loader)
+        loader.loader.exec_module(module)
+        with patch.dict(os.environ, self.env | {'SOAK_SPECS': '["tests/a.spec.mjs", "tests/p.spec.mjs"]'}), \
+                patch.object(module, 'BROWSER_ROOT', self.browser), \
+                patch.object(module.time, 'monotonic', side_effect=[0, 0, 700]), \
+                patch.object(module, 'run', return_value=0) as runner:
+            self.assertEqual(module.soak_browser(), 0)
+        self.assertEqual([call.kwargs['timeout'] for call in runner.call_args_list], [1200, 500])
+
     def test_browser_timeout_fails_instead_of_claiming_a_pass(self):
         loader = importlib.util.spec_from_file_location('ci_soak', SCRIPT)
         module = importlib.util.module_from_spec(loader)

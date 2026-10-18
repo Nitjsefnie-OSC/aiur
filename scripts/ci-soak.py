@@ -164,14 +164,16 @@ def soak_browser():
     started = time.monotonic()
     for spec in runnable if n else []:
         for invocation in invocations[spec]:
-            if time.monotonic() - started >= BUDGET_SECONDS:
+            elapsed = time.monotonic() - started
+            if elapsed >= BUDGET_SECONDS:
                 notice(f'Playwright soak stopped at its {BUDGET_SECONDS}s budget before {spec}')
                 return 0
             command = [*invocation, f'--repeat-each={n}']
             print(f'::group::Playwright soak: {shlex.join(command)}', flush=True)
             # Apply the overall budget between invocations, as for ExUnit. Routine
-            # motion repetitions can exceed 300s; bound one invocation to 20 minutes.
-            status = run(command, cwd=BROWSER_ROOT, timeout=BROWSER_RUN_TIMEOUT_SECONDS)
+            # motion repetitions can exceed 300s. Keep total browser runtime within
+            # 20 minutes, leaving setup/cleanup time inside the 25-minute job.
+            status = run(command, cwd=BROWSER_ROOT, timeout=max(1, BROWSER_RUN_TIMEOUT_SECONDS - elapsed))
             print('::endgroup::', flush=True)
             if status != 0:
                 notice(f'Playwright soak failed for {spec}. Reproduce: cd src/browser && {shlex.join(command)}', 'error')
