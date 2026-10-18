@@ -258,6 +258,15 @@ function filterPaint(record, reduce, cards) {
   expect(Object.values(samples[0].cards).some(value => !value)).toBeTruthy()
   return { ...record, samples, animation }
 }
+async function cardPaint(page, cards, ids = {}) {
+  return page.locator('.bd-card').evaluateAll((nodes, { keys, ids }) => {
+    const reverse = Object.fromEntries(Object.entries(ids).map(([design, product]) => [product, design]))
+    return Object.fromEntries(nodes.flatMap(el => {
+      const key = 'card:' + (reverse[el.dataset.id] ?? el.dataset.id), style = getComputedStyle(el)
+      return keys.includes(key) ? [[key, { opacity: style.opacity, filter: style.filter }]] : []
+    }))
+  }, { keys: [...cards], ids })
+}
 function scopedEntries(entries, selectedCell) {
   return entries.filter(entry => Object.entries(entry.cells ?? {}).every(([key, value]) => (key === 'viewport' ? `${selectedCell.viewport.width}x${selectedCell.viewport.height}` : selectedCell[key]) === value))
 }
