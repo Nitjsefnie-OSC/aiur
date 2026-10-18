@@ -23,13 +23,16 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   # persistent_term, not GenServer state: after_suite callbacks run once formatters have stopped.
   @suite_leaks_key {__MODULE__, :suite_leaks}
   @instance_key_key {__MODULE__, :instance_key}
+  @app_env_key {__MODULE__, :app_env}
   @last_finished_key {__MODULE__, :last_finished}
+  @guarded_app_env_keys [:decision_state_dir, :github_budget_dir, :executor_state_dir, :runtime_state_dir]
 
   @impl true
   def init(_opts) do
     Process.register(self(), __MODULE__)
     :persistent_term.put(@suite_leaks_key, [])
     :persistent_term.put(@instance_key_key, System.get_env("AIUR_INSTANCE_KEY"))
+    :persistent_term.put(@app_env_key, capture_app_env())
     :persistent_term.put(@last_finished_key, nil)
     {:ok, nil}
   end
@@ -57,14 +60,56 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     expected_instance_key = :persistent_term.get(@instance_key_key, nil)
     actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
 
-    if actual_instance_key != expected_instance_key do
-      raise "test suite left AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"
+    app_env_leaks = app_env_leaks()
+    instance_key_leak = if actual_instance_key == expected_instance_key, do: [], else: ["AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"]
+    state_leaks = app_env_leaks ++ instance_key_leak
+
+    if state_leaks != [] do
+      last = :persistent_term.get(@last_finished_key, nil) || "unknown"
+      raise "test suite left shared state changed after #{last}: #{Enum.join(state_leaks, "; ")}"
     end
 
     case :persistent_term.get(@suite_leaks_key, []) do
       [] -> :ok
       leaks -> raise "plain ExUnit tests broke Aiur.Orchestrator: #{Enum.join(leaks, ", ")}"
     end
+  end
+
+  @doc false
+  @spec capture_shared_state() :: %{app_env: %{optional(atom()) => {:ok, term()} | :error}, instance_key: String.t() | nil}
+  def capture_shared_state do
+    %{app_env: capture_app_env(), instance_key: System.get_env("AIUR_INSTANCE_KEY")}
+  end
+
+  @doc false
+  @spec verify_restored_shared_state!([{atom(), {:ok, term()} | :error}], String.t() | nil, map()) :: :ok
+  def verify_restored_shared_state!(previous_app_env, previous_instance_key, context) do
+    expected = %{
+      app_env: Map.new(previous_app_env),
+      instance_key: previous_instance_key
+    }
+
+    verify_restored!(Map.put(context, :aiur_expected_shared_state, expected))
+  end
+
+  @doc false
+  @spec verify_shared_state_before_test!(map()) :: :ok
+  def verify_shared_state_before_test!(context) do
+    expected = :persistent_term.get(@app_env_key, capture_app_env())
+    expected_instance_key = :persistent_term.get(@instance_key_key, System.get_env("AIUR_INSTANCE_KEY"))
+    app_env_leaks = app_env_leaks()
+    actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
+    instance_key_leaks = if actual_instance_key == expected_instance_key, do: [], else: ["AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"]
+    leaks = app_env_leaks ++ instance_key_leaks
+
+    if leaks != [] do
+      Enum.each(@guarded_app_env_keys, fn key -> restore_app_env(key, Map.fetch!(expected, key)) end)
+      restore_instance_key(expected_instance_key)
+      last = last_finished() || "unknown"
+      raise "#{test_name(context)} started after #{last} left shared test state changed (restored): #{Enum.join(leaks, "; ")}"
+    end
+
+    :ok
   end
 
   @doc "Restores a missing or stood-in orchestrator before a test and reports the test that ran before it."
@@ -102,8 +147,56 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
               "Restore it in on_exit with Aiur.TestSupport.ensure_orchestrator_running/0 or await_supervised_restart/3."
     end
 
+    verify_shared_state_restored!(context)
+
     :ok
   end
+
+  defp capture_app_env do
+    Map.new(@guarded_app_env_keys, &{&1, Application.fetch_env(:aiur, &1)})
+  end
+
+  defp app_env_leaks do
+    expected = :persistent_term.get(@app_env_key, capture_app_env())
+
+    Enum.flat_map(@guarded_app_env_keys, fn key ->
+      before = Map.fetch!(expected, key)
+      current = Application.fetch_env(:aiur, key)
+      if current == before, do: [], else: ["Application :aiur, #{inspect(key)} changed from #{inspect(before)} to #{inspect(current)}"]
+    end)
+  end
+
+  defp verify_shared_state_restored!(%{aiur_expected_shared_state: expected} = context) do
+    actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
+    expected_instance_key = expected.instance_key
+
+    app_env_leaks =
+      Enum.flat_map(@guarded_app_env_keys, fn key ->
+        before = Map.fetch!(expected.app_env, key)
+        current = Application.fetch_env(:aiur, key)
+        if current == before, do: [], else: ["Application :aiur, #{inspect(key)} changed from #{inspect(before)} to #{inspect(current)}"]
+      end)
+
+    instance_key_leaks = if actual_instance_key == expected_instance_key, do: [], else: ["AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"]
+    leaks = app_env_leaks ++ instance_key_leaks
+
+    if leaks != [] do
+      Enum.each(@guarded_app_env_keys, fn key -> restore_app_env(key, Map.fetch!(expected.app_env, key)) end)
+      restore_instance_key(expected_instance_key)
+
+      raise "#{test_name(context)} left shared test state changed (restored): #{Enum.join(leaks, "; ")}"
+    end
+
+    :ok
+  end
+
+  defp verify_shared_state_restored!(_context), do: :ok
+
+  defp restore_app_env(key, :error), do: Application.delete_env(:aiur, key)
+  defp restore_app_env(key, {:ok, value}), do: Application.put_env(:aiur, key, value)
+
+  defp restore_instance_key(nil), do: System.delete_env("AIUR_INSTANCE_KEY")
+  defp restore_instance_key(value), do: System.put_env("AIUR_INSTANCE_KEY", value)
 
   # nil when the name belongs to the supervised child, which is what every test expects to find.
   defp leak do

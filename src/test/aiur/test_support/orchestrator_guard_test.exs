@@ -25,15 +25,45 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     refute Process.whereis(Aiur.Orchestrator)
   end
 
+  test "verify_restored! names and restores a leaked decision state directory", context do
+    expected = OrchestratorGuard.capture_shared_state()
+    original = Map.fetch!(expected.app_env, :decision_state_dir)
+    Application.delete_env(:aiur, :decision_state_dir)
+
+    assert_raise RuntimeError, ~r/left shared test state changed .*:aiur, :decision_state_dir changed/, fn ->
+      OrchestratorGuard.verify_restored!(Map.put(context, :aiur_expected_shared_state, expected))
+    end
+
+    assert Application.fetch_env(:aiur, :decision_state_dir) == original
+  end
+
+  test "the next sync setup catches and restores a prior decision state leak", context do
+    expected = OrchestratorGuard.capture_shared_state()
+    Application.delete_env(:aiur, :decision_state_dir)
+
+    assert_raise RuntimeError, ~r/started after .* left shared test state changed .*:aiur, :decision_state_dir changed/, fn ->
+      OrchestratorGuard.verify_shared_state_before_test!(context)
+    end
+
+    assert Application.fetch_env(:aiur, :decision_state_dir) == expected.app_env.decision_state_dir
+  end
+
   test "verify_suite! fails when AIUR_INSTANCE_KEY is left changed" do
     original_key = System.get_env("AIUR_INSTANCE_KEY")
+    original_decision_dir = Application.fetch_env(:aiur, :decision_state_dir)
     System.put_env("AIUR_INSTANCE_KEY", "leaked-instance-key")
+    Application.delete_env(:aiur, :decision_state_dir)
 
     on_exit(fn ->
       if original_key, do: System.put_env("AIUR_INSTANCE_KEY", original_key), else: System.delete_env("AIUR_INSTANCE_KEY")
+
+      case original_decision_dir do
+        :error -> Application.delete_env(:aiur, :decision_state_dir)
+        {:ok, value} -> Application.put_env(:aiur, :decision_state_dir, value)
+      end
     end)
 
-    assert_raise RuntimeError, ~r/test suite left AIUR_INSTANCE_KEY changed/, fn ->
+    assert_raise RuntimeError, ~r/test suite left shared state changed .*decision_state_dir changed.*AIUR_INSTANCE_KEY changed/, fn ->
       OrchestratorGuard.verify_suite!()
     end
   end
