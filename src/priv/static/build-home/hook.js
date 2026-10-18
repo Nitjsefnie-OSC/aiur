@@ -15,6 +15,7 @@ import './span.js';
 import './edges.js';
 import './trees.js';
 import './states.js';
+import './list.js';
 
 export function writeOwnData() {
   if (ctx.bdTrees != null) ctx.root.dataset.bdTrees = ctx.bdTrees;
