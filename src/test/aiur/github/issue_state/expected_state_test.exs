@@ -100,20 +100,18 @@ defmodule Aiur.GitHub.IssueState.ExpectedStateTest do
     test "rejects a stale expected state before mutating labels" do
       test_pid = self()
       issue_key = ResourceStore.key(:issue, "owner", "repo", "42")
-      :ok = ResourceStore.put_etag(issue_key, "stale-validator")
+      :ok = ResourceStore.put_resource(issue_key, %{"state" => "open", "labels" => []}, source: :fetch, etag: "stale-validator")
 
       request_fun = fn request ->
         send(test_pid, {:request, request})
-        refute Map.has_key?(request, :etag)
 
-        {:ok,
-         %{
-           status: 200,
-           body: %{
-             "state" => "open",
-             "labels" => [%{"name" => "sym:rework"}]
-           }
-         }}
+        case Map.get(request, :etag) do
+          nil ->
+            {:ok, %{status: 200, body: %{"state" => "open", "labels" => [%{"name" => "sym:rework"}]}}}
+
+          "stale-validator" ->
+            {:ok, %{status: 304}}
+        end
       end
 
       assert {:error, {:stale_issue_state, "ci-wait", "rework"}} =
@@ -122,7 +120,8 @@ defmodule Aiur.GitHub.IssueState.ExpectedStateTest do
                  request_fun: request_fun
                )
 
-      assert_receive {:request, %{method: :get}}, 1000
+      assert_receive {:request, %{method: :get} = request}, 1000
+      refute Map.has_key?(request, :etag)
       refute_receive {:request, %{method: _method}}, 100
     end
 

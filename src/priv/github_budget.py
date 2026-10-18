@@ -20,6 +20,8 @@ import secrets
 import sqlite3
 import sys
 import time
+sys.path.insert(0, os.path.dirname(__file__))
+import github_budget_metrics as broker_metrics
 
 
 # Per-actor hourly usage is read from `admissions`, so an admission must stay
@@ -955,20 +957,13 @@ def execute(args):
 
 
 def read_requests(inbox):
-    try:
-        for line in sys.stdin:
-            request = json.loads(line)
-            request["_received_ns"] = time.monotonic_ns()
-            inbox.put(request)
-    finally:
-        inbox.put(None)
+    broker_metrics.receive_requests(sys.stdin, inbox)
 
 
 def run_batch(requests, command_parser, queue_depth=0):
     parsed = []
     for request in requests:
-        request["_python_queue_wait_ms"] = max((time.monotonic_ns() - request.get("_received_ns", time.monotonic_ns())) / 1_000_000, 0)
-        request["_python_queue_depth"] = queue_depth
+        broker_metrics.prepare_request(request, queue_depth)
         try:
             with contextlib.redirect_stderr(io.StringIO()):
                 args = command_parser.parse_args(request["args"])
@@ -990,53 +985,20 @@ COMMIT_MARGIN_MS = 50
 
 
 def begin_batch(conn, requests, replies):
-    started_ns = time.monotonic_ns()
-    # SQLite's long busy wait can lose every lock race to a hot resident peer.
-    # Short waits plus jitter give competing daemons chances to acquire it,
-    # while preserving the caller's absolute deadline and fail-closed behavior.
-    while True:
-        active = []
-        for request, args in requests:
-            if request["deadline_ms"] - COMMIT_MARGIN_MS <= now_ms():
-                replies.append({"id": request["id"], "status": 2, "output": "broker deadline expired waiting for SQLite", "python_queue_wait_ms": request.get("_python_queue_wait_ms", 0), "python_queue_depth": request.get("_python_queue_depth", 0)})
-            else:
-                active.append((request, args))
-        requests[:] = active
-        if not requests:
-            lock_wait_ms = (time.monotonic_ns() - started_ns) / 1_000_000
-            for reply in replies:
-                reply["sqlite_lock_wait_ms"] = lock_wait_ms
-                reply["sqlite_transaction_ms"] = 0
-            return False, lock_wait_ms
-        remaining = min(request["deadline_ms"] for request, _args in requests) - COMMIT_MARGIN_MS - now_ms()
-        if remaining <= 0:
-            continue
-        conn.conn.execute(f"PRAGMA busy_timeout = {min(remaining, 20)}")
-        try:
-            conn.conn.execute("BEGIN IMMEDIATE")
-            return True, (time.monotonic_ns() - started_ns) / 1_000_000
-        except sqlite3.OperationalError as error:
-            if "locked" not in str(error).lower():
-                raise
-            time.sleep(min(remaining, 2 + secrets.randbelow(9)) / 1000)
+    return broker_metrics.begin_batch(conn, requests, replies, now_ms, COMMIT_MARGIN_MS)
 
 
 def run_transaction(db, requests):
     requests = list(requests)
-    requests_by_id = {request["id"]: request for request, _args in requests}
     replies = []
     conn = None
     sqlite_open_ms = 0
     transaction_started_ns = None
     try:
-        open_started_ns = time.monotonic_ns()
-        conn = connection(db)
-        sqlite_open_ms = (time.monotonic_ns() - open_started_ns) / 1_000_000
+        conn, sqlite_open_ms = broker_metrics.open_connection(connection, db)
         acquired, lock_wait_ms = begin_batch(conn, requests, replies)
         if not acquired:
-            for reply in replies:
-                reply["sqlite_open_ms"] = sqlite_open_ms
-            return replies
+            return broker_metrics.add_open_time(replies, sqlite_open_ms)
         transaction_started_ns = time.monotonic_ns()
         conn.batching = True
         if any(args.command in ("acquire", "release", "reconcile", "renew", "hold") for _request, args in requests):
@@ -1071,16 +1033,7 @@ def run_transaction(db, requests):
             return waiting_replies + timed_out + (run_transaction(db, remaining) if remaining else [])
         conn.conn.execute("COMMIT")
         transaction_ms = (time.monotonic_ns() - transaction_started_ns) / 1_000_000
-        for reply in replies:
-            request = requests_by_id.get(reply["id"], {})
-            reply.update({
-                "python_queue_wait_ms": request.get("_python_queue_wait_ms", 0),
-                "python_queue_depth": request.get("_python_queue_depth", 0),
-                "sqlite_open_ms": sqlite_open_ms,
-                "sqlite_lock_wait_ms": lock_wait_ms,
-                "sqlite_transaction_ms": transaction_ms,
-            })
-        return replies
+        return broker_metrics.successful_replies(replies, {request["id"]: request for request, _args in requests}, sqlite_open_ms, lock_wait_ms, transaction_ms)
     except Exception as error:
         if conn is not None and conn.in_transaction:
             conn.conn.execute("ROLLBACK")
@@ -1089,14 +1042,7 @@ def run_transaction(db, requests):
         active_ids = {request["id"] for request, _args in requests}
         completed = [reply for reply in replies if reply["id"] not in active_ids]
         transaction_ms = 0 if transaction_started_ns is None else (time.monotonic_ns() - transaction_started_ns) / 1_000_000
-        failed = [{
-            "id": request["id"], "status": 2 if local_timeout else 1, "output": str(error),
-            "python_queue_wait_ms": request.get("_python_queue_wait_ms", 0),
-            "python_queue_depth": request.get("_python_queue_depth", 0),
-            "sqlite_open_ms": sqlite_open_ms,
-            "sqlite_lock_wait_ms": 0,
-            "sqlite_transaction_ms": transaction_ms,
-        } for request, _args in requests]
+        failed = broker_metrics.failed_replies(error, requests, local_timeout, sqlite_open_ms, transaction_ms)
         return completed + failed
     finally:
         if conn is not None:

@@ -73,7 +73,14 @@ defmodule Aiur.GitHub.BudgetBroker do
     {:noreply, Enum.reduce(complete, %{state | buffer: buffer}, &reply_line/2)}
   end
 
-  def handle_info({:deadline, id}, state), do: {:noreply, complete(state, id, :timeout)}
+  def handle_info({:deadline, id}, state), do: {:noreply, expire(state, id)}
+
+  def handle_info({:forget_late, id}, state) do
+    case Map.get(state.pending, id) do
+      {nil, _timer, _submitted_at, _mailbox_wait_ms} -> {:noreply, %{state | pending: Map.delete(state.pending, id)}}
+      _active -> {:noreply, state}
+    end
+  end
 
   def handle_info(:report_stats, state) do
     if state.stats != [] do
@@ -115,6 +122,9 @@ defmodule Aiur.GitHub.BudgetBroker do
       {nil, _pending} ->
         state
 
+      {{nil, _timer, submitted_at, mailbox_wait_ms}, pending} ->
+        late_response(%{state | pending: pending}, result, submitted_at, mailbox_wait_ms)
+
       {{from, timer, submitted_at, mailbox_wait_ms}, pending} ->
         Process.cancel_timer(timer)
         {public_result, outcome, python_metrics} = public_result(result)
@@ -131,6 +141,38 @@ defmodule Aiur.GitHub.BudgetBroker do
         observe_command(outcome, measurements)
         state |> Map.put(:pending, pending) |> add_sample(outcome, measurements)
     end
+  end
+
+  defp expire(state, id) do
+    case Map.get(state.pending, id) do
+      {from, timer, submitted_at, mailbox_wait_ms} when not is_nil(from) ->
+        Process.cancel_timer(timer)
+        GenServer.reply(from, :timeout)
+        measurements = %{duration_ms: System.monotonic_time(:millisecond) - submitted_at, mailbox_wait_ms: mailbox_wait_ms, pending: max(map_size(state.pending) - 1, 0), mailbox: message_queue_len()}
+        observe_command(:timeout, measurements)
+        cleanup = Process.send_after(self(), {:forget_late, id}, :timer.minutes(1))
+        state |> put_in([:pending, id], {nil, cleanup, submitted_at, mailbox_wait_ms}) |> add_sample(:timeout, measurements)
+
+      _already_expired_or_completed ->
+        state
+    end
+  end
+
+  defp late_response(state, :timeout, _submitted_at, _mailbox_wait_ms), do: state
+
+  defp late_response(state, result, submitted_at, mailbox_wait_ms) do
+    {_public_result, _outcome, python_metrics} = public_result(result)
+
+    measurements =
+      %{late_duration_ms: System.monotonic_time(:millisecond) - submitted_at, mailbox_wait_ms: mailbox_wait_ms, pending: map_size(state.pending), mailbox: message_queue_len()}
+      |> put_metric(:python_queue_wait_ms, python_metrics["python_queue_wait_ms"])
+      |> put_metric(:python_queue_depth, python_metrics["python_queue_depth"])
+      |> put_metric(:sqlite_open_ms, python_metrics["sqlite_open_ms"])
+      |> put_metric(:sqlite_lock_wait_ms, python_metrics["sqlite_lock_wait_ms"])
+      |> put_metric(:sqlite_transaction_ms, python_metrics["sqlite_transaction_ms"])
+
+    observe_command(:late_response, measurements)
+    add_sample(state, :late_response, measurements)
   end
 
   defp public_result(:timeout), do: {:timeout, :timeout, %{}}
@@ -153,10 +195,13 @@ defmodule Aiur.GitHub.BudgetBroker do
     measurements = Enum.map(samples, &elem(&1, 1))
 
     %{
-      commands: length(samples),
+      commands: Enum.count(samples, fn {outcome, _measurements} -> outcome != :late_response end),
       timeouts: Enum.count(samples, fn {outcome, _measurements} -> outcome in [:timeout, :deadline_expired] end),
+      late_responses: Enum.count(samples, fn {outcome, _measurements} -> outcome == :late_response end),
       duration_p50_ms: percentile(measurements, :duration_ms, 0.50),
       duration_p99_ms: percentile(measurements, :duration_ms, 0.99),
+      late_duration_p50_ms: percentile(measurements, :late_duration_ms, 0.50),
+      late_duration_p99_ms: percentile(measurements, :late_duration_ms, 0.99),
       mailbox_wait_p50_ms: percentile(measurements, :mailbox_wait_ms, 0.50),
       mailbox_wait_p99_ms: percentile(measurements, :mailbox_wait_ms, 0.99),
       mailbox_depth_max: maximum(measurements, :mailbox),

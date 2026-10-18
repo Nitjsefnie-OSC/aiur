@@ -292,6 +292,63 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
     assert mailbox_wait >= 30
   end
 
+  test "a mailbox-expired call records that its deadline elapsed before dispatch", %{root: root} do
+    test_pid = self()
+
+    handler =
+      :telemetry.attach(
+        "budget-broker-mailbox-timeout-#{inspect(test_pid)}",
+        [:aiur, :github, :budget_broker, :command],
+        fn event, measurements, metadata, pid -> send(pid, {event, measurements, metadata}) end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+    server = start_supervised!({BudgetBroker, name: __MODULE__.MailboxTimeout}, id: :mailbox_timeout)
+    :ok = :sys.suspend(server)
+    deadline = System.monotonic_time(:millisecond) + 20
+    task = Task.async(fn -> BudgetBroker.command(server, Path.join(root, "not-started.py"), [], deadline) end)
+    Process.sleep(50)
+    :ok = :sys.resume(server)
+
+    assert :timeout = Task.await(task)
+
+    assert_receive {[:aiur, :github, :budget_broker, :command], %{mailbox_wait_ms: mailbox_wait}, %{outcome: :deadline_expired}}, 1_000
+    assert mailbox_wait >= 30
+  end
+
+  test "late broker replies expose Python and SQLite timings after a caller timeout", %{root: root} do
+    test_pid = self()
+
+    handler =
+      :telemetry.attach(
+        "budget-broker-late-#{inspect(test_pid)}",
+        [:aiur, :github, :budget_broker, :command],
+        fn event, measurements, metadata, pid -> send(pid, {event, measurements, metadata}) end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+    server = start_supervised!({BudgetBroker, name: __MODULE__.LateReply}, id: :late_reply)
+    broker = Path.join(root, "late_reply.py")
+
+    File.write!(broker, """
+    import json, sys, time
+    for line in sys.stdin:
+        request = json.loads(line)
+        time.sleep(0.08)
+        print(json.dumps({"id": request["id"], "output": "ok", "status": 0, "python_queue_wait_ms": 4, "python_queue_depth": 2, "sqlite_open_ms": 3, "sqlite_lock_wait_ms": 11, "sqlite_transaction_ms": 7}), flush=True)
+    """)
+
+    deadline = System.monotonic_time(:millisecond) + 20
+    assert :timeout = BudgetBroker.command(server, broker, [], deadline)
+
+    assert_receive {[:aiur, :github, :budget_broker, :command], measurements, %{outcome: :late_response}}, 1_000
+    assert measurements.python_queue_wait_ms == 4
+    assert measurements.sqlite_lock_wait_ms == 11
+    assert measurements.sqlite_transaction_ms == 7
+  end
+
   test "resident Python broker reports inbox and SQLite stage durations", %{root: root, server: server} do
     test_pid = self()
 
@@ -321,16 +378,19 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
     summary =
       BudgetBroker.summarize_stats([
         {:completed, %{duration_ms: 10, mailbox_wait_ms: 1, mailbox: 2, pending: 1, python_queue_wait_ms: 3, python_queue_depth: 4, sqlite_lock_wait_ms: 5, sqlite_transaction_ms: 6}},
-        {:timeout, %{duration_ms: 100, mailbox_wait_ms: 20, mailbox: 8, pending: 3, python_queue_wait_ms: 30, python_queue_depth: 12, sqlite_lock_wait_ms: 40, sqlite_transaction_ms: 50}}
+        {:timeout, %{duration_ms: 100, mailbox_wait_ms: 20, mailbox: 8, pending: 3, python_queue_wait_ms: 30, python_queue_depth: 12, sqlite_lock_wait_ms: 40, sqlite_transaction_ms: 50}},
+        {:late_response, %{late_duration_ms: 120, python_queue_wait_ms: 35, sqlite_lock_wait_ms: 45}}
       ])
 
     assert summary.commands == 2
     assert summary.timeouts == 1
+    assert summary.late_responses == 1
     assert summary.duration_p50_ms == 10
     assert summary.duration_p99_ms == 100
+    assert summary.late_duration_p99_ms == 120
     assert summary.mailbox_depth_max == 8
     assert summary.python_queue_depth_max == 12
-    assert summary.sqlite_lock_wait_p99_ms == 40
+    assert summary.sqlite_lock_wait_p99_ms == 45
     assert summary.sqlite_transaction_p99_ms == 50
   end
 
