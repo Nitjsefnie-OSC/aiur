@@ -80,11 +80,20 @@ defmodule AiurWeb.BuildOrder.PlanningSource.LivePackProgressTest do
 
     cleanup =
       Task.async(fn ->
-        stop_busy_process(busy, fn _busy -> send(parent, :stand_in_termination_requested) end)
+        stop_busy_process(busy, fn _busy ->
+          send(parent, :stand_in_termination_requested)
+
+          receive do
+            :release_termination -> :ok
+          after
+            5_000 -> raise "test did not release the stand-in termination request"
+          end
+        end)
       end)
 
     assert_receive :stand_in_termination_requested, 1_000
-    assert Task.yield(cleanup, 0) == nil
+    send(cleanup.pid, :release_termination)
+    assert Task.yield(cleanup, 1_000) == nil
 
     Process.exit(busy, :kill)
     assert {:ok, :killed} = Task.yield(cleanup, 1_000)
