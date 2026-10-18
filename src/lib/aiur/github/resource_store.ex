@@ -1954,8 +1954,7 @@ defmodule Aiur.GitHub.ResourceStore do
   # entries before writing the complete restart document.
   #
   # The document is rendered one entry at a time; a second decoded copy of every
-  # body caused memory pressure (#3997). Callbacks hibernate because this process is idle between
-  # timers, so whatever a checkpoint or the boot load allocated would otherwise
+  # body caused memory pressure (#3997). Callbacks hibernate because this process is idle between timers, so allocations would otherwise
   # sit on its heap until the next one.
   defp checkpoint(state, opts \\ []), do: Checkpoint.run(state, &render/1, opts)
 
