@@ -9,6 +9,17 @@ const anchor = '  window.AiurBuild = {'
 expect(source.split(anchor)).toHaveLength(2)
 const probe = source.replace(anchor, `window.__ganttComposition = {
   stop() { S.ready = false; snapping = true; },
+  allHistory() { S.histFrom = 0; relayout(); update(); },
+  targets() {
+    const hs = L.secs.hist, pick = pred => hs.items.filter(pred).sort((a,b) => a.h - b.h)[0];
+    const overlap = n => pick(it => it.lanes === n && new Set(hs.items.filter(other => other.key === it.key && other.lanes === n && other.y < it.y + it.h && other.y + other.h > it.y).map(other => other.lane)).size === n);
+    const item = it => it && ({ id: it.t.id.replace('AIUR-', ''), y: it.y, h: it.h, lanes: it.lanes });
+    const mark = pred => { const m = hs.marks.find(pred); return m && { y: m.y, h: m.h }; };
+    const tick = hs.labels.find(l => l.tick), line = hs.labels.find(l => l.line);
+    return { full: item(pick(it => cardDetail(it) === 'full')), two: item(overlap(2)), three: item(overlap(3)),
+      labelled: mark(m => m.kind === 'brk' && m.label), empty: mark(m => m.kind === 'brk' && !m.label),
+      tick: tick && { y: tick.y }, line: line && { y: line.y - 6 } };
+  },
   scroll(top) { vp.scrollTop = top; update(); },
   positions() { return { now: Math.max(0, secs.hist.el.offsetTop + secs.hist.el.offsetHeight - 46), hist: 0, plan: secs.plan.el.offsetTop }; }
 };\n${anchor}`)
@@ -52,4 +63,62 @@ export async function scrollGanttComposition(pair, top) {
   await primeBoardPaint(pair)
   const positions = await Promise.all([pair.design, pair.product].map(page => page.locator('#bd-vp').evaluate(vp => vp.scrollTop)))
   expect(positions[1]).toBe(positions[0])
+}
+
+export async function attachGanttRasterDiagnostics(pair, info) {
+  const records = {}
+  for (const side of ['design', 'product']) records[side] = await pair[side].evaluate(() => {
+    const rect = el => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height } }
+    const styles = el => {
+      const cs = getComputedStyle(el)
+      return { ...Object.fromEntries(['color', 'stroke', 'strokeWidth', 'fill', 'fillOpacity', 'strokeOpacity', 'filter', 'opacity', 'shapeRendering', 'transform'].map(key => [key, cs[key]])),
+        vars: Object.fromEntries(['--ec', '--h', '--fg', '--muted', '--faint'].map(key => [key, cs.getPropertyValue(key)])) }
+    }
+    const parents = el => {
+      const list = []
+      for (let node = el.parentElement; node; node = node.parentElement) {
+        list.push({ tag: node.tagName, cls: node.getAttribute('class'), id: node.id, styles: styles(node) })
+        if (node.id === 'build-root') break
+      }
+      return list
+    }
+    const card = [...document.querySelectorAll('.bd-card')].find(el => el.dataset.id.replace('AIUR-', '') === '604')
+    return { dpr: devicePixelRatio, fonts: document.fonts.status, scroll: { x: scrollX, y: scrollY, top: document.querySelector('#bd-vp').scrollTop },
+      boxes: Object.fromEntries(['#build-root', '#bd-vp', '#bd-content', '#bd-now'].map(selector => [selector, rect(document.querySelector(selector))])),
+      card: card && { box: rect(card), styles: styles(card), parents: parents(card), icons: [...card.querySelectorAll('svg')].map(el => ({ box: rect(el), html: el.outerHTML, styles: styles(el), parents: parents(el), paths: [...el.querySelectorAll('path,rect,circle')].map(path => ({ tag: path.tagName, styles: styles(path) })) })) } }
+  })
+  await info.attach('gantt-raster-origins', { body: Buffer.from(JSON.stringify(records, null, 2)), contentType: 'application/json' })
+}
+
+export async function compareRenderedGanttEdges(pair) {
+  const records = []
+  for (const page of [pair.design, pair.product]) records.push(await page.evaluate(() => {
+    const numbers = path => (path.getAttribute('d').match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? []).map(Number)
+    const classes = el => [...el.classList].sort().join(' ')
+    const counts = new Map()
+    const main = [...document.querySelectorAll('#bd-edges > .bd-e')].map(line => {
+      const hit = line.previousElementSibling
+      if (!hit?.matches('.bd-eh')) throw new Error('rendered main edge has no dependent identity')
+      const id = hit.dataset.e.replace('AIUR-', ''), n = counts.get(id) ?? 0
+      counts.set(id, n + 1)
+      const arrow = line.nextElementSibling
+      if (!arrow?.matches('.bd-ea')) throw new Error('rendered main edge has no arrow')
+      return { id: `${id}:${n}`, cls: classes(line), arrowClass: classes(arrow), coords: numbers(line), arrow: numbers(arrow), path: line.getAttribute('d') }
+    })
+    const band = [...document.querySelectorAll('.bd-now-e .bd-e')].map(line => {
+      const source = main.find(edge => edge.path === line.getAttribute('d') && edge.cls === classes(line))
+      if (!source) throw new Error('rendered band edge has no corresponding main edge')
+      return { id: source.id, cls: classes(line), arrowClass: classes(line.nextElementSibling), coords: numbers(line), arrow: numbers(line.nextElementSibling) }
+    })
+    return [...main.map(({ path, ...edge }) => ({ layer: 'main', ...edge })), ...band.map(edge => ({ layer: 'band', ...edge }))]
+      .sort((a, b) => a.layer.localeCompare(b.layer) || a.id.localeCompare(b.id))
+  }))
+  const [expected, actual] = records
+  expect(actual.map(({ coords, arrow, ...identity }) => identity)).toEqual(expected.map(({ coords, arrow, ...identity }) => identity))
+  actual.forEach((edge, n) => {
+    for (const field of ['coords', 'arrow']) {
+      expect(edge[field].length).toBe(expected[n][field].length)
+      edge[field].forEach((value, i) => expect(Math.abs(value - expected[n][field][i]), `${edge.layer} ${edge.id} ${field}[${i}]`).toBeLessThanOrEqual(0.5))
+    }
+  })
 }

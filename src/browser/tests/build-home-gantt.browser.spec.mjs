@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { openFixture } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
-import { openParityPair, expectDesignParity, waitParityReady, PARITY_VIEWPORTS, captureStable, openProduct, parityContextOptions } from '../support/design-parity.mjs'
-import { freezeGanttComposition, scrollGanttComposition } from '../support/build-home-gantt-parity.mjs'
+import { openParityPair, expectDesignParity, waitParityReady, PARITY_VIEWPORTS, FIXTURE_META } from '../support/design-parity.mjs'
+import { freezeGanttComposition, scrollGanttComposition, attachGanttRasterDiagnostics, compareRenderedGanttEdges } from '../support/build-home-gantt-parity.mjs'
+import { runOn, compareRecords } from '../support/build-home-motion.mjs'
+import { loadGanttRegionHistory, markGanttRegion, markFixedGanttRegion } from '../support/build-home-gantt-regions.mjs'
 
 const root = new URL('../../test/fixtures/build_home/', import.meta.url)
 const design = await readFile(new URL('design-source/assets/build.js', root), 'utf8')
@@ -224,6 +226,7 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
   const first = await page.evaluate(async () => {
     const { ctx, fx } = await import('/build-home/state.js')
     ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
   })
   await page.getByRole('tab', { name: 'Gantt', exact: true }).click()
@@ -233,6 +236,7 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
   expect(await page.evaluate(async () => {
     const { ctx, fx } = await import('/build-home/state.js')
     ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
   })).toEqual(first)
 })
@@ -299,9 +303,9 @@ test('B5 live now-to-history diff lays out the actual completed interval', async
 const parityProbe = design.replace(anchor, `window.__ganttScroll = offset => {
 S.ready = false; snapping = true; vp.scrollTop = secs.hist.el.offsetTop + offset; update();
 };\n${anchor}`)
-for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`B2/B6 Gantt history breaks and complete edges: ${width} ${theme}`, async ({ browser }) => {
+for (const dataset of ['live', 'dense']) for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`${dataset === 'live' ? 'B2/B6 Gantt history breaks and complete edges' : 'B2 Gantt full acceptance dense history breaks'}: ${width} ${theme}`, async ({ browser }) => {
   test.setTimeout(120000)
-  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), theme, palette: 'aiur', dataset: 'live' }, { query: 'view=gantt', motion: true })
+  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), theme, palette: 'aiur', dataset }, { query: 'view=gantt', motion: true })
   try {
     await pair.design.route('**/assets/build.js*', route => route.fulfill({ contentType: 'text/javascript', body: parityProbe }))
     await pair.design.reload(); await waitParityReady(pair.design, 'board', 'design', true)
@@ -323,15 +327,17 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`B2
       }, offset)
       await Promise.all([pair.design, pair.product].map(p => p.clock.runFor(400)))
       expect(await readMarks(pair.product)).toEqual(await readMarks(pair.design))
-      for (const [side, page] of [pair.design, pair.product].entries()) for (const edge of await readEdges(page)) {
+      if (dataset === 'live') for (const [side, page] of [pair.design, pair.product].entries()) for (const edge of await readEdges(page)) {
         if (!collected[side].some(e => e.id === edge.id && e.coords.every((v, i) => Math.abs(v - edge.coords[i]) <= 0.5))) collected[side].push(edge)
       }
     }
     const order = (a, b) => a.id.localeCompare(b.id) || a.coords[0] - b.coords[0] || a.coords[1] - b.coords[1] || a.coords[6] - b.coords[6] || a.coords[7] - b.coords[7]
     const [expectedEdges, actualEdges] = collected.map(edges => edges.sort(order))
-    if (width === 1440) expect(expectedEdges.length).toBeGreaterThan(0)
-    expect(actualEdges.map(e => [e.id, e.cls])).toEqual(expectedEdges.map(e => [e.id, e.cls]))
-    actualEdges.forEach((edge, n) => edge.coords.forEach((v, i) => expect(Math.abs(v - expectedEdges[n].coords[i])).toBeLessThanOrEqual(0.5)))
+    if (dataset === 'live') {
+      if (width === 1440) expect(expectedEdges.length).toBeGreaterThan(0)
+      expect(actualEdges.map(e => [e.id, e.cls])).toEqual(expectedEdges.map(e => [e.id, e.cls]))
+      actualEdges.forEach((edge, n) => edge.coords.forEach((v, i) => expect(Math.abs(v - expectedEdges[n].coords[i])).toBeLessThanOrEqual(0.5)))
+    }
     await expect(pair.product.locator('#bd-edges')).toHaveClass(/gantt/)
 
   } finally { await pair.close() }
@@ -351,40 +357,64 @@ for (const cell of compositionCells) {
       const positions = await pair.design.evaluate(() => __ganttComposition.positions())
       for (const [position, top] of Object.entries(positions)) {
         await scrollGanttComposition(pair, top)
-        await expectDesignParity(pair, { name: `gantt-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}-span${cell.span}-${position}`, region: '#bd-vp', preserveAnimations: true })
+        if (cell.dataset === 'live') await compareRenderedGanttEdges(pair)
+        try {
+          await expectDesignParity(pair, { name: `gantt-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}-span${cell.span}-${position}`, region: '#bd-vp', preserveAnimations: true })
+        } catch (error) {
+          if (cell.dataset === 'live' && cell.viewport.width === 390 && cell.theme === 'dark' && position === 'now') await attachGanttRasterDiagnostics(pair, test.info())
+          throw error
+        }
       }
     } finally { await pair.close() }
   })
 }
 
-for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`S-5 adopted unknown-value capture: ${width} ${theme}`, async ({ browser }, info) => {
-  test.setTimeout(120000)
-  const cell = { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), theme, palette: 'aiur', dataset: 'live' }
-  const context = await browser.newContext({ ...parityContextOptions(cell), baseURL: info.project.use.baseURL })
+
+for (const dataset of ['live', 'dense']) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) test(`B1 Gantt full acceptance targeted regions: ${dataset} ${theme} ${palette}`, async ({ browser }) => {
+  test.setTimeout(240000)
+  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS[0], dataset, theme, palette }, { query: 'view=gantt', motion: true })
   try {
-    const page = await context.newPage(); await openProduct(page, cell, { query: 'view=gantt', motion: true })
-    const markers = await page.evaluate(async () => {
-      const { ctx, S, fx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
-      const end = ctx.snap.now
-      const hist = { ...ctx.snap.sections.hist[0], id: 's5-start-unknown', start: null, end, title: 'Start unknown' }
-      const plan = { ...ctx.snap.sections.plan[0], id: 's5-estimate-unknown', est: null, override: null, wave: 1, title: 'Estimate unknown' }
-      S.span = 1; S.ready = false; S.histFrom = end - 86400000
-      receive({ ...ctx.snap, kind: 'snapshot', generation: ctx.proto.generation + 1, sections: { hist: [hist], now: [], plan: [plan], nq: [] }, history: { ...ctx.snap.history, from: end - 86400000, more: false, total: 1 } })
-      ctx.vp.scrollTop = 0; fx.update()
-      return ['s5-start-unknown', 's5-estimate-unknown'].map(id => {
-        const el = ctx.R.get((id.includes('start') ? 'hist:' : 'plan:') + id)
-        return { id, cls: el.className, title: el.querySelector('.bd-in').title, height: parseFloat(el.style.height) }
-      })
-    })
-    expect(markers[0].cls).toContain('start-unknown'); expect(markers[0].height).toBeCloseTo(29.9, 9)
-    expect(markers[1].cls).toContain('est-unknown'); expect(markers[1].cls).toContain('gplan'); expect(markers[1].height).toBe(32.5)
-    expect(markers.map(m => m.title.endsWith(m.id.includes('start') ? 'start unknown' : 'estimate unknown'))).toEqual([true, true])
-    // These cases have no design oracle. Attach unmasked real product elements
-    // and their measured semantics, without manufacturing a reference image.
-    for (const marker of markers) {
-      const target = page.locator(`.bd-card[data-id="${marker.id}"]`)
-      await info.attach(`${marker.id}-${width}-${theme}`, { body: await captureStable(target, { animations: 'disabled', caret: 'hide', scale: 'device' }), contentType: 'image/png' })
+    await freezeGanttComposition(pair)
+    const targets = await loadGanttRegionHistory(pair, dataset)
+    for (const name of ['labelled', 'empty', 'tick', 'line', 'full', 'two', 'three']) {
+      const region = await markGanttRegion(pair, name, targets[name])
+      await expectDesignParity(pair, { name: `gantt-region-${dataset}-${theme}-${palette}-${name}`, region, preserveAnimations: true })
     }
-    await info.attach(`s5-semantics-${width}-${theme}`, { body: Buffer.from(JSON.stringify(markers, null, 2)), contentType: 'application/json' })
-  } finally { await context.close() }
+    // Explicit widths constrain both sides of the same container-query thresholds.
+    for (const width of [250, 150, 96]) {
+      const region = await markGanttRegion(pair, 'full', targets.full, width)
+      await expectDesignParity(pair, { name: `gantt-container-${dataset}-${theme}-${palette}-${width}`, region, preserveAnimations: true })
+    }
+    const positions = await pair.design.evaluate(() => __ganttComposition.positions())
+    for (const [name, selector, top] of [
+      ['planned', '.bd-card.gplan', positions.plan],
+      ['band', '#bd-now', positions.now],
+      ['lane-label', '.bd-lane-g', 0],
+      ['legend', '.bd-leg:has(.bd-leg-h)', 0]
+    ]) {
+      await scrollGanttComposition(pair, top)
+      const region = await markFixedGanttRegion(pair, selector, name)
+      await expectDesignParity(pair, { name: `gantt-owned-${dataset}-${theme}-${palette}-${name}`, region, preserveAnimations: true })
+    }
+  } finally { await pair.close() }
+})
+
+for (const width of [1440, 390]) test(`Gantt full acceptance canonical view.switch.gantt motion: ${width}`, async ({ browser }) => {
+  test.setTimeout(120000)
+  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), dataset: 'live', theme: 'dark', palette: 'aiur' }, { motion: true })
+  try {
+    const [reference, product] = await Promise.all([
+      runOn(pair.design, 'view.switch.gantt'),
+      runOn(pair.product, 'view.switch.gantt', { ids: FIXTURE_META.ids })
+    ])
+    expect(reference.samples.length).toBeGreaterThan(0); expect(product.samples.length).toBeGreaterThan(0)
+    expect(compareRecords(reference, product, pair.allowlist)).toEqual([])
+    for (const page of [pair.design, pair.product]) {
+      const jump = await page.locator('#bd-vp').evaluate(vp => {
+        const hist = document.querySelector('#bd-sec-hist')
+        return { actual: vp.scrollTop, expected: Math.max(0, Math.min(vp.scrollHeight - vp.clientHeight, hist.offsetTop + hist.offsetHeight - 46)) }
+      })
+      expect(Math.abs(jump.actual - jump.expected)).toBeLessThanOrEqual(1)
+    }
+  } finally { await pair.close() }
 })

@@ -8,7 +8,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   matrix:
-    name: full home parity (${{ matrix.part }}/4)
+    name: full home parity (${{ matrix.suite }} ${{ matrix.part }}/4)
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
@@ -16,6 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        suite: [band, gantt]
         part: [1, 2, 3, 4]
     steps:
       - name: Checkout
@@ -33,17 +34,17 @@ jobs:
           AIUR_HOME_PARITY_FULL: '1'
           AIUR_HOME_PARITY_PART: ${{ matrix.part }}
           AIUR_BROWSER_KEEP_ARTIFACTS: '1'
-        run: npm run test:build-home-band-full
-      - name: Run full Gantt matrix partition
-        working-directory: src/browser
-        env:
-          AIUR_BROWSER_KEEP_ARTIFACTS: '1'
-        run: npm run test:build-home-gantt:full -- --shard=${{ matrix.part }}/4
+        run: |
+          if [ "${{ matrix.suite }}" = gantt ]; then
+            npm run test:build-home-gantt:full -- --shard=${{ matrix.part }}/4
+          else
+            npm run test:build-home-band-full
+          fi
       - name: Upload failure evidence
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: home-parity-${{ matrix.part }}-${{ github.run_attempt }}
+          name: home-parity-${{ matrix.suite }}-${{ matrix.part }}-${{ github.run_attempt }}
           path: src/browser/.artifacts-run-*/
           if-no-files-found: warn
           include-hidden-files: true

@@ -46,7 +46,7 @@ snap sequences at live/390px/dark/gruvbox. It preserves the scroll-curve regress
 The full check preserves all **104 band/mobile pixel cases** (seven band datasets,
 three widths, both themes/palettes, plus twenty mobile composition cases) and
 **32 band-motion cases**, including desktop normal/reduced motion, mobile snap,
-grain and pulse. Four additional matrix partitions run in these events:
+grain and pulse. Band and Gantt each use four isolated matrix partitions in these events:
 
 | Event | Full home check |
 |-------|-----------------|
@@ -63,9 +63,9 @@ is the exact path list.
 
 Missing or invalid candidate metadata fails closed.
 
-Gantt smoke checks run geometry, live updates, complete history edges, unknown-value captures and four representative composition cells. `npm run test:build-home-gantt:full` also runs the full 108-cell dataset/span/width/theme/palette composition matrix in the same four CI partitions.
+Gantt smoke checks run geometry, live updates, complete history edges, unknown-value captures and four representative composition cells. `npm run test:build-home-gantt:full` also runs the full 108-cell dataset/span/width/theme/palette composition matrix in four separate Gantt CI partitions.
 
-The full matrix runs through `npm run test:build-home-band-full` with
+The band/mobile matrix runs through `npm run test:build-home-band-full` with
 `AIUR_HOME_PARITY_PART=1..4`. This is separate from the broader C12 sign-off
 flag `AIUR_PARITY_FULL`.
 
