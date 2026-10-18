@@ -176,6 +176,66 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     end
   end
 
+  test "a no-body duplicate merge wake preserves done after the first closing wake fails" do
+    {:ok, attempts} = Agent.start_link(fn -> 0 end)
+    {:ok, labels} = Agent.start_link(fn -> ["agent:in-progress"] end)
+    on_exit(fn -> if Process.alive?(attempts), do: Agent.stop(attempts) end)
+    on_exit(fn -> if Process.alive?(labels), do: Agent.stop(labels) end)
+
+    request_fun = fn request ->
+      case request.method do
+        :get ->
+          {:ok, %{status: 200, body: %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}}
+
+        :post ->
+          Agent.update(labels, &Enum.uniq(&1 ++ request.body["labels"]))
+          {:ok, %{status: 200, body: Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}
+
+        :delete ->
+          removed = URI.decode(request.url |> String.split("/") |> List.last())
+          Agent.update(labels, &Enum.reject(&1, fn label -> label == removed end))
+          {:ok, %{status: 200, body: Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}
+
+        :patch ->
+          {:ok, %{status: 200, body: %{}}}
+      end
+    end
+
+    context = %{
+      request_fun: request_fun,
+      token: "test-token",
+      owner: "owner",
+      repo: "repo",
+      issue_number: "3778",
+      issue_url: "https://api.github.com/repos/owner/repo/issues/3778",
+      prefix: "agent",
+      opts: [request_fun: request_fun]
+    }
+
+    updater = fn "3778", target ->
+      if Agent.get_and_update(attempts, fn count -> {count == 0, count + 1} end) do
+        {:error, {:github, :github_issue_response_too_large, %{}}}
+      else
+        IssueState.apply_issue_state_update(context, %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}, target, "agent:#{target}")
+      end
+    end
+
+    merge(%{"state" => "closed", "labels" => [%{"name" => "agent:in-progress"}]}, fn state, _ -> state end,
+      target_state: "done",
+      update_issue_state_fun: updater,
+      merge_terminal_write_sleep_fun: fn _ -> :ok end
+    )
+
+    merge(%{"state" => "closed", "labels" => [%{"name" => "agent:in-progress"}]}, fn state, _ -> state end,
+      pr_body: nil,
+      update_issue_state_fun: updater,
+      open_pull_requests_fun: fn _ -> {:ok, []} end
+    )
+
+    assert Agent.get(labels, & &1) == ["agent:done"]
+    assert Agent.get(attempts, & &1) == 2
+  end
+
   test "transient non-terminal merge target failure is retried" do
     {:ok, attempts} = Agent.start_link(fn -> 0 end)
     on_exit(fn -> if Process.alive?(attempts), do: Agent.stop(attempts) end)
@@ -285,11 +345,12 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     }
 
     CommentWake.mark_pr_merged_issue_done(state, "3778",
-      pr_body: "Closes #3778",
+      pr_body: Keyword.get(opts, :pr_body, "Closes #3778"),
       target_state: Keyword.get(opts, :target_state),
-      open_pull_requests_fun: fn _identifier ->
-        {:ok, [%{"number" => 3779, "review_decision" => "CHANGES_REQUESTED"}]}
-      end,
+      open_pull_requests_fun:
+        Keyword.get(opts, :open_pull_requests_fun, fn _identifier ->
+          {:ok, [%{"number" => 3779, "review_decision" => "CHANGES_REQUESTED"}]}
+        end),
       unresolved_threads_fetcher: fn _pr -> {:ok, [%{"id" => "remaining-thread"}]} end,
       update_issue_state_fun:
         Keyword.get(opts, :update_issue_state_fun, fn "3778", target ->
