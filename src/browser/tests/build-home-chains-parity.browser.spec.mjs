@@ -1,21 +1,23 @@
 import { test, expect } from '@playwright/test'
 import { openParityPair, expectDesignParity, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
 import { settleAnimations } from './support/browser-helpers.mjs'
-import { prepareChainParity, largestRoot, hoverRoot, assertChainPaint, fitState, installFitObserver, waitForFit, treeRecord } from './support/build-home-chains-parity.mjs'
+import { prepareChainCanvas, prepareChainParity, largestRoot, hoverRoot, assertChainPaint, fitState, installFitObserver, waitForFit, treeRecord } from './support/build-home-chains-parity.mjs'
 
 test.setTimeout(120_000)
 const root = await largestRoot('live'), denseRoot = await largestRoot('dense', 'plan')
 const cells = PARITY_VIEWPORTS.flatMap(v => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset: 'live', ...v, theme, palette }))))
 for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width} ${cell.theme} ${cell.palette}`, async ({ browser }) => {
+  test.setTimeout(cell.viewport.width === 390 ? 240_000 : 120_000)
   const failures = []
   // Keep independent captures when one phase differs, then fail with every actual discrepancy.
   const check = async (name, action) => { try { await test.step(name, action) } catch (error) { failures.push(error) } }
   const pixels = (pair, name, region) => check(name, async () => {
     await prepareChainParity(pair) // Fit replaces the band's ETA element.
-    await expectDesignParity(pair, { name, region })
+    await expectDesignParity(pair, { name, region, preserveAnimations: pair.cell.viewport.width === 390 })
   })
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
   try {
+    await prepareChainCanvas(pair)
     await prepareChainParity(pair)
     for (const page of [pair.design, pair.product]) await hoverRoot(page, root, page === pair.product)
     await check('P1 hover classes and tab position', () => assertChainPaint(pair, root, false))
@@ -24,6 +26,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     await check('P2 lock classes and tab position', () => assertChainPaint(pair, root, true))
     await pixels(pair, 'P2-chain-tab', '.bd-lt')
     await pixels(pair, 'P2-chain-lock', '#bd-vp')
+    for (const page of [pair.design, pair.product]) await expect(page.locator('.bd-lt.locked.show')).toHaveCount(1)
     // P4 starts from the locked P2 state; Fit must not change its backdrop inputs.
     for (const page of [pair.design, pair.product]) {
       await page.locator('[data-lt="tree"]').click()
@@ -50,6 +53,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   if (cell.viewport.width === 390 && cell.theme === 'dark' && cell.palette === 'gruvbox') {
     const dense = await openParityPair(browser, { ...cell, dataset: 'dense' }, { query: '?trees=1' })
     try {
+      await prepareChainCanvas(dense)
       await prepareChainParity(dense)
       for (const page of [dense.design, dense.product]) {
         await hoverRoot(page, denseRoot, page === dense.product)

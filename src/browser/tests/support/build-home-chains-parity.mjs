@@ -1,6 +1,6 @@
 import { expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
-import { alignEtaMask } from '../../support/build-home-band-canvas.mjs'
+import { alignBoard, alignEtaMask, primeBoardPaint } from '../../support/build-home-band-canvas.mjs'
 import { chainOf } from '../../../priv/static/build-home/chains.js'
 
 export async function largestRoot(dataset, section) {
@@ -13,9 +13,22 @@ export async function largestRoot(dataset, section) {
 }
 
 export async function hoverRoot(page, root, product) {
-  await page.locator('#bd-vp').evaluate(vp => { vp.scrollTop = document.querySelector('#bd-sec-plan').offsetTop - 300 })
+  await page.locator('#bd-vp').evaluate((vp, history) => {
+    const anchor = document.querySelector(history ? '#bd-sec-hist' : '#bd-sec-plan')
+    vp.scrollTop = anchor.offsetTop + (history ? anchor.offsetHeight : 0) - 300
+  }, root.sec === 'hist' && page.viewportSize().width === 390)
   await page.waitForTimeout(800)
   const card = page.locator(`.bd-card[data-id="${root.id}"], .bd-card[data-id="AIUR-${root.num}"]`).first()
+  // Narrow layouts stack history rows; walk the real scrollport until the root is rendered.
+  for (let step = 0; step < 50 && !await card.count(); step++) {
+    const moved = await page.locator('#bd-vp').evaluate((vp, direction) => {
+      const before = vp.scrollTop
+      vp.scrollTop += direction * vp.clientHeight
+      return vp.scrollTop !== before
+    }, root.sec === 'hist' ? -1 : 1)
+    if (!moved) break
+    await page.waitForTimeout(300)
+  }
   await expect(card).toHaveCount(1)
   await card.evaluate(el => {
     const vp = document.querySelector('#bd-vp')
@@ -108,4 +121,10 @@ export async function prepareChainParity(pair) {
   pair.allowlist = pair.allowlist.map(entry => entry.id === 'now-band-eta-pending'
     ? { ...entry, kind: 'pixel-mask', selector: '.bd-now-eta' } : entry)
   await alignEtaMask(pair)
+  if (pair.cell.viewport.width === 390) await primeBoardPaint(pair, '#bd-lanes')
+}
+
+export async function prepareChainCanvas(pair) {
+  // Keep the mobile board above unrelated page chrome at the same raster origin.
+  if (pair.cell.viewport.width === 390) await alignBoard(pair)
 }
