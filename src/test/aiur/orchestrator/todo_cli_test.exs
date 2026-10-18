@@ -70,7 +70,7 @@ defmodule Aiur.Orchestrator.TodoCLITest do
 
     {stdout, stderr, exit_code} =
       capture_todo(["4742"],
-        deps: todo_deps(%{"4742" => issue}, request_refresh_result: %{queued: true, dispatch_hold: %{reasons: [:build]}})
+        deps: todo_deps(%{"4742" => issue}, request_refresh_result: %{queued: true, latest_dispatch_hold: %{reasons: [:build]}})
       )
 
     assert exit_code == 0

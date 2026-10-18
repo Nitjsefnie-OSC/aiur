@@ -4,37 +4,35 @@ defmodule Aiur.Orchestrator.IssueSync.TransitionAlertsTest do
 
   import Aiur.IssueSyncTestSupport
 
+  alias Aiur.DecisionAttention
   alias Aiur.Events.Exchange
   alias Aiur.Events.Publisher
   alias Aiur.ExecutorListener
   alias Aiur.ExecutorWakeInbox
   alias Aiur.GitHub.ResourceStore
   alias Aiur.Orchestrator.IssueSync
-  alias Aiur.Orchestrator.IssueSync.TransitionAlerts
   alias Aiur.Orchestrator.State
 
-  test "resolves a stranded reminder when observed state stops requiring an agent" do
-    for state_name <- ["ci-wait", "merging", "done"] do
-      issue = issue("stranded-#{state_name}", state_name)
-      topic = "ticket.#{issue.identifier}.agent.attention.stranded-requeued"
-      parent = self()
-      state = %State{active_attention_topics: MapSet.new([topic])}
+  test "issue poll resolves a stranded reminder after observing ci-wait" do
+    ticket = %{issue("stranded-ci-wait", "ci-wait") | identifier: "stranded-ci-wait"}
+    topic = "ticket.#{ticket.identifier}.agent.attention.stranded-requeued"
 
-      resolved =
-        TransitionAlerts.resolve_stranded_attention_if_cleared(
-          state,
-          issue,
-          MapSet.new(["done"]),
-          fn resolved_issue, slug ->
-            send(parent, {:stranded_resolved, resolved_issue.identifier, slug})
-            :ok
-          end
-        )
+    assert :ok = DecisionAttention.open(ticket, nil, nil, "stranded-requeued", "Restore dispatch")
+    assert Enum.any?(Aiur.AlertFeed.list(), &(&1["topic"] == topic and &1["needs_attention"]))
 
-      assert_receive {:stranded_resolved, identifier, "stranded-requeued"}, 1000
-      assert identifier == issue.identifier
-      refute MapSet.member?(resolved.active_attention_topics, topic)
-    end
+    state =
+      IssueSync.sync_polled_issue_state(
+        %State{},
+        [ticket],
+        fn _ -> {:ok, []} end,
+        fn _identity, _lifecycle -> :ok end,
+        MapSet.new(["done"]),
+        fn _ -> :ok end,
+        fn _identity, _pending? -> :ok end
+      )
+
+    refute Enum.any?(Aiur.AlertFeed.list(), &(&1["topic"] == topic and &1["needs_attention"]))
+    refute MapSet.member?(state.active_attention_topics, topic)
   end
 
   test "alerts when the tracker adds or removes agent:paused" do

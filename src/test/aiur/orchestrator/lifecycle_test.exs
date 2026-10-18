@@ -233,7 +233,7 @@ defmodule Aiur.Orchestrator.LifecycleTest do
       github_poll_delays: %{}
     }
 
-    assert {:reply, %{queued: true, dispatch_hold: %{reasons: [:build]}}, _refreshed} =
+    assert {:reply, %{queued: true, latest_dispatch_hold: %{reasons: [:build]}}, _refreshed} =
              Lifecycle.note_queued_demand(state, ["4742"])
   end
 
