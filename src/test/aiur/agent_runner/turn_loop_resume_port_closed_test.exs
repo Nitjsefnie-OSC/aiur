@@ -74,7 +74,7 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
 
     run_turn = fn _session, _prompt, _issue, _opts -> {:ok, %{thread_id: "fresh"}} end
 
-    assert :ok =
+    assert {:completed, %Aiur.Issue{identifier: identifier}} =
              TurnLoop.run_turns(
                %{backend: "codex", resumed: false, thread_id: "fresh", workspace: ctx.workspace, worker_host: nil},
                ctx.workspace,
@@ -87,6 +87,8 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
                1,
                1
              )
+
+    assert identifier == ctx.issue.identifier
 
     refute SessionHandle.abandoned_thread?(ctx.issue.identifier)
   end
