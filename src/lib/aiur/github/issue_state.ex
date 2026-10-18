@@ -149,8 +149,24 @@ defmodule Aiur.GitHub.IssueState do
              current_issue_body,
              context.prefix
            ) do
-      {:error, {:no_state_label_written, current_issue_body}}
+      {:error, {:no_state_label_written, closed_done_issue_body(current_issue_body, context.prefix)}}
     end
+  end
+
+  defp closed_done_issue_body(issue_body, prefix) do
+    done_label = StatePolicy.state_label(prefix, "done")
+
+    labels =
+      issue_body
+      |> Map.get("labels", [])
+      |> Enum.map(&Map.get(&1, "name", ""))
+      |> Enum.reject(fn label ->
+        String.starts_with?(label, "#{prefix}:") and not preserved_prefixed_label?(label, prefix)
+      end)
+      |> then(&Enum.uniq([done_label | &1]))
+      |> Enum.map(&%{"name" => &1})
+
+    Map.put(issue_body, "labels", labels)
   end
 
   defp ensure_closed_done_label(context, issue_body) do

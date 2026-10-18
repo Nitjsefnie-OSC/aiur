@@ -1703,7 +1703,11 @@ defmodule Aiur.Orchestrator.CommentWake do
         LocalHold.caller_opts(opts)
       )
 
-    result = MergeTransition.write_terminal_target(target, identifier, update_issue_state_fun, opts)
+    {target, result} =
+      target
+      |> then(&MergeTransition.write_terminal_target(&1, identifier, update_issue_state_fun, opts))
+      |> then(&MergeTransition.normalize({target, &1}))
+
     result = if target == "done", do: Alerts.StaleNotClosed.resolve_on_ok(result, identifier), else: result
 
     audit_merge_attribution(identifier, MergeAttribution.resolve(merged_by_login, opts), merger_allowed_fun, emit_alert_fun)
