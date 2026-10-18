@@ -35,10 +35,10 @@ def write_body(fd, contents):
         pass
 
 shell_program = (
-    'source_path=$1; shift; '
-    'if [ -f "$source_path" ]; then '
-    'echo "aiur: refusing regular-file deadline body" >&2; exit 127; '
-    'fi; . "$source_path"'
+    "source_path=$1; shift; "
+    "if [ -f \"$source_path\" ]; then "
+    "echo \"aiur: refusing regular-file deadline body\" >&2; exit 127; "
+    "fi; . \"$source_path\""
 )
 child = subprocess.Popen(
     ["/bin/sh", "-c", shell_program, script, "/dev/fd/" + str(body_read), *args],
