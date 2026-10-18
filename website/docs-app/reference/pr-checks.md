@@ -38,7 +38,9 @@ Run counts depend on how many test files the pull request changes.
 PR browser smoke stays at **seven shards**, including PRs selecting full CI.
 The routine pixel selection uses **390px**, datasets **live/offline**, both
 **dark/light** themes and **gruvbox/aiur** palettes: eight band pixel cases and
-eight unmasked composed mobile card/header cases. Routine motion runs the ten
+eight unmasked composed mobile card/header cases.
+
+Routine motion runs the ten
 snap sequences at live/390px/dark/gruvbox. It preserves the scroll-curve regression.
 
 The full check preserves all **104 band/mobile pixel cases** (seven band datasets,
@@ -57,10 +59,14 @@ Merge-group selection compares the event’s entire base/head candidate diff,
 including removed/renamed paths. It covers home product code, build specs,
 frozen fixtures and fixture support, shared browser capture/configuration,
 package files and the matrix workflow/selector. `scripts/classify-home-ci.py`
-is the exact path list. Missing or invalid candidate metadata fails closed.
+is the exact path list.
+
+Missing or invalid candidate metadata fails closed.
 
 The full matrix runs through `npm run test:build-home-band-full` with
 `AIUR_HOME_PARITY_PART=1..4`. This is separate from the broader C12 sign-off
-flag `AIUR_PARITY_FULL`. Shard balancing uses recorded CI timings; until the
+flag `AIUR_PARITY_FULL`.
+
+Shard balancing uses recorded CI timings; until the
 first routine run is measured, the previous full selections’ 303s parity and
 280s motion measurements serve as conservative bounds, not routine timings.
