@@ -225,6 +225,38 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
     assert %{next_id: 2, pending: %{}} = :sys.get_state(server)
   end
 
+  test "broker completions report latency, pending requests and mailbox depth", %{root: root} do
+    test_pid = self()
+
+    handler =
+      :telemetry.attach(
+        "budget-broker-observed-#{inspect(test_pid)}",
+        [:aiur, :github, :budget_broker, :command],
+        fn event, measurements, metadata, pid ->
+          send(pid, {event, measurements, metadata})
+        end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+    server = start_supervised!({BudgetBroker, name: __MODULE__.Observed}, id: :observed)
+    broker = Path.join(root, "observed.py")
+
+    File.write!(broker, """
+    import json, sys
+    for line in sys.stdin:
+        request = json.loads(line)
+        print(json.dumps({"id": request["id"], "output": "ok", "status": 0}), flush=True)
+    """)
+
+    assert {:ok, "ok", 0} = command(server, broker, [])
+
+    assert_receive {[:aiur, :github, :budget_broker, :command], %{duration_ms: duration, pending: pending, mailbox: mailbox}, %{outcome: :completed}}, 1_000
+    assert is_integer(duration) and duration >= 0
+    assert pending == 0
+    assert is_integer(mailbox) and mailbox >= 0
+  end
+
   defp command(server, broker, args), do: BudgetBroker.command(server, broker, args, System.monotonic_time(:millisecond) + 5_000)
   defp common(root), do: ["--db", Path.join(root, "budget.sqlite3"), "--token-key", "shared-key"]
 

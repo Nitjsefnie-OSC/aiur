@@ -2,6 +2,11 @@ defmodule Aiur.GitHub.BudgetBroker do
   @moduledoc "Owns the daemon's persistent, correlated budget broker port."
   use GenServer
 
+  require Logger
+
+  @max_pending_commands 64
+  @telemetry_event [:aiur, :github, :budget_broker, :command]
+
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
 
@@ -22,10 +27,18 @@ defmodule Aiur.GitHub.BudgetBroker do
   def handle_call({:command, broker, args, deadline_at}, from, state) do
     remaining = deadline_at - System.monotonic_time(:millisecond)
 
-    if remaining <= 0 do
-      {:reply, :timeout, state}
-    else
-      enqueue(state, broker, args, remaining, from)
+    cond do
+      remaining <= 0 ->
+        observe_command(:deadline_expired, 0, map_size(state.pending), message_queue_len())
+        {:reply, :timeout, state}
+
+      map_size(state.pending) >= @max_pending_commands ->
+        Logger.warning("github_budget_broker_overloaded pending=#{map_size(state.pending)} mailbox=#{message_queue_len()}")
+        observe_command(:overloaded, 0, map_size(state.pending), message_queue_len())
+        {:reply, :timeout, state}
+
+      true ->
+        enqueue(state, broker, args, remaining, from)
     end
   end
 
@@ -38,7 +51,8 @@ defmodule Aiur.GitHub.BudgetBroker do
     payload = Jason.encode!(%{id: id, args: args, deadline_ms: System.system_time(:millisecond) + remaining}) <> "\n"
     state = ensure_port(state, broker)
     timer = Process.send_after(self(), {:deadline, id}, remaining)
-    next = %{state | pending: Map.put(state.pending, id, {from, timer})}
+    started_at = System.monotonic_time(:millisecond)
+    next = %{state | pending: Map.put(state.pending, id, {from, timer, started_at})}
     send_request(next, payload, id)
   rescue
     _error -> {:reply, :timeout, state}
@@ -91,10 +105,25 @@ defmodule Aiur.GitHub.BudgetBroker do
       {nil, _pending} ->
         state
 
-      {{from, timer}, pending} ->
+      {{from, timer, started_at}, pending} ->
         Process.cancel_timer(timer)
         GenServer.reply(from, result)
+        outcome = if result == :timeout, do: :timeout, else: :completed
+        observe_command(outcome, System.monotonic_time(:millisecond) - started_at, map_size(pending), message_queue_len())
         %{state | pending: pending}
+    end
+  end
+
+  defp observe_command(outcome, duration_ms, pending, mailbox) do
+    :telemetry.execute(@telemetry_event, %{duration_ms: duration_ms, pending: pending, mailbox: mailbox}, %{outcome: outcome})
+  rescue
+    _error -> :ok
+  end
+
+  defp message_queue_len do
+    case Process.info(self(), :message_queue_len) do
+      {:message_queue_len, length} -> length
+      _unavailable -> 0
     end
   end
 end
