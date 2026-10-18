@@ -284,14 +284,27 @@ test('full unknown-start card shows no invented timestamp or duration; skew uses
 test('B5 live now-to-history diff lays out the actual completed interval', async ({ page }) => {
   await page.goto('/build-fixture/live?view=gantt')
   await expect(page.locator('#bd-content')).toHaveCount(1)
-  const id = await page.evaluate(async () => {
-    const { ctx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
+  const before = await page.evaluate(async () => {
+    const { ctx, fx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
     const original = ctx.snap.sections.now[0]
     if (!original) throw new Error('live fixture must contain a running ticket')
-    const now = ctx.snap.now, t = { ...original, sec: 'hist', status: 'done', start: now - 8 * 3600000, end: now }
-    receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now, upsert: [t], remove: [], set: {} })
-    return t.id
+    const now = ctx.snap.now, neighbor = { ...original, id: 'gantt-neighbor', sec: 'hist', status: 'done', start: now - 8 * 3600000, end: now }
+    receive({ ...ctx.snap, kind: 'snapshot', generation: ctx.proto.generation + 1,
+      sections: { hist: [neighbor], now: [original], plan: [], nq: [] },
+      history: { ...ctx.snap.history, from: now - 86400000, total: 1, more: false } })
+    ctx.snapping = true; fx.scrollVP(ctx.secs.hist.el.offsetTop, false); fx.update()
+    ctx.snapping = false
+    const el = ctx.R.get('hist:' + neighbor.id)
+    return { id: original.id, tier: el.classList.contains('full'), time: !!el.querySelector('.bd-time') }
   })
+  expect(before).toMatchObject({ tier: true, time: true })
+  const id = before.id
+  await page.evaluate(async id => {
+    const { ctx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
+    const original = ctx.snap.sections.now.find(t => t.id === id), now = ctx.snap.now
+    const t = { ...original, sec: 'hist', status: 'done', start: now - 8 * 3600000, end: now }
+    receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now, upsert: [t], remove: [], set: {} })
+  }, id)
   await expect.poll(() => page.evaluate(async id => {
     const { ctx } = await import('/build-home/state.js')
     return ctx.L.secs.hist.items.some(i => i.t.id === id)
@@ -305,6 +318,13 @@ test('B5 live now-to-history diff lays out the actual completed interval', async
   }, id)
   expect(result).toMatchObject({ hist: true, stillNow: false })
   expect(result.h).toBeCloseTo(143, 9); expect(result.domH).toBeCloseTo(143, 9)
+  const neighbor = page.locator('#bd-sec-hist .bd-card[data-id="gantt-neighbor"]')
+  await expect(neighbor).toHaveClass(/\bline\b/)
+  await expect(neighbor.locator('.bd-time')).toHaveCount(0)
+  expect(await page.evaluate(async () => {
+    const { ctx } = await import('/build-home/state.js')
+    return ctx.L.secs.hist.items.find(it => it.t.id === 'gantt-neighbor').lanes
+  })).toBe(2)
 })
 
 const parityProbe = design.replace(anchor, `window.__ganttScroll = offset => {

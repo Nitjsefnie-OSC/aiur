@@ -1,4 +1,5 @@
 import { ganttExt } from './gantt.js';
+import { cardDetail } from './cards.js';
 import { S, ctx, fx, gutW, LH, onReset, renderChrome } from './state.js';
 import { syncStates } from './states.js';
 import { $ } from './dom.js';
@@ -123,6 +124,7 @@ function renderSection(s, keep, keepL, focused) {
     if (!overlaps(it.y, it.h) && it.t.id !== focused) continue;
     const uid = s + ':' + it.t.id; keep.add(uid);
     let el = ctx.R.get(uid);
+    if (el && !el.classList.contains(cardDetail(it))) { el.remove(); el = null; }
     if (!el) { el = fx.makeCard(it); noanim(el); sec.layer.appendChild(el); ctx.R.set(uid, el); }
     el._it = it; place(el, it);
   }
