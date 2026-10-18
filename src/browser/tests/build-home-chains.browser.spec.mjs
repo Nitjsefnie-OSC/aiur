@@ -100,8 +100,6 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   })
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => earlierCalls.length)).toBeGreaterThan(0)
-  // Idle paging and the lock can recur between Fit's candidate spans.
-  await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
   await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe('9012')
   await expect.poll(() => page.evaluate(() => !!st.ctx.D.byId['9001'])).toBe(true)
@@ -113,6 +111,29 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   expect(span).toBeGreaterThan(1)
   await expect(page).toHaveURL(new RegExp('span=' + span))
   await expect(page.locator('.bd-zv')).toHaveText(Math.round(100 / span) + '%')
+})
+
+test('B6 Fit cancels a live-band scroll frame already queued before centering', async ({ page }) => {
+  await open(page); await lock(page, '9012')
+  await page.evaluate(() => {
+    const frame = st.ctx.life.frame, tools = st.fx.renderTools
+    window.oldScrollFrames = []
+    st.ctx.life.frame = (key, callback) => {
+      if (typeof key === 'string' && key.startsWith('scrollVP:')) oldScrollFrames.push(callback)
+      else frame(key, callback)
+    }
+    st.fx.renderTools = () => { tools(); st.fx.scrollVP(0, true) }
+  })
+  await page.locator('[data-lt="fit"]').click()
+  await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
+  const result = await page.evaluate(() => {
+    const before = st.ctx.vp.scrollTop, count = oldScrollFrames.length
+    oldScrollFrames.splice(0).forEach(callback => callback(performance.now() + 1000))
+    return { before, after: st.ctx.vp.scrollTop, count }
+  })
+  expect(result.count).toBeGreaterThan(0)
+  expect(result.before).toBeGreaterThan(0)
+  expect(result.after).toBe(result.before)
 })
 
 for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim a released lock`, async ({ page }) => {

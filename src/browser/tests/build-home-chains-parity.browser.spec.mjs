@@ -4,7 +4,6 @@ import { settleAnimations } from './support/browser-helpers.mjs'
 import { prepareChainCanvas, prepareChainParity, largestRoot, hoverRoot, assertChainPaint, fitState, installFitObserver, waitForFit, treeRecord } from './support/build-home-chains-parity.mjs'
 
 test.setTimeout(120_000)
-const root = await largestRoot('live'), denseRoot = await largestRoot('dense', 'plan')
 const full = process.env.AIUR_PARITY_FULL === '1'
 const cells = PARITY_VIEWPORTS.filter(v => full || v.viewport.width === 1440).flatMap(v => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset: 'live', ...v, theme, palette }))))
 for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width} ${cell.theme} ${cell.palette}`, {
@@ -19,6 +18,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     await expectDesignParity(pair, { name, region, preserveAnimations: pair.cell.viewport.width === 390 })
   })
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
+  const root = await largestRoot(pair.product, 'live')
   try {
     await prepareChainCanvas(pair)
     await prepareChainParity(pair)
@@ -55,6 +55,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   // One narrow-cell case proves continuation-row wrapping; P1–P4 above cover every cell.
   if (cell.viewport.width === 390 && cell.theme === 'dark' && cell.palette === 'gruvbox') {
     const dense = await openParityPair(browser, { ...cell, dataset: 'dense' }, { query: '?trees=1' })
+    const denseRoot = await largestRoot(dense.product, 'dense', 'plan')
     try {
       await prepareChainCanvas(dense)
       await prepareChainParity(dense)

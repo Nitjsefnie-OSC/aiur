@@ -1,15 +1,17 @@
 import { expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { alignBoard, alignEtaMask, primeBoardPaint } from '../../support/build-home-band-canvas.mjs'
-import { chainOf } from '../../../priv/static/build-home/chains.js'
 
-export async function largestRoot(dataset, section) {
+export async function largestRoot(page, dataset, section) {
   const snapshot = JSON.parse(await readFile(new URL('../../../test/fixtures/build_home/' + dataset + '.json', import.meta.url), 'utf8'))
   const all = Object.values(snapshot.sections).flat()
   const data = { byId: Object.fromEntries(all.map(t => [t.id, t])), children: Object.fromEntries(all.map(t => [t.id, t.children])) }
-  return all.filter(t => section ? t.sec === section : ['hist', 'plan'].includes(t.sec))
-    .map(t => ({ ...t, size: chainOf(data, t.id).size }))
-    .sort((a, b) => b.size - a.size || a.num - b.num)[0]
+  return page.evaluate(async ({ all, data, section }) => {
+    const { chainOf } = await import('/build-home/chains.js')
+    return all.filter(t => section ? t.sec === section : ['hist', 'plan'].includes(t.sec))
+      .map(t => ({ ...t, size: chainOf(data, t.id).size }))
+      .sort((a, b) => b.size - a.size || a.num - b.num)[0]
+  }, { all, data, section })
 }
 
 export async function hoverRoot(page, root, product) {
