@@ -227,6 +227,18 @@ const interactionCells = full ? colourCells : [
 const missingPorts = new Set(), matchedAllowlist = new Set()
 
 function ownerFor(name) { return OWNER[name] ?? OWNER[name.split('.')[0]] }
+// Compare the filter's dim state and paint curve without coupling it to board layout.
+// Static controls and popovers have zero-pixel coverage in build-home-filters-parity.
+function filterPaint(record, reduce, cards) {
+  const paint = sample => Object.fromEntries(Object.entries(sample).filter(([key]) => ['opacity', 'filter', 'offset', 'easing', 'composite', 'computedOffset'].includes(key)))
+  const transitions = Object.entries(record.animation ?? {}).filter(([name, a]) => /^(opacity|filter)(\[|$)/.test(name) && cards.has('card:' + a.target)).map(([name, a]) => ({ ...a, name: name.split('[')[0] }))
+  if (!reduce) expect(transitions.length).toBeGreaterThan(0)
+  const animation = Object.fromEntries(transitions.map(a => [a.target + ':' + a.name, { ...a, samples: a.samples.map(paint), keyframes: a.keyframes.map(paint) }]))
+  const samples = record.samples.map(s => ({ query: s.query, cards: Object.fromEntries(Object.entries(s.nodes).filter(([key]) => cards.has(key)).map(([key, node]) => [key, node.classes.includes('dim')])) }))
+  expect(Object.values(samples[0].cards).some(Boolean)).toBeTruthy()
+  expect(Object.values(samples[0].cards).some(value => !value)).toBeTruthy()
+  return { ...record, samples, animation }
+}
 function scopedEntries(entries, selectedCell) {
   return entries.filter(entry => Object.entries(entry.cells ?? {}).every(([key, value]) => (key === 'viewport' ? `${selectedCell.viewport.width}x${selectedCell.viewport.height}` : selectedCell[key]) === value))
 }
@@ -242,7 +254,7 @@ function collectAllowlist(design, product, entries) {
 function frameBarrier(pair, name, reduce) {
   let count = 0, resolve, pending, aborted = false
   const frame = async (fraction, region) => {
-    if (aborted) return
+    if (aborted || name === 'filter.dim') return // Filter motion compares paint records; board geometry has separate owners.
     if (reduce && ['modal.open', 'modal.reduce', 'modal.url', 'modal.close'].includes(name)) return // S-18 records the admitted tkin difference numerically.
     if (count++ % 2 === 0) { pending = new Promise(done => { resolve = done }); return pending }
     try {
@@ -259,7 +271,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
   for (const name of Object.keys(SEQUENCES).filter(n => !['inventory', 'grain.static'].includes(n))) test(name, async ({ browser }) => {
     test.setTimeout(120_000)
     const owner = ownerFor(name), reduce = selectedCell.reducedMotion === 'reduce'
-    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('columns.') ? undefined : owner.anchor, productPending: owner.pending })
+    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('columns.') || name === 'filter.dim' ? undefined : owner.anchor, productPending: owner.pending })
     try {
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
@@ -285,7 +297,12 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
         throw new Error(JSON.stringify({ design: design.reason, product: product.reason }))
-      collectAllowlist(design, product, entries)
+      if (name === 'filter.dim') {
+        // Virtualized layout owns which rows are mounted; compare every card mounted on both sides.
+        const cards = new Set(Object.keys(design.samples[0].nodes).filter(key => key.startsWith('card:') && Object.hasOwn(product.samples[0].nodes, key)))
+        expect(cards.size).toBeGreaterThan(1)
+        collectAllowlist(filterPaint(design, reduce, cards), filterPaint(product, reduce, cards), entries)
+      } else collectAllowlist(design, product, entries)
     } finally { await pair.close() }
   })
 })

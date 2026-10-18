@@ -8,7 +8,7 @@ import { shardCommands } from './browser-suites.mjs';
 // The key count is the shard count: it must match the browser matrix in .github/workflows/ci.yml.
 // Balanced by recorded durations (browser-smoke-durations.mjs); check-browser-smoke-shards.mjs keeps each shard under 75% of budgetMs.
 export const shards = {
-  1: ['test:home-css-ci', 'test:admission', 'check:elk', 'check:build-home-fixtures', 'test:build-home-protocol', 'test:build-home-now-state', 'test:harness', 'test:smoke', 'test:shell', 'test:interaction', 'test:ticket-context', 'test:meter-row', 'test:models-panel', 'test:design-parity', 'test:build-home', 'test:build-home-cards:2'],
+  1: ['test:build-home-filters-motion', 'test:home-css-ci', 'test:admission', 'check:elk', 'check:build-home-fixtures', 'test:build-home-protocol', 'test:build-home-now-state', 'test:harness', 'test:smoke', 'test:shell', 'test:interaction', 'test:ticket-context', 'test:meter-row', 'test:models-panel', 'test:design-parity', 'test:build-home', 'test:build-home-cards:2'],
   2: ['test:build-home-layout', 'test:shell-width', 'test:experiments', 'test:units', 'test:build-home-offline', 'test:build-home-tools', 'test:build-home-span', 'test:build-home-states-parity', 'test:build-home-list-unit'],
   3: ['test:build-home-filters', 'test:shell-parity', 'test:build-home-span-parity', 'test:build-home-cards:3'],
   4: ['test:build-queue', 'test:performance', 'test:provider-meters', 'test:build-home-columns'],
