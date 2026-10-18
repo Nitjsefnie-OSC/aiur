@@ -258,7 +258,7 @@ defmodule Aiur.ExperimentsCLI do
     error_fun = Keyword.get(opts, :error_fun, &IO.puts(:stderr, &1))
 
     error_fun.(
-      "aiur: experiments expects analyze <id> [--mode spec|report] [--local] [--json], list [--status s] [--kind before_after|ab], show <id>, events <id> [--json] [--refresh], freeze <id> [--window before|after|observation] [--reason r] [--json], metrics [--json], or create --from <file|-> | --title <title> --line type:ref[@time] --metric pack/metric[:direction]; preregister <id> --file <file|->; report submit <id> --file <file|->; stats <id> [--json]"
+      "aiur: experiments expects list [--status s] [--kind before_after|ab], show <id>, events <id> [--json] [--refresh], freeze <id> [--window before|after|observation] [--reason r] [--json], metrics [--json], or create --from <file|-> | --title <title> --line type:ref[@time] --metric pack/metric[:direction]; analyze <id> [--mode spec|report] [--local] [--json]; preregister <id> --file <file|->; report submit <id> --file <file|->; stats <id> [--json]"
     )
 
     64
