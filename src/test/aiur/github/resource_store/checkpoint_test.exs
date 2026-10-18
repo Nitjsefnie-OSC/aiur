@@ -3,6 +3,7 @@ defmodule Aiur.GitHub.ResourceStore.CheckpointTest do
 
   alias Aiur.GitHub.ResourceStore
   alias Aiur.GitHub.ResourceStore.Checkpoint
+  alias Aiur.GitHub.ResourceStore.Memory
 
   test "an unchanged periodic checkpoint skips rendering", %{path: path} do
     restart_store!(path)
@@ -232,7 +233,7 @@ defmodule Aiur.GitHub.ResourceStore.CheckpointTest do
     Application.put_env(:aiur, :github_resource_store_max_body_bytes, body_size)
 
     try do
-      stats = Aiur.GitHub.ResourceStore.Memory.enforce(Aiur.GitHub.ResourceStore.Table)
+      stats = Memory.enforce(Aiur.GitHub.ResourceStore.Table)
       assert stats.shed == 1
       checkpoint_result!(:written)
       entries = read_checkpoint(path)["entries"]
