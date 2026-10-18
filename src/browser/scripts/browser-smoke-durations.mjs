@@ -7,10 +7,10 @@
 export const preflightSeconds = 120
 export const recordedSeconds = {
   // PR #4805 suite-duration logs (2026-10-18): units/browser from run 39093008001 at ea5f25e39.
-  // Parity uses the slower observed run 39064291733 at c4d059a24 (job 117557027408).
+  // Parity uses the latest green run 39093008001 at ea5f25e39 (102.5s).
   'test:build-home-edges-unit': 0.2,
   'test:build-home-edges': 111.4,
-  'test:build-home-edges-parity': 121.8,
+  'test:build-home-edges-parity': 102.5,
   'test:home-css-ci': 5,
   'test:admission': 1,
   'check:elk': 1,
@@ -60,6 +60,8 @@ export const recordedSeconds = {
   'test:build-home-cards:4': 298,
   'test:build-home-states-parity': 200,
   'test:build-home-list-unit': 1,
+  // Run 39091360816, job 117578322274: agents took 21.8s (rounded up).
+  'test:browser-suite -- build-home-agents': 22,
   'test:browser-suite -- build-home-list': 26,
   'test:browser-suite -- build-home-list-parity': 57,
   'test:browser-suite -- build-home-mobile-fit': 12,
