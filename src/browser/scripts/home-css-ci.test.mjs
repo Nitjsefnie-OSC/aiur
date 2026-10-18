@@ -48,7 +48,7 @@ test('browser shards have bounded timeouts and home matrix keeps an independent 
   assert.match(browser.steps[1].run, /scripts\/report-ci-run-attempt\.sh/)
   assert.equal(browser.steps[2].uses, './.github/actions/browser-smoke')
   assert.equal(browser.steps[2].with.shard, '${{ matrix.shard }}')
-  assert.equal(browser.name, 'browser smoke (${{ matrix.shard }}/7)')
+  assert.equal(browser.name, 'browser smoke (${{ matrix.shard }}/8)')
   assert.equal(browser['timeout-minutes'], 22)
   assert.equal(browser.strategy['fail-fast'], false)
   assert.deepEqual(browser.strategy.matrix.shard, Object.keys(shards).map(Number))
@@ -57,6 +57,7 @@ test('browser shards have bounded timeouts and home matrix keeps an independent 
     { shard: 2, visual_regression: 'first' },
     { shard: 5, visual_regression: 'second' },
     { shard: 7, upload_evidence: true },
+    { shard: 8, upload_evidence: true },
   ])
   assert.equal(browser.steps[2].with.visual_regression, "${{ matrix.visual_regression || 'none' }}")
   assert.equal(browserAction.runs.using, 'composite')
@@ -81,19 +82,19 @@ test('browser shards execute every core suite exactly once', () => {
     mkdirSync(bin)
     // Stub only npm: execute the real shard runner and record its selected suites.
     writeFileSync(join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$BROWSER_SHARD_CALLS"\n', { mode: 0o755 })
-    for (const shard of [1, 2, 3, 4, 5, 6, 7]) {
+    for (const shard of Object.keys(shards)) {
       const result = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), String(shard)], {
         cwd: new URL('../', import.meta.url), encoding: 'utf8',
         env: { ...process.env, PATH: bin + ':' + process.env.PATH, BROWSER_SHARD_CALLS: calls }
       })
       assert.equal(result.status, 0, result.stderr)
     }
-    const invalid = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), '8'], {
+    const invalid = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), '9'], {
       cwd: new URL('../', import.meta.url), encoding: 'utf8',
       env: { ...process.env, PATH: bin + ':' + process.env.PATH, BROWSER_SHARD_CALLS: calls }
     })
-    assert.notEqual(invalid.status, 0, 'only the seven workflow shard ids are accepted')
-    assert.match(invalid.stderr, /Unknown browser smoke shard: 8/)
+    assert.notEqual(invalid.status, 0, 'only the eight workflow shard ids are accepted')
+    assert.match(invalid.stderr, /Unknown browser smoke shard: 9/)
     const expected = [...scripts['test:core'].matchAll(/npm run ([\w:-]+)/g)].map(match => match[1])
       .filter(name => name !== 'fixture:preflight' && name !== SUITE_SCRIPT)
       .concat(discoverSuites().map(suiteCommand)).sort()
@@ -126,4 +127,20 @@ test('a new build-home spec file joins exactly one shard with no list edit', () 
   assert.deepEqual(['build-home-a', 'build-home-b-parity', 'build-home-c', 'build-home-fixture-new'].map(name => suiteShard(name, 5)), [5, 4, 3, 1])
   assert.deepEqual(suiteArgs('build-home-x'), ['tests/build-home-x.browser.spec.mjs'])
   assert.deepEqual(suiteArgs('build-home-x-parity'), ['tests/build-home-x-parity.browser.spec.mjs', '--config', 'playwright.design-parity.config.mjs'])
+})
+
+test('ordinary CI collects all 48 filter parity cases without an opt-in flag', () => {
+  const { AIUR_PARITY_FULL, ...ordinaryEnv } = process.env
+  const result = spawnSync(process.execPath, ['node_modules/@playwright/test/cli.js', 'test',
+    'tests/build-home-filters-parity.browser.spec.mjs', '--config', 'playwright.design-parity.config.mjs', '--list'], {
+    cwd: new URL('../', import.meta.url), encoding: 'utf8', env: { ...ordinaryEnv, AIUR_BROWSER_PORT: '49152' } // Listing never starts a server or connects.
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Total: 48 tests in 1 file/)
+  const titles = result.stdout.split('\n').filter(line => line.includes(' › ')).map(line => line.split(' › ').at(-1))
+  for (const width of [1440, 1024, 390]) for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) {
+    for (const dataset of ['live', 'dense']) assert.ok(titles.includes(`filter parity ${dataset} ${width} ${theme} ${palette}`))
+    for (const query of ['model=claude&tstate=merged,failed&astate=active', 'epic=docs'])
+      assert.ok(titles.includes(`selected viewport ${width} ${theme} ${palette} ${query}`))
+  }
 })
