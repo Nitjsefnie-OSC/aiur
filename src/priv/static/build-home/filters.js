@@ -20,6 +20,7 @@ function featureOption(f) {
   const title = known ? null : (s?.pct_min == null ? 'unknown' : 'at least ' + s.pct_min + '% weighted · unknown: ' + (s.reasons || []).join(', '));
   return [f.key, f.label + '  ' + (known ? s.pct + '%' : '—'), null, f.hue, null, null, title];
 }
+// shortcut: row-only diffs refresh open options on the next render; revisit for live option updates.
 export function FOPTS() {
   const D = ctx.D ?? { all: [], hist: [], features: {}, epics: {}, order: [], counts: {} };
   const models = [...new Set([...D.all.map(t => t.agent?.model), ...S.f.model])].filter(k => typeof k === 'string' && k && !Object.hasOwn(LOGOS, k)).sort();
