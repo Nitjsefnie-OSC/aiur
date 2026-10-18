@@ -3,7 +3,6 @@ import { mkdtemp, cp, appendFile, writeFile, rm, symlink, mkdir } from 'node:fs/
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
-import { PNG } from 'pngjs'
 import { PARITY_VIEWPORTS, DESIGN_ROOT, FIXTURE_META, parityContextOptions, openDesign, openProduct, expectDesignParity, compareParityPixels, assertCellState, waitParityReady, guardNetwork, checkPage, captureStable, loadAllowlist, applyAllowlist, verifyDesignSource } from '../support/design-parity.mjs'
 import { resolveDesignPath, routeDesign } from '../support/design-parity-environment.mjs'
 
@@ -168,9 +167,15 @@ test('capture keeps a visible fixed region after document scrolling', async ({ p
   await page.setContent('<body style="margin:0;height:3000px;background:white"><div id="fixed" style="position:fixed;top:100px;left:40px;width:100px;height:80px;background:red"></div>')
   await page.evaluate(() => scrollTo(0, 400))
   expect(await page.evaluate(() => scrollY)).toBe(400)
-  const png = PNG.sync.read(await captureStable(page.locator('#fixed'), { animations: 'disabled' }, page))
-  expect([png.width, png.height]).toEqual([100, 80])
-  expect([...png.data.subarray((40 * png.width + 50) * 4, (40 * png.width + 50) * 4 + 4)]).toEqual([255, 0, 0, 255])
+  const png = await captureStable(page.locator('#fixed'), { animations: 'disabled' }, page)
+  const sample = await page.evaluate(async data => {
+    const image = new Image(); image.src = 'data:image/png;base64,' + data; await image.decode()
+    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height
+    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0)
+    return { size: [image.width, image.height], pixel: [...context.getImageData(50, 40, 1, 1).data] }
+  }, png.toString('base64'))
+  expect(sample.size).toEqual([100, 80])
+  expect(sample.pixel).toEqual([255, 0, 0, 255])
   expect(await page.evaluate(() => scrollY)).toBe(400)
 })
 
