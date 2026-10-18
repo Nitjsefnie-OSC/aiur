@@ -3,8 +3,8 @@
 export async function alignBoard(pair) {
   for (const page of [pair.design, pair.product]) await page.evaluate(() => {
     window.scrollTo(0, 0)
-    // Usage panels sit behind the fixed reference board's rounded corners.
-    document.querySelector('#bd-usage').style.visibility = 'hidden'
+    // External panels sit behind the fixed reference board's rounded corners.
+    document.querySelectorAll('#bd-usage, #bd-offline').forEach(el => { el.style.visibility = 'hidden' })
     const vp = document.querySelector('#bd-vp'), host = vp.parentElement, box = host.getBoundingClientRect()
     Object.assign(host.style, { position: 'fixed', left: Math.round(box.x) + 'px', top: '100px', width: box.width + 'px', zIndex: '9999' })
   })

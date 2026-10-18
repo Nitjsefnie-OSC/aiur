@@ -69,7 +69,7 @@ export function renderBand() {
     (S.liveMin ? '.bd-now-sum' : '.bd-now-st') + ' [data-ast="' + focused.dataset.ast + '"]' : null : null;
   $('.bd-now-h', ctx.bandEl).innerHTML = header(bandCounts(ctx.D.now), available);
   fx.syncAst(); paintClock();
-  if (selector) ctx.bandEl.querySelector(selector)?.focus({ preventScroll: true });
+  if (selector) (ctx.bandEl.querySelector(selector) || ctx.bandEl.querySelector('[data-min]')).focus({ preventScroll: true });
   const bl = $('.bd-layer', ctx.bandEl), empty = bandEmptyText(ctx.D);
   bl.innerHTML = empty ? '<div class="bd-now-empty">' + esc(empty) + '</div>' : '';
   ctx.bandEl.classList.toggle('min', S.liveMin);

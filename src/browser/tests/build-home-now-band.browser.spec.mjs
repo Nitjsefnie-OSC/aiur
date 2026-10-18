@@ -182,6 +182,14 @@ test('keyboard minimize, expand and preset expansion retain focus', async ({ pag
   await expect(page.locator('.bd-now-st .bad')).toBeFocused()
 })
 
+test('a removed preset returns keyboard focus to the band control', async ({ page }) => {
+  await open(page)
+  await page.locator('.bd-now-st .bad').focus()
+  await expect(page.locator('.bd-now-st .bad')).toBeFocused()
+  expect((await page.request.get('/build-control/diff?name=agents-unavailable')).ok()).toBe(true)
+  await expect(page.locator('[data-min]')).toBeFocused()
+})
+
 test('Live button floating state and click use the actual band geometry', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1100 })
   await page.clock.install({ time: 1791407999000 }); await page.clock.pauseAt(1791408000000); await open(page, 'newrepo'); await settle(page)

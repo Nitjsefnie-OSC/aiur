@@ -17,3 +17,6 @@ all card geometry checked separately. The fixture forces a fresh viewport paint
 after relocation and checks focus/scroll preservation. Preset pixels cover their
 pill strip; filtering behind the blurred band belongs to C10-T02. Only the pending
 C7-T03 ETA copy is masked in band captures.
+
+Usage and offline panels are hidden on both fixture pages where they would paint
+behind the relocated board’s rounded corners.
