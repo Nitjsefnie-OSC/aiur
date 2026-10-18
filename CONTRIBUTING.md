@@ -48,8 +48,30 @@ untrusted input.
   work; concrete modules stay thin; dependencies point one direction
   (concrete → base, never back).
 
-These are guiding targets, not a lint rule — they inform review, and CI does
-not fail a build on line count alone.
+Aim for 200 lines and give a cohesion reason above that target. The required
+`workflow security` job rejects new text paths over 500 lines and growth of
+paths already over 500, comparing Git blobs against the event's base commit.
+Existing oversized files may stay unchanged or shrink; renames and copies to
+new paths must fit the limit. Text becoming binary is rejected. Binary files
+are otherwise skipped, and symlinks are reported without following them.
+Lines are LF bytes plus a non-empty unterminated final line (CRLF counts once).
+The one exception is a tool-written `package-lock.json` or `bun.lock`: it may
+exceed 500 lines only if `npm install --package-lock-only --ignore-scripts`
+(or `bun install --lockfile-only`) regenerates it byte for byte from its
+sibling `package.json`; a hand edit, or a tool or registry the gate cannot
+reach, fails.
+Run `python3 scripts/check-file-size.py --base <commit>` locally; without
+`--base`, it uses the merge base with `origin/main`.
+
+For refactor reporting, run `python3 scripts/check-file-size.py --census <base> <head>`
+from the repository root; add `--json` for machine-readable output. It reuses the
+same tracked-text counter and prints base/head totals and added, removed and
+moved lines by area. Rename/copy detection uses Git similarity: unchanged lines
+are moved, and edited lines remain added/removed. Cross-area moves are credited
+to the base path's area; copies increase tree totals without counting reused
+content as added. Binary changes are counted as files, and symlinks are excluded.
+Area precedence and patterns live in `scripts/file_size_census.py`. This is
+instrumentation only, with no census CI enforcement or claimed saving.
 
 ## Reuse before invention
 
@@ -64,6 +86,11 @@ not fail a build on line count alone.
 - Prefer config access through `Aiur.Config` over ad-hoc environment reads.
 
 ## Testing
+
+**Harness characterization suite:** From `src/`, run
+`mise exec -- mix test --only r7_characterization --max-cases 4`. It must pass
+unchanged before and after every MP-R7 PR and MP-E7-C3; record the non-zero
+test count in each PR body. Tagged tests also run in normal partitioned CI.
 
 - **Mock at boundaries, never pure utilities.** Stub the external edges —
   GitHub, the shell, the filesystem, tmux, the coding-agent app-server — so a
@@ -113,7 +140,11 @@ not fail a build on line count alone.
   about the whole system, so any other test publishing into that namespace can
   fail it. And never call `self()` inside `on_exit` — the callback runs in a
   different process, so the binding, monitor, or subscription you meant to clean
-  up leaks into later tests.
+  up leaks into later tests. Remove a temp directory in `on_exit` with
+  `Aiur.TestCleanup.rm_rf!/1`, never a bare `File.rm_rf!` or `File.rm_rf`: a live
+  writer makes the bang form fail with "file already exists" and the other one
+  fail silently
+  (`scripts/check-on-exit-rm-rf.py` enforces this; `--fix` rewrites call sites).
 - **Quarantine only while fixing.** Tag a confirmed flaky test with
   `@tag :quarantine`, open or link its repair issue, and leave a short reason
   beside the tag. Ordinary local and required CI runs exclude quarantined
@@ -138,17 +169,25 @@ not fail a build on line count alone.
 
 ## CI gate
 
-Draft pull requests run `changes`, `lint`, and `build`. The existing path
-classifier only identifies docs-only changes; it does not select affected tests.
-Mark completed work ready for review **before** entering `agent:ci-wait`.
-`ready_for_review` starts the full suite, as do pushes to ready PRs, merge queue
-candidates, integration-branch pushes, and manual workflow dispatches.
+Pull requests, draft or ready, run the fast set: `changes`, workflow security
+(structure and PR-body gates), `lint` (including warning-free compilation and
+repository guards), affected tests on the merge with the base, and the aggregate
+`ci gate`. Mark completed work ready **before** entering `agent:ci-wait`.
 
-A draft's fast gate does not approve its head for human review. Aiur waits for
-the current head's full required-check set, including the configured check
-integrations; missing or skipped required checks remain pending. Ready docs-only
-PRs retain the existing step shortcuts, which publish successful required checks.
-The merge ruleset declaration and its drift guard remain unchanged.
+Merge groups and manual dispatches run the full set, including coverage, tests,
+Dialyzer, browser harness, release smoke, analytics and Stream Deck checks.
+`merge_policy.full_ci_labels`, `full_ci_paths`, and unsafe affected-test selections
+also force full PR runs. Policy is read from the base commit.
+The `ci` workflow does not run on pushes to `main`; Docker publishing and the
+website workflow still do.
+
+During rollout, the legacy required contexts force full PR CI and remain accepted
+by the verifier. Publish `ci gate` on every open head before changing live rules.
+Require the aggregate `ci gate` check in the merge ruleset, rather than individual
+full-suite jobs: it requires the fast set on PRs and the full set in the queue.
+Event-skipped jobs cannot satisfy the other event's gate. Aiur still requires a
+ready PR and every required check successful on its current head, including
+configured integrations; missing or skipped required checks remain pending.
 
 ## Error handling
 
@@ -168,6 +207,8 @@ The merge ruleset declaration and its drift guard remain unchanged.
 
 ## Documentation
 
+- `python3 scripts/check-components.py --docs` validates directory docs, sections, env names and capabilities.
+- `components.json` supplies public component descriptions and the planned-features list for the generated directory.
 - **Functionality ships with its documentation, in the same PR.** Docs are
   required when a change adds or changes a config key, a CLI command or flag,
   an environment variable an operator would set, a new user-facing surface (a
@@ -279,7 +320,57 @@ It finds component and near-miss forms that a joined-literal search misses and
 shows the owning coverage partition for test files. Review the output before
 rewriting; it is intentionally not an automatic replacement.
 
+## Component boundaries
+
+The required lint job checks the four Elixir reference rules: `R-declared`
+(declared dependency), `R-private` (provider facade), `R-down` (layer direction),
+and `R-optional` (required code must not depend on optional code). Failures name
+source component, target module and the reference location. Fix the boundary or
+manifest first; an exemption is temporary debt, not permission to add more.
+
+Allowlist TSVs in `scripts/components/allowlist/` match exact
+`(rule, source component, target module)` keys. A removed violation leaves a
+stale entry that fails lint: delete it in the same PR, or run
+`python3 scripts/check-components.py --prune`. Pruning removes only stale rows
+for the selected rules; it never adds exemptions and still fails on new violations.
+
+On pull requests, additions (including replacements and new files) are compared
+with the PR base SHA. Every added row needs a reason beginning with a ticket ID:
+`MP-…`, `U…` or `#NNNN`, followed by an explanation the reviewer can verify.
+Existing `baseline <sha>` rows are grandfathered, but new baseline rows cannot
+bypass this guard. `--write-baseline` is bootstrap-only and cannot be combined
+with `--prune`. Use `--growth-base <sha>` to reproduce the PR growth guard.
+If the base cannot be fetched, the guard warns and skips; ordinary new-violation
+and stale-entry checks still run. Push and merge-group runs skip only growth.
+The CI step summary reports per-rule debt, largest SCC size and checker runtime;
+cycles are informational, not failures.
+
 ## Enforcement
+
+Every tracked file under `src/lib/`, `packages/` and `packaging/` must belong
+to one component indexed by `components.json` in `components/<id>.json`. Add new source paths and update moved
+paths in the same PR. Before running `python3 scripts/check-components.py`, install its pinned TypeScript
+toolchain with `npm ci --prefix scripts/components --ignore-scripts`. The required lint job runs both;
+unowned files, equally specific competing owners and stale globs fail the check.
+Workflow security runs the docs rules even on docs-only PRs; lint also runs the full checker.
+Use `python3 scripts/check-components.py --format` to keep the manifest deterministic.
+Arrays have one member per line; string sets and exemption TSVs stay sorted.
+Workflow security enforces this layout with `scripts/check-hot-list-format.py`.
+Do not use union merges on JSON or sorted/unique exemption lists.
+
+Seams live one per file in `scripts/components/seams/`, named
+`<from>--<to_module>--<kind>.json`, never inline in `components.json`: two PRs
+that each add a seam then touch different files and merge without conflict.
+
+Every root config section and scalar field, env schema name, and public
+`Aiur.Config.Paths` function ending in `_dir` or `_path` must have exactly one
+owner in `owns.config`, `owns.env` or `owns.state`. Add the owner in the same PR
+as a new declaration; stale and duplicate ownership also fail lint.
+`shared_with` records collaborating components without assigning another owner.
+
+RQ4: root sections stay literal `embeds_one` declarations: Ecto composes the
+struct at compile time and `check-config-docs.py` reads those lines. Ownership
+is manifest data; it does not generate or move section modules.
 
 The gate is `make ci` from `src/` (build, `fmt-check`, `lint`, `coverage`,
 `regression`, `dialyzer`). The equivalent dev-loop commands are:

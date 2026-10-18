@@ -8,7 +8,98 @@ defmodule AiurWeb.StreamdeckProjectionTest do
   alias AiurWeb.OperatorControlCenter.ProviderMetersPresenter
   alias AiurWeb.StreamdeckProjection
 
+  defmodule VoiceProvider do
+    @behaviour Aiur.Voice.Provider
+    @impl true
+    def transcriber, do: nil
+    @impl true
+    def synthesizer, do: nil
+    @impl true
+    def configured?, do: false
+    @impl true
+    def child_specs, do: []
+    @impl true
+    def quota_snapshot, do: %{state: :unconfigured, window: nil, failure: nil, observed_at: nil}
+  end
+
+  defmodule ConfiguredVoiceProvider do
+    @behaviour Aiur.Voice.Provider
+    @impl true
+    def transcriber, do: nil
+    @impl true
+    def synthesizer, do: nil
+    @impl true
+    def configured?, do: true
+    @impl true
+    def child_specs, do: []
+    @impl true
+    def quota_snapshot, do: %{state: :unconfigured, window: nil, failure: nil, observed_at: nil}
+  end
+
+  setup do
+    previous = Application.fetch_env(:aiur, :voice_provider)
+
+    on_exit(fn ->
+      case previous do
+        {:ok, value} -> Application.put_env(:aiur, :voice_provider, value)
+        :error -> Application.delete_env(:aiur, :voice_provider)
+      end
+    end)
+  end
+
+  test "voice availability follows the voice port" do
+    Application.put_env(:aiur, :voice_provider, VoiceProvider)
+    assert Aiur.Voice.availability() == %{available: false, reason: :unconfigured}
+    assert StreamdeckProjection.voice() == %{available: false, reason: "Aiur has no ElevenLabs API key - transcription is off"}
+
+    Application.put_env(:aiur, :voice_provider, ConfiguredVoiceProvider)
+    assert Aiur.Voice.availability() == %{available: true, reason: nil}
+    assert StreamdeckProjection.voice() == %{available: true, reason: nil}
+
+    Application.put_env(:aiur, :voice_provider, nil)
+    assert Aiur.Voice.availability() == %{available: false, reason: :not_installed}
+    assert StreamdeckProjection.voice() == %{available: false, reason: "Aiur has no ElevenLabs API key - transcription is off"}
+  end
+
   @now ~U[2026-08-09 12:00:00Z]
+
+  test "account summaries survive older observation times and session events without accepting older polls" do
+    first = %ProviderMeterSnapshot{
+      provider: :claude,
+      source: :usage_api,
+      observed_at: @now,
+      ingested_at: @now,
+      summary_label: "worst of 2 accounts",
+      windows: %{"seven_day" => %{kind: :rate_limit, used_percent: 33}}
+    }
+
+    worst = %{first | observed_at: DateTime.add(@now, -60), ingested_at: DateTime.add(@now, 1), windows: %{"seven_day" => %{kind: :rate_limit, used_percent: 94}}}
+    current = StreamdeckProjection.provider_meters(%{claude: first}, @now)
+    current = StreamdeckProjection.merge_provider_meter(current, worst)
+    assert current["claude"]["windows"]["weekly"]["used_percent"] == 94
+    assert current["claude"]["summary_label"] == "worst of 2 accounts"
+    assert StreamdeckProjection.merge_provider_meter(current, first) == current
+    session = %{first | source: :provider, summary_label: nil, observed_at: DateTime.add(@now, 2)}
+    assert StreamdeckProjection.merge_provider_meter(current, session) == current
+  end
+
+  test "an initial account summary replaces a session event ingested after the poll began" do
+    session = %ProviderMeterSnapshot{provider: :claude, source: :provider, observed_at: @now, ingested_at: @now, windows: %{"seven_day" => %{kind: :rate_limit, used_percent: 33}}}
+
+    summary = %{
+      session
+      | source: :usage_api,
+        observed_at: DateTime.add(@now, -60),
+        ingested_at: DateTime.add(@now, -30),
+        summary_label: "worst of 2 accounts",
+        windows: %{"seven_day" => %{kind: :rate_limit, used_percent: 94}}
+    }
+
+    current = StreamdeckProjection.provider_meters(%{claude: session}, @now)
+    current = StreamdeckProjection.merge_provider_meter(current, summary)
+    assert current["claude"]["windows"]["weekly"]["used_percent"] == 94
+    assert current["claude"]["summary_label"] == "worst of 2 accounts"
+  end
 
   test "keeps distinct session and weekly readings for every registry provider" do
     meters = %{

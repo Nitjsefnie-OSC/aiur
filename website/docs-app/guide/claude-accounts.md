@@ -69,6 +69,11 @@ agent:
 five-hour utilization to break ties. `priority` uses the first configured
 account. Usage-aware selection currently applies to Claude and Codex.
 
+`headroom` looks across backends as well as accounts: each new ticket goes to
+the backend and account with the most usage left, within the routes its
+complexity level allows. See
+[Headroom dispatch](/concepts/headroom-dispatch).
+
 ## Continue a session after a usage limit
 
 When a resumable Claude REPL session reaches its account's usage limit, Aiur
@@ -87,9 +92,16 @@ session.
 If no other configured account has room, Aiur keeps the existing
 wait-for-reset behavior.
 
-The combined Claude usage bar gives every account an equal-width segment and
-reports the average weekly utilization. Each account's utilization and
-freshness remain visible in its label and tooltip.
+The dashboard shows a named weekly usage bar for each Claude account, with
+freshness and observation age. Missing readings remain unknown.
+
+The CLI and Stream Deck summary selects the highest weekly utilization, falling
+back to the highest reported window when weekly usage is absent. It names the
+selected account and labels complete readings “worst of N accounts”.
+
+If an account could not be read, the summary names the selected account and the
+observed account count instead.
+
 API-key accounts have unavailable usage, so use `priority` when those backends
 have multiple keys. The chosen account stays fixed for that ticket's session.
 

@@ -116,8 +116,7 @@ defmodule Aiur.GitHub.ResourceStore do
 
   ## The validator/body contract — read this before adding a reader
 
-  A validator and a body are separable, and the separation is what makes a
-  `304` dangerous. Three states exist and each one binds the reader differently:
+  A validator and a body are separable, and the separation is what makes a `304` dangerous. Three states exist and each one binds the reader differently:
 
     * **body + validator** — the normal state after `put_resource/3`. A `304`
       means "what you hold is current": serve the held body and publish exactly
@@ -180,7 +179,7 @@ defmodule Aiur.GitHub.ResourceStore do
 
   Worse than a missing marker is a `nil` one, and it is worth stating because
   the failure is silent at every level.
-  `Aiur.Events.GitHubWebhook.Deposit.regression?/2` refuses an out-of-order
+  `regression?/2` refuses an out-of-order
   delivery only when it has a binary marker on **both** sides, so a single
   version-less deposit does not weaken that guard for the resource — it switches
   it off, and every later late delivery lands. Deposit a version for anything a
@@ -259,13 +258,13 @@ defmodule Aiur.GitHub.ResourceStore do
 
   alias Aiur.{Config, Fs, JsonStore}
   alias Aiur.GitHub.{MembershipAccess, ResourceEvents}
+  alias Aiur.GitHub.ResourceStore.Memory
 
   @table __MODULE__.Table
   @retention_ms 72 * 60 * 60 * 1000
   @sweep_interval_ms 5 * 60 * 1000
   @checkpoint_interval_ms 30 * 1000
   @filename "github_resources.json"
-  @max_entries 100_000
 
   # The bound on suppression that has no version behind it.
   #
@@ -284,14 +283,12 @@ defmodule Aiur.GitHub.ResourceStore do
   # duplicate publish, which the publisher's own dedup window already absorbs,
   # and which every other trade-off in this module also chooses over a drop.
   @unversioned_suppression_ms 30 * 60 * 1000
-
   # A single GitHub issue, pull request or comment body is a few kilobytes and
   # GitHub itself caps an issue body at 64 KiB, so nothing legitimate here comes
   # close. A resource that does is not cached at all: an entry that large would
   # be paid for on every checkpoint, and the reader falling back to a fetch is
   # exactly the pre-store behavior.
   @max_data_bytes 256 * 1024
-
   # The closed set of resource identities. Declared here rather than left to
   # whichever module happens to be loaded first, because `decode_key/1` resolves
   # a checkpointed type with `String.to_existing_atom/1` and would otherwise
@@ -306,12 +303,16 @@ defmodule Aiur.GitHub.ResourceStore do
     :issue,
     :issue_labels,
     :pr_review_thread,
-    # Complete selection families shared by the GraphQL pollers and webhook
-    # deltas. They deliberately exclude strict review/merge verdict fields.
     :pr_review_threads,
     :ci_contexts,
-    # Endpoint reads — the identity a conditional request validator belongs to.
+    :commit_ci_check_runs,
+    :commit_ci_status,
+    :landing_merge_group_runs,
+    :ci_failure_digest,
+    :main_watch,
+    :flake_issues,
     :issue_comments,
+    :issue_timeline,
     :pr_issue_comments,
     # The two repo-wide comment streams. `Aiur.Orchestrator.CommandScan` used to
     # keep their validators under its own call-site names, so its cached state
@@ -421,7 +422,6 @@ defmodule Aiur.GitHub.ResourceStore do
   @doc "Every resource identity this store recognises."
   @spec resource_types() :: [resource_type()]
   def resource_types, do: @resource_types
-
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
@@ -708,15 +708,37 @@ defmodule Aiur.GitHub.ResourceStore do
   reader something false, and the cost of the honest answer is at most one extra
   re-render of a subscribed view, which spends nothing upstream.
   """
-  @spec put_resource(key() | nil, term(), keyword()) :: :ok
+  @spec put_resource(key() | nil, term(), keyword()) :: :ok | {:error, term()}
   def put_resource(key, data, opts \\ [])
 
-  def put_resource(nil, _data, _opts), do: :ok
+  def put_resource(nil, _data, _opts), do: {:error, :invalid_key}
 
   def put_resource(key, data, opts) do
     update_resource(key, fn _held -> data end, opts)
-    :ok
   end
+
+  @doc """
+  Atomically refuses strictly older binary version markers. Equal or missing
+  markers write; a superseded deposit changes no body, validator or freshness.
+  """
+  @spec deposit_unless_older(key() | nil, term(), keyword()) :: :ok | {:ok, :superseded} | {:error, term()}
+  def deposit_unless_older(key, data, opts \\ [])
+  def deposit_unless_older(nil, _data, _opts), do: {:error, :invalid_key}
+
+  def deposit_unless_older(key, data, opts) do
+    version = resolve_version(Keyword.get(opts, :version), data)
+    accept = fn _body, held -> if regression?(held.version, version), do: :unchanged, else: data end
+
+    case update_resource(key, accept, opts) do
+      :unchanged -> {:ok, :superseded}
+      result -> result
+    end
+  end
+
+  @doc "Strictly older GitHub ISO-8601 markers regress; equal or missing markers do not."
+  @spec regression?(term(), term()) :: boolean()
+  def regression?(held, version) when is_binary(held) and is_binary(version), do: version < held
+  def regression?(_held, _version), do: false
 
   @doc """
   Deposits a body derived from the one currently held, atomically.
@@ -730,34 +752,11 @@ defmodule Aiur.GitHub.ResourceStore do
   but `:full_body_at_ms` in `fetch/1`'s answer keeps the time of the last
   whole-body write.
 
-  ## The concurrency guarantee, stated plainly
-
-  A caller that does the same thing with `fetch/1` followed by `put_resource/3`
-  **loses writes**, and not rarely: two processes merging into one `:issue` key
-  regressed the held body within the first twenty writes. The read-modify-write
-  spans an entire round trip through the caller, so anything deposited in
-  between — a webhook delivery carrying the fresh object, another mutation's
-  response — is overwritten by the stale snapshot the loser read first. The
-  rolled-back fields include `"state"`, so a reader can be handed `open` for a
-  ticket Aiur has closed: a correctness failure on dispatch-relevant state, not
-  cosmetic staleness. Worse, a merge that deposits with no `:version` writes
-  `data_version: nil` in the same breath, so nothing marks the body as older
-  than what it replaced.
-
-  This function closes that window: the read, `fun`, and the write are one
-  compare-and-swap against the exact entry that was read (`:ets.select_replace/2`,
-  or `:ets.insert_new/2` when the entry is absent). A concurrent write makes this
-  call re-read and re-apply `fun`, so both writes survive and the held body never
-  goes backwards.
-
-  **`fun` must therefore be pure and cheap** — it can run more than once, and it
-  must not perform IO, spend an API call, or depend on anything but its
-  argument. It sees the held body only while it is still current; anything
-  needing the wider world happens before the call and is passed in.
-
-  The guarantee is scoped to this store's entry for one key. It is not a
-  distributed lock: two daemons on one checkpoint file still resolve by
-  last-writer-wins at checkpoint time.
+  The read, pure and cheap `fun`, and write share one compare-and-swap. A
+  concurrent writer makes it retry against the current entry, never overwrite
+  from a stale read. `fun` may run more than once and must not perform IO.
+  This is local to one key; checkpoint files shared by daemons remain
+  last-writer-wins.
 
   ## What happens when the swap cannot win
 
@@ -845,7 +844,7 @@ defmodule Aiur.GitHub.ResourceStore do
   end
 
   # A body with no version disarms every downstream staleness guard for that
-  # resource, silently. `Aiur.Events.GitHubWebhook.Deposit.regression?/2` needs a
+  # resource, silently. `regression?/2` needs a
   # binary marker on *both* sides to refuse a late delivery, so one version-less
   # deposit makes every later out-of-order delivery for that key acceptable — the
   # guard is not weakened, it is switched off, and nothing says so.
@@ -1374,13 +1373,13 @@ defmodule Aiur.GitHub.ResourceStore do
     if path, do: schedule(:checkpoint, checkpoint_interval(opts))
     schedule(:sweep, sweep_interval(opts))
 
-    {:ok, %{table: table, path: path, last_written: nil}}
+    {:ok, %{table: table, path: path, last_written: nil}, :hibernate}
   end
 
   @impl true
   def handle_call(:flush, _from, state) do
     {reply, state} = checkpoint(state)
-    {:reply, reply, state}
+    {:reply, reply, state, :hibernate}
   end
 
   def handle_call({:membership_access, fun}, _from, state), do: {:reply, fun.(), state}
@@ -1389,13 +1388,13 @@ defmodule Aiur.GitHub.ResourceStore do
   def handle_info(:checkpoint, state) do
     {_reply, state} = checkpoint(state)
     schedule(:checkpoint, @checkpoint_interval_ms)
-    {:noreply, state}
+    {:noreply, state, :hibernate}
   end
 
   def handle_info(:sweep, state) do
     sweep(state.table)
     schedule(:sweep, @sweep_interval_ms)
-    {:noreply, state}
+    {:noreply, state, :hibernate}
   end
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -1878,69 +1877,14 @@ defmodule Aiur.GitHub.ResourceStore do
     |> expired_body_keys(cutoff)
     |> Enum.each(&drop_expired_body(&1, cutoff))
 
-    # A hard backstop far above real volume. Crossing it means the retention
-    # window alone is not bounding the set, so shed the oldest *bodies*. What
-    # the backstop bounds is body memory, not entry count: an entry that sheds
-    # its body survives, so the table can hold more than `@max_entries` keys
-    # and metadata until the 72 h retention sweep catches up. That unbounded
-    # tail is acceptable because the non-body half of an entry is a key plus a
-    # few hundred bytes of metadata, while the bodies shed are the payloads
-    # that run up to 256 KiB — the memory that scales with GitHub traffic is
-    # body memory, and that is what stays capped.
-    #
-    # The backstop drops only `:data` — never the whole entry — because the
-    # rest of the entry is state a later read is still entitled to: the `:etag`
-    # lets a revalidating reader ask "has this changed?" for free, and the
-    # `:processed_at_ms` mark is the publisher's only durable dedup gate, so
-    # evicting it with the body would re-publish a comment an agent already
-    # handled once the in-memory window closes or the daemon restarts. A body is
-    # two orders of magnitude larger than the metadata beside it, so bounding
-    # *bodies* bounds the memory without discarding state that is still correct.
-    #
-    # `:data` and `:data_version` go together — the version describes the body,
-    # so a body that is gone must not leave a marker describing it behind — and
-    # `recorded_at_ms` is untouched, so a bodyless entry ages out of the
-    # retention sweep on its real clock rather than being renewed by its own
-    # eviction. A reader that sends `If-None-Match` afterwards is answered `304`
-    # and holds nothing; it re-reads unconditionally, which is the documented
-    # reader's half of the validator/body contract.
-    overflow = (:ets.info(table, :size) || 0) - @max_entries
-
-    if overflow > 0 do
-      shed_bodies(table, overflow)
-    end
+    # The backstop on what retention alone does not bound: body bytes, and far
+    # above real volume, entry count. `Memory.enforce/1` sheds the least
+    # recently written *bodies* — never whole entries, because the `:etag` and
+    # the processed mark beside a body are state a later read is still entitled
+    # to — and reports what the table holds.
+    Memory.enforce(table)
 
     :ok
-  end
-
-  # Drop the body — never the whole entry — from the oldest entries that still
-  # hold one. Entries an earlier sweep already shed are skipped, so a
-  # steady-state overflow warns once about the bodies it actually dropped rather
-  # than re-announcing a condition it already handled.
-  defp shed_bodies(table, overflow) do
-    evicted =
-      table
-      |> :ets.tab2list()
-      |> Enum.sort_by(fn {_key, entry} -> Map.get(entry, :recorded_at_ms, 0) end)
-      |> Enum.take(overflow)
-      |> Enum.filter(fn {_key, entry} -> Map.has_key?(entry, :data) end)
-
-    if evicted != [] do
-      Logger.warning("GitHub.ResourceStore exceeded #{@max_entries} entries; dropping bodies from #{length(evicted)} oldest")
-
-      # Pinned to the exact object that was sorted, so a concurrent write
-      # between the snapshot and the eviction spares the entry rather than
-      # losing it — a refreshed entry no longer matches the snapshot and
-      # keeps its new body.
-      Enum.each(evicted, fn {key, entry} ->
-        replacement = Map.drop(entry, [:data, :data_version])
-
-        :ets.select_replace(
-          table,
-          [{{key, :"$1"}, [{:==, :"$1", {:const, entry}}], [{:const, {key, replacement}}]}]
-        )
-      end)
-    end
   end
 
   # Keys of the data-bearing entries whose body is past retention, collected by
@@ -1982,32 +1926,44 @@ defmodule Aiur.GitHub.ResourceStore do
   end
 
   # Writes land in ETS directly from the poll fan-out rather than through this
-  # process, so there is no dirty flag to trust: the checkpoint compares the
-  # rendered document against the last one written and skips an identical one.
-  # That keeps a steady-state cycle — the case this whole change exists to make
-  # free — from also becoming a disk write every 30 seconds.
+  # process, so there is no dirty flag to trust: the checkpoint compares a
+  # digest of the rendered document against the last one written and skips an
+  # identical one. That keeps a steady-state cycle — the case this whole change
+  # exists to make free — from also becoming a disk write every 30 seconds.
+  #
+  # The document is rendered one entry at a time and only its digest is kept.
+  # Snapshotting the table and holding the previous document for the comparison
+  # put two decoded copies of every body on this process's heap (#3997). The
+  # callbacks hibernate for the same reason: this process is idle between
+  # timers, so whatever a checkpoint or the boot load allocated would otherwise
+  # sit on its heap until the next one.
   defp checkpoint(%{path: nil} = state), do: {:ok, state}
 
   defp checkpoint(%{table: table, path: path} = state) do
-    document = table |> :ets.tab2list() |> Enum.reduce(%{}, &encode_entry/2)
-
-    if document == state.last_written do
-      {:ok, state}
+    with {:ok, encoded} <- render(table),
+         digest = :erlang.md5(encoded),
+         false <- digest == state.last_written,
+         :ok <- write(path, encoded) do
+      {:ok, %{state | last_written: digest}}
     else
-      case write(path, document) do
-        :ok ->
-          {:ok, %{state | last_written: document}}
+      true ->
+        {:ok, state}
 
-        {:error, reason} = error ->
-          Logger.warning("GitHub.ResourceStore checkpoint failed; reason=#{inspect(reason)}")
-          {error, state}
-      end
+      {:error, reason} = error ->
+        Logger.warning("GitHub.ResourceStore checkpoint failed; reason=#{inspect(reason)}")
+        {error, state}
     end
   end
 
-  defp write(path, document) do
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         {:ok, encoded} <- Jason.encode(%{"version" => 1, "entries" => document}) do
+  defp render(table) do
+    entries = :ets.foldl(&encode_entry/2, [], table)
+    {:ok, [~s({"version":1,"entries":{), Enum.intersperse(entries, ?,), "}}"]}
+  rescue
+    error -> {:error, Exception.message(error)}
+  end
+
+  defp write(path, encoded) do
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
       Fs.atomic_write(path, encoded, fsync: true, mode: 0o600)
     end
   rescue
@@ -2026,7 +1982,7 @@ defmodule Aiur.GitHub.ResourceStore do
         acc
 
       encoded ->
-        Map.put(acc, encoded, encode_fields(key, entry))
+        [[Jason.encode!(encoded), ?:, Jason.encode!(encode_fields(key, entry))] | acc]
     end
   end
 

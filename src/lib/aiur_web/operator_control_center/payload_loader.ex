@@ -3,12 +3,15 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
 
   import Phoenix.Component, only: [assign: 3]
 
+  alias Aiur.{Commands, CurrentRunMembership, OpenTicketSource, TicketActivity}
   alias Aiur.Orchestrator.SnapshotStore
   alias Aiur.PollCadence
-  alias AiurWeb.{ControlCenterCache, ControlCenterPresenter, Endpoint}
-  alias AiurWeb.OperatorControlCenter.{DecisionProvider, TicketsPresenter, UnitsPresenter}
+  alias AiurWeb.{ControlCenterCache, ControlCenterPresenter, EndpointConfig}
+  alias AiurWeb.OperatorControlCenter.{DecisionProvider, LoadBudget, TicketsPresenter, UnitsPresenter}
 
   @reload_debounce_ms 50
+  # Left of the cache's load timeout for the projection itself.
+  @provider_budget_margin_ms 1_000
   @reload_min_interval_ms 400
   @max_reload_events 32
 
@@ -22,11 +25,11 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
   def load({:event, %MapSet{}} = mode), do: do_load(mode)
 
   defp do_load(mode) do
-    providers = providers()
+    providers = {providers(), provider_funs()}
 
     case cache_server() do
       false -> load_uncached(providers)
-      server -> fetch_cached(server, mode, providers)
+      server -> server |> fetch_cached(mode, providers) |> cache_payload()
     end
   end
 
@@ -98,8 +101,6 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
       event_key,
       fn -> load_uncached(providers) end
     )
-  catch
-    :exit, _reason -> load_uncached(providers)
   end
 
   defp fetch_cached(server, mode, providers) do
@@ -111,9 +112,28 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
       max_age_ms,
       fn -> load_uncached(providers) end
     )
-  catch
-    :exit, _reason -> load_uncached(providers)
   end
+
+  defp cache_payload(%{error: {:cache_unavailable, reason}}) do
+    ControlCenterPresenter.unavailable_payload()
+    |> Map.put(:stale, true)
+    |> Map.put(:cache_error, reason)
+    |> Map.put(:retained_counts, unavailable_retained_counts())
+  end
+
+  # A failed load re-serves the previous payload. Its Units catalog must say so
+  # rather than pass old rows and runtimes off as the live fleet (#3937).
+  defp cache_payload(%{stale: true, stale_age_ms: age_ms, units: %{} = units} = payload) when is_integer(age_ms) do
+    units =
+      units
+      |> Map.put(:status, :stale)
+      |> Map.put(:message, "Dashboard refresh failed; showing the last loaded units.")
+      |> Map.put(:retained_age_seconds, div(max(age_ms, 0), 1_000))
+
+    Map.put(payload, :units, units)
+  end
+
+  defp cache_payload(payload), do: payload
 
   defp initial_reload_mode({:event, event_key}), do: {:event, MapSet.new([event_key])}
 
@@ -132,7 +152,9 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
     |> MapSet.new()
   end
 
-  defp load_uncached({orchestrator, decision_store, decision_metrics, recent_merge_store, snapshot_timeout_ms}) do
+  defp load_uncached({{orchestrator, decision_store, decision_metrics, recent_merge_store, snapshot_timeout_ms}, funs}) do
+    bound = LoadBudget.bound(funs.budget_ms)
+
     payload =
       ControlCenterPresenter.state_payload(
         orchestrator,
@@ -140,20 +162,38 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
         [
           decision_store: decision_store,
           decision_metrics: decision_metrics,
-          recent_merge_store: recent_merge_store
+          recent_merge_store: recent_merge_store,
+          bound: bound
         ]
-        |> maybe_put_option(:fleet_fun, Endpoint.config(:units_fleet_fun))
+        |> maybe_put_option(:fleet_fun, bound_option(bound, funs.fleet))
       )
 
-    retained_counts = retained_counts(decision_store)
+    retained_counts = retained_counts(decision_store, bound)
 
     payload
     |> put_units_status_snapshot(orchestrator: orchestrator, timeout: snapshot_timeout_ms)
     |> Map.put(:retained_counts, retained_counts)
     |> update_in([:provider_health], &Map.put(&1, :retained_counts, retained_counts.health.status))
-    |> then(&Map.put(&1, :units, UnitsPresenter.load(&1, units_options())))
-    |> Map.put(:tickets, TicketsPresenter.load(tickets_options()))
+    |> then(&Map.put(&1, :units, UnitsPresenter.load(&1, units_options(bound, funs))))
+    |> Map.put(:tickets, TicketsPresenter.load(tickets_options(bound, funs)))
   end
+
+  # Every provider read gets a deadline inside the cache's load timeout, so a slow
+  # provider degrades its own surface instead of failing the whole load (#3937).
+  # Read here, in the caller, not in the cache's load Task: test stubs are
+  # scoped to the calling process and its `$callers` (#4908).
+  defp provider_funs do
+    %{
+      budget_ms: EndpointConfig.get(:control_center_provider_budget_ms) || ControlCenterCache.load_timeout_ms() - @provider_budget_margin_ms,
+      fleet: EndpointConfig.get(:units_fleet_fun),
+      membership: EndpointConfig.get(:units_membership_fun) || (&CurrentRunMembership.snapshot/0),
+      activity: EndpointConfig.get(:units_activity_fun) || (&TicketActivity.snapshots/0),
+      tickets: EndpointConfig.get(:open_tickets_fun) || (&OpenTicketSource.snapshot/0)
+    }
+  end
+
+  defp bound_option(_bound, nil), do: nil
+  defp bound_option(bound, fun), do: bound.(fun)
 
   defp put_units_status_snapshot(payload, opts) do
     orchestrator = Keyword.fetch!(opts, :orchestrator)
@@ -174,16 +214,17 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
 
   defp providers do
     {
-      Endpoint.config(:orchestrator) || Aiur.Orchestrator,
-      Endpoint.config(:decision_store) || Aiur.DecisionStore,
-      Endpoint.config(:decision_metrics) || Aiur.DecisionMetrics,
-      Endpoint.config(:recent_merge_store) || Aiur.RecentMergeStore,
-      PollCadence.snapshot_tolerance_ms(Endpoint.config(:snapshot_timeout_ms) || 15_000, class: :dispatch)
+      EndpointConfig.get(:orchestrator) || Aiur.Orchestrator,
+      EndpointConfig.get(:decision_store) || Commands.default_store(),
+      EndpointConfig.get(:decision_metrics) || Commands.default_metrics(),
+      EndpointConfig.get(:recent_merge_store) || Aiur.RecentMergeStore,
+      PollCadence.snapshot_tolerance_ms(EndpointConfig.get(:snapshot_timeout_ms) || 15_000, class: :dispatch)
     }
   end
 
-  defp cache_key({orchestrator, decision_store, decision_metrics, recent_merge_store, snapshot_timeout_ms}) do
+  defp cache_key({{orchestrator, decision_store, decision_metrics, recent_merge_store, snapshot_timeout_ms}, funs}) do
     {
+      funs,
       provider_identity(orchestrator),
       provider_identity(decision_store),
       provider_identity(decision_metrics),
@@ -192,15 +233,9 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
     }
   end
 
-  defp units_options do
-    []
-    |> maybe_put_option(:membership_fun, Endpoint.config(:units_membership_fun))
-    |> maybe_put_option(:activity_fun, Endpoint.config(:units_activity_fun))
-  end
+  defp units_options(bound, funs), do: [membership_fun: bound.(funs.membership), activity_fun: bound.(funs.activity)]
 
-  defp tickets_options do
-    maybe_put_option([], :tickets_fun, Endpoint.config(:open_tickets_fun))
-  end
+  defp tickets_options(bound, funs), do: [tickets_fun: bound.(funs.tickets)]
 
   defp maybe_put_option(opts, _key, nil), do: opts
   defp maybe_put_option(opts, key, value), do: Keyword.put(opts, key, value)
@@ -214,7 +249,7 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
   end
 
   defp cache_server do
-    case Endpoint.config(:control_center_cache) do
+    case EndpointConfig.get(:control_center_cache) do
       false -> false
       nil -> ControlCenterCache
       server -> server
@@ -222,14 +257,14 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
   end
 
   defp schedule_reload(delay_ms) do
-    case Endpoint.config(:control_center_reload_timer) do
+    case EndpointConfig.get(:control_center_reload_timer) do
       timer when is_function(timer, 3) -> timer.(self(), :reload_payload, delay_ms)
       _other -> Process.send_after(self(), :reload_payload, delay_ms)
     end
   end
 
-  defp retained_counts(decision_store) do
-    {:ok, counts} = DecisionProvider.counts(decision_store: decision_store)
+  defp retained_counts(decision_store, bound) do
+    {:ok, counts} = bound.(fn -> DecisionProvider.counts(decision_store: decision_store) end).()
     counts
   rescue
     _error -> unavailable_retained_counts()

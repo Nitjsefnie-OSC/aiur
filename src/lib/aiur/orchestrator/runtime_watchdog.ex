@@ -44,15 +44,11 @@ defmodule Aiur.Orchestrator.RuntimeWatchdog do
     apply_runtime_health_check(state, DateTime.utc_now())
   end
 
-  # Safety check-in, not a kill: pause any agent that has been actively
-  # running longer than `agent.max_agent_duration_minutes` (paused/blocked
-  # time excluded via `running_seconds/2`). The duration cap is almost
-  # always "I want to check in," not "this work is done" — pausing keeps
-  # the agent in the list, retaining its session/turn context so the
-  # Executor can review and resume with one keystroke instead of
-  # restarting from scratch. The pause releases its fleet reservation
-  # (`@non_reserving_pause_reasons`), so a parked agent cannot pin a
-  # capacity slot indefinitely (#2329).
+  # Pause any agent that has been actively running longer than
+  # `agent.max_agent_duration_minutes` (paused/blocked time excluded via
+  # `running_seconds/2`). Once the worker confirms it parked,
+  # `DurationCapRelease` moves the ticket to rework or human-review and
+  # frees the runner so a fresh worker continues (#4849).
   @doc false
   @spec reconcile_overrunning_agents(State.t()) :: State.t()
   def reconcile_overrunning_agents(%State{} = state) do
@@ -325,13 +321,14 @@ defmodule Aiur.Orchestrator.RuntimeWatchdog do
     if is_integer(elapsed_ms) and elapsed_ms > timeout_ms do
       identifier = Map.get(running_entry, :identifier, issue_id)
       session_id = State.running_entry_session_id(running_entry)
+      backend = get_in(running_entry, [:session_execution, :backend]) || "agent"
 
       Logger.warning("Issue stalled: issue_id=#{issue_id} issue_identifier=#{identifier} session_id=#{session_id} elapsed_ms=#{elapsed_ms}; restarting with backoff")
 
       _ =
         Alerts.emit_custom(
           "ticket.#{identifier}.agent.stalled",
-          "Agent command made no progress for #{elapsed_ms}ms; terminating it and scheduling a retry",
+          "#{backend} command made no progress for #{elapsed_ms}ms; terminating it and scheduling a retry",
           issue: Map.get(running_entry, :issue),
           workspace: Map.get(running_entry, :workspace_path),
           worker_host: Map.get(running_entry, :worker_host),
@@ -348,7 +345,7 @@ defmodule Aiur.Orchestrator.RuntimeWatchdog do
         identifier: identifier,
         tracker_identity: Issue.tracker_identity(Map.get(running_entry, :issue)),
         issue_state: Map.get(Map.get(running_entry, :issue) || %{}, :state),
-        error: "stalled for #{elapsed_ms}ms without codex activity",
+        error: "stalled for #{elapsed_ms}ms without #{backend} activity",
         prior_work: RetryEngine.prior_work_for_retry?(running_entry),
         worker_host: Map.get(running_entry, :worker_host),
         workspace_path: Map.get(running_entry, :workspace_path)

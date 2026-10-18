@@ -1,11 +1,42 @@
 defmodule Aiur.Config.Schema.AgentValidation do
   @moduledoc "Normalizers and changeset validators for the agent section's map fields (state limits, complexity routing, complexity prompts) and normalize_issue_state/1."
 
-  import Ecto.Changeset, only: [get_field: 2, validate_change: 3]
+  import Ecto.Changeset, only: [add_error: 3, get_field: 2, validate_change: 3]
 
   alias Aiur.CodingAgent
   alias Aiur.CodingAgent.Models
   alias Aiur.Config.RoutingValue
+
+  @doc false
+  @spec prepare_attrs(map()) :: map()
+  def prepare_attrs(attrs) do
+    attrs
+    |> drop_uncapped_max_turns()
+    |> default_mix_scheduler_cap()
+  end
+
+  defp drop_uncapped_max_turns(attrs) do
+    Enum.reduce([:max_turns, "max_turns"], attrs, &drop_key_if_uncapped/2)
+  end
+
+  defp default_mix_scheduler_cap(attrs) do
+    if Map.has_key?(attrs, :mix_scheduler_cap) or Map.has_key?(attrs, "mix_scheduler_cap") do
+      attrs
+    else
+      key = if Enum.any?(Map.keys(attrs), &is_atom/1), do: :mix_scheduler_cap, else: "mix_scheduler_cap"
+      Map.put(attrs, key, 4)
+    end
+  end
+
+  defp drop_key_if_uncapped(key, attrs) do
+    case Map.fetch(attrs, key) do
+      {:ok, value} when is_binary(value) ->
+        if String.downcase(String.trim(value)) in ["none", "unlimited", ""], do: Map.delete(attrs, key), else: attrs
+
+      _ ->
+        attrs
+    end
+  end
 
   @spec normalize_issue_state(String.t()) :: String.t()
   def normalize_issue_state(state_name) when is_binary(state_name) do
@@ -46,9 +77,37 @@ defmodule Aiur.Config.Schema.AgentValidation do
   def normalize_agent_routing(nil), do: %{}
 
   def normalize_agent_routing(routing) when is_map(routing) do
-    Enum.reduce(routing, %{}, fn {level, backend}, acc ->
-      Map.put(acc, normalize_routing_level(level), to_string(backend))
+    Enum.reduce(routing, %{}, fn {level, value}, acc ->
+      Map.put(acc, normalize_routing_level(level), normalize_routing_entry(value))
     end)
+  end
+
+  # A list value names every route a level allows under
+  # `account_selection: headroom` (#3960); a single string is one route.
+  defp normalize_routing_entry(values) when is_list(values), do: Enum.map(values, &to_string/1)
+  defp normalize_routing_entry(value), do: to_string(value)
+
+  @doc """
+  Splits list-valued `agent.routing` entries (#3960). `routing` keeps one
+  string per level, the list's first route, so every reader of the routing
+  table and every policy other than `headroom` behaves as before.
+  `routing_candidates` keeps every level's full route list for the headroom
+  selector (`Aiur.CodingAgent.HeadroomDispatch`).
+  """
+  @spec split_routing_candidates(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def split_routing_candidates(changeset) do
+    case get_field(changeset, :routing) do
+      routing when is_map(routing) and map_size(routing) > 0 ->
+        candidates = Map.new(routing, fn {level, value} -> {level, List.wrap(value)} end)
+        primary = Map.new(candidates, fn {level, values} -> {level, List.first(values)} end)
+
+        changeset
+        |> Ecto.Changeset.put_change(:routing, primary)
+        |> Ecto.Changeset.put_change(:routing_candidates, candidates)
+
+      _ ->
+        changeset
+    end
   end
 
   @doc """
@@ -147,6 +206,15 @@ defmodule Aiur.Config.Schema.AgentValidation do
     end)
   end
 
+  defp routing_errors(field, _known, _level, []),
+    do: [{field, "a routing list must name at least one route, e.g. [\"claude:sonnet\", \"codex:gpt-5.5:high\"]"}]
+
+  defp routing_errors(field, known, level, values) when is_list(values) do
+    if values == Enum.uniq(values),
+      do: values |> Enum.flat_map(&routing_errors(field, known, level, &1)) |> Enum.take(1),
+      else: [{field, "routing list for complexity #{inspect(level)} must not repeat a route: #{inspect(values)}"}]
+  end
+
   defp routing_errors(field, known, level, value) do
     cond do
       not is_integer(level) or level <= 0 ->
@@ -172,11 +240,31 @@ defmodule Aiur.Config.Schema.AgentValidation do
   defp invalid_routing_effort_error(field, value) do
     backend = routing_effort_backend(value)
 
-    [
-      {field,
-       "invalid effort #{inspect(RoutingValue.routing_effort(value))} for backend #{inspect(backend)}; " <>
-         "valid efforts: #{inspect(Aiur.CodingAgent.efforts(backend))}"}
-    ]
+    case Aiur.CodingAgent.efforts(backend) do
+      # Claude takes no effort segment today (#3961). Say so plainly instead of
+      # printing an empty list of valid efforts.
+      [] ->
+        [
+          {field,
+           "invalid route #{inspect(value)}: backend #{inspect(backend)} accepts no effort segment; " <>
+             "drop it and write #{inspect(value |> RoutingValue.strip_remote_flag() |> drop_effort_segment())}"}
+        ]
+
+      efforts ->
+        [
+          {field,
+           "invalid effort #{inspect(RoutingValue.routing_effort(value))} for backend #{inspect(backend)} in #{inspect(value)}; " <>
+             "valid efforts: #{inspect(efforts)}"}
+        ]
+    end
+  end
+
+  defp drop_effort_segment(value) do
+    case String.split(value, ":", parts: 3) do
+      [backend, "" | _] -> backend
+      [backend, model | _] -> backend <> ":" <> model
+      [backend] -> backend
+    end
   end
 
   # A routing value's optional effort segment must be in the backend's valid
@@ -269,4 +357,92 @@ defmodule Aiur.Config.Schema.AgentValidation do
   end
 
   def normalize_routing_level(level), do: level
+
+  @spec validate_backend_configs(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_backend_configs(changeset) do
+    configs = Ecto.Changeset.get_field(changeset, :backend_configs) || %{}
+
+    Enum.reduce(configs, changeset, fn {backend, config}, acc ->
+      case get_in(Aiur.CodingAgent.backends(), [backend, :config_validator]) do
+        validator when is_function(validator, 1) ->
+          apply_backend_validation(acc, backend, validator.(config))
+
+        _ ->
+          acc
+      end
+    end)
+  end
+
+  defp apply_backend_validation(changeset, _backend, :ok), do: changeset
+
+  defp apply_backend_validation(changeset, backend, {:error, reason}),
+    do: add_error(changeset, :backend_configs, "#{backend}: #{reason}")
+
+  @spec validate_dispatch_selections(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_dispatch_selections(changeset) do
+    dispatchable = dispatchable_with_priority(changeset)
+
+    changeset
+    |> reject_disabled_backend(:kind, Ecto.Changeset.get_field(changeset, :kind), dispatchable)
+    |> reject_disabled_backends(:switch_model_on_ratelimit, Ecto.Changeset.get_field(changeset, :switch_model_on_ratelimit), dispatchable)
+    |> reject_disabled_backend(:rate_limit_primary, Ecto.Changeset.get_field(changeset, :rate_limit_primary), dispatchable)
+    |> reject_disabled_backend(:rate_limit_fallback, Ecto.Changeset.get_field(changeset, :rate_limit_fallback), dispatchable)
+  end
+
+  defp dispatchable_with_priority(changeset) do
+    priority =
+      (Ecto.Changeset.get_field(changeset, :priority) || [])
+      |> Enum.map(&RoutingValue.routing_backend/1)
+      |> Enum.reject(&is_nil/1)
+
+    base = Aiur.CodingAgent.dispatchable_backends(Ecto.Changeset.get_field(changeset, :backend_configs) || %{})
+    Enum.uniq(priority ++ base)
+  end
+
+  defp reject_disabled_backends(changeset, field, values, dispatchable) when is_list(values) do
+    case Enum.find(values, &(&1 not in dispatchable)) do
+      nil -> changeset
+      backend -> Ecto.Changeset.add_error(changeset, field, "backend #{inspect(backend)} is disabled; dispatchable backends: #{inspect(dispatchable)}")
+    end
+  end
+
+  defp reject_disabled_backends(changeset, _field, _values, _dispatchable), do: changeset
+
+  defp reject_disabled_backend(changeset, _field, backend, _dispatchable) when backend in [nil, ""], do: changeset
+
+  defp reject_disabled_backend(changeset, field, backend, dispatchable) do
+    if backend in Aiur.CodingAgent.known_backends() and backend not in dispatchable do
+      Ecto.Changeset.add_error(changeset, field, "backend #{inspect(backend)} is disabled; set agent.backend_configs.#{backend}.enabled: true to opt in")
+    else
+      changeset
+    end
+  end
+
+  # The fallback names a registered backend distinct from the primary, or "" to
+  # disable the reroute. Cross-field (fallback != primary), so it reads the
+  # changeset rather than living in a `validate_change` closure.
+  @spec validate_rate_limit_fallback(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_rate_limit_fallback(changeset) do
+    backend = Ecto.Changeset.get_field(changeset, :rate_limit_fallback)
+    primary = Ecto.Changeset.get_field(changeset, :rate_limit_primary)
+    known = Aiur.CodingAgent.known_backends()
+    fallback_targets = Aiur.CodingAgent.rate_limit_fallback_targets()
+
+    cond do
+      backend in [nil, ""] ->
+        changeset
+
+      backend not in known ->
+        Ecto.Changeset.add_error(changeset, :rate_limit_fallback, "must be a registered backend or \"\" to disable; known backends: #{inspect(known)}")
+
+      backend == primary ->
+        Ecto.Changeset.add_error(changeset, :rate_limit_fallback, "must differ from rate_limit_primary (#{inspect(primary)})")
+
+      backend not in fallback_targets ->
+        Ecto.Changeset.add_error(changeset, :rate_limit_fallback, "must be an eligible registered fallback backend; eligible backends: #{inspect(fallback_targets)}")
+
+      true ->
+        changeset
+    end
+  end
 end

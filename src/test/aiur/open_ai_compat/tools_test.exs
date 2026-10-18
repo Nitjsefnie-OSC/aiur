@@ -2,11 +2,10 @@ defmodule Aiur.OpenAICompat.ToolsTest do
   use ExUnit.Case, async: true
 
   alias Aiur.OpenAICompat.{CommandRunner, ToolCallParser, Tools}
+  alias Aiur.TestSupport.RuntimeChildren
 
   setup do
-    if is_nil(Process.whereis(Aiur.TaskSupervisor)) do
-      start_supervised!({Task.Supervisor, name: Aiur.TaskSupervisor})
-    end
+    :ok = RuntimeChildren.ensure_aiur_supervisor_running()
 
     :ok
   end
@@ -32,7 +31,7 @@ defmodule Aiur.OpenAICompat.ToolsTest do
     workspace = Aiur.TestSupport.tmp_root!("aiur-tools")
     File.mkdir_p!(workspace)
     File.ln_s!(System.tmp_dir!(), Path.join(workspace, "outside"))
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
 
     context = %{workspace: workspace, tool_executor: nil}
 
@@ -57,7 +56,7 @@ defmodule Aiur.OpenAICompat.ToolsTest do
   test "workspace file tools write, replace, and list files" do
     workspace = Aiur.TestSupport.tmp_root!("aiur-tools-edit")
     File.mkdir_p!(workspace)
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
     context = %{workspace: workspace, tool_executor: nil}
 
     assert %{"success" => true} = Tools.execute("write_file", %{"path" => "nested/note.txt", "content" => "before"}, context, [])
@@ -77,7 +76,7 @@ defmodule Aiur.OpenAICompat.ToolsTest do
     File.write!(Path.join(workspace, "root.ex"), "")
     File.write!(Path.join(workspace, "nested/one.exs"), "")
     File.write!(Path.join(workspace, "nested/deep/two.txt"), "")
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
     context = %{workspace: workspace, tool_executor: nil}
 
     assert %{"success" => true, "output" => recursive} =
@@ -99,7 +98,7 @@ defmodule Aiur.OpenAICompat.ToolsTest do
       File.write!(Path.join(workspace, "#{index}.txt"), "")
     end
 
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
     context = %{workspace: workspace, tool_executor: nil}
 
     assert %{"success" => true, "output" => output} =
@@ -112,7 +111,7 @@ defmodule Aiur.OpenAICompat.ToolsTest do
     workspace = Aiur.TestSupport.tmp_root!("aiur-tools-replace")
     File.mkdir_p!(workspace)
     File.write!(Path.join(workspace, "note.txt"), "same same")
-    on_exit(fn -> File.rm_rf!(workspace) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
     context = %{workspace: workspace, tool_executor: nil}
 
     assert %{"success" => false, "output" => "old_text_not_unique"} =
@@ -199,7 +198,7 @@ defmodule Aiur.OpenAICompat.ToolsTest do
         workspace = Path.join(root, "workspace")
         File.mkdir_p!(workspace)
         File.write!(Path.join(root, "host-secret"), "not visible")
-        on_exit(fn -> File.rm_rf!(root) end)
+        on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
         assert %{"success" => true, "output" => "sandboxed\n"} =
                  CommandRunner.run(workspace, "test ! -r ../host-secret && printf 'sandboxed\\n'", sandbox_executable: executable)

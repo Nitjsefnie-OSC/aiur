@@ -33,14 +33,9 @@ defmodule Aiur.GitHub.Quota do
 
   use GenServer
 
-  alias Aiur.{Alerts, Config}
+  alias Aiur.{Config, Signal}
   alias Aiur.GitHub.Config, as: GitHubConfig
-  alias Aiur.GitHub.EndpointPolicy
-  alias Aiur.GitHub.GraphQLCost
-  alias Aiur.GitHub.GraphQLErrors
-  alias Aiur.GitHub.RequestLog
-  alias Aiur.GitHub.RequestOrigin
-  alias Aiur.GitHub.Transport
+  alias Aiur.GitHub.{EndpointPolicy, GraphQLCost, GraphQLErrors, HoldSweep, RequestLog, RequestOrigin, Transport}
   alias Aiur.RepoBase
   alias Aiur.Workspace.Layout
 
@@ -191,7 +186,7 @@ defmodule Aiur.GitHub.Quota do
       # start without also moving the clock that prices everything else.
       started_at: Keyword.get_lazy(opts, :started_at, fn -> Keyword.get(opts, :clock, &DateTime.utc_now/0).() end),
       clock: Keyword.get(opts, :clock, &DateTime.utc_now/0),
-      emit_fun: Keyword.get(opts, :emit_fun, &Alerts.emit_system/2),
+      emit_fun: Keyword.get(opts, :emit_fun, &Signal.alert/2),
       shell_log_path: Keyword.get_lazy(opts, :shell_log_path, &default_shell_log_path/0),
       stale_broker_path: Keyword.get_lazy(opts, :stale_broker_path, &default_stale_broker_path/0),
       stale_broker_alerts: MapSet.new(),
@@ -214,6 +209,7 @@ defmodule Aiur.GitHub.Quota do
       refresh_ref: nil
     }
 
+    state = Map.put(state, :hold_alerts, HoldSweep.sweep(state.hold_dir, state.clock.(), state.emit_fun))
     if refresh?, do: Process.send_after(self(), :refresh, 0)
     {:ok, state}
   end
@@ -315,8 +311,9 @@ defmodule Aiur.GitHub.Quota do
   def handle_info(:refresh, state), do: {:noreply, state}
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{refresh_ref: ref} = state) do
+    hold_alerts = HoldSweep.sweep(state.hold_dir, state.clock.(), state.emit_fun, state.hold_alerts)
     Process.send_after(self(), :refresh, state.refresh_interval_ms)
-    {:noreply, %{refresh_stale_broker_alerts(state) | refresh_ref: nil}}
+    {:noreply, %{refresh_stale_broker_alerts(state) | refresh_ref: nil, hold_alerts: hold_alerts}}
   end
 
   def handle_info({:dispatch_recovery, token}, %{recovery_timer_token: token} = state) do
@@ -1223,7 +1220,7 @@ defmodule Aiur.GitHub.Quota do
   end
 
   defp notify_orchestrator_recovery do
-    case Process.whereis(Aiur.Orchestrator) do
+    case GenServer.whereis(Application.get_env(:aiur, :github_quota_recovery_target)) do
       pid when is_pid(pid) -> send(pid, :github_quota_recovered)
       nil -> :ok
     end

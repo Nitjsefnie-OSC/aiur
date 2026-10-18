@@ -3,7 +3,7 @@ defmodule Aiur.Workspace.Refresh do
 
   require Logger
   alias Aiur.{AgentBuildGuard, Config}
-  alias Aiur.Workspace.{BootstrapImage, Context, GitMetadata, Hooks, Ownership, Provisioner, Reconstruction}
+  alias Aiur.Workspace.{AttributionGuard, BootstrapImage, Context, GitMetadata, Hooks, Ownership, PendingRestack, Provisioner, Reconstruction}
 
   @spec run(Path.t(), map() | String.t() | nil, String.t() | nil) :: :ok | {:error, term()}
   def run(workspace, issue_or_identifier, worker_host \\ nil) when is_binary(workspace) do
@@ -113,7 +113,8 @@ defmodule Aiur.Workspace.Refresh do
   end
 
   defp finalize_before_run_workspace(workspace, issue_context, worker_host) do
-    with :ok <- GitMetadata.ensure_git_metadata_writable(workspace, worker_host),
+    with :ok <- AttributionGuard.install(workspace),
+         :ok <- GitMetadata.ensure_git_metadata_writable(workspace, worker_host),
          :ok <- repair_ready_workspace_guard(workspace, worker_host) do
       BootstrapImage.maybe_seed(workspace, issue_context, worker_host)
     end
@@ -139,6 +140,13 @@ defmodule Aiur.Workspace.Refresh do
     end
   end
 
+  defp run_before_run_command(nil, workspace, _issue_context, nil) do
+    case PendingRestack.apply(workspace) do
+      :skip_hook -> :ok
+      result -> result
+    end
+  end
+
   defp run_before_run_command(nil, _workspace, _issue_context, _worker_host), do: :ok
 
   defp run_before_run_command(command, workspace, issue_context, nil) do
@@ -147,7 +155,11 @@ defmodule Aiur.Workspace.Refresh do
         reconstruct_before_run_workspace(command, workspace, issue_context)
 
       :ready ->
-        Hooks.run_hook(command, workspace, issue_context, "before_run", nil)
+        case PendingRestack.apply(workspace) do
+          :ok -> Hooks.run_hook(command, workspace, issue_context, "before_run", nil)
+          :skip_hook -> :ok
+          error -> error
+        end
 
       {:error, _reason} = error ->
         error

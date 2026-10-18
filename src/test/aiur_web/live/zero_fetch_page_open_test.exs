@@ -45,6 +45,9 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
 
   alias Aiur.BuildOrder.TicketDetail
   alias Aiur.GitHub.{Issues, ReadCache, ResourceStore}
+  alias Aiur.Orchestrator.CommentPolling
+  alias Aiur.RunTelemetry.FactsCapture
+  alias Aiur.TestSupport.EndpointStubs
   alias Aiur.TrackerIdentity
   alias AiurWeb.ControlCenterCache
 
@@ -69,7 +72,32 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
   @token_cache_key {Aiur.GitHub.Config, :resolved_token}
   @repository {"owner", "repo"}
 
-  setup do
+  setup context do
+    inherited_task = if context[:inherited_tracker_task], do: start_inherited_tracker_task()
+
+    # Clear prior comment work and finish startup cleanup before counting.
+    :ok = Supervisor.terminate_child(Aiur.Supervisor, Aiur.Orchestrator)
+    {:ok, orchestrator} = Supervisor.restart_child(Aiur.Supervisor, Aiur.Orchestrator)
+
+    # The GitHub comment poll's pull-request discovery uses CommentPollBatch and
+    # POSTs /graphql. It is an Orchestrator poll, but its owned async task is not
+    # in tracker_tasks, so waiting on that map alone can leave it racing this
+    # transport counter. Freeze the source poll cycle and drain its outstanding
+    # comment batch before installing the counter below. The delayed startup
+    # cycle is fenced by poll_frozen too.
+    _frozen_state = Aiur.TestSupport.freeze_live_orchestrator()
+
+    Aiur.TestSupport.await_orchestrator_state(orchestrator, fn state ->
+      map_size(state.tracker_tasks) == 0 and is_nil(state.github_comment_poll)
+    end)
+
+    if context[:comment_poll_leak_probe] do
+      # This test sends a poll-cycle message while the page is held open. Make
+      # the real GitHub comment-poll path eligible only after the Orchestrator
+      # has been frozen, so the message deterministically proves the fence.
+      :ok = Aiur.TestSupport.write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "github")
+    end
+
     # The positive control (`assert_egress_open!`) drives a `/issues/{n}` read
     # and asserts it reaches the transport. That URL is now cacheable
     # (`:issue`, #2352), and the read cache is a shared application child, so a
@@ -92,7 +120,7 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
         control_center_cache: cache
       )
 
-    Application.put_env(:aiur, AiurWeb.Endpoint, config)
+    Application.put_env(:aiur, AiurWeb.Endpoint, EndpointStubs.scope(config))
 
     on_exit(fn ->
       case previous_endpoint do
@@ -105,14 +133,16 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
 
     {:ok, counter} = Agent.start_link(fn -> [] end)
     previous_options = Application.get_env(:aiur, :github_transport_test_options)
+    test_pid = self()
 
     Application.put_env(:aiur, :github_transport_test_options,
       plug: fn conn ->
         Agent.update(counter, &[{conn.method, conn.request_path} | &1])
+        send(test_pid, {:github_request, conn.method, conn.request_path})
 
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.resp(200, "{}")
+        |> Plug.Conn.resp(200, if(conn.method == "GET", do: "[]", else: "{}"))
       end
     )
 
@@ -123,7 +153,7 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
       end
     end)
 
-    {:ok, counter: counter}
+    {:ok, counter: counter, inherited_task: inherited_task}
   end
 
   describe "opening a dashboard page" do
@@ -193,9 +223,15 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
     # tracker path is proven explicitly here, or the zero would be trivially
     # true for the wrong reason (the "zero, provably" trap the reviewer flagged).
 
-    test "opening the dashboard under a github tracker reaches GitHub zero times", %{counter: counter} do
+    @tag :inherited_tracker_task
+    test "opening the dashboard under a github tracker reaches GitHub zero times", %{counter: counter, inherited_task: inherited_task} do
       workflow_path = Aiur.Workflow.workflow_file_path()
       :ok = Aiur.TestSupport.write_workflow_file!(workflow_path, tracker_kind: "github")
+
+      # Release the prior test's read and observe its completion before counting.
+      ref = Process.monitor(inherited_task)
+      send(inherited_task, :continue)
+      receive_barrier({:DOWN, ^ref, :process, ^inherited_task, _reason})
 
       assert {:ok, view, html} = live(build_conn(), "/")
       assert html =~ "dashboard-shell", "/ did not render the dashboard shell"
@@ -229,27 +265,64 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
       assert_egress_open!(counter)
     end
 
+    @tag :comment_poll_leak_probe
     test "holding a page open past its refresh ticks reaches GitHub zero times", %{counter: counter} do
       assert {:ok, view, html} = live(build_conn(), "/")
       assert html =~ "dashboard-shell"
 
-      # This env runs a Linear tracker, so the dashboard's open-time
-      # OpenTicketSource refresh is gated to :unsupported and makes no request;
-      # the `/` deliberate-exception test covers that one request under a github
-      # tracker. What this test asserts is narrower: the dashboard's own
-      # periodic ticks — a 1s clock, a 15s GitHub-quota read and a 60s
-      # ElevenLabs read — never fetch. Driving them directly is deterministic
-      # where sleeping for 60s would be slow and still racy. If any of them ever
-      # starts fetching rather than reading local GenServer state, this fails.
+      # Exercise the real Orchestrator poll-cycle entry point while the page is
+      # open. Seed one reconcile target so an unfrozen cycle reaches the
+      # CommentPollBatch GraphQL lookup; when the source is fenced, this message
+      # is discarded before any GitHub request can start.
+      :sys.replace_state(Aiur.Orchestrator, fn state ->
+        %{state | github_comment_reconcile_targets: MapSet.new(["4584"])}
+      end)
+
+      send(Aiur.Orchestrator, :run_poll_cycle)
+
+      Aiur.TestSupport.await_orchestrator_state(Aiur.Orchestrator, fn state ->
+        map_size(state.tracker_tasks) == 0 and is_nil(state.github_comment_poll)
+      end)
+
+      # The page's own periodic ticks — a 1s clock, a 15s GitHub-quota snapshot
+      # and a 60s ElevenLabs read — never fetch. Driving them directly is
+      # deterministic where sleeping for 60s would be slow and still racy.
       Enum.each([:runtime_tick, :github_quota_tick, :elevenlabs_quota_tick], fn tick ->
         send(view.pid, tick)
         _rendered = render(view)
       end)
 
+      # The shared app's FactsCapture retries tickets that earlier tests queued on
+      # its own 5 s tick, and each retry is a `POST /graphql` once a token is set
+      # (#3505). Queue one now instead of waiting for the tick: if the shared app
+      # runs that worker, wait for its fetch so the count below includes it.
+      FactsCapture.capture("3505")
+      if Process.whereis(FactsCapture), do: receive_barrier({:github_request, "POST", "/graphql"})
+
       requests = Agent.get(counter, & &1)
 
       assert requests == [],
              "holding the dashboard open made #{length(requests)} GitHub requests: #{inspect(requests)}"
+
+      # Positive control through the real comment-poll source. It deliberately
+      # runs after the zero assertion, while the LiveView remains open, and
+      # proves both that this counter is open and that the background lookup is
+      # CommentPollBatch's POST /graphql. The poll-cycle trigger above must not
+      # reach this call while the test owns the counter.
+      probe_state =
+        struct(Aiur.Orchestrator.State,
+          running: %{"4584" => %{identifier: "4584", issue: %{title: "comment poll probe"}}}
+        )
+
+      _poll_result =
+        CommentPolling.poll_github_comments(probe_state,
+          review_issue_fetcher: fn _states -> {:ok, []} end
+        )
+
+      observed = Agent.get(counter, & &1)
+
+      assert {"POST", "/graphql"} in observed,
+             "CommentPolling did not expose its expected GraphQL request to the test counter: #{inspect(observed)}"
 
       assert_egress_open!(counter)
     end
@@ -350,6 +423,22 @@ defmodule AiurWeb.ZeroFetchPageOpenTest do
     assert length(Agent.get(counter, & &1)) > before,
            "the transport sent nothing for a request that must always send, so the zero above " <>
              "may be an exhausted budget rather than a page that did not fetch"
+  end
+
+  # Reproduce a prior event consumer still waiting to read when this test starts.
+  defp start_inherited_tracker_task do
+    test_pid = self()
+
+    fetcher = fn ["33189"] ->
+      send(test_pid, {:inherited_tracker_task, self()})
+      receive_barrier(:continue)
+      Issues.fetch_issue_raw_conditional(33_189, repository: {"aiur-team", "aiur"}, token: "test-token")
+      {:ok, []}
+    end
+
+    send(Aiur.Orchestrator, {:event, %{topic: "ticket.33189.issue.commented", issue_state_fetcher: fetcher}})
+    receive_barrier({:inherited_tracker_task, pid})
+    pid
   end
 
   defp identity(number) do

@@ -4,10 +4,11 @@ defmodule AiurWeb.OperatorControlCenter.UnitsTable do
   use Phoenix.Component
 
   alias Aiur.AgentContextPresentation
-  alias Aiur.BuildOrder.Bounded
+  alias Aiur.Bounded
   alias Aiur.CodingAgent
+  alias Aiur.Projections.UnitsPolicy
   alias Aiur.TrackerIdentity
-  alias AiurWeb.OperatorControlCenter.{UnitsControlPolicy, UnitsPolicy, UnitsPresentation, UnitsPresenter}
+  alias AiurWeb.OperatorControlCenter.{UnitsControlPolicy, UnitsPresentation, UnitsPresenter}
 
   attr(:view, :map, required: true)
   attr(:now, :any, required: true)
@@ -29,6 +30,11 @@ defmodule AiurWeb.OperatorControlCenter.UnitsTable do
       <div :if={@status == :unavailable} class="units-state readonly-banner" role="status">
         <span aria-hidden="true">◉</span>
         <span><b>No live units.</b> {@message || "Fleet data is unavailable."}</span>
+      </div>
+
+      <div :if={@view[:retained_age_seconds]} class="units-state readonly-banner" role="status">
+        <span aria-hidden="true">◉</span>
+        <span><b>Stale list.</b> The last refresh failed. These units were last read {UnitsPresentation.age_label(@view[:retained_age_seconds])} ago.</span>
       </div>
 
       <div :if={@view[:truncated?]} class="units-state readonly-banner" role="status">
@@ -112,11 +118,11 @@ defmodule AiurWeb.OperatorControlCenter.UnitsTable do
                 </span>
                 <div class="ut-latest-meta mono num">
                   <span><span class="sr-only">Progress </span>{progress_pct(row.progress)}</span>
-                  <span><span class="sr-only">Runtime </span>{runtime(row, @now)}</span>
+                  <span><span class="sr-only">Runtime </span>{runtime(row, @now, @view)}</span>
                 </div>
                 <div class="ut-latest-meta ut-agent-context mono num">
-                  <span title="Aiur orchestration turns in this running attempt">Turns {turn_count(row)}</span>
-                  <span title="Current context occupancy, separate from cumulative token usage">Context {AgentContextPresentation.compact(row[:context_usage])}</span>
+                  <span title={turn_count_title(row)}>Turns {turn_count(row)}</span>
+                  <span title={context_title(row)}>Context {context_usage(row)}</span>
                 </div>
               </td>
 
@@ -161,7 +167,29 @@ defmodule AiurWeb.OperatorControlCenter.UnitsTable do
   end
 
   defp turn_count(%{turn_count: count}) when is_integer(count) and count >= 0, do: count
-  defp turn_count(_row), do: "—"
+  defp turn_count(row), do: unreported_label(row)
+
+  defp turn_count_title(%{turn_count: count}) when is_integer(count) and count >= 0,
+    do: "Aiur orchestration turns in this running attempt"
+
+  defp turn_count_title(row), do: unreported_title(row, "a turn count")
+
+  defp context_usage(%{context_usage: %{} = context}), do: AgentContextPresentation.compact(context)
+  defp context_usage(row), do: unreported_label(row)
+
+  defp context_title(%{context_usage: %{}}), do: "Current context occupancy, separate from cumulative token usage"
+  defp context_title(row), do: unreported_title(row, "context occupancy")
+
+  # A missing measurement names why it is missing instead of looking like an empty value.
+  defp unreported_label(row), do: if(running?(row), do: "not reported", else: "no attempt")
+
+  defp unreported_title(row, measurement) do
+    if running?(row),
+      do: "The #{row[:backend] || "agent"} backend has not reported #{measurement} for this attempt",
+      else: "No running attempt, so there is no #{measurement} to report"
+  end
+
+  defp running?(row), do: get_in(row, [:runtime, :bucket]) == :running
 
   attr(:token, :string, required: true)
   attr(:row, :map, required: true)
@@ -282,7 +310,9 @@ defmodule AiurWeb.OperatorControlCenter.UnitsTable do
   defp conversation_handle(%{live_conversation: %{generation_handle: handle}}) when is_binary(handle), do: handle
   defp conversation_handle(_row), do: nil
 
-  defp runtime(row, now), do: UnitsPresentation.runtime_label(row, now)
+  # A retained catalog's runtimes are as old as the catalog; never show them as current.
+  defp runtime(_row, _now, %{retained_age_seconds: age}) when is_integer(age), do: "Stale"
+  defp runtime(row, now, _view), do: UnitsPresentation.runtime_label(row, now)
 
   # Paused and queued take precedence over blocking/alert so a paused or queued
   # row is never red regardless of its reasons.

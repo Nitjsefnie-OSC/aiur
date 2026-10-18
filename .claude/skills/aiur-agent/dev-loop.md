@@ -1,9 +1,10 @@
 # Dev loop
 
 In every repository, mark completed, self-reviewed work ready **before**
-entering `agent:ci-wait`. Drafts never pass CI, including a draft fast-gate pass.
-Only the full required-check set passing on the current head SHA permits
+entering `agent:ci-wait`. Drafts never permit handoff, even with green checks.
+All required checks passing on the current head SHA permit
 `agent:human-review`. A green or skipped `gh pr checks` aggregate is not proof.
+Aiur PRs run fast checks; the full suite runs in the merge queue or on forced-full PRs.
 
 ## Branch
 
@@ -47,7 +48,8 @@ the merge/fetch — committing avoids the stash path that often triggers the
 index-write failure. Never `mktemp -d /tmp/...` for recovery and never push from
 `/tmp`.**
 
-**Integrating an upstream blocker's branch**: when
+**Integrating an upstream blocker's branch**: an **Optimistic start** prompt
+block routes to [the canonical loop](stub-then-fetch.md#optimistic-start-started-on-an-unmerged-blocker). For paused dependents, when
 `ticket.<blocker-id>.agent.unblocked` arrives, use the latest
 `ticket.<blocker-id>.branch.push` payload to fetch the actual validated ref (or
 discover it with `scripts/resolve-ticket-branch <blocker-id>`)
@@ -56,6 +58,10 @@ continue. Never infer readiness from the branch push alone. Do NOT run
 `git -C "$workspace" stash`
 before the merge — committing WIP is just as safe
 and avoids the index-write failure path entirely.
+
+### After the blocker merges: restack
+
+On `ticket.<B>.pr.merged`, follow [the restack recipe](restack.md) before merging the integration branch. A plain merge after a squash can duplicate blocker code and conflict on dependent edits.
 
 Ticket branches are named `aiur/<id>-<slug>` for new tickets, with legacy
 `aiur/<id>` branches still supported. `scripts/resolve-ticket-branch <id>` is the
@@ -146,11 +152,16 @@ blocking finding is the only enforcement they have.
 
 ## The loop
 
-**Resolve validation from the target repository first.** Read
-[`validation.md`](validation.md) before choosing commands. The Elixir examples
-below apply only to Aiur's Elixir core, not to every workspace Aiur operates.
-For other repositories, substitute their documented build/typecheck, formatter,
-focused test runner, test-tree paths and CI gate at each step.
+In the Aiur repository, before opening or updating a PR, run `aiur pre-pr` (or
+`aiurdev pre-pr`) from the branch checkout. Paste its complete result block
+into the PR body; it records the merged `origin/main` SHA and each gate result.
+It never pushes and refuses a dirty checkout. Once a PR exists it rewrites the
+body's `Tested head:` and `Base:` lines; with no PR yet it skips that. So the
+order is: push, `gh pr create`, `aiur pre-pr` again, then hand off;
+`aiur_set_ticket_state` refuses `ci-wait`/`human-review` while the body fails `mix pr_body.check` at the PR head.
+
+**Resolve validation from the target repository first.** Read [`validation.md`](validation.md).
+The Elixir examples below apply only to Aiur's Elixir core.
 
 1. Implement
 2. Add / update / run tests
@@ -158,21 +169,39 @@ focused test runner, test-tree paths and CI gate at each step.
    for Aiur changes, use `website/docs-app/` and the threshold above
 4. Run the scoped local pre-PR verification gate before opening or finalizing
    the PR using the target repository's commands. For Aiur's Elixir core:
-   `mix compile --warnings-as-errors`, `mix format`, and affected tests
-   only (the test files for modules you touched plus directly related tests),
+   Follow the current config-driven `Local tests policy` section: `all` runs
+   the full suite, `partial` selects affected tests only (full suite if unsafe),
+   `none` runs compile and format only. Always run
+   `mix compile --warnings-as-errors` and `mix format`. For `partial`, select
+   changed tests, source mirrors, direct callers and deleted-name references,
    each run with `mix test --max-cases 4`. Compute that scoped set
    deterministically instead of guessing it: from the workspace root run
    `cd src && mise exec -- mix aiur.affected_tests`, which maps the modules you
    changed to their sibling test files and prints the exact root-runnable test
    command (or advises `make ci` when the change cannot be scoped safely).
-   Running only the affected tests also keeps full-suite log volume out of your
-   context. Before marking the PR ready or handing off to CI/review, run both
-   required checks and fix any failures:
+   Run only affected browser specs locally (browser runs go through the build gate); CI runs the full harness.
+   Follow `src/prompts/shared-agent-instructions.md` for PR body evidence,
+   pre-handoff guards, and test cleanup; validate each body with
+   `mix pr_body.check --file <body>`. Before marking the PR ready or handing
+   off to CI/review, run all required checks and fix any failures:
 
    - From `src/`: `mise exec -- mix lint` (specs check and Credo strict).
    - From the repository root: `python3 scripts/check-bare-assert-receive.py`.
+   - After committing, before every push and after every base integration, run the structural gate — above all after creating, moving or splitting modules:
+     `base="$(git -C "$workspace" rev-parse "origin/$AIUR_BASE_BRANCH")"`, then run
+     `mise exec -- python3 scripts/check-pr-structure.py --base "$base"` (size, docs prose/table, components, bare receives, format, state-writer allowlist).
 
-   CI's `make ci` is the authoritative full lint and full-suite gate.
+   When a change must touch an oversized text file (over 500 lines), keep that
+   file the same length or shorter. Put new code in a new small module and new
+   tests in a new test file. Never grow the oversized file.
+
+   Append new `Aiur.Application.child_specs/1` children after the existing
+   children (including CLI children). `application_child_order_test.exs` pins
+   their `:rest_for_one` order: a middle insertion restarts later siblings on
+   crash. An earlier startup requires a commented `@early_start_exceptions`
+   entry in that test explaining the dependency; never extend its baseline.
+
+   CI's event-specific gate is authoritative: fast on PRs, full in the queue.
 
    **Use `--trace` only with a specific `file:line`, never with a bare file or
    directory.** `--trace` silently forces `max_cases: 1` in ExUnit, overriding
@@ -192,9 +221,16 @@ focused test runner, test-tree paths and CI gate at each step.
    collect the sibling `test/aiur/github_client_test.exs`. A large green
    directory-scoped run does not prove those root-level files ran.
 5. Fix every verification failure from the scoped local gate before continuing.
+   The structural gate shares Website / guards' prose/table rules and runs
+   `check-components.py --require-elixir`. Split paragraphs over 360 characters
+   and keep at most one sentence above tables; assign every new source file
+   a component owner and list every new foreign `State` writer in
+   `src/test/support/state_writers_allowlist.exs`. Install its toolchain once with
+   `npm ci --prefix scripts/components --ignore-scripts`; use a clean worktree.
+
    Do not loop on unrelated suite flakes. Use the target repository's required
    CI gate; do not assume it has `make ci`. For Aiur's Elixir core, do not gate
-   PR-opening on a clean full-suite `mix test` run: CI runs the full `make ci`.
+   PR-opening on a clean full-suite `mix test` run: the merge queue runs full CI.
 
    **For an Elixir failure that looks impossible, rule out a stale test
    build.** `mix compile --force` rebuilds `dev`, **not** `test`, so a stale
@@ -313,24 +349,57 @@ focused test runner, test-tree paths and CI gate at each step.
    and tell the Executor what you deleted and why.
 8. **Open the PR as a draft** with that branch as `--head` and the authoritative
    integration branch as `--base`: `gh pr create --draft --head "$branch"
-   --base "$AIUR_BASE_BRANCH" ...` (not ready for review yet). If a PR already
+   --base "$AIUR_BASE_BRANCH" ...` (not ready for review yet), unless your prompt
+   has an **Optimistic start** block: follow [the canonical PR rules](stub-then-fetch.md#optimistic-start-started-on-an-unmerged-blocker). If a PR already
    exists, read its `baseRefName` before CI handoff. Leave a matching base
    unchanged; if it differs, PATCH only the PR's `base` through GitHub's pull
    request REST endpoint, then re-fetch and verify `baseRefName`. Stop with the
    observed branch, expected branch, and repair error if verification fails.
-9. **Own branch freshness before review:** fetch the PR's configured base and
-   verify its current remote head is an ancestor of your exact branch head. If
-   it is not, integrate or re-cut against it, resolve both textual conflicts
-   and semantic drift, rerun the scoped gate, and push. Do not hand stale code
-   to the Executor or reviewers to update.
+9. **Own integration safety before review:** a stale branch can proceed when
+   it has no conflicts and no changed-file overlap with the configured base.
+   Use the checklist in step 13; integrate only for overlap or conflicts,
+   rather than repeatedly chasing unrelated base commits.
 10. **Self-review the draft PR with `ce-code-review`** against the diff you just
     pushed. A missing doc that the threshold above required is a review finding —
     fix it here, not in a follow-up ticket.
 11. Implement any issues `ce-code-review` surfaces (commit + push the fixes).
 12. Re-run the scoped local pre-PR verification gate after review fixes if any
     code, tests, prompt, skill, or config files changed.
-13. Recheck current-base ancestry after fixes. If the base moved, integrate it,
-    rerun the scoped gate, and push before continuing.
+13. **Integration checklist (before `gh pr ready` or `human-review`):**
+    verify the PR's `baseRefName` equals `AIUR_BASE_BRANCH` and its
+    `headRefOid` equals your local `HEAD`. Fetch the configured base once for
+    this assessment: `git -C "$workspace" fetch origin "$AIUR_BASE_BRANCH"`.
+    Record that base SHA as `base_sha` and exact PR head as `head_sha`. If
+    `git -C "$workspace" merge-base --is-ancestor "$base_sha" "$head_sha"`
+    succeeds, no integration is needed. Otherwise find their `merge_base` and
+    inspect `git -C "$workspace" diff --name-status -M "$merge_base" "$head_sha"`
+    and `git -C "$workspace" diff --name-status -M "$merge_base" "$base_sha"`.
+    Compare changed paths on **both** sides, including both old and new paths
+    for renames. Check for textual conflicts with
+    `git -C "$workspace" merge-tree --write-tree "$head_sha" "$base_sha"`.
+    No shared changed paths and no conflicts permits handoff despite staleness.
+    A fetch/probe error or incomplete path list does not permit handoff.
+
+    **An approved PR is exempt from integration** (`reviewDecision` is
+    `APPROVED` at the exact current head): never merge or rebase the base into
+    it solely for overlap or staleness. A genuine `mergeable: CONFLICTING`
+    verdict still requires integration; say why in a PR comment. The merge
+    queue tests the merge; a refresh push only cancels in-flight CI and risks
+    the approval, and it cannot fix a red or cancelled check. The state writer
+    still requires the exact head's full required-check gate before handoff.
+    The agent `git` guard refuses a push to a PR in the merge queue unless it
+    is conflicting or has changes requested.
+
+    If paths overlap or the merge conflicts, allow up to 3 integrations per
+    handoff without asking, recording the pre-merge head and rescue ref first.
+    Preserve feature scope and push the rescue ref before resolving nontrivial
+    conflicts. After each integration, run relevant local tests and the format,
+    size, components gates; resolve drift, validate and push. Keep the PR ready
+    before returning to `ci-wait` for new-head CI. Record observed SHAs, the
+    overlap/conflict verdict and attempt count in the workpad across restarts.
+    The GitHub state writer blocks unsafe or unavailable verdicts. After the
+    third integration, emit a non-blocking Executor alert and keep going if the
+    base is safe. Never open a blocking decision for base integration.
 14. If you still believe the work is complete and correct and only CI remains,
     mark the PR ready (`gh pr ready`) and verify it is no longer a draft, then
     move the ticket with `aiur_set_ticket_state({ "state": "ci-wait" })`, and end the turn. Do
@@ -338,18 +407,20 @@ focused test runner, test-tree paths and CI gate at each step.
     returns the dispatch slot while this runner is paused.
 15. On a delivered terminal CI event:
     - **Passed:** require the full required-check set to have passed on the
-      current head SHA and verify the PR is ready. Fetch the configured base once.
-      If its current remote head is still an ancestor of the tested PR head,
-      trust the delivered result without re-polling, emit the required 100%
-      progress sample, and
+      current head SHA and verify the PR is ready. Assess integration safety
+      with step 13 again, retaining its three-integration allowance. When the tested
+      head has no overlap or conflicts with the observed base, trust the
+      delivered result without re-polling, emit the required
+      100% progress sample, and
       move the ticket with `aiur_set_ticket_state({ "state": "human-review" })`.
       Use that tool, never `gh issue edit --remove-label agent:ci-wait
       --add-label agent:human-review`: the daemon's CI-pass handoff already
       swapped `agent:ci-wait` for `agent:in-progress` before it woke you, so the
       removal is a no-op and the ticket ends up carrying both state labels —
-      undispatchable, and healed by a guess (#2805). If the base moved,
-      integrate it yourself, validate, push, and return to `agent:ci-wait` for
-      fresh exact-head CI.
+      undispatchable, and healed by a guess (#2805). Harmless base movement
+      needs no merge or CI rerun. For overlap/conflicts, follow step 13 and
+      await fresh exact-head CI; after the third integration, use a non-blocking
+      alert, never a blocking decision for base integration.
     - **Failed:** use the delivered failed-check names and excerpt, keep or move
       the ticket in `agent:rework` (`aiur_set_ticket_state`), and begin the
       repair loop.
@@ -387,43 +458,32 @@ when ready.
 
 ## Manual CLI verification before opening a PR
 
-Before opening the draft PR, run the CLI locally and manually exercise all new
-functionality end-to-end. If the CLI fails to run, debug and fix the issues — do
-not skip verification or give up. Only open the draft PR once the requested
-functionality is confirmed working in the CLI.
+Run the CLI and exercise new functionality before the draft PR when the workspace can do so. For workspace-inaccessible hands-on checks, do not raise a decision or pause: finish automated work and add `Post-deploy check: <exact steps>` under `## Local tests`; the Executor runs it after deployment. Name required physical equipment.
 
 Manual CLI verification is in addition to the scoped local pre-PR verification
 gate above, not a replacement for it. A PR is not ready for human review until
 the target repository's required local checks pass. In Aiur's Elixir core,
 use compile, format and affected tests with the four-case cap, plus
 `mise exec -- mix lint` from `src/` and
-`python3 scripts/check-bare-assert-receive.py` from the repository root.
-Use the target repository's full CI gate, which is
-`make ci` for Aiur's Elixir core; do not loop locally on unrelated suite flakes.
-
-## Closing keyword in the PR description
-
-Every PR description must start with `Closes #N` (or `Fixes` / `Resolves`) for the
-originating issue so GitHub auto-closes it on merge. Multiple issues:
-`Closes #43, #46`.
+`python3 scripts/check-bare-assert-receive.py` and
+`mise exec -- python3 scripts/check-pr-structure.py --base "$base"` from the repository root
+(resolve `base` as above and check the committed head).
+Use the target repository's required CI gate; Aiur runs fast checks on PRs and
+full CI in the merge queue. Do not loop locally on unrelated suite flakes.
 
 ## PR description shape
 
-Keep PR descriptions concise. Assume reviewers have the issue, workpad, and prior
-discussion for full problem context. Use this shape:
+Write every PR body from `.github/pull_request_template.md`; the required body
+gate checks that structure and the local-test evidence. Keep the closing keyword
+from the template (`Closes #N`, or `Refs #N` when the PR delivers only part of
+its ticket), and fill every section, including `#### Complexity routing` and
+the strict `## Local tests` evidence block. Keep `Policy:`, `Tested head:` and
+`Base:` as plain lines, not list items or backticks; include `Base:` as
+`<ref> @ <40-character-sha>`, and each command as `` `command` -> result ``.
+Put the commands in one unbroken bullet list right after `Selection:`, with no
+blank lines or prose between bullets, and write notes below the list.
 
-```markdown
-Closes #N
-
-# Problem
-
-One short paragraph or 2-3 bullets describing the issue being fixed.
-
-# Solution
-
-3-6 bullets covering the meaningful implementation and validation.
-```
-
-Do not include complexity-routing explanations, model names, AI tool names, or
-long process narratives in PR descriptions. Mention validation only as concrete
-checks that passed or known checks that still need attention.
+After every push, update `Tested head:` to the new full head SHA. Before
+handoff, run `python3 scripts/check-pr-body.py --pr-json <(gh api
+repos/{owner}/{repo}/pulls/<N>) --base <base-sha>` and confirm it prints
+`PR body format OK`.

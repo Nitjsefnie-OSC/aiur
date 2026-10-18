@@ -17,6 +17,8 @@ The Units page is dashboard `/` and CLI `aiur units`.
 | CI and review | Current PR facts with safe links to the ticket, Command, or conversation. |
 | CLI scope | `--scope live|unfinished|all|none`; repeat `--condition` for any selected condition. |
 
+The page re-reads the fleet on every daemon change and at least every 15 seconds. A source that answers too late shows as unavailable on its own surface; the list still loads. When the whole read fails, the page keeps the last list, shows a **Stale list** banner with its age, and replaces each elapsed time with `Stale`.
+
 The Summary progress bar uses the daemon's weighted current-run aggregate across Units with current inputs. When that aggregate cannot be computed, the bar keeps its shape but renders as flat grey rather than as zero or a hatched track.
 
 ## API meters
@@ -25,9 +27,9 @@ The Units strip shows non-model APIs beside model-provider meters.
 
 | API | What the row means | Detail |
 | --- | --- | --- |
-| GitHub Core | REST request budget percentage used | [GitHub API budgets](/apis/github#api-budgets) |
-| GitHub GraphQL | Query-point budget percentage used | [GitHub API budgets](/apis/github#api-budgets) |
-| GitHub secondary limit | Active abuse-control backoff | [GitHub API budgets](/apis/github#api-budgets) |
+| GitHub Core | REST request budget percentage used | [GitHub API budgets](/apis/github-budgets#api-budgets) |
+| GitHub GraphQL | Query-point budget percentage used | [GitHub API budgets](/apis/github-budgets#api-budgets) |
+| GitHub secondary limit | Active abuse-control backoff | [GitHub API budgets](/apis/github-budgets#api-budgets) |
 | ElevenLabs credit quota | Account credit pool as percentage used; appears only when a key is configured | [ElevenLabs metering](/apis/elevenlabs#what-the-units-meter-measures) |
 
 Every meter bar runs the full width of its pane, and every progress bar on the dashboard shares the same height. Model rows show the provider logo and usage bars only — the per-provider token count, spend figure, and the ElevenLabs next-invoice amount are not rendered on the strip.
@@ -103,7 +105,7 @@ The Tickets panel covers every open repository ticket, including work that has n
 | Check admission | Rechecks an already labelled ticket without rewriting its labels. Authorization can still decline; an allowed GitHub operator must remove and reapply the trigger label using their own account. |
 | Non-GitHub tracker | Reports the panel as unsupported. |
 
-While the request runs, duplicate submission is disabled and Close stays responsive. Partial failures retain applied changes and retry only the remaining label changes. Successful label writes do not prove an agent is running: pause, prewarm, capacity, and dependency gates can still hold dispatch. See [GitHub trust](/apis/github#who-aiur-trusts).
+While the request runs, duplicate submission is disabled and Close stays responsive. Partial failures retain applied changes and retry only the remaining label changes. Successful label writes do not prove an agent is running: pause, prewarm, capacity, and dependency gates can still hold dispatch. See [GitHub trust](/apis/github-auth#who-aiur-trusts).
 
 ### Reveal and search
 

@@ -4,7 +4,18 @@ defmodule Aiur.BuildQueue.Codec do
   alias Aiur.BuildQueue.Model.{Edge, Intent, Item, Latch, Queue}
 
   @schemas [
-    {:queues, Queue, [id: :queue_id, name: :string, kind: {:enum, [:list, :build_order]}, root: {:nullable, :positive}, held: :boolean, generation: :nonnegative, created_at: :datetime]},
+    {:queues, Queue,
+     [
+       id: :queue_id,
+       name: :string,
+       rank: {:default, {:nullable, :nonnegative}, nil},
+       kind: {:enum, [:list, :build_order]},
+       root: {:nullable, :positive},
+       held: :boolean,
+       start_trigger: {:default, {:enum, [nil | Aiur.StartTrigger.triggers()]}, nil},
+       generation: :nonnegative,
+       created_at: :datetime
+     ]},
     {:items, Item,
      [
        issue_id: :issue_id,
@@ -16,8 +27,17 @@ defmodule Aiur.BuildQueue.Codec do
        added_at: :datetime
      ]},
     {:edges, Edge, [prerequisite: :issue_id, dependent: :issue_id, source: {:enum, [:list, :build_order, :native]}]},
-    {:intents, Intent, [id: :string, issue_id: :issue_id, action: {:enum, [:promote, :withdraw, :mark, :unmark]}, target_labels: :strings, recorded_at_ms: :nonnegative, outcome: :outcome]},
-    {:latches, Latch, [key: :key, opened_at_ms: :nonnegative]}
+    {:intents, Intent,
+     [
+       id: :string,
+       issue_id: :issue_id,
+       action: {:enum, [:promote, :withdraw, :mark, :unmark]},
+       target_labels: :strings,
+       recorded_at_ms: :nonnegative,
+       preexisting_todo?: {:default, :boolean, false},
+       outcome: :outcome
+     ]},
+    {:latches, Latch, [key: :key, opened_at_ms: :nonnegative, emitted?: {:default, :boolean, true}]}
   ]
 
   @spec encode(Model.t()) :: map()
@@ -34,6 +54,7 @@ defmodule Aiur.BuildQueue.Codec do
   end
 
   defp encode_value(nil, _type), do: nil
+  defp encode_value(value, {:default, type, _}), do: encode_value(value, type)
   defp encode_value(value, {:nullable, type}), do: encode_value(value, type)
   defp encode_value(value, {:enum, _}), do: Atom.to_string(value)
   defp encode_value(value, :datetime), do: DateTime.to_iso8601(value)
@@ -55,12 +76,20 @@ defmodule Aiur.BuildQueue.Codec do
         error -> {:halt, error}
       end
     end)
+    |> assign_ranks()
     |> validate_positions()
   end
 
   def decode(%{"version" => version}), do: {:error, {:unsupported_version, version}}
   def decode(%{}), do: invalid(["version"])
   def decode(_), do: invalid([])
+
+  defp assign_ranks({:ok, document}) do
+    ranks = document.queues |> Enum.sort_by(&DateTime.to_unix(&1.created_at, :microsecond)) |> Enum.with_index() |> Map.new(fn {q, rank} -> {q.id, rank} end)
+    {:ok, %{document | queues: Enum.map(document.queues, &%{&1 | rank: &1.rank || ranks[&1.id]})}}
+  end
+
+  defp assign_ranks(error), do: error
 
   defp validate_positions({:ok, document}) do
     kinds = Map.new(document.queues, &{&1.id, &1.kind})
@@ -105,7 +134,7 @@ defmodule Aiur.BuildQueue.Codec do
     Enum.reduce_while(fields, {:ok, %{}}, fn {field, type}, {:ok, acc} ->
       field_path = path ++ [Atom.to_string(field)]
 
-      with {:ok, value} <- Map.fetch(record, Atom.to_string(field)),
+      with {:ok, value} <- fetch_field(record, field, type),
            {:ok, decoded} <- decode_value(value, type) do
         {:cont, {:ok, Map.put(acc, field, decoded)}}
       else
@@ -118,6 +147,12 @@ defmodule Aiur.BuildQueue.Codec do
   defp decode_record(_, _, _, path), do: invalid(path)
   defp build_record({:ok, fields}, module), do: {:ok, struct!(module, fields)}
   defp build_record(error, _module), do: error
+
+  # Older latches predate retry tracking and represent already-open attentions.
+  defp fetch_field(record, field, {:default, _, default}), do: {:ok, Map.get(record, Atom.to_string(field), default)}
+  defp fetch_field(record, field, _), do: Map.fetch(record, Atom.to_string(field))
+
+  defp decode_value(value, {:default, type, _}), do: decode_value(value, type)
 
   defp decode_value(nil, {:nullable, _}), do: {:ok, nil}
   defp decode_value(value, {:nullable, type}), do: decode_value(value, type)

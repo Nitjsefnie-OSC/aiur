@@ -31,6 +31,27 @@ defmodule Aiur.BuildQueue.ModelTest do
     end
   end
 
+  test "retry flags survive JSON and older latch records load as emitted" do
+    document = document()
+
+    for emitted? <- [false, true] do
+      document = put_in(document, [:latches, Access.at(0), Access.key!(:emitted?)], emitted?)
+      assert {:ok, ^document} = document |> Model.encode() |> Jason.encode!() |> Jason.decode!() |> Model.decode()
+    end
+
+    old = update_in(encoded(), ["latches", Access.at(0)], &Map.delete(&1, "emitted?"))
+    assert {:ok, %{latches: [%Latch{emitted?: true}]}} = Model.decode(old)
+
+    for invalid <- [nil, "true", 1] do
+      assert {:error, {:invalid, ["latches", 0, "emitted?"]}} = Model.decode(put_in(encoded(), ["latches", Access.at(0), "emitted?"], invalid))
+    end
+  end
+
+  test "older intents default preexisting todo provenance to false" do
+    legacy = update_in(encoded(), ["intents"], fn intents -> Enum.map(intents, &Map.delete(&1, "preexisting_todo?")) end)
+    assert {:ok, %{intents: [%Intent{preexisting_todo?: false}]}} = Model.decode(legacy)
+  end
+
   test "rejects version 2 and every other version" do
     for version <- [2, 0, nil, "1", %{}, []] do
       assert Model.decode(Map.put(encoded(), "version", version)) == {:error, {:unsupported_version, version}}

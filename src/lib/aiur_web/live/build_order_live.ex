@@ -18,6 +18,9 @@ defmodule AiurWeb.BuildOrderLive do
     UsageRuntime
   }
 
+  alias AiurWeb.BuildQueue.Panel, as: QueuePanel
+  alias AiurWeb.BuildQueue.Runtime, as: QueueRuntime
+
   alias AiurWeb.FinancialData
   alias AiurWeb.Presenter
 
@@ -39,7 +42,7 @@ defmodule AiurWeb.BuildOrderLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    socket = NavState.assign_nav(socket)
+    socket = DashboardShell.mount(socket)
     connected = connected?(socket)
     source = Application.get_env(:aiur, :build_order_data_source, DataSource)
     request_epoch = "build-order-live-#{System.unique_integer([:positive])}"
@@ -48,6 +51,7 @@ defmodule AiurWeb.BuildOrderLive do
     socket =
       socket
       |> AwaitingCommands.mount(connected)
+      |> QueueRuntime.mount()
       |> assign(:route_state, route_state)
       |> SourceRuntime.initialize(source)
       |> ContextRuntime.initialize(request_epoch)
@@ -56,6 +60,7 @@ defmodule AiurWeb.BuildOrderLive do
       |> assign(:collapsed_epics, [])
       |> assign(:time_domain, nil)
       |> assign(:now, Runtime.display_now())
+      |> assign(:catalog_wait_started_at, Runtime.display_now())
       |> assign(:tracker_kind, Runtime.tracker_kind())
       |> assign(:agent_kind, Runtime.agent_kind())
       |> assign(:current_route, RouteRegistry.current_route(Map.get(socket.assigns, :live_action)))
@@ -116,14 +121,19 @@ defmodule AiurWeb.BuildOrderLive do
 
   def handle_info(:build_order_ui_tick, socket) do
     schedule_ui_tick()
-    {:noreply, socket |> assign(:now, Runtime.display_now()) |> AnalyticsRuntime.tick()}
+    {:noreply, socket |> assign(:now, Runtime.display_now()) |> AnalyticsRuntime.tick() |> QueueRuntime.tick()}
   end
 
   def handle_info({:ticket_activity_changed, _payload}, socket),
     do: {:noreply, SourceRuntime.schedule_reload(socket)}
 
   def handle_info({:running_changed, _summaries}, socket),
-    do: {:noreply, SourceRuntime.schedule_reload(socket)}
+    do:
+      socket
+      |> SourceRuntime.schedule_reload()
+      |> then(&{:noreply, &1})
+
+  def handle_info(:fleet_changed, socket), do: {:noreply, DashboardShell.refresh_pause(socket)}
 
   def handle_info({:build_order_adhoc_updated, _snapshot}, socket),
     do: {:noreply, SourceRuntime.schedule_reload(socket)}
@@ -146,9 +156,24 @@ defmodule AiurWeb.BuildOrderLive do
       when event in [:ticket_detail_coordinator_reset, :ticket_history_reset],
       do: {:noreply, ContextRuntime.refresh(socket)}
 
+  def handle_info({event, _payload}, socket) when event in [:build_queue_changed, :build_progress_changed],
+    do: {:noreply, QueueRuntime.schedule(socket)}
+
+  def handle_info(:refresh_build_queue, socket), do: {:noreply, QueueRuntime.refresh(socket)}
+
+  def handle_info({:build_order_catalog_timeout, ref}, socket),
+    do: {:noreply, SourceRuntime.catalog_read_timed_out(socket, ref)}
+
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_async(:build_queue_view, result, socket), do: {:noreply, QueueRuntime.complete(socket, result)}
+
+  def handle_async(:build_order_catalog, {:ok, snapshot}, socket),
+    do: {:noreply, socket |> SourceRuntime.complete_catalog(snapshot) |> UsageRuntime.sync_scope() |> AnalyticsRuntime.sync_scope()}
+
+  def handle_async(:build_order_catalog, {:exit, _reason}, socket), do: {:noreply, SourceRuntime.failed_catalog(socket)}
+
   def handle_async(:build_order_sources, {:ok, {token, sources}}, socket) do
     {:noreply, SourceRuntime.complete_reload(socket, token, sources)}
   end
@@ -188,6 +213,9 @@ defmodule AiurWeb.BuildOrderLive do
       {:noreply, socket}
     end
   end
+
+  @impl true
+  def handle_event("toggle-global-pause", _params, socket), do: {:noreply, DashboardShell.toggle_pause(socket)}
 
   @impl true
   def handle_event("toggle-nav", _params, socket), do: {:noreply, NavState.toggle(socket)}
@@ -264,6 +292,7 @@ defmodule AiurWeb.BuildOrderLive do
       agent_kind={@agent_kind}
       nav_collapsed={@nav_collapsed}
       nav_counts={@nav_counts}
+      pause_state={DashboardShell.pause_state(assigns)}
     >
       <:banner>
         <Overview.decisions_banner retained_counts={@retained_counts} navigate />
@@ -275,12 +304,15 @@ defmodule AiurWeb.BuildOrderLive do
         aria-label="Build Order explorer"
         data-build-order-status={RouteState.status(@route_state)}
         data-build-order-root={RouteState.root_identifier(@route_state)}
-        data-build-order-catalog-state={BuildOrderCatalog.catalog_state(RouteState.catalog_snapshot(@route_state))}
+        data-build-order-catalog-state={BuildOrderCatalog.catalog_state(RouteState.catalog_snapshot(@route_state), catalog_wait_ms(@catalog_read_failed_at || @now, @catalog_wait_started_at), @catalog_read_failed?)}
       >
+        <QueuePanel.panel :if={RouteState.route(@route_state) == :catalog} view={@queue_view} now={@now} />
         <BuildOrderCatalog.build_order_catalog
           :if={RouteState.route(@route_state) == :catalog}
           route_state={@route_state}
           now={@now}
+          catalog_wait_ms={catalog_wait_ms(@catalog_read_failed_at || @now, @catalog_wait_started_at)}
+          catalog_read_failed?={@catalog_read_failed?}
         />
         <BuildOrderSelected.build_order_selected
           :if={RouteState.route(@route_state) == :selected}
@@ -313,6 +345,9 @@ defmodule AiurWeb.BuildOrderLive do
   end
 
   defp schedule_ui_tick, do: Process.send_after(self(), :build_order_ui_tick, @ui_tick_ms)
+
+  defp catalog_wait_ms(%DateTime{} = now, %DateTime{} = started_at), do: max(DateTime.diff(now, started_at, :millisecond), 0)
+  defp catalog_wait_ms(_now, _started_at), do: 0
 
   defp page_title(route, route_state) do
     case {RouteState.route(route_state), RouteState.root_identifier(route_state)} do

@@ -1,6 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { readFile, readdir } from 'node:fs/promises'
+import { readFile, readdir, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { checkDocsProse, markdownFiles, proseBeforeTables, sentenceCount } from '../../scripts/check-docs-prose.mjs'
 import { assertSyntheticContent, assertSyntheticMeters } from '../scripts/dashboard-capture-safety.mjs'
 
 // Each surface's screenshot belongs on the page that explains that surface. The
@@ -21,6 +24,12 @@ const expectedAssets = surfaces.map((surface) => `${surface}-dark.png`).sort()
 function imagePathsIn(markdown: string): string[] {
   return [...markdown.matchAll(/<img src="(\/images\/dashboard\/[a-z-]+-dark\.png)"/g)].map(
     ([, imagePath]) => imagePath
+  )
+}
+
+function headingSlugs(markdown: string): string[] {
+  return [...markdown.matchAll(/^#{1,6}\s+(.+?)\s*#*\s*$/gm)].map(([, heading]) =>
+    heading.replace(/`/g, '').toLowerCase().replace(/[^a-z0-9 -]/g, '').trim().replace(/\s+/g, '-')
   )
 }
 
@@ -93,7 +102,7 @@ test('parity guides are linked and contain their operational contracts', async (
   expect(dashboard).toContain('| **Commands** | `/commands`')
   expect(dashboard).toContain('| **Build Order** | `/build-orders`')
   expect(dashboard).toContain('| **Analytics** | `/analytics`')
-  expect(dashboard).toContain('| **Streamdeck+** | `/streamdeck`')
+  expect(dashboard).toContain('| **Streamdeck** | `/streamdeck`')
   expect(dashboard).toContain('browser emulator for the physical Stream Deck + sidecar')
   expect(streamDeck).toContain('Mic is press-and-hold, not a click')
   expect(streamDeck).toContain('`alert` → `stuck` → `running` → `paused` → `queued`')
@@ -131,10 +140,14 @@ test('parity guides are linked and contain their operational contracts', async (
 
 test('capture inputs and checked-in assets stay example-only', async () => {
   const websiteRoot = path.resolve(import.meta.dirname, '..')
-  const fixture = await readFile(
-    path.join(websiteRoot, '../src/test/manual/executor_control_center_docs_fixture.exs'),
-    'utf8'
-  )
+  // The fixture is split across sibling files; the assertions below cover them all.
+  const fixture = (
+    await Promise.all(
+      ['fixture', 'data', 'fleet', 'provider'].map((part) =>
+        readFile(path.join(websiteRoot, `../src/test/manual/executor_control_center_docs_${part}.exs`), 'utf8')
+      )
+    )
+  ).join('\n')
   const meterFixture = await readFile(
     path.join(websiteRoot, '../src/test/manual/executor_control_center_docs_meter_source.exs'),
     'utf8'
@@ -224,6 +237,12 @@ test('docs group operator surfaces and API guidance without dense prose', async 
   const sidebar = await readFile(path.join(docsRoot, '.vitepress/config.ts'), 'utf8')
   const configuration = byRelativePath.get('reference/configuration.md') ?? ''
   const github = byRelativePath.get('apis/github.md') ?? ''
+  const githubPolling = byRelativePath.get('apis/github-polling.md') ?? ''
+  const githubBudgets = byRelativePath.get('apis/github-budgets.md') ?? ''
+  const githubCosts = byRelativePath.get('apis/github-costs.md') ?? ''
+  const githubWebhooks = byRelativePath.get('apis/github-webhooks.md') ?? ''
+  const githubAuth = byRelativePath.get('apis/github-auth.md') ?? ''
+  const githubAgentCache = byRelativePath.get('apis/github-agent-cache.md') ?? ''
   const elevenLabs = byRelativePath.get('apis/elevenlabs.md') ?? ''
   const streamDeck = byRelativePath.get('guide/stream-deck.md') ?? ''
 
@@ -232,17 +251,49 @@ test('docs group operator surfaces and API guidance without dense prose', async 
   expect(sidebar).toMatch(/text: 'Interfaces'[\s\S]*text: 'TUI'[\s\S]*text: 'CLI'[\s\S]*text: 'GUI'[\s\S]*text: 'Stream Deck'/)
   expect(sidebar).toMatch(/text: 'Concepts'[\s\S]*text: 'Skills'/)
   expect(sidebar).toMatch(/text: 'APIs'[\s\S]*text: 'GitHub'[\s\S]*text: 'ElevenLabs'/)
+  expect(sidebar).toContain("link: '/apis/github-polling'")
+  expect(sidebar).toContain("link: '/apis/github-budgets'")
+  expect(sidebar).toContain("link: '/apis/github-costs'")
+  expect(sidebar).toContain("link: '/apis/github-webhooks'")
+  expect(sidebar).toContain("link: '/apis/github-auth'")
+  expect(sidebar).toContain("link: '/apis/github-agent-cache'")
+  expect(github).toContain('/apis/github-polling')
+  expect(githubPolling).toContain('## Poll cadence')
+  expect(githubBudgets).toContain('### Reading these numbers without fooling yourself')
+  expect(githubCosts).toContain('Actions attempts (`ci_recovery`)')
+  expect(githubWebhooks).toContain('`AIUR_GITHUB_WEBHOOK_SECRET`')
+  expect(githubAuth).toContain('## GitHub App authentication')
+  expect(githubAuth).toContain('## Human-review base checks')
+  expect(githubAgentCache).toContain('## Shared agent reads')
+  expect(headingSlugs(github)).toEqual(expect.arrayContaining([
+    'repository-setup-from-global-defaults',
+    'what-aiur-polls',
+    'build-order-membership-recovery',
+    'credential-pooling',
+    'what-pooling-is-worth',
+    'human-review-base-checks',
+    'experiment-window-evidence'
+  ]))
+  for (const [, contents] of markdown) {
+    for (const [, target, fragment] of contents.matchAll(/\]\(\/(apis\/github-[^)#]+)#([a-z0-9-]+)\)/g)) {
+      const targetMarkdown = byRelativePath.get(`${target}.md`) ?? ''
+      expect(headingSlugs(targetMarkdown), `${target}#${fragment} must target a heading`).toContain(fragment)
+    }
+  }
+  for (const [name, contents] of Object.entries({ github, githubPolling, githubBudgets, githubCosts, githubWebhooks, githubAuth, githubAgentCache })) {
+    expect(contents.split('\n').length, `${name} exceeds the 500-line docs limit`).toBeLessThanOrEqual(500)
+  }
 
   expect(configuration).not.toContain('## GitHub webhook receiver')
   expect(configuration).not.toContain('### Choosing a poll interval')
   expect(configuration).not.toContain('### How widening interacts with polling')
-  expect(github).toContain('`POST /api/v1/github/webhook`')
-  expect(github).toContain('`AIUR_GITHUB_WEBHOOK_SECRET`')
-  expect(github).toContain('`pull_request_review_thread`')
-  expect(github).toContain('scheduled comment sweep remains the loss-recovery')
-  expect(github).toContain('`hooks.aiur.dev`')
-  expect(github).toContain('catch-all `404`')
-  expect(github).toContain('No inbound firewall rule')
+  expect(githubWebhooks).toContain('`POST /api/v1/github/webhook`')
+  expect(githubWebhooks).toContain('`AIUR_GITHUB_WEBHOOK_SECRET`')
+  expect(githubWebhooks).toContain('`pull_request_review_thread`')
+  expect(githubWebhooks).toContain('scheduled comment sweep remains the loss-recovery')
+  expect(githubAuth).toContain('`hooks.aiur.dev`')
+  expect(githubAuth).toContain('catch-all `404`')
+  expect(githubAuth).toContain('No inbound firewall rule')
   expect(elevenLabs).toContain('Speech to Text')
   expect(elevenLabs).toContain('`User`')
   expect(elevenLabs).toContain('Text to Speech')
@@ -251,44 +302,32 @@ test('docs group operator surfaces and API guidance without dense prose', async 
   expect(streamDeck).not.toContain('## Shared key-face contract')
   expect(streamDeck).not.toContain('### Audio path')
 
-  for (const [file, contents] of markdown) {
-    for (const paragraph of proseParagraphs(contents)) {
-      expect(paragraph.length, `${path.relative(docsRoot, file)} has a dense paragraph: ${paragraph}`).toBeLessThanOrEqual(360)
-    }
+  expect(await checkDocsProse(docsRoot)).toEqual([])
 
+  for (const [file, contents] of markdown) {
     for (const paragraph of proseBeforeTables(contents)) {
       expect(sentenceCount(paragraph), `${path.relative(docsRoot, file)} has more than one sentence above a table: ${paragraph}`).toBeLessThanOrEqual(1)
     }
   }
 })
 
-async function markdownFiles(root: string): Promise<string[]> {
-  const entries = await readdir(root, { withFileTypes: true })
-  const nested = await Promise.all(entries.map(async (entry) => {
-    const absolute = path.join(root, entry.name)
-    if (entry.name === 'node_modules') return []
-    if (entry.isDirectory()) return markdownFiles(absolute)
-    return entry.isFile() && entry.name.endsWith('.md') ? [absolute] : []
-  }))
-  return nested.flat()
-}
-
-function proseParagraphs(markdown: string): string[] {
-  return markdown
-    .split(/\n\s*\n/)
-    .map((block) => block.replace(/\n/g, ' ').trim())
-    .filter((block) => block !== '')
-    .filter((block) => !/^(#|\||```|:::|<|[-*+] |\d+\. )/.test(block))
-}
-
-function proseBeforeTables(markdown: string): string[] {
-  const blocks = markdown.split(/\n\s*\n/).map((block) => block.replace(/\n/g, ' ').trim())
-  return blocks.filter((block, index) => proseParagraphs(block).length === 1 && blocks[index + 1]?.startsWith('|'))
-}
-
-function sentenceCount(paragraph: string): number {
-  return paragraph.match(/[.!?](?=\s|$)/g)?.length ?? 0
-}
+test('local docs prose CLI accepts 360 characters and rejects 361 in nested Markdown', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'docs-prose-3229-'))
+  const script = path.resolve(import.meta.dirname, '../../scripts/check-docs-prose.mjs')
+  try {
+    await mkdir(path.join(root, 'guide'))
+    const file = path.join(root, 'guide/planted.md')
+    await writeFile(file, `${'a'.repeat(180)}\n${'b'.repeat(179)}\n`)
+    const passing = spawnSync(process.execPath, [script, root], { encoding: 'utf8' })
+    expect(passing.status, passing.stderr).toBe(0)
+    await writeFile(file, `${'a'.repeat(180)}\n${'b'.repeat(180)}\n`)
+    const failing = spawnSync(process.execPath, [script, root], { encoding: 'utf8' })
+    expect(failing.status).toBe(1)
+    expect(failing.stderr).toContain('guide/planted.md: 361 characters (max 360)')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
 
 function pngDimensions(bytes: Buffer): { width: number, height: number } {
   expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')

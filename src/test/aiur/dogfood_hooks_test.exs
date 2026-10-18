@@ -21,7 +21,7 @@ defmodule Aiur.DogfoodHooksTest do
   setup do
     test_root = Aiur.TestSupport.tmp_root!("aiur-dogfood-hooks")
     File.mkdir_p!(test_root)
-    on_exit(fn -> File.rm_rf!(test_root) end)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(test_root) end)
 
     {:ok, origin: origin, seed: seed} = create_origin!(test_root)
     {:ok, test_root: test_root, origin: origin, seed: seed}
@@ -62,7 +62,6 @@ defmodule Aiur.DogfoodHooksTest do
 
     assert_hook_ok!("after_create", workspace, context.origin)
     assert current_branch!(workspace) == ticket_branch()
-
     assert File.read!(Path.join(workspace, "README.md")) == "stable one\n"
     assert File.regular?(Path.join([cache_root(workspace), "meta", "findings.ndjson"]))
     assert File.dir?(Path.join([cache_root(workspace), "meta", "retros"]))

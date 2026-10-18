@@ -15,6 +15,24 @@ defmodule Aiur.RunTelemetry.GitHubEnricherTest do
     refute Enum.any?(result.events, &(&1.author == "outsider"))
   end
 
+  test "absent trust server uses configured repository owner, never the requested repository owner" do
+    write_workflow_file!(Workflow.workflow_file_path(), tracker_kind: "github", tracker_repo: "configured-owner/repo", tracker_trusted_accounts: ["configured"])
+    unregister_code_owners!()
+
+    request = fn %{url: url} ->
+      body =
+        if String.contains?(url, "/issues/930/comments"),
+          do: [comment(300, "configured-owner", "owner comment"), comment(301, "configured", "trusted comment"), comment(302, "outsider", "outsider comment")],
+          else: []
+
+      {:ok, %{status: 200, body: body, headers: %{}}}
+    end
+
+    result = GitHubEnricher.enrich("outsider/repo", ["930"], token: "token", request_fun: request)
+    assert Enum.map(result.events, & &1.author) == ["configured-owner", "configured"]
+    assert Enum.all?(result.events, & &1.author_trusted?)
+  end
+
   test "fallback keeps single-identity behavior deduplicated" do
     write_workflow_file!(Workflow.workflow_file_path(),
       tracker_kind: "github",
@@ -80,6 +98,7 @@ defmodule Aiur.RunTelemetry.GitHubEnricherTest do
 
     result =
       GitHubEnricher.enrich("owner/repo", ["930"],
+        token: "test-gh-token",
         request_fun: request_fun,
         trusted_author_fun: &(&1 == "owner")
       )
@@ -119,6 +138,7 @@ defmodule Aiur.RunTelemetry.GitHubEnricherTest do
     pagination_limit =
       GitHubEnricher.enrich("owner/repo", ["930"],
         max_pages: 0,
+        token: "test-gh-token",
         request_fun: fn _request -> flunk("pagination limit should fail before a request") end
       )
 
@@ -126,6 +146,7 @@ defmodule Aiur.RunTelemetry.GitHubEnricherTest do
 
     cycle =
       GitHubEnricher.enrich("owner/repo", ["930"],
+        token: "test-gh-token",
         request_fun: fn %{url: url} ->
           {:ok,
            %{
@@ -139,17 +160,17 @@ defmodule Aiur.RunTelemetry.GitHubEnricherTest do
     assert [%{reason: "pagination_cycle"}] = cycle.warnings
 
     status_failure =
-      GitHubEnricher.enrich("owner/repo", ["930"], request_fun: fn _request -> {:ok, %{status: 503}} end)
+      GitHubEnricher.enrich("owner/repo", ["930"], token: "test-gh-token", request_fun: fn _request -> {:ok, %{status: 503}} end)
 
     assert [%{reason: "status_503"}] = status_failure.warnings
 
     invalid_response =
-      GitHubEnricher.enrich("owner/repo", ["930"], request_fun: fn _request -> {:ok, %{body: []}} end)
+      GitHubEnricher.enrich("owner/repo", ["930"], token: "test-gh-token", request_fun: fn _request -> {:ok, %{body: []}} end)
 
     assert [%{reason: "invalid_response"}] = invalid_response.warnings
 
     exception =
-      GitHubEnricher.enrich("owner/repo", ["930"], request_fun: fn _request -> raise "request exploded" end)
+      GitHubEnricher.enrich("owner/repo", ["930"], token: "test-gh-token", request_fun: fn _request -> raise "request exploded" end)
 
     assert [%{reason: "request_exception"}] = exception.warnings
   end

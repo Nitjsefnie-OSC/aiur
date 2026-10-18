@@ -1,7 +1,29 @@
 defmodule AiurWeb.DashboardCssThemeTest do
   use ExUnit.Case, async: true
 
-  @css Path.expand("../../priv/static/dashboard.css", __DIR__)
+  test "home sheet literal inks are frozen" do
+    directory = Application.app_dir(:aiur, "priv/static/build-home")
+    entry = File.read!(Path.join(directory, "home.css"))
+    imports = Regex.scan(~r/@import\s+url\("([^"]+)"\)\s*;/, entry, capture: :all_but_first) |> List.flatten()
+    assert length(imports) == length(Regex.scan(~r/@import\b/, entry)), "every home stylesheet import must be checked"
+
+    home =
+      Enum.map_join(imports, "\n", fn path ->
+        assert path =~ ~r/\A(?:\.\/)?home\/[a-z0-9-]+\.css\z/, "home imports must stay inside build-home/home"
+        File.read!(Path.join(directory, path))
+      end)
+
+    home = entry <> "\n" <> home
+
+    # Design H:1345/1349 and C:59/544/564; preserve approved white-on-fill ink.
+    colors = Regex.scan(~r/(?<![\w-])color:\s*(#[0-9a-fA-F]{3,8})\b/, home, capture: :all_but_first)
+    assert colors |> List.flatten() |> Enum.sort() == List.duplicate("#fff", 5)
+  end
+
+  defp css do
+    {:ok, "text/css", css} = AiurWeb.StaticAssets.fetch("/dashboard.css")
+    css
+  end
 
   # A literal hex in a `color:` declaration cannot be theme-aware: the same ink
   # renders against both the dark and the light surfaces. The nav count badge
@@ -45,12 +67,12 @@ defmodule AiurWeb.DashboardCssThemeTest do
   # The specific regression: this badge counts blocking decisions, so it belongs
   # on the themed --blocking-* family, which is legible in both themes.
   test "the nav attention badge uses themed blocking tokens" do
-    rule = css_rule(".shell-nav-count.is-attention")
+    rule = Regex.scan(~r/^\.snav-c\.attn\s*\{([^}]*)\}/m, css(), capture: :all_but_first) |> List.last() |> hd()
 
-    assert rule =~ "var(--blocking-soft)"
-    assert rule =~ "var(--blocking-ink)"
+    assert rule =~ "var(--block-soft)"
+    assert rule =~ "var(--block)"
 
-    css = File.read!(@css)
+    css = css()
     refute css =~ "#f5b8a8", "the dark-only salmon ink is back"
     refute css =~ ~r/color:\s*#f2836b/, "the dark-only salmon is back as a text colour"
   end
@@ -84,7 +106,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
   test "the light-mode Stream Deck chassis pins every token it paints ink with" do
     pinned = declarations(css_rule(~s(html[data-theme="light"] .sd-device)))
-    dark_root = declarations(css_rule(":root"))
+    dark_root = css_rule(":root") |> declarations() |> resolve_all("dark")
 
     for token <- @streamdeck_chassis_pins ++ @streamdeck_dark_root_pins do
       assert Map.has_key?(pinned, token), """
@@ -102,6 +124,16 @@ defmodule AiurWeb.DashboardCssThemeTest do
              "html[data-theme=\"light\"] .sd-device pins #{token} to " <>
                "#{inspect(Map.fetch!(pinned, token))}, but the dark :root value is " <>
                "#{inspect(Map.fetch!(dark_root, token))}. The pin must match :root exactly."
+    end
+  end
+
+  test "the gruvbox light Stream Deck chassis pins every themed ink token to the gruvbox dark value" do
+    pinned = declarations(css_rule(~s(html[data-palette="gruvbox"][data-theme="light"] .sd-device)))
+    gruvbox_dark = declarations(css_rule(~s(html[data-palette="gruvbox"])))
+
+    for token <- @streamdeck_dark_root_pins -- ["--ack"] do
+      assert Map.fetch!(pinned, token) == Map.fetch!(gruvbox_dark, token),
+             "gruvbox light .sd-device must pin #{token} to the gruvbox dark value"
     end
   end
 
@@ -140,7 +172,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
 
   test "dashboard progress bars match the Stream Deck progress contract" do
     contract =
-      Path.expand("../../../packages/streamdeck/src/key-face-contract.json", __DIR__)
+      Path.expand("../../priv/streamdeck/key-face-contract.json", __DIR__)
       |> File.read!()
       |> Jason.decode!()
 
@@ -151,14 +183,14 @@ defmodule AiurWeb.DashboardCssThemeTest do
     assert css_rule(".ut-pbar > i") =~ "var(--progress-fill)"
     assert css_rule(".ut-pbar > i") =~ "min-width: var(--progress-bar-height)"
     assert css_rule(".ut-pbar > i.is-complete") =~ "var(--progress-complete-fill)"
-    refute @css |> File.read!() |> String.contains?(".ut-pbar > i.is-stale")
-    refute @css |> File.read!() |> String.contains?(".ut-pbar > i.is-blocked")
-    refute @css |> File.read!() |> String.contains?(".ut-pbar > i.has-alert")
+    refute css() |> String.contains?(".ut-pbar > i.is-stale")
+    refute css() |> String.contains?(".ut-pbar > i.is-blocked")
+    refute css() |> String.contains?(".ut-pbar > i.has-alert")
     assert css_rule(".run-summary-progress-fill") =~ "var(--progress-fill)"
     assert css_rule(".run-summary-progress-fill.is-complete") =~ "var(--progress-complete-fill)"
-    refute @css |> File.read!() |> String.contains?(".run-summary-progress-fill.is-stale")
+    refute css() |> String.contains?(".run-summary-progress-fill.is-stale")
     assert css_rule(".sd-strip-cmd-progress > i") =~ "min-width: var(--progress-bar-height)"
-    refute @css |> File.read!() |> String.contains?(".sd-strip-cmd.is-progress-stale")
+    refute css() |> String.contains?(".sd-strip-cmd.is-progress-stale")
     assert css_rule(".sd-strip-cmd.is-progress-unknown .sd-strip-cmd-status::before") =~ "background: rgba(255, 255, 255, 0.32)"
     assert css_rule(".ut-pbar.is-unknown") =~ "background: var(--line-strong)"
     assert css_rule(".rs-meter.is-unknown") =~ "background: var(--line-strong)"
@@ -167,7 +199,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
   end
 
   test "dashboard styling does not reintroduce dashes or hatching" do
-    css = File.read!(@css)
+    css = css()
 
     refute css =~ "dashed"
     refute css =~ "stroke-dasharray"
@@ -209,10 +241,19 @@ defmodule AiurWeb.DashboardCssThemeTest do
   @aa_non_text 3.0
 
   test "the contrast-critical token pairs still clear WCAG AA" do
-    dark = declarations(css_rule(":root"))
-    light = declarations(css_rule(~s(html[data-theme="light"])))
+    for theme <- ["dark", "light"], palette <- ["aiur", "gruvbox"] do
+      selectors =
+        [":root"] ++
+          if(theme == "light", do: [~s(html[data-theme="light"])], else: []) ++
+          if(palette == "gruvbox", do: [~s(html[data-palette="gruvbox"])], else: []) ++
+          if(palette == "gruvbox" and theme == "light", do: [~s(html[data-palette="gruvbox"][data-theme="light"])], else: [])
 
-    for {theme, tokens} <- [dark: dark, light: light] do
+      tokens =
+        selectors
+        |> Enum.reduce(%{}, fn selector, acc -> Map.merge(acc, declarations(css_rule(selector))) end)
+        |> resolve_all(theme)
+
+      theme = "#{theme}/#{palette}"
       surface = tokens["--surface"]
       panel = blend(tokens["--super-soft"], surface)
 
@@ -236,6 +277,22 @@ defmodule AiurWeb.DashboardCssThemeTest do
                "#{theme} #{label}: #{show(fg)} on #{show(bg)} is " <>
                  "#{Float.round(ratio, 2)}:1, needs #{minimum}:1"
       end
+    end
+  end
+
+  test "design aliases resolve to the product families" do
+    tokens = declarations(css_rule(":root"))
+
+    for {alias_name, canonical} <- [{"attn", "attention"}, {"block", "blocking"}], suffix <- ["", "-ink", "-soft", "-line"] do
+      assert tokens["--#{alias_name}#{suffix}"] == "var(--#{canonical}#{suffix})"
+    end
+  end
+
+  test "future regression guard: gruvbox never overrides the progress contract" do
+    for selector <- [~s(html[data-palette="gruvbox"]), ~s(html[data-palette="gruvbox"][data-theme="light"])] do
+      tokens = declarations(css_rule(selector))
+      refute Map.has_key?(tokens, "--progress-fill")
+      refute Map.has_key?(tokens, "--progress-complete-fill")
     end
   end
 
@@ -287,6 +344,19 @@ defmodule AiurWeb.DashboardCssThemeTest do
     hex |> String.to_charlist() |> Enum.chunk_every(2) |> Enum.map(&List.to_integer(&1, 16))
   end
 
+  @aiur_tokens Path.expand("../../../packages/aiur-style/src/tokens/tokens.json", __DIR__) |> File.read!() |> Jason.decode!()
+
+  # Resolve `var(--aiur-*)` aliases to the theme's literal so value comparisons
+  # and contrast maths keep working on aliased dashboard variables.
+  defp resolve(value, theme) do
+    Regex.replace(~r/var\(--aiur-([a-z0-9-]+)\)/, value, fn _full, name ->
+      {_key, token} = Enum.find(@aiur_tokens, fn {key, _} -> String.replace(key, ".", "-") == name end)
+      Map.fetch!(token, theme)
+    end)
+  end
+
+  defp resolve_all(tokens, theme), do: Map.new(tokens, fn {name, value} -> {name, resolve(value, theme)} end)
+
   defp declarations(rule) do
     ~r/(--[a-z0-9-]+)\s*:\s*([^;]+);/
     |> Regex.scan(rule)
@@ -294,8 +364,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
   end
 
   defp literal_text_colors do
-    @css
-    |> File.read!()
+    css()
     |> then(&Regex.scan(~r/^\s*color:\s*(#[0-9a-fA-F]{3,8})\s*;/m, &1))
     |> Enum.map(fn [_full, hex] -> String.downcase(hex) end)
     |> Enum.sort()
@@ -304,7 +373,7 @@ defmodule AiurWeb.DashboardCssThemeTest do
   # Anchored on a line start so a descendant rule (`.decision-follow-up .btn {`)
   # can never be mistaken for the base rule it contains as a substring.
   defp css_rule(selector) do
-    css = File.read!(@css)
+    css = css()
     [_before, rest] = String.split(css, "\n" <> selector <> " {", parts: 2)
     [body, _after] = String.split(rest, "}", parts: 2)
     body

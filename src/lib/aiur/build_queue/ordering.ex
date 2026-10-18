@@ -2,6 +2,7 @@ defmodule Aiur.BuildQueue.Ordering do
   @moduledoc "Pure downstream counts and start-order keys over the union queue graph."
 
   alias Aiur.BuildQueue.Model.{Edge, Item}
+  alias Aiur.StartTrigger.CriticalPath
 
   @doc """
   Counts distinct reachable open members, excluding the starting issue itself.
@@ -11,14 +12,24 @@ defmodule Aiur.BuildQueue.Ordering do
   """
   @spec downstream_open([Edge.t()], Enumerable.t()) :: %{String.t() => non_neg_integer()}
   def downstream_open(edges, open_items) do
-    open = MapSet.new(open_items)
-    graph = Enum.group_by(edges, & &1.prerequisite, & &1.dependent)
-    nodes = edges |> Enum.flat_map(&[&1.prerequisite, &1.dependent]) |> Enum.concat(open) |> Enum.uniq()
+    edges |> critical_ranks(open_items) |> Map.new(fn {id, {_depth, count}} -> {id, count} end)
+  end
 
-    Map.new(nodes, fn node ->
-      reachable = walk([node], graph, %{}) |> Map.keys() |> MapSet.new() |> MapSet.delete(node)
-      {node, reachable |> MapSet.intersection(open) |> MapSet.size()}
-    end)
+  @spec critical_ranks([Edge.t()], Enumerable.t()) :: map()
+  def critical_ranks(edges, open_items), do: CriticalPath.ranks(Enum.map(edges, &{&1.prerequisite, &1.dependent}), open_items)
+
+  @doc "Distinct dependents in breadth-first order, with direct dependents first."
+  @spec dependents([Edge.t()], String.t()) :: [String.t()]
+  def dependents(edges, root) do
+    graph = Enum.group_by(edges, & &1.prerequisite, & &1.dependent)
+    breadth([root], graph, MapSet.new([root]), [])
+  end
+
+  defp breadth([], _graph, _seen, ordered), do: ordered
+
+  defp breadth(frontier, graph, seen, ordered) do
+    next = frontier |> Enum.flat_map(&Map.get(graph, &1, [])) |> Enum.uniq() |> Enum.reject(&MapSet.member?(seen, &1)) |> Enum.sort_by(&String.to_integer/1)
+    breadth(next, graph, MapSet.union(seen, MapSet.new(next)), ordered ++ next)
   end
 
   @doc "Orders by downstream count, supplied priority rank, position, age, then string issue ID (matching dispatch)."
@@ -34,14 +45,4 @@ defmodule Aiur.BuildQueue.Ordering do
 
   defp created_at_key(nil), do: 9_223_372_036_854_775_807
   defp created_at_key(created_at), do: DateTime.to_unix(created_at, :microsecond)
-
-  defp walk([], _graph, seen), do: seen
-
-  defp walk([node | rest], graph, seen) do
-    if Map.has_key?(seen, node) do
-      walk(rest, graph, seen)
-    else
-      walk(Map.get(graph, node, []) ++ rest, graph, Map.put(seen, node, true))
-    end
-  end
 end

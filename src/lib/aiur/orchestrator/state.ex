@@ -1,11 +1,8 @@
 defmodule Aiur.Orchestrator.State do
-  @moduledoc """
-  Runtime state for the orchestrator polling loop.
-  """
-
+  @moduledoc "Runtime state for the orchestrator polling loop. Field owners: `Aiur.Orchestrator.State.Owners`."
   alias Aiur.{AgentQueueStore, Issue, TrackerIdentity}
   alias Aiur.LiveConversation.Source, as: LiveConversationSource
-  alias Aiur.Orchestrator.{ControlLifecycle, PauseResume, StatusReport}
+  alias Aiur.Orchestrator.{CiLifecycle, ControlLifecycle, PauseResume, StatusReport}
 
   @default_dispatch_recovery %{
     workspace_ownership: %{waits: %{}, ready: %{}},
@@ -21,26 +18,29 @@ defmodule Aiur.Orchestrator.State do
           snapshot_ready?: boolean(),
           candidate_snapshot_fresh?: boolean(),
           poll_cycles_completed: non_neg_integer(),
+          tracker_tasks: %{reference() => map()},
+          restack_completed: map(),
+          blocker_propagations: map(),
           last_dispatch_poll_at_ms: integer() | nil,
+          dispatch_cycle_started_at_ms: integer() | nil,
+          dispatch_cycle_started_monotonic_ms: integer() | nil,
+          dispatch_cycle_watchdog_token: reference() | nil,
+          dispatch_cycle_watchdog_timer_ref: reference() | nil,
+          last_dispatch_cycle_completed_at_ms: integer() | nil,
+          dispatch_cycle_stalled?: boolean(),
+          dispatch_cycle_stage: String.t() | nil,
           queued_demand_hints: %{String.t() => non_neg_integer()},
           max_concurrent_agents: integer() | nil,
           session_max_concurrent_agents: integer() | nil,
           effective_concurrent_agents: integer() | nil,
-          load_envelope_state: %{
-            last_decrease_ms: integer() | nil,
-            cpu_snapshot: Aiur.SystemCpu.snapshot() | nil,
-            bootstrap_complete?: boolean()
-          },
+          load_envelope_state: map(),
           capacity_hold:
             %{
               optional(:reclaimable_cpu_percent) => float(),
               optional(:reclaimable_cpu_threshold) => float(),
-              signal: :memory | :file_descriptors | :run_queue | :load | :build | :provider | :envelope,
+              signal: :memory | :file_descriptors | :run_queue | :load | :cpu_pressure | :build | :provider | :envelope,
               measured: term(),
               threshold: term(),
-              # When `measured`/`threshold` were last re-sampled. A hold that is
-              # extended without a fresh probe keeps its original stamp, so every
-              # reader can tell a current measurement from a latched one (#2527).
               measured_at: DateTime.t(),
               held_since_ms: integer(),
               alerted?: boolean()
@@ -60,14 +60,19 @@ defmodule Aiur.Orchestrator.State do
           tick_token: reference() | nil,
           initial_dispatch_cycle: boolean() | nil,
           startup_claim_reconciliation_complete?: boolean(),
-          # Per-ticket startup-claim release failures within this boot:
-          # `%{identifier => %{reason: term(), attempts: pos_integer()}}`.
+          orphaned_claim_since: map(),
           startup_claim_reconciliation_failures: map(),
+          contradictory_state_label_tickets: %{optional(String.t()) => %{identifier: String.t(), labels: [String.t()], since_ms: integer()}},
+          contradictory_state_label_alert_active: boolean(),
           queue_store: term(),
           last_polled_issues: map(),
+          terminal_verification_attempts: %{String.t() => non_neg_integer()},
+          tracker_observations: %{optional(String.t()) => DateTime.t()},
+          status_observed_at: DateTime.t() | nil,
           human_review_observed_ids: MapSet.t(String.t()) | nil,
           ci_lifecycle: %{
             approved_heads: map(),
+            passed_heads: map(),
             test_failure_heads: map(),
             base_repair_invalidations: map(),
             poll_cache: map(),
@@ -89,10 +94,15 @@ defmodule Aiur.Orchestrator.State do
           dispatch_selection_hold: map() | nil,
           dispatch_declines: %{optional(String.t()) => term()},
           dispatch_capacity_sample: %{
+            optional(:cpu_pressure | :pressure_threshold | :pressure_target | :memory_mb | :memory_threshold_mb) => term(),
+            optional(:load_discount_reason | :load_daemon_nice) => :enabled | :unavailable | integer(),
+            optional(:gate_signal) => number() | :unavailable,
+            optional(:load_sampled_at_ms) => integer() | nil,
             load: number() | :unavailable,
             load_threshold: number() | nil,
             target: number() | nil,
-            schedulers: pos_integer() | nil
+            schedulers: pos_integer() | nil,
+            observed_at: DateTime.t() | nil
           },
           capacity_starvation: %{
             since_ms: %{optional(String.t()) => integer()},
@@ -104,15 +114,14 @@ defmodule Aiur.Orchestrator.State do
           # Monotonic ms when the DecisionStore first read as `:unavailable`
           # while dispatchable work was queued (nil when no such hold is in
           # progress). The `system.dispatch.decision_store_unavailable` alert is
-          # only raised once the outage has persisted past the capacity-
-          # starvation dwell, so a momentary blip raises nothing (#2453).
+          # Raised after the capacity-starvation dwell, not a momentary blip (#2453).
           decision_store_unavailable_since_ms: integer() | nil,
           decision_store_unavailable_alert_active: boolean(),
           decision_store_unavailable_alert_resolution_emitted: boolean(),
           dependency_circular_wait: %{
             optional(String.t()) => %{identifier: String.t(), waiting_count: pos_integer(), since_ms: integer(), alerted?: boolean()}
           },
-          running: map(),
+          running: %{optional(String.t()) => %{optional(:start_mode) => :ready | :optimistic, optional(:optimistic_blockers) => [String.t()], optional(atom()) => term()}},
           running_issue_cache: %{optional(String.t()) => %{etag: String.t() | nil, issue: Issue.t()}},
           completed: MapSet.t(),
           claimed: MapSet.t(),
@@ -121,16 +130,12 @@ defmodule Aiur.Orchestrator.State do
             codex_thrash_budget: map()
           },
           retry_attempts: map(),
-          comment_rework_retries: %{
-            {String.t(), String.t()} => {reference(), String.t() | integer(), String.t() | atom()}
-          },
-          # Transient-caused pause/error tickets waiting a bounded backoff before
-          # automatic re-dispatch (#1453). Keyed by issue_id; see
-          # `Aiur.Orchestrator.AutoResume`.
+          comment_rework_retries: %{{String.t(), String.t()} => {reference(), String.t() | integer(), String.t() | atom()}},
           auto_resume: %{String.t() => map()},
-          # Claims released after retry exhaustion, retained until a later
-          # dispatch successfully re-establishes ownership.
+          budget_hold_streaks: %{String.t() => map()},
+          # Claims released after retry exhaustion until dispatch re-establishes ownership.
           released_claims: %{String.t() => map()},
+          fallback_backoff: %{String.t() => {pos_integer(), integer()}},
           model_fallback_waiting: MapSet.t(),
           agent_totals: map() | nil,
           agent_rate_limits: map() | nil,
@@ -148,9 +153,8 @@ defmodule Aiur.Orchestrator.State do
           github_comment_poll: map() | nil,
           github_comment_reconcile_targets: MapSet.t(String.t()),
           github_comment_reconcile_timer: map() | nil,
-          # Monotonic time the asynchronous comment poll last started, used to
-          # throttle it to the `:review` class cadence (#2309). `nil` until the
-          # first start.
+          # Monotonic time the asynchronous comment poll last started, used to throttle
+          # it to the `:review` class cadence (#2309). `nil` until the first start.
           last_comment_poll_started_at_ms: integer() | nil,
           # Monotonic time the CI poll last ran, used to throttle it to the
           # `:ci` class cadence (#2309). `nil` until the first run.
@@ -203,8 +207,7 @@ defmodule Aiur.Orchestrator.State do
           prewarm_hold_since_ms: non_neg_integer() | nil
         }
 
-  # The Orchestrator is the single owner of the correlated control lifecycle;
-  # keeping that aggregate here avoids a second process/state authority.
+  # Keeping the correlated control lifecycle here preserves one process/state authority.
   # credo:disable-for-next-line Credo.Check.Warning.StructFieldAmount
   defstruct [
     :poll_interval_ms,
@@ -216,6 +219,8 @@ defmodule Aiur.Orchestrator.State do
     :session_max_concurrent_agents,
     :effective_concurrent_agents,
     :next_poll_due_at_ms,
+    :dispatch_cycle_started_at_ms,
+    :last_dispatch_cycle_completed_at_ms,
     :poll_check_in_progress,
     :poll_frozen,
     :tick_timer_ref,
@@ -230,14 +235,19 @@ defmodule Aiur.Orchestrator.State do
     :ci_readiness_result,
     startup_claim_reconciliation_complete?: false,
     startup_claim_reconciliation_failures: %{},
+    orphaned_claim_since: %{},
     load_envelope_state: %{last_decrease_ms: nil, cpu_snapshot: nil, bootstrap_complete?: false},
     capacity_hold: nil,
     dispatch_hold: nil,
     queue_store: AgentQueueStore.new(),
     last_polled_issues: %{},
+    terminal_verification_attempts: %{},
+    tracker_observations: %{},
+    status_observed_at: nil,
     human_review_observed_ids: nil,
     ci_lifecycle: %{
       approved_heads: %{},
+      passed_heads: %{},
       test_failure_heads: %{},
       base_repair_invalidations: %{},
       poll_cache: %{},
@@ -258,33 +268,36 @@ defmodule Aiur.Orchestrator.State do
     dispatch_capacity_constraints: [],
     dispatch_selection_hold: nil,
     dispatch_declines: %{},
-    dispatch_capacity_sample: %{load: :unavailable, load_threshold: nil, target: nil, schedulers: nil},
+    dispatch_capacity_sample: %{load: :unavailable, load_threshold: nil, target: nil, schedulers: nil, observed_at: nil},
+    dispatch_cycle_stalled?: false,
+    dispatch_cycle_stage: nil,
+    dispatch_cycle_started_monotonic_ms: nil,
+    dispatch_cycle_watchdog_token: nil,
+    dispatch_cycle_watchdog_timer_ref: nil,
     capacity_starvation: %{since_ms: %{}, alert_active: false, signature: [], alerted: []},
     fleet_capacity_starvation: %{since_ms: nil, alert_active: false, effective_cap: nil},
     decision_store_unavailable_since_ms: nil,
     decision_store_unavailable_alert_active: false,
     decision_store_unavailable_alert_resolution_emitted: false,
     dependency_circular_wait: %{},
-    # Fleet aggregate for tickets carrying more than one `agent:*` state label
-    # (`contradictory_state_label_tickets` maps issue id -> %{identifier, labels,
-    # since_ms}; `contradictory_state_label_alert_active` latches the single
-    # fleet alert until the set clears). Kept on State so the orchestrator is the
-    # single writer and `aiur alerts`/`aiur status` can read it back (#2366).
+    # Fleet aggregate for contradictory `agent:*` labels; State keeps the orchestrator the single writer (#2366).
     contradictory_state_label_tickets: %{},
     contradictory_state_label_alert_active: false,
     running: %{},
     running_issue_cache: %{},
+    tracker_tasks: %{},
+    restack_completed: %{},
+    blocker_propagations: %{},
     completed: MapSet.new(),
     claimed: MapSet.new(),
     dispatch_recovery: @default_dispatch_recovery,
     retry_attempts: %{},
-    # Timer refs for in-flight comment-rework retries, keyed by
-    # `{issue_key, source_key}`. Tracked so a superseded retry can be cancelled
-    # and so `terminate/2` never leaves a timer firing into a dead orchestrator's
-    # successor — see `Aiur.Orchestrator.CommentWake`.
+    # In-flight comment-rework timers are cancellable and cannot fire into a successor.
     comment_rework_retries: %{},
     auto_resume: %{},
+    budget_hold_streaks: %{},
     released_claims: %{},
+    fallback_backoff: %{},
     model_fallback_waiting: MapSet.new(),
     agent_totals: nil,
     agent_rate_limits: nil,
@@ -298,18 +311,13 @@ defmodule Aiur.Orchestrator.State do
     github_comments_since: nil,
     github_comment_etags: %{},
     github_comment_issue_updated_at: %{},
-    # Conditional issue-list cache owned by the asynchronous comment poll.
-    # Keeping it separate prevents a late completion from replacing the newer
-    # cache written by synchronous CI/candidate fetching in the same cycle.
+    # Separate conditional comment cache prevents late completion replacing newer synchronous fetches.
     github_comment_issue_list_cache: %{},
-    # In-flight marker for the asynchronous comment poll. The pid and monitor
-    # let lifecycle shutdown reap the poll and its owned descendants.
+    # The pid and monitor let lifecycle shutdown reap the asynchronous comment poll.
     github_comment_poll: nil,
-    # Tickets named by review-thread webhooks. A poll claims this set when it
-    # starts; hints arriving during that poll stay here for the follow-up.
+    # Review-thread webhook hints arriving during a poll stay queued for its follow-up.
     github_comment_reconcile_targets: MapSet.new(),
-    # At most one delayed reconcile wake is live. Its token fences stale timer
-    # messages after a later GitHub backoff extends the due time.
+    # One delayed reconcile wake; its token fences stale timers after GitHub backoff.
     github_comment_reconcile_timer: nil,
     last_comment_poll_started_at_ms: nil,
     last_ci_poll_started_at_ms: nil,
@@ -321,23 +329,16 @@ defmodule Aiur.Orchestrator.State do
     globally_paused: false,
     blocked_ticket_ids: nil,
     global_pause: %{paused_at: nil, source: nil},
-    # `{issue_identifier, recent_merge_id}` pairs already reconciled by
-    # `Aiur.Orchestrator.MergedTicketReconciler`, so a retained merge record
-    # cannot close the same ticket twice — a ticket reopened for rework must
-    # win over the merge that closed it before.
+    # Reconciled merge receipts prevent retained records from closing a reopened ticket.
     merged_ticket_reconciliations: MapSet.new(),
-    # `{{issue_identifier, recent_merge_id}, reason}` signatures already
-    # alerted on, so a permanently failing transition raises its attention
-    # once instead of once per poll.
+    # `{{issue_identifier, recent_merge_id}, reason}` signatures already alerted on, so a
+    # permanently failing transition raises its attention once instead of once per poll.
     merged_ticket_reconciliation_failures: MapSet.new(),
     rework_attempts: %{},
     rework_attempt_alerted: MapSet.new(),
     snapshot_ready?: false,
     candidate_snapshot_fresh?: true,
-    # Full poll cycles completed since this daemon started. The idle poll
-    # backoff is only permitted once at least one cycle has run, so a freshly
-    # restarted daemon — which has observed no idleness yet — polls at the base
-    # interval first instead of starting already backed off (#2138).
+    # Idle backoff requires a completed cycle; a fresh daemon first polls at the base interval (#2138).
     poll_cycles_completed: 0,
     last_dispatch_poll_at_ms: nil,
     # Tickets queued locally (`aiur --todo`) that the tracker poll has not yet
@@ -434,6 +435,7 @@ defmodule Aiur.Orchestrator.State do
         updated_running_entry =
           running_entry
           |> maybe_put_runtime_value(:repl_pane_id, info[:pane_id])
+          |> maybe_put_runtime_value(:repl_tmux_socket, info[:tmux_socket])
           |> maybe_put_runtime_value(:repl_os_pid, info[:os_pid])
           |> maybe_put_runtime_value(:headless_os_pid, info[:headless_os_pid])
           |> maybe_put_runtime_value(:headless_process_group_id, info[:headless_process_group_id])
@@ -515,23 +517,7 @@ defmodule Aiur.Orchestrator.State do
   end
 
   @spec alive?(term()) :: boolean()
-  def alive?(pid) when is_pid(pid), do: Process.alive?(pid)
-  def alive?(name) when is_atom(name), do: Process.whereis(name) != nil
-  def alive?({:via, _, _} = name), do: registered_process_alive?(name)
-  def alive?({:global, _} = name), do: registered_process_alive?(name)
-  def alive?(_), do: false
-
-  defp registered_process_alive?(name) do
-    case GenServer.whereis(name) do
-      pid when is_pid(pid) -> Process.alive?(pid)
-      _ -> false
-    end
-  rescue
-    _ -> false
-  catch
-    :exit, _ -> false
-  end
-
+  defdelegate alive?(name), to: Aiur.Orchestrator.State.ProcessLiveness
   @spec maybe_put_runtime_value(term(), term(), term()) :: term()
   def maybe_put_runtime_value(running_entry, _key, nil), do: running_entry
 
@@ -676,7 +662,6 @@ defmodule Aiur.Orchestrator.State do
   end
 
   defp valid_conversation_source?(_source), do: false
-
   defp valid_runtime_session?(nil), do: true
 
   defp valid_runtime_session?("session:" <> digest) do
@@ -733,18 +718,18 @@ defmodule Aiur.Orchestrator.State do
   # capacity leak where parked agents accumulate against the fleet limit
   # (#2329).
   # A provider usage limit belongs here for the same reason: the account, not
-  # this agent, is what the fleet waits on, there is no turn in flight, and
-  # holding the slot turns one account limit into a fleet-wide dispatch stall.
-  # Nineteen such pauses once left four runners and twelve ready tickets waiting
-  # on capacity. `CodingAgent.select_for_dispatch/2` is what keeps a freed slot
-  # from being handed straight back to the exhausted backend.
-  @non_reserving_pause_reasons [:ci_wait, :blocker_dependency, :max_agent_duration, :usage_limit_exhausted]
+  # this agent, is what the fleet waits on. Any pause on a `ci-wait` ticket
+  # releases too: its PR is handed off and the daemon owns that wait (#4694).
+  @non_reserving_pause_reasons [:ci_wait, :blocker_dependency, :optimistic_blocker_failed, :max_agent_duration, :usage_limit_exhausted]
+
+  @spec non_reserving_pause_reason?(term()) :: boolean()
+  def non_reserving_pause_reason?(reason), do: reason in @non_reserving_pause_reasons
 
   @spec reserved_paused_running_count(term()) :: non_neg_integer()
   def reserved_paused_running_count(running) when is_map(running) do
     Enum.count(running, fn
       {_issue_id, %{paused_reason: reason}} when reason in @non_reserving_pause_reasons -> false
-      {_issue_id, entry} -> paused_running_entry?(entry)
+      {_issue_id, entry} -> paused_running_entry?(entry) and not CiLifecycle.ci_wait_state?(get_in(entry, [:issue, Access.key(:state)]))
     end)
   end
 
@@ -757,7 +742,6 @@ defmodule Aiur.Orchestrator.State do
   end
 
   def active_running_entry?(_entry), do: false
-
   @spec paused_running_entry?(term()) :: boolean()
   def paused_running_entry?(entry) when is_map(entry) do
     (get_in(entry, [:control, :status]) || :working) == :paused
@@ -969,7 +953,6 @@ defmodule Aiur.Orchestrator.State do
   end
 
   def effective_runtime_seconds(_entry, _now), do: 0
-
   # --- Rework-attempt bound (#2422) ------------------------------------------
   #
   # The same head SHA must not re-enter `agent:rework` more than

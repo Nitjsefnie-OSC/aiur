@@ -16,6 +16,7 @@ defmodule Aiur.GitHub.Labels do
   """
 
   alias Aiur.CodingAgent
+  alias Aiur.GitHub.Errors
   alias Aiur.GitHub.Transport
 
   @base_url "https://api.github.com"
@@ -47,7 +48,8 @@ defmodule Aiur.GitHub.Labels do
   @doc "Full label set to create for a repo, given the label prefix and chosen backends."
   @spec label_set(String.t(), [String.t()]) :: [String.t()]
   def label_set(prefix, backends) do
-    state_labels(prefix) ++
+    ["flake"] ++
+      state_labels(prefix) ++
       required_rate_limit_fallback_labels(prefix) ++
       (marker_labels(prefix) -- rate_limit_fallback_marker_labels(prefix)) ++
       model_labels(backends) ++ alias_labels(backends) ++ effort_labels() ++ complexity_labels()
@@ -125,6 +127,7 @@ defmodule Aiur.GitHub.Labels do
 
   @doc "A short human description for any label in `label_set/2`."
   @spec describe(String.t()) :: String.t()
+  def describe("flake"), do: "known intermittent test failure"
   def describe("complexity:" <> n), do: "story-point complexity #{n}"
   def describe("model:remote"), do: "Supports claude remote-control"
 
@@ -185,11 +188,18 @@ defmodule Aiur.GitHub.Labels do
           do: :ok,
           else: {:error, {:github_api_status, 422, label}}
 
-      {:ok, %{status: status}} ->
-        {:error, {:github_api_status, status, label}}
+      {:ok, %{status: status} = response} ->
+        label_error(response, {:github_api_status, status, label})
 
-      {:error, reason} ->
-        {:error, {:github_api_request, reason}}
+      {:error, reason} = error ->
+        label_error(error, {:github_api_request, reason})
+    end
+  end
+
+  defp label_error(response, fallback) do
+    case Errors.classify_error(response) do
+      {:github, kind, _} = reason when kind in [:rate_limited, :local_hold] -> {:error, reason}
+      _ -> {:error, fallback}
     end
   end
 

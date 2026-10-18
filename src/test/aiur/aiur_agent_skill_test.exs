@@ -28,10 +28,7 @@ defmodule Aiur.AiurAgentSkillTest do
     stub-then-fetch.md
     dictated-input.md
   )
-  @codex_exposed_aiur_skills ~w(aiur-agent aiur-build aiur-debug aiur-intro aiur-monitor aiur-run design-import)
-  # `aiur-meta` is an Executor meta-check driven by `aiur-run`'s timer. It audits
-  # operator surfaces and files tickets; issue workers never run it, so it stays
-  # Claude-only and is deliberately not symlinked into `.codex/skills/`.
+  @codex_exposed_aiur_skills ~w(aiur-agent aiur-build aiur-debug aiur-experiment aiur-intro aiur-monitor aiur-run design-import)
   @claude_executor_only_skills ~w(aiur-handoff aiur-meta release)
 
   # Every skill that can reach a ticket-creation command. Each states the rule
@@ -315,7 +312,7 @@ defmodule Aiur.AiurAgentSkillTest do
 
   test "Codex backend surface: every Codex-exposed Aiur skill uses canonical Claude source" do
     for skill <- @codex_exposed_aiur_skills do
-      if skill == "aiur-debug" do
+      if skill in ~w(aiur-debug aiur-experiment) do
         assert_codex_skill_is_tracked_symlink(skill)
       else
         assert_codex_skill_symlink_resolves_to_claude(skill)
@@ -631,11 +628,7 @@ defmodule Aiur.AiurAgentSkillTest do
   end
 
   test "agent operating guidance scopes local pre-PR verification to affected tests" do
-    source =
-      @repo_root
-      |> Path.join(".claude/skills/aiur-agent/dev-loop.md")
-      |> File.read!()
-      |> one_line()
+    source = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/dev-loop.md")))
 
     assert source =~ "pre-PR"
     assert source =~ "mix compile --warnings-as-errors"
@@ -644,24 +637,33 @@ defmodule Aiur.AiurAgentSkillTest do
     assert source =~ "affected tests only"
     assert source =~ "mix test --max-cases 4"
     refute source =~ "mix credo --strict"
-    assert source =~ "mise exec -- mix lint"
-    assert source =~ "python3 scripts/check-bare-assert-receive.py"
     refute source =~ "Do not run Credo locally"
     refute source =~ "Credo belongs to CI"
-    assert source =~ "`make ci` is the authoritative full lint and full-suite gate"
+    assert source =~ "event-specific gate is authoritative: fast on PRs, full in the queue"
     refute source =~ "mix dialyzer"
 
     assert source =~ "loop on unrelated suite flakes"
     assert source =~ "Re-run the scoped local pre-PR verification gate"
   end
 
-  test "shared prompt requires both local checks before PR handoff" do
-    source = one_line(File.read!(Path.join(@repo_root, "src/prompts/shared-agent-instructions.md")))
+  test "agent dev loop requires the structural gate before ready and after integration" do
+    dev_loop = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/dev-loop.md")))
+    assert dev_loop =~ "After committing, before every push and after every base integration, run the structural gate"
+  end
 
-    assert source =~ "before marking the PR ready or handing off to CI/review"
-    assert source =~ "From `src/`: `mise exec -- mix lint`"
-    assert source =~ "From the repository root: `python3 scripts/check-bare-assert-receive.py`"
-    assert source =~ "run both required checks and fix any failures"
+  test "agent instructions require all local checks and oversized-file fixes before PR handoff" do
+    for path <- [".claude/skills/aiur-agent/dev-loop.md", "src/prompts/shared-agent-instructions.md"] do
+      source = one_line(File.read!(Path.join(@repo_root, path)))
+      assert source =~ "marking the PR ready or handing off to CI/review"
+      assert source =~ "From `src/`: `mise exec -- mix lint`"
+      assert source =~ "From the repository root: `python3 scripts/check-bare-assert-receive.py`"
+      assert source =~ ~s(then run `mise exec -- python3 scripts/check-pr-structure.py --base "$base"`)
+      assert source =~ ~s|base="$(git -C "$workspace" rev-parse "origin/$AIUR_BASE_BRANCH")"|
+      assert source =~ "run all required checks and fix any failures"
+      assert source =~ "Run only affected browser specs locally (browser runs go through the build gate); CI runs the full harness."
+      assert source =~ "file the same length or shorter"
+      assert source =~ "Put new code in a new small module and new tests in a new test file. Never grow the oversized file."
+    end
   end
 
   test "unrelated CI flakes never become ticket dependencies" do
@@ -691,27 +693,9 @@ defmodule Aiur.AiurAgentSkillTest do
     assert repo_prompt =~ "mise exec -- mix lint"
     assert repo_prompt =~ "python3 scripts/check-bare-assert-receive.py"
     refute repo_prompt =~ "Do not run Credo locally"
-    assert repo_prompt =~ "authoritative full lint and full test suite through `make ci`"
+    assert repo_prompt =~ "fast on PRs after rollout, full in the merge queue or on forced-full PRs"
     assert repo_prompt =~ "Do not gate PR-opening on a clean full-suite `mix test` run"
     assert repo_prompt =~ "Fix failures in this scoped gate"
-  end
-
-  test "agent PR guidance uses and verifies the configured integration branch" do
-    dev_loop = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/dev-loop.md")))
-    repo_prompt = one_line(File.read!(Path.join(@repo_root, ".aiur/prompt.md")))
-
-    for source <- [dev_loop, repo_prompt] do
-      assert source =~ "AIUR_BASE_BRANCH"
-      assert source =~ "tracker.base_branch"
-      assert source =~ "origin/HEAD"
-      assert source =~ "baseRefName"
-      assert source =~ "machine-local configuration"
-    end
-
-    assert dev_loop =~ ~s(gh pr create --draft --head "$branch" --base "$AIUR_BASE_BRANCH")
-    assert dev_loop =~ "PATCH only the PR's `base`"
-    assert repo_prompt =~ ~s(open a PR with `--base "$AIUR_BASE_BRANCH"`)
-    assert repo_prompt =~ "leave a correct base unchanged"
   end
 
   test "Codex pull recovery merges the configured integration branch" do
@@ -726,7 +710,7 @@ defmodule Aiur.AiurAgentSkillTest do
     refute pull_skill =~ "merge origin/main"
   end
 
-  test "agent workflow marks completed PRs ready before waiting for full current-head CI" do
+  test "agent workflow marks completed PRs ready before waiting for current-head required CI" do
     dev_loop = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/dev-loop.md")))
     turn_workflow = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-agent/turn-workflow.md")))
     monitor = one_line(File.read!(Path.join(@repo_root, ".claude/skills/aiur-monitor/SKILL.md")))
@@ -743,8 +727,8 @@ defmodule Aiur.AiurAgentSkillTest do
 
     for source <- [skill, dev_loop, turn_workflow, shared_prompt, repo_prompt, example_prompt] do
       assert source =~ ~r/mark[^.]*ready[^.]*before[^.]*agent:ci-wait/i
-      assert source =~ "Drafts never pass CI"
-      assert source =~ "full required-check set"
+      assert source =~ if(source in [skill, dev_loop, turn_workflow], do: "Drafts never permit handoff", else: "Drafts never pass CI")
+      assert String.downcase(source) =~ if(source in [skill, dev_loop, turn_workflow], do: "all required checks", else: "full required-check set")
       assert source =~ "current head SHA"
       assert source =~ "agent:human-review"
       refute source =~ "keep the PR as a draft"
@@ -770,7 +754,7 @@ defmodule Aiur.AiurAgentSkillTest do
 
   test "CI-wait fallback config is documented but is not an init question" do
     config_reference =
-      File.read!(Path.join(@repo_root, "website/docs-app/reference/configuration.md"))
+      File.read!(Path.join(@repo_root, "website/docs-app/reference/configuration-agent.md"))
 
     assert config_reference =~ "`agent.ci_wait_rewake_minutes`"
     assert config_reference =~ "| 5 |"
@@ -865,10 +849,10 @@ defmodule Aiur.AiurAgentSkillTest do
       {_output, status} =
         System.cmd(
           "/bin/sh",
-          [Path.join(@repo_root, "src/priv/github_quota_guard.sh"), "issue", "create" | arguments],
+          [Aiur.AgentGitHubGuardTestSupport.write_gh_guard(root), "issue", "create" | arguments],
           # This test asserts the dispatch disposition enforcement in
           # isolation. The shared GitHub budget broker lives beside the
-          # installed wrapper, not beside the repo copy this test invokes, so
+          # installed wrapper, not beside the copy this test writes, so
           # disable it explicitly or the admission check exits 75 whenever the
           # broker is absent (CI has no broker in `src/priv`).
           env: [
