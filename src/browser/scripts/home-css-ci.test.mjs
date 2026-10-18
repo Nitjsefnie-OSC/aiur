@@ -139,3 +139,19 @@ test('a new build-home spec file joins exactly one shard with no list edit', () 
   assert.deepEqual(suiteArgs('build-home-x'), ['tests/build-home-x.browser.spec.mjs'])
   assert.deepEqual(suiteArgs('build-home-x-parity'), ['tests/build-home-x-parity.browser.spec.mjs', '--config', 'playwright.design-parity.config.mjs'])
 })
+
+test('ordinary CI collects all 48 filter parity cases without an opt-in flag', () => {
+  const { AIUR_PARITY_FULL, ...ordinaryEnv } = process.env
+  const result = spawnSync(process.execPath, ['node_modules/@playwright/test/cli.js', 'test',
+    'tests/build-home-filters-parity.browser.spec.mjs', '--config', 'playwright.design-parity.config.mjs', '--list'], {
+    cwd: new URL('../', import.meta.url), encoding: 'utf8', env: { ...ordinaryEnv, AIUR_BROWSER_PORT: '49152' } // Listing never starts a server or connects.
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /Total: 48 tests in 1 file/)
+  const titles = result.stdout.split('\n').filter(line => line.includes(' › ')).map(line => line.split(' › ').at(-1))
+  for (const width of [1440, 1024, 390]) for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) {
+    for (const dataset of ['live', 'dense']) assert.ok(titles.includes(`filter parity ${dataset} ${width} ${theme} ${palette}`))
+    for (const query of ['model=claude&tstate=merged,failed&astate=active', 'epic=docs'])
+      assert.ok(titles.includes(`selected viewport ${width} ${theme} ${palette} ${query}`))
+  }
+})
