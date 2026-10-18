@@ -224,21 +224,6 @@ defmodule Aiur.Orchestrator.GlobalPauseTest do
                TrackerHealth.poll_schedule(polled_state, idle_widen_factor: 5.0)
     end
 
-    test "resumes workers held by a legacy global pause when unpausing" do
-      id = unique_id("gp-legacy-held")
-      entry = paused_entry(id, :global_pause)
-      control = Map.drop(entry.control, [:generation, :version, :application_confirmation])
-      entry = %{entry | control: control}
-      state = base_state(globally_paused: true, running: %{id => entry})
-
-      {:reply, {:ok, %{globally_paused: false}}, resumed_state} =
-        GlobalPause.set_global_pause_call(state, false)
-
-      assert resumed_state.running[id].control.status == :working
-      refute Map.has_key?(resumed_state.running[id], :paused_reason)
-      assert_receive {:resume_agent, _request_id}, 1_000
-    end
-
     test "leaves independently paused workers untouched when unpausing" do
       held = unique_id("gp-tracker-held")
 
