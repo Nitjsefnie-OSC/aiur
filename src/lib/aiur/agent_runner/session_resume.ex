@@ -73,12 +73,17 @@ defmodule Aiur.AgentRunner.SessionResume do
       result
   end
 
-  defp note_resume_turn_start(%{resumed: true, thread_id: thread_id}, identifier, {:error, {:turn_start_failed, :port_closed}}, opts)
+  defp note_resume_turn_start(%{resumed: true, thread_id: thread_id} = session, identifier, {:error, {:turn_start_failed, :port_closed}}, opts)
        when is_binary(thread_id) do
     count = SessionHandle.record_resume_failure(identifier, thread_id, opts)
 
     if count >= @resume_port_closed_limit do
-      Logger.warning("Resumed thread lost its transport at turn start #{count} times for #{identifier} thread_id=#{thread_id}; next attempt starts a fresh session")
+      diagnostics = Aiur.AppServer.Rpc.StreamDiagnostics.recent_text(Map.get(session, :port))
+
+      Logger.warning(
+        "Resumed thread lost its transport at turn start #{count} times for #{identifier} thread_id=#{thread_id}; next attempt starts a fresh session stream_diagnostics=#{inspect(diagnostics)}"
+      )
+
       SessionHandle.drop_thread(identifier, opts)
     end
   end
@@ -103,6 +108,12 @@ defmodule Aiur.AgentRunner.SessionResume do
       do: Keyword.merge(opts, prior_work: true, abandoned_thread: true),
       else: opts
   end
+
+  @doc false
+  @spec fresh_turn_completed(map(), String.t(), keyword()) :: :ok
+  def fresh_turn_completed(session, identifier, opts \\ [])
+  def fresh_turn_completed(%{resumed: false}, identifier, opts), do: SessionHandle.clear_abandoned_thread(identifier, opts)
+  def fresh_turn_completed(_session, _identifier, _opts), do: :ok
 
   # Session-lifecycle log carrying full issue context (per docs/logging.md,
   # which scopes issue-context start/completion logging to AgentRunner). Only

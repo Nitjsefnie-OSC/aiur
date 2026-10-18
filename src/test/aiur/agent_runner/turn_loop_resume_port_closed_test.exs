@@ -68,6 +68,29 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
     assert {:ok, %{thread_id: "big"}} = SessionHandle.load(ctx.issue.identifier, "codex")
   end
 
+  test "a successful fresh turn clears the abandoned marker", ctx do
+    :ok = SessionHandle.drop_thread(ctx.issue.identifier)
+    assert SessionHandle.abandoned_thread?(ctx.issue.identifier)
+
+    run_turn = fn _session, _prompt, _issue, _opts -> {:ok, %{thread_id: "fresh"}} end
+
+    assert :ok =
+             TurnLoop.run_turns(
+               %{backend: "codex", resumed: false, thread_id: "fresh", workspace: ctx.workspace, worker_host: nil},
+               ctx.workspace,
+               ctx.issue,
+               nil,
+               [resumed: false, run_turn: run_turn],
+               fn _ids -> {:ok, [ctx.issue]} end,
+               ctx.orchestrator,
+               nil,
+               1,
+               1
+             )
+
+    refute SessionHandle.abandoned_thread?(ctx.issue.identifier)
+  end
+
   # One dispatch of a resumed codex session, with up to two turns.
   defp dispatch(ctx, turn_result) do
     run_turn = fn _session, prompt, _issue, _opts ->
