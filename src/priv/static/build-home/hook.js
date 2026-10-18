@@ -3,13 +3,21 @@ import { createLife } from './life.js';
 import { shell } from './shell.js';
 import { decide } from './protocol.js';
 import { acceptSnapshot, applyDiff } from './store.js';
+import { H } from './history.js';
 import { fromServer, flushURL } from './url.js';
 import './clock.js';
-import './layout.js';
+import './render.js';
+import './columns.js';
+import './cards.js';
 import './offline.js';
+import './tools.js';
+import './span.js';
+import './states.js';
+import './list.js';
 
 export function writeOwnData() {
-  Object.assign(ctx.root.dataset, { buildHomeHook: 'mounted', bdMounted: '', buildSocket: ctx.socket });
+  if (ctx.bdStates != null) ctx.root.dataset.bdStates = ctx.bdStates;
+  Object.assign(ctx.root.dataset, { buildHomeHook: 'mounted', bdMounted: '', bdPaging: H.state, buildSocket: ctx.socket });
   if (ctx.proto.epoch !== null) {
     ctx.root.dataset.buildEpoch = ctx.proto.epoch;
     ctx.root.dataset.buildGeneration = ctx.proto.generation;
@@ -45,6 +53,7 @@ export function receive(msg) {
         if (msg.kind === 'diff') resync(); else fx.renderUnavailable('invalid');
         return;
       }
+      fx.tickCardAges();
       if (msg.kind === 'snapshot') { if (first) firstPaint(); else repaint(); }
       else { fx.dataChanged(msg); fx.drawEdgesSoon(30); }
       writeOwnData();
@@ -63,9 +72,12 @@ export function resync() {
   }, () => { if (current()) ctx.proto.inFlight = false; });
 }
 function onServerURL({ state }) {
-  const span = S.span;
-  fromServer(state); repaint();
-  if (span !== S.span) fx.jumpNow(true);
+  const view = S.view, span = S.span;
+  fromServer(state);
+  renderChrome();
+  if (view !== S.view && !S.loading) fx.viewport();
+  fx.relayout(); fx.update();
+  if (span !== S.span || view !== S.view) fx.jumpNow(true);
 }
 export function createBuildHomeHook() {
   return {
@@ -78,6 +90,7 @@ export function createBuildHomeHook() {
       this.buildLife = ctx.life;
       this.buildActive = shell();
       if (!this.buildActive) return;
+      fx.renderTools();
       writeOwnData();
       this.handleEvent('build-diff', receive); this.handleEvent('build:url', onServerURL);
       showServerState(this.el.dataset); resync();

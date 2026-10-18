@@ -12,11 +12,12 @@ defmodule Aiur.DecisionAttention do
   require Logger
 
   alias Aiur.{AlertFeed, DecisionStore, Issue, Signal}
+  alias Aiur.DecisionAttention.LegacyImport
+  alias Aiur.DecisionAttentionResolution
   alias Aiur.Events.SubscriptionStore
 
   @default_reask_interval_ms :timer.minutes(15)
   @condition_attention_ttl_ms :timer.minutes(15)
-  @default_import_limit 100
   # The outer registry call must outlast DecisionStore's 60-second write call
   # so the caller cannot time out while the registry later opens the alert.
   @open_timeout 65_000
@@ -132,7 +133,8 @@ defmodule Aiur.DecisionAttention do
       attention_loader: Keyword.get(opts, :attention_loader, &AlertFeed.list_decision_attentions/0),
       decision_projector: Keyword.get(opts, :decision_projector, &DecisionStore.project_attention/2),
       decision_store: Keyword.get(opts, :decision_store, DecisionStore),
-      import_limit: import_limit(opts),
+      owner_lookup: Keyword.get(opts, :owner_lookup, fn _identifier -> :unknown end),
+      import_limit: LegacyImport.limit(opts),
       importing?: true,
       resolved_during_import: MapSet.new()
     }
@@ -200,10 +202,10 @@ defmodule Aiur.DecisionAttention do
         {:noreply, state}
 
       attention ->
-        if stale_condition_attention?(attention, state) or answered_operator_attention?(attention, state) do
+        if DecisionAttentionResolution.resolve?(attention, state) do
           {:noreply, resolve_attention(state, attention.issue, attention.slug)}
         else
-          emit(state.alert_emitter, attention)
+          emit(state.alert_emitter, unknown_owner_attention(attention, state))
           next_attention = schedule_reask(attention, state.reask_interval_ms)
           {:noreply, %{state | attentions: Map.put(state.attentions, key, next_attention)}}
         end
@@ -211,17 +213,10 @@ defmodule Aiur.DecisionAttention do
   end
 
   def handle_info({:legacy_attentions_loaded, attentions}, state) when is_list(attentions) do
-    {to_import, ignored} = Enum.split(attentions, state.import_limit)
+    attentions
+    |> LegacyImport.messages(state.import_limit)
+    |> Enum.each(&send(self(), &1))
 
-    if ignored != [] do
-      Logger.warning(
-        "decision_attention legacy_import_truncated " <>
-          "limit=#{state.import_limit} ignored_count=#{length(ignored)}"
-      )
-    end
-
-    Enum.each(to_import, &send(self(), {:restore_attention, &1}))
-    send(self(), :legacy_attention_import_complete)
     {:noreply, state}
   end
 
@@ -234,6 +229,16 @@ defmodule Aiur.DecisionAttention do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp unknown_owner_attention(%{slug: "stranded-requeued"} = attention, state) do
+    if DecisionAttentionResolution.owner_status(attention, state) == :unknown do
+      %{attention | question: "Ticket #{issue_identifier!(attention.issue)} has a stranded reminder, but its live-owner status could not be checked."}
+    else
+      attention
+    end
+  end
+
+  defp unknown_owner_attention(attention, _state), do: attention
 
   defp schedule_reask(attention, interval_ms) when is_integer(interval_ms) and interval_ms > 0 do
     timer_ref = Process.send_after(self(), {:reask, attention_key(attention)}, interval_ms)
@@ -301,29 +306,10 @@ defmodule Aiur.DecisionAttention do
 
     {:ok, _pid} =
       Task.start(fn ->
-        send(owner, {:legacy_attentions_loaded, safely_load_attentions(loader)})
+        send(owner, {:legacy_attentions_loaded, LegacyImport.load(loader)})
       end)
 
     :ok
-  end
-
-  defp safely_load_attentions(loader) do
-    case loader.() do
-      attentions when is_list(attentions) ->
-        attentions
-
-      _other ->
-        Logger.warning("decision_attention legacy_import_failed reason=invalid_loader_result")
-        []
-    end
-  rescue
-    error ->
-      Logger.warning("decision_attention legacy_import_failed reason=#{inspect(Exception.message(error))}")
-      []
-  catch
-    kind, reason ->
-      Logger.warning("decision_attention legacy_import_failed reason=#{inspect({kind, reason})}")
-      []
   end
 
   defp restore_attention(
@@ -359,7 +345,7 @@ defmodule Aiur.DecisionAttention do
       timer_ref: nil
     }
 
-    if stale_condition_attention?(attention, state) do
+    if DecisionAttentionResolution.resolve?(attention, state) do
       resolve_attention(state, issue, slug)
     else
       restore_actionable_attention(attention, source_created_at, key, state)
@@ -424,39 +410,6 @@ defmodule Aiur.DecisionAttention do
       | attentions: Map.delete(state.attentions, key),
         resolved_during_import: resolved_during_import
     }
-  end
-
-  # These slugs describe mutable main-branch CI state. The alert is a snapshot,
-  # not a daemon-observed condition, so an unrefreshed snapshot expires instead
-  # of being re-raised forever as if the red result were still current.
-  defp stale_condition_attention?(%{slug: slug, opened_at: %DateTime{} = opened_at}, state) do
-    condition_attention?(slug) and
-      DateTime.diff(state.now_fun.(), opened_at, :millisecond) >= state.condition_attention_ttl_ms
-  end
-
-  defp stale_condition_attention?(_attention, _state), do: false
-
-  defp answered_operator_attention?(%{slug: "operator-decision", issue: issue}, state) do
-    identifier = issue_identifier!(issue)
-
-    state.decision_store
-    |> DecisionStore.list()
-    |> Enum.all?(fn decision ->
-      decision.ticket.identifier != identifier or decision.decision_status not in [:open, :deferred]
-    end)
-  end
-
-  defp answered_operator_attention?(_attention, _state), do: false
-
-  defp condition_attention?(slug) do
-    base_branch = Aiur.Config.base_branch()
-    branch_red = "#{base_branch}-red"
-    branch_ci_red = "#{base_branch}-ci-red"
-    detailed_ci_red_prefix = branch_ci_red <> "-"
-
-    slug in [branch_red, branch_ci_red] or
-      (String.starts_with?(slug, detailed_ci_red_prefix) and
-         byte_size(slug) > byte_size(detailed_ci_red_prefix))
   end
 
   defp condition_attention_ttl_ms(opts) do
@@ -525,13 +478,6 @@ defmodule Aiur.DecisionAttention do
 
   defp issue_identifier!(%Issue{id: id}) when is_binary(id) and id != "", do: id
   defp issue_identifier!(%Issue{identifier: identifier}) when is_binary(identifier) and identifier != "", do: identifier
-
-  defp import_limit(opts) do
-    case Keyword.get(opts, :import_limit, @default_import_limit) do
-      limit when is_integer(limit) and limit > 0 -> limit
-      _invalid -> @default_import_limit
-    end
-  end
 
   defp cancel_timer(%{timer_ref: timer_ref}) when is_reference(timer_ref) do
     Process.cancel_timer(timer_ref)

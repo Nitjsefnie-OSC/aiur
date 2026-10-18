@@ -54,6 +54,7 @@
     "Aiur.GitHub.Errors",
     "Aiur.GitHub.FailureEvidence",
     "Aiur.GitHub.GraphQLCost",
+    "Aiur.GitHub.HoldPressure",
     "Aiur.GitHub.HostCommand",
     "Aiur.GitHub.HumanReviewGate",
     "Aiur.GitHub.IssueDependencies",
@@ -62,11 +63,13 @@
     "Aiur.GitHub.Issues",
     "Aiur.GitHub.Labels",
     "Aiur.GitHub.LocalHold",
+    "Aiur.GitHub.MainFixer",
     "Aiur.GitHub.MergeQueue",
     "Aiur.GitHub.OpenIssueListing",
     "Aiur.GitHub.OpenIssueSnapshot",
     "Aiur.GitHub.PollSnapshots",
     "Aiur.GitHub.PullRequests",
+    "Aiur.GitHub.PullRequests.CommitCiStatus",
     "Aiur.GitHub.Quota",
     "Aiur.GitHub.ReadCache",
     "Aiur.GitHub.RequestOrigin",
@@ -90,6 +93,7 @@
     "Aiur.Webhooks.ModeTable"
   ],
   "requires": [
+    "agent-sandbox",
     "config",
     "kernel",
     "signal",
@@ -103,6 +107,7 @@
     "config": [],
     "env": [
       "AIUR_GITHUB_BUDGET_CONSUMER",
+      "AIUR_GITHUB_BUDGET_DIR",
       "AIUR_GITHUB_BUDGET_IDENTITY_KEY",
       "GH_TOKEN",
       "GITHUB_APP_ID",
@@ -132,6 +137,7 @@
   "config": [],
   "env": [
     "AIUR_GITHUB_BUDGET_CONSUMER",
+    "AIUR_GITHUB_BUDGET_DIR",
     "AIUR_GITHUB_BUDGET_IDENTITY_KEY",
     "GH_TOKEN",
     "GITHUB_APP_ID",
