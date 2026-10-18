@@ -6,6 +6,7 @@ defmodule Aiur.CodingAgent.RegistryContractTest do
   @moduletag :r7_characterization
 
   alias Aiur.CodingAgent.Registry
+  alias Aiur.Harness.Capabilities
 
   @required_keys [
     :adapter,
@@ -61,7 +62,7 @@ defmodule Aiur.CodingAgent.RegistryContractTest do
   test "at most one backend uses the tmux pane transport" do
     pane_backends =
       Enum.filter(Registry.entries(), fn {key, entry} ->
-        Aiur.Harness.Capabilities.delivery_primitives_for_entry(key, entry).transport == :tmux_pane
+        Capabilities.delivery_primitives_for_entry(key, entry).transport == :tmux_pane
       end)
 
     assert length(pane_backends) <= 1

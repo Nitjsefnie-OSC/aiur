@@ -18,6 +18,7 @@ defmodule Aiur.CodingAgent do
   alias Aiur.CodingAgent.ProvidersView
   alias Aiur.CodingAgent.Routing
   alias Aiur.Config
+  alias Aiur.Harness.Capabilities
 
   @type backend :: String.t()
   @type provider_descriptor :: ProvidersView.provider_descriptor()
@@ -122,7 +123,7 @@ defmodule Aiur.CodingAgent do
 
   defp resolve_pane_backend(nil) do
     Enum.find_value(backends(), fn {key, entry} ->
-      if Aiur.Harness.Capabilities.delivery_primitives_for_entry(key, entry).transport == :tmux_pane,
+      if Capabilities.delivery_primitives_for_entry(key, entry).transport == :tmux_pane,
         do: key
     end)
   end
