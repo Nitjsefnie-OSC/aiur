@@ -67,6 +67,10 @@ The full matrix runs through `npm run test:build-home-band-full` with
 `AIUR_HOME_PARITY_PART=1..4`. This is separate from the broader C12 sign-off
 flag `AIUR_PARITY_FULL`.
 
+Each partition uses one browser worker because dataset selection is global to
+its fixture server. The four partitions have separate servers; no pixel or
+motion cells are removed.
+
 Shard balancing uses recorded CI timings; until the
 first routine run is measured, the previous full selections’ 303s parity and
 280s motion measurements serve as conservative bounds, not routine timings.
