@@ -64,12 +64,16 @@ defmodule Aiur.RepoBase.Clone do
 
   @doc false
   @spec maybe_build(Path.t(), String.t() | nil, boolean()) :: {:ok, Path.t()} | {:error, term()}
-  def maybe_build(base_path, _base_build, false), do: {:ok, base_path}
+  def maybe_build(base_path, base_build, rebuild?), do: maybe_build(base_path, base_build, rebuild?, fn _os_pid -> :ok end)
 
-  def maybe_build(base_path, base_build, true) do
+  @doc false
+  @spec maybe_build(Path.t(), String.t() | nil, boolean(), (pos_integer() -> term())) :: {:ok, Path.t()} | {:error, term()}
+  def maybe_build(base_path, _base_build, false, _on_os_pid), do: {:ok, base_path}
+
+  def maybe_build(base_path, base_build, true, on_os_pid) do
     emit(:building)
 
-    case run_base_build(base_path, base_build) do
+    case run_base_build(base_path, base_build, on_os_pid) do
       :ok ->
         case write_base_record(base_path, base_build) do
           :ok -> {:ok, base_path}
@@ -81,10 +85,10 @@ defmodule Aiur.RepoBase.Clone do
     end
   end
 
-  defp run_base_build(_base_path, nil), do: :ok
-  defp run_base_build(_base_path, ""), do: :ok
+  defp run_base_build(_base_path, nil, _on_os_pid), do: :ok
+  defp run_base_build(_base_path, "", _on_os_pid), do: :ok
 
-  defp run_base_build(base_path, command) do
+  defp run_base_build(base_path, command, on_os_pid) do
     # Same execution shape as workspace hooks: scrub the Executor’s Erlang
     # distribution env at the shell level, then run in the base dir. `base_env/1`
     # trusts the base's mise.toml (MISE_TRUSTED_CONFIG_PATHS) so mise-provided
@@ -94,17 +98,43 @@ defmodule Aiur.RepoBase.Clone do
     # package cache content.
     scrubbed = AgentEnvironment.scrub_shell_command(command, github_credential: false)
 
-    {out, status} =
-      System.cmd("sh", ["-c", scrubbed],
-        cd: base_path,
-        env: base_env(base_path) ++ AgentEnvironment.system_shell_startup_env(),
-        stderr_to_stdout: true
-      )
+    shell = System.find_executable("sh")
+
+    port =
+      Port.open({:spawn_executable, String.to_charlist(shell)}, [
+        :binary,
+        :exit_status,
+        :stderr_to_stdout,
+        args: [~c"-c", String.to_charlist(scrubbed)],
+        cd: String.to_charlist(base_path),
+        env: port_env(base_env(base_path) ++ AgentEnvironment.system_shell_startup_env())
+      ])
+
+    case Port.info(port, :os_pid) do
+      {:os_pid, os_pid} -> on_os_pid.(os_pid)
+      _ -> :ok
+    end
+
+    {out, status} = collect_port_output(port, [])
 
     case status do
       0 -> :ok
       _ -> {:error, {:base_build_failed, status, out}}
     end
+  end
+
+  defp collect_port_output(port, chunks) do
+    receive do
+      {^port, {:data, chunk}} -> collect_port_output(port, [chunk | chunks])
+      {^port, {:exit_status, status}} -> {chunks |> Enum.reverse() |> IO.iodata_to_binary(), status}
+    end
+  end
+
+  defp port_env(overrides) do
+    System.get_env()
+    |> Map.merge(Map.new(overrides))
+    |> Enum.reject(fn {_name, value} -> is_nil(value) end)
+    |> Enum.map(fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end)
   end
 
   @doc false

@@ -28,9 +28,8 @@ defmodule Aiur.RepoBase.Watchdog do
 
   def clear_released_watchdog(state), do: clear_dispatch_watchdog(state)
 
-  # Restart the idle clock for a hold whose worker is still alive. The original
-  # build deadline is carried forward, so a live wedged build cannot hold the
-  # fleet forever. A fresh ref rejects stale in-flight messages.
+  # Restart only the idle clock when its worker is alive. The independent
+  # build.timer stays in the build record and is unaffected by this re-arm.
   @doc false
   @spec rearm_dispatch_watchdog(map()) :: map()
   def rearm_dispatch_watchdog(%{dispatch_watchdog: %{timer: timer}} = state) do

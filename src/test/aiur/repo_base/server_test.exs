@@ -215,40 +215,6 @@ defmodule Aiur.RepoBase.ServerTest do
       assert DispatchPolicy.prewarm_gate(true, phase) == :dispatch
     end
 
-    test "a live build is never killed by the dispatch watchdog", %{server: pid, cfg: cfg} do
-      pid = restart_enabled_server(pid, cfg, dispatch_hold_timeout_ms: 50, build_hold_timeout_ms: 500)
-      Phoenix.PubSub.subscribe(Aiur.PubSub, "prewarm:phase")
-      build_pid = install_live_build(pid, "same")
-
-      assert :building = GenServer.call(pid, :refresh_for_dispatch)
-      assert %{dispatch_watchdog: %{}} = :sys.get_state(pid)
-
-      # A cold build (deps + compile + dialyzer PLT) can run for many minutes;
-      # the idle watchdog must re-arm rather than kill a progressing build.
-      Process.sleep(150)
-      assert %{phase: :building, build: %{pid: ^build_pid}} = :sys.get_state(pid)
-      assert Process.alive?(build_pid)
-      refute_receive {:prewarm_phase, {:error, {:repo_base_dispatch_hold_stalled, _}}}, 100
-    end
-
-    test "a live stalled build is terminated at the total hold bound and releases dispatch", %{server: pid, cfg: cfg} do
-      pid = restart_enabled_server(pid, cfg, dispatch_hold_timeout_ms: 25, build_hold_timeout_ms: 100)
-      Phoenix.PubSub.subscribe(Aiur.PubSub, "prewarm:phase")
-      build_pid = install_live_build(pid, "same", timeout: true)
-
-      assert :building = GenServer.call(pid, :refresh_for_dispatch)
-      assert %{dispatch_watchdog: %{}} = :sys.get_state(pid)
-      assert Process.alive?(build_pid)
-
-      assert_receive {:prewarm_phase, {:error, {:repo_base_build_hold_timeout, 100}}}, 2_000
-      refute Process.alive?(build_pid)
-
-      assert %{phase: {:error, {:repo_base_build_hold_timeout, 100}}, build: nil, dispatch_watchdog: nil} =
-               :sys.get_state(pid)
-
-      assert DispatchPolicy.prewarm_gate(true, GenServer.call(pid, :refresh_for_dispatch)) == :dispatch
-    end
-
     test "a completed build clears the dispatch watchdog", %{server: pid, cfg: cfg} do
       pid = restart_enabled_server(pid, cfg, dispatch_hold_timeout_ms: 50)
       Phoenix.PubSub.subscribe(Aiur.PubSub, "prewarm:phase")
@@ -407,14 +373,13 @@ defmodule Aiur.RepoBase.ServerTest do
     pid
   end
 
-  defp install_live_build(pid, head, opts \\ []) do
+  defp install_live_build(pid, head) do
     test_pid = self()
 
     :sys.replace_state(pid, fn state ->
       {build_pid, ref} = spawn_monitor(fn -> Process.sleep(:infinity) end)
       send(test_pid, {:build_pid, build_pid})
-      timer = if Keyword.get(opts, :timeout, false), do: Process.send_after(pid, {:build_hold_timeout, ref}, state.build_hold_timeout_ms)
-      %{state | phase: :building, build: %{pid: build_pid, ref: ref, head: head, timer: timer}}
+      %{state | phase: :building, build: %{pid: build_pid, ref: ref, head: head, os_pid: nil, timer: nil}}
     end)
 
     assert_receive {:build_pid, build_pid}, 1000

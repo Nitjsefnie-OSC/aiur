@@ -224,6 +224,13 @@ defmodule Aiur.RepoBase do
 
   # The build worker reports the head it locked in before the (expensive) build,
   # so a later ls-remote probe can tell whether the base branch advanced past it.
+  def handle_info({:build_os_pid, pid, os_pid}, %{build: %{pid: pid} = build} = state) do
+    timer = Process.send_after(self(), {:build_hold_timeout, build.ref}, state.build_hold_timeout_ms)
+    {:noreply, %{state | build: %{build | os_pid: os_pid, timer: timer}}}
+  end
+
+  def handle_info({:build_os_pid, _pid, _os_pid}, state), do: {:noreply, state}
+
   def handle_info({:build_head, pid, head}, %{build: %{pid: pid} = build} = state) do
     {:noreply, %{state | build: %{build | head: head}}}
   end
@@ -325,6 +332,7 @@ defmodule Aiur.RepoBase do
         cond do
           state.build != nil -> ensure_probe(state, repo_url)
           state.phase == :checking -> ensure_probe(state, repo_url)
+          match?({:error, {:repo_base_build_hold_timeout, _}}, state.phase) -> state
           state.phase == :ready -> probe_freshness(state, repo_url)
           true -> start_build(state, base, repo_url, command)
         end
@@ -379,9 +387,7 @@ defmodule Aiur.RepoBase do
     parent = self()
 
     {pid, ref} = spawn_monitor(fn -> build_worker(parent, base, repo_url, command) end)
-    timer = Process.send_after(self(), {:build_hold_timeout, ref}, state.build_hold_timeout_ms)
-
-    %{state | phase: :building, base_path: base, build: %{pid: pid, ref: ref, head: nil, timer: timer}, freshness: :unknown}
+    %{state | phase: :building, base_path: base, build: %{pid: pid, ref: ref, head: nil, os_pid: nil, timer: nil}, freshness: :unknown}
   end
 
   defp abort_build(%{build: %{}} = state) do
@@ -400,8 +406,9 @@ defmodule Aiur.RepoBase do
     |> Map.merge(%{phase: :idle, freshness: :unknown})
   end
 
-  defp kill_build(%{build: %{pid: pid, ref: ref, timer: timer}}) do
+  defp kill_build(%{build: %{pid: pid, ref: ref, timer: timer} = build}) do
     Process.demonitor(ref, [:flush])
+    Aiur.ProcessTree.graceful_kill_tree(Map.get(build, :os_pid))
     Process.exit(pid, :kill)
     if is_reference(timer), do: Process.cancel_timer(timer)
     :ok
@@ -417,7 +424,12 @@ defmodule Aiur.RepoBase do
         {:ok, changed?} ->
           head = Clone.head_of(base)
           send(server, {:build_head, self(), head})
-          outcome = Clone.maybe_build(base, command, changed? or not Clone.built?(base, command))
+
+          outcome =
+            Clone.maybe_build(base, command, changed? or not Clone.built?(base, command), fn os_pid ->
+              send(server, {:build_os_pid, self(), os_pid})
+            end)
+
           send(server, {:build_done, self(), head, outcome})
           outcome
 

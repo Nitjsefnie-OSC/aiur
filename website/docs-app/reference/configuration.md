@@ -224,7 +224,7 @@ for 10 minutes. Each base build also has a one-hour total runtime bound; Aiur
 terminates a build that exceeds it and releases dispatch for cold-clone fallback.
 
 For the idle watchdog, "stalled" means the hold's worker is dead with no
-completion signal in flight. The total build bound also limits live builds.
+completion signal in flight. Timed-out builds are not retried automatically; restart Aiur to retry.
 
 The `system.dispatch.prewarm_blocked` alert is not raised for a routine refresh:
 a freshness probe that self-clears in seconds holds dispatch too briefly to
