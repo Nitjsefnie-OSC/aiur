@@ -63,6 +63,16 @@ reach, fails.
 Run `python3 scripts/check-file-size.py --base <commit>` locally; without
 `--base`, it uses the merge base with `origin/main`.
 
+For refactor reporting, run `python3 scripts/check-file-size.py --census <base> <head>`
+from the repository root; add `--json` for machine-readable output. It reuses the
+same tracked-text counter and prints base/head totals and added, removed and
+moved lines by area. Rename/copy detection uses Git similarity: unchanged lines
+are moved, and edited lines remain added/removed. Cross-area moves are credited
+to the base path's area; copies increase tree totals without counting reused
+content as added. Binary changes are counted as files, and symlinks are excluded.
+Area precedence and patterns live in `scripts/file_size_census.py`. This is
+instrumentation only, with no census CI enforcement or claimed saving.
+
 ## Reuse before invention
 
 - **The extraction trigger is the second concrete usage — not the first, not
@@ -347,6 +357,10 @@ Use `python3 scripts/check-components.py --format` to keep the manifest determin
 Arrays have one member per line; string sets and exemption TSVs stay sorted.
 Workflow security enforces this layout with `scripts/check-hot-list-format.py`.
 Do not use union merges on JSON or sorted/unique exemption lists.
+
+Seams live one per file in `scripts/components/seams/`, named
+`<from>--<to_module>--<kind>.json`, never inline in `components.json`: two PRs
+that each add a seam then touch different files and merge without conflict.
 
 Every root config section and scalar field, env schema name, and public
 `Aiur.Config.Paths` function ending in `_dir` or `_path` must have exactly one

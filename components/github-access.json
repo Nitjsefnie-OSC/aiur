@@ -82,7 +82,8 @@
       "GITHUB_APP_INSTALLATION_ID",
       "GITHUB_APP_PRIVATE_KEY",
       "GITHUB_APP_PRIVATE_KEY_PATH",
-      "GITHUB_TOKEN"
+      "GITHUB_TOKEN",
+      "AIUR_GITHUB_BUDGET_DIR"
     ],
     "state": [],
     "capabilities": []
@@ -111,7 +112,8 @@
     "GITHUB_APP_INSTALLATION_ID",
     "GITHUB_APP_PRIVATE_KEY",
     "GITHUB_APP_PRIVATE_KEY_PATH",
-    "GITHUB_TOKEN"
+    "GITHUB_TOKEN",
+    "AIUR_GITHUB_BUDGET_DIR"
   ],
   "capabilities": [],
   "facade_pending": "MP-R1-GHA-4"
