@@ -54,6 +54,7 @@ export function shell() {
   });
   life.on(document, 'keydown', e => {
     if (e.key !== 'Escape') return;
+    if (S.pop) { const g = S.pop; S.pop = null; fx.renderFilters(); $('[data-g="' + g + '"]', root)?.focus(); return; }
     if (!$('#bd-tree', root).hidden) fx.closeTree(); else if (ctx.lockId) fx.unlock();
   });
   life.on(vp, 'scroll', () => {

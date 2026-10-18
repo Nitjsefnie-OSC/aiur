@@ -43,3 +43,5 @@ span.ax-cnt:hover { color: var(--muted); background: none; }
 .c-ag .ax-mono { width: 15px; height: 15px; font-size: .5rem; }
 .lr[data-id]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .lh[data-st] em { white-space: normal; }
+
+.bd-opt > .ax-mono { width: 14px; height: 14px; border-radius: 50%; font-size: .5rem; }

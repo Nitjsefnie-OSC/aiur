@@ -16,6 +16,7 @@ import './usage.js';
 import './span.js';
 import './states.js';
 import './list.js';
+import './filters.js';
 
 export function writeOwnData() {
   if (ctx.bdStates != null) ctx.root.dataset.bdStates = ctx.bdStates;
@@ -92,7 +93,7 @@ export function createBuildHomeHook() {
       this.buildLife = ctx.life;
       this.buildActive = shell();
       if (!this.buildActive) return;
-      fx.renderTools();
+      fx.renderTools(); fx.renderFilters();
       writeOwnData();
       this.handleEvent('build-diff', receive); this.handleEvent('build:url', onServerURL);
       showServerState(this.el.dataset); resync();
