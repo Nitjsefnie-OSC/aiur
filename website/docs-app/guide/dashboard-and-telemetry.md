@@ -37,7 +37,9 @@ is marked as still settling; an unhealthy refresh is marked as degraded.
 
 ### Build timeline filters
 
-The `/build` toolbar filters by Epic, Feature, Model, Ticket and Agent. Options in one group combine with OR; groups combine with AND. Epic hides other tickets and lays out the board again; other groups dim nonmatching cards. List view removes nonmatching rows. Filters are saved in the URL.
+The `/build` toolbar filters by Epic, Feature, Model, Ticket and Agent. Options in one group combine with OR; groups combine with AND. Filters are saved in the URL.
+
+Epic hides other tickets and lays out the board again; other groups dim nonmatching cards. In List view, Feature focus dims unrelated rows; the other filters remove nonmatching rows.
 
 Tickets closed as not planned are hidden by default. Choose **Not planned** in the Ticket group to show them. **Clear** restores the default view. Escape closes a filter popover and returns focus to its button.
 

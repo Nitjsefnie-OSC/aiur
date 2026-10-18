@@ -112,4 +112,7 @@ export const recordedSeconds = {
   'test:browser-suite -- build-home-mobile-fit': 12,
   'test:browser-suite -- build-home-states': 9,
   'test:browser-suite -- build-home-states-e2e': 15,
+  // Initial local harness timings (2026-10-18): 215.5s including admission wait; parity 109.9s.
+  'test:build-home-filters': 216,
+  'test:build-home-filters-parity': 110,
 }
