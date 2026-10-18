@@ -47,6 +47,9 @@ export function setHover(id, el) {
       const r = el.getBoundingClientRect(), c = ctx.content.getBoundingClientRect();
       lt.style.left = r.right - c.left - 1 + 'px';
       lt.style.top = r.top - c.top + Math.max(0, r.height / 2 - 14) + 'px';
+      // The transparent scrollbar track must not intercept overlapping tab controls.
+      const track = ctx.root.querySelector('#bd-sb')?.getBoundingClientRect(), box = lt.getBoundingClientRect();
+      lt.style.zIndex = track && box.right > track.left && box.left < track.right && box.bottom > track.top && box.top < track.bottom ? '16' : '';
     }
   }
   ctx.content?.classList.toggle('hovering', !!id);

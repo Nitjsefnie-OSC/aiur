@@ -8,13 +8,10 @@ async function diff(page, name) {
   const response = await page.request.get('/build-control/diff?name=' + name)
   expect(response.status(), await response.text()).toBe(200)
 }
-async function arrowPoint(page, requireTabRoom = false) {
-  return page.evaluate(requireTabRoom => {
+async function arrowPoint(page, rootId = null) {
+  return page.evaluate(rootId => {
     for (const path of document.querySelectorAll('.bd-eh')) {
-      if (requireTabRoom) {
-        const source = [...st.ctx.R.values()].find(el => el.dataset.id === path.dataset.e)
-        if (!source || source.getBoundingClientRect().right + 30 > st.ctx.vp.getBoundingClientRect().right) continue
-      }
+      if (rootId && path.dataset.e !== rootId) continue
       const matrix = path.getScreenCTM(), len = path.getTotalLength()
       for (let i = 1; i < 50; i++) {
         const p = path.getPointAtLength(len * i / 50)
@@ -23,7 +20,7 @@ async function arrowPoint(page, requireTabRoom = false) {
       }
     }
     return null
-  }, requireTabRoom)
+  }, rootId)
 }
 
 test('B1 hover requires trees=1; arrow click still locks without it', async ({ page }) => {
@@ -268,9 +265,10 @@ test.describe('B10 phone touch', () => {
     expect(await page.evaluate(() => window.openedTicket)).toBe('9012')
     await expect(page.locator('.bd-content')).not.toHaveClass(/hovering/)
     await page.keyboard.press('Escape')
-    // Leave room for the design's right-edge tab beside the phone scrollbar.
-    const point = await arrowPoint(page, true)
+    // This right-hand root puts the tree tab over the transparent scrollbar track.
+    const point = await arrowPoint(page, '9011')
     expect(point).not.toBeNull()
+    expect(point.id).toBe('9011')
     await page.touchscreen.tap(point.x, point.y)
     await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe(point.id)
     const eye = page.locator('[data-lt="tree"]')
