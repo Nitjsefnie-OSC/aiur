@@ -62,6 +62,8 @@ test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({
       ctx.vp.scrollTop = ctx.secs[item.t.sec].el.offsetTop + item.y - 100; fx.update(); fx.drawEdges(true)
     }, id)
     await expect(page.locator(`.bd-card[data-id="${id}"]`)).toBeVisible()
+    // Column transitions can still hide an endpoint after its card enters the window.
+    for (const edgeId of ids) await expect(page.locator(`#bd-edges .bd-eh[data-e="${edgeId}"]`)).toHaveCount(1)
     // Capture only this case's rendered lines and arrows in their own bounds;
     // scrolling the tall original SVG would recycle the windowed endpoints.
     const captured = await page.evaluate(ids => {
