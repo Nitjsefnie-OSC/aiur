@@ -9,6 +9,14 @@ export const recordedSeconds = {
   // Local governed npm run test:build-home-gantt, warm build (2026-10-18): 129s including fixture startup.
   // Remeasure after #3146 enables the four pending composition cells.
   'test:build-home-gantt': 129,
+  // CI run39148293958 (d9ee8e071), job117736821220: actual suite wall seconds.
+  'test:build-home-now-band': 44.7,
+  'test:browser-suite -- build-home-live-button-parity': 52.7,
+  // Conservative CI-measured full-selection bounds from review5564161995 (#5124).
+  // Routine commands select fewer cells; these are NOT routine measurements.
+  // Refresh with routine suite-duration logs after the first new-head CI run.
+  'test:build-home-band-parity': 303,
+  'test:build-home-band-motion': 280,
   // PR #4805 suite-duration logs (2026-10-18): units/browser from run 39093008001 at ea5f25e39.
   // Parity uses the latest green run 39093008001 at ea5f25e39 (102.5s).
   'test:build-home-edges-unit': 0.2,

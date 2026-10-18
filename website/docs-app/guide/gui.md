@@ -102,6 +102,11 @@ List (`?view=list`) shows Live, Planned, Not queued and newest-first History as 
 Ticket rows support keyboard focus. Use **Load earlier day** to fetch more history.
 Unknown values stay explicit, and degraded section headings show their source state and read age.
 
+The Now band shows every active agent between history and the plan. It settles
+at the nearest viewport edge after scrolling; **Live** returns to it. Minimize
+keeps the state counts visible (`live=min`), and a state preset expands it.
+The clock shows cached observation time when stale and `—` when unknown.
+
 The toolbar selects Timeline, Gantt or List and retains the view in the URL.
 
 In Gantt, history card height represents elapsed run time; idle gaps over three hours fold into hatched bands.
