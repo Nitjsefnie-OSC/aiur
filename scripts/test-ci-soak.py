@@ -273,5 +273,15 @@ class SoakTest(unittest.TestCase):
         self.assertIn('::warning::Playwright soak skipped: over budget: tests/a.spec.mjs; command:', result.stdout)
         self.assertIn('node scripts/run-browser-tests.mjs tests/a.spec.mjs --repeat-each=5', result.stdout)
 
+    def test_sample_timeout_warns_as_suspected_hang_and_does_not_fail_gate(self):
+        result, calls = self.soak(
+            'browser', SOAK_SPECS='["tests/build-home-motion.browser.spec.mjs"]',
+            PLAYWRIGHT_LIST_COUNT='201', TIMEOUT_ON='tests/build-home-motion.browser.spec.mjs',
+            AIUR_SOAK_TEST_TIMEOUT='0.05')
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('::warning::Playwright soak skipped: suspected hang:', result.stdout)
+        self.assertIn('node scripts/run-browser-tests.mjs tests/build-home-motion.browser.spec.mjs --grep',
+                      result.stdout)
+
 if __name__ == '__main__':
     unittest.main()

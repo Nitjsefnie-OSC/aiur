@@ -188,7 +188,7 @@ def soak_browser():
             # motion repetitions can exceed 300s. Keep total browser runtime within
             # 20 minutes, leaving setup/cleanup time inside the 25-minute job.
             timeout = max(1, BROWSER_RUN_TIMEOUT_SECONDS - elapsed)
-            status = run_browser(command, spec, sampled, timeout)
+            status = run_browser(command, spec, sampled, min(timeout, RUN_TIMEOUT_SECONDS) if sampled else timeout)
             print('::endgroup::', flush=True)
             if status != 0:
                 notice(f'Playwright soak failed for {spec}. Reproduce: cd src/browser && {shlex.join(command)}', 'error')
@@ -255,7 +255,7 @@ def run_browser(command, spec, sampled, timeout):
     try:
         return subprocess.run(command, cwd=BROWSER_ROOT, timeout=timeout).returncode
     except subprocess.TimeoutExpired:
-        classification = 'suspected hang' if sampled else 'soak skipped: over budget'
+        classification = 'soak skipped: suspected hang' if sampled else 'soak skipped: over budget'
         notice(f'Playwright {classification}: {spec}; command: {shlex.join(command)} '
                f'(timed out after {timeout:g}s)', 'warning')
         return 0
