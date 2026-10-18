@@ -76,7 +76,7 @@ for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'now0',
   })
 }
 // #3141 acceptance: same global scrollTop, rendered mobile cards and headers, no masks.
-for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) for (const dataset of ['live', 'dense', 'newrepo', 'noqueue']) test(`mobile composed headers without masks: ${dataset} ${theme} ${palette}`, async ({ browser }) => {
+for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline']) test(`mobile composed headers without masks: ${dataset} ${theme} ${palette}`, async ({ browser }) => {
   const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS[2], theme, palette, dataset }, { motion: true })
   try {
     // Freeze readiness before the product's first scroll event can page history;
