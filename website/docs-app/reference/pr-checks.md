@@ -33,9 +33,9 @@ Run counts depend on how many test files the pull request changes.
 - A failure prints the exact command to reproduce it, including the seed.
 
 
-## Home band and mobile parity
+## Home band, mobile and Gantt parity
 
-PR browser smoke stays at **seven shards**, including PRs selecting full CI.
+PR browser smoke stays at **eight shards**, including PRs selecting full CI.
 The routine pixel selection uses **390px**, datasets **live/offline**, both
 **dark/light** themes and **gruvbox/aiur** palettes: eight band pixel cases and
 eight unmasked composed mobile card/header cases.
@@ -62,6 +62,8 @@ package files and the matrix workflow/selector. `scripts/classify-home-ci.py`
 is the exact path list.
 
 Missing or invalid candidate metadata fails closed.
+
+Gantt smoke checks run geometry, live updates, complete history edges, unknown-value captures and four representative composition cells. `npm run test:build-home-gantt:full` also runs the full 108-cell dataset/span/width/theme/palette composition matrix in the same four CI partitions.
 
 The full matrix runs through `npm run test:build-home-band-full` with
 `AIUR_HOME_PARITY_PART=1..4`. This is separate from the broader C12 sign-off

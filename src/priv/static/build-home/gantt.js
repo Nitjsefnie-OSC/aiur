@@ -103,4 +103,4 @@ export function planGantt(ents, ctx) {
   });
   return { items, end, label: { y: start + 30, t: "≈ " + (ctx.unknown ? "≥" : "") + "+" + Math.round(cum) + "h" }, unknown };
 }
-export const ganttExt = { hist: ganttHist, plan: planGantt, bandHeight: bandGanttHeight };
+export const ganttExt = { hist: ganttHist, plan: planGantt, bandHeight: (t, { pphG, CH }) => bandGanttHeight(t, { pph: pphG, CH }) };

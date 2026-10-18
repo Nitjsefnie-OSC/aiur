@@ -2,7 +2,8 @@ import { test, expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { openFixture } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
-import { openParityPair, expectDesignParity, waitParityReady, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
+import { openParityPair, expectDesignParity, waitParityReady, PARITY_VIEWPORTS, captureStable, openProduct, parityContextOptions } from '../support/design-parity.mjs'
+import { freezeGanttComposition, scrollGanttComposition } from '../support/build-home-gantt-parity.mjs'
 
 const root = new URL('../../test/fixtures/build_home/', import.meta.url)
 const design = await readFile(new URL('design-source/assets/build.js', root), 'utf8')
@@ -141,16 +142,16 @@ test('U12 trailing segment uses payload now despite an unrelated browser clock',
   })).toBe(Date.parse('2026-10-07T14:20:00-07:00'))
 })
 
-test('G1 exact history and planned Gantt layout oracle across datasets, spans and widths', async ({ page }) => {
+test('G1 exact history, planned and band Gantt layout oracle across datasets, spans and widths', async ({ page }) => {
   await page.addScriptTag({ content: oracle })
   const result = await page.evaluate(async fixtures => {
     const { intake } = await import('/build-home/protocol.js'), { setNow } = await import('/build-home/clock.js')
     performance.now = () => 0; setNow(NOW)
     const sources = Object.fromEntries(['history', 'queue', 'index'].map(k => [k, { state: 'ok' }]))
-    const summarize = L => Object.fromEntries(['hist', 'plan'].map(sec => {
+    const summarize = L => ({ band: { h: L.band.h, BK: L.band.BK, items: L.band.items.map(({ t, ...i }) => ({ id: t.id, ...i })) }, secs: Object.fromEntries(['hist', 'plan'].map(sec => {
       const s = L.secs[sec]
       return [sec, { h: s.h, marks: s.marks, labels: s.labels, items: s.items.map(({ t, ...i }) => ({ id: t.id, ...i })) }]
-    }))
+    })) })
     let count = 0; const failures = []
     for (const [dataset, snapshot] of Object.entries(fixtures)) for (const span of [1, 2, 3, 7, 30]) for (const dims of [{ vpW: 1406, vpH: 860, rootW: 1408, gut: 84 }, { vpW: 356, vpH: 620, rootW: 358, gut: 46 }]) {
       const D = intake(snapshot), S = { view: 'gantt', span, histFrom: 0, f: { epic: [] }, compact: false, feature: null, ...layout.measureFlow(D, dims) }
@@ -336,13 +337,54 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`B2
   } finally { await pair.close() }
 })
 
-// Full composition needs C9-T08: this branch intentionally has no Now-band renderer yet.
-for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`B1 Gantt composition parity: ${width} ${theme}`, async ({ browser }) => {
+// Core retains the original four width/theme cells. The explicit full command
+// runs every registered dataset, palette and span; no acceptance cell is skipped.
+const compositionCells = ['live', 'dense', 'newrepo', 'noqueue', 'offline'].flatMap(dataset => PARITY_VIEWPORTS.flatMap(viewport => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ ...viewport, dataset, theme, palette, span: 1 })))))
+compositionCells.push(...[2, 3, 7, 30].flatMap(span => PARITY_VIEWPORTS.flatMap(viewport => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ ...viewport, dataset: 'live', theme, palette, span }))))))
+for (const cell of compositionCells) {
+  const core = cell.dataset === 'live' && cell.span === 1 && cell.palette === 'aiur' && [1440, 390].includes(cell.viewport.width)
+  test(`B1 ${core ? 'Gantt composition parity' : 'Gantt full acceptance composition'}: ${cell.dataset} ${cell.viewport.width} ${cell.theme} ${cell.palette} span${cell.span}`, async ({ browser }) => {
+    test.setTimeout(120000)
+    const pair = await openParityPair(browser, cell, { query: `view=gantt&span=${cell.span}`, motion: true })
+    try {
+      await freezeGanttComposition(pair)
+      const positions = await pair.design.evaluate(() => __ganttComposition.positions())
+      for (const [position, top] of Object.entries(positions)) {
+        await scrollGanttComposition(pair, top)
+        await expectDesignParity(pair, { name: `gantt-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}-span${cell.span}-${position}`, region: '#bd-vp', preserveAnimations: true })
+      }
+    } finally { await pair.close() }
+  })
+}
+
+for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`S-5 adopted unknown-value capture: ${width} ${theme}`, async ({ browser }, info) => {
   test.setTimeout(120000)
-  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), theme, palette: 'aiur', dataset: 'live' }, { query: 'view=gantt' })
+  const cell = { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), theme, palette: 'aiur', dataset: 'live' }
+  const context = await browser.newContext({ ...parityContextOptions(cell), baseURL: info.project.use.baseURL })
   try {
-    const bandInstalled = await pair.product.evaluate(async () => (await import('/build-home/state.js')).ctx.L.band.items.length > 0)
-    test.fixme(!bandInstalled, 'Full-page parity requires Now-band renderer #3146; declared blocker of #3147')
-    await expectDesignParity(pair, { name: `gantt-composition-${width}-${theme}` })
-  } finally { await pair.close() }
+    const page = await context.newPage(); await openProduct(page, cell, { query: 'view=gantt', motion: true })
+    const markers = await page.evaluate(async () => {
+      const { ctx, S, fx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
+      const end = ctx.snap.now
+      const hist = { ...ctx.snap.sections.hist[0], id: 's5-start-unknown', start: null, end, title: 'Start unknown' }
+      const plan = { ...ctx.snap.sections.plan[0], id: 's5-estimate-unknown', est: null, override: null, wave: 1, title: 'Estimate unknown' }
+      S.span = 1; S.ready = false; S.histFrom = end - 86400000
+      receive({ ...ctx.snap, kind: 'snapshot', generation: ctx.proto.generation + 1, sections: { hist: [hist], now: [], plan: [plan], nq: [] }, history: { ...ctx.snap.history, from: end - 86400000, more: false, total: 1 } })
+      ctx.vp.scrollTop = 0; fx.update()
+      return ['s5-start-unknown', 's5-estimate-unknown'].map(id => {
+        const el = ctx.R.get((id.includes('start') ? 'hist:' : 'plan:') + id)
+        return { id, cls: el.className, title: el.querySelector('.bd-in').title, height: parseFloat(el.style.height) }
+      })
+    })
+    expect(markers[0].cls).toContain('start-unknown'); expect(markers[0].height).toBeCloseTo(29.9, 9)
+    expect(markers[1].cls).toContain('est-unknown'); expect(markers[1].cls).toContain('gplan'); expect(markers[1].height).toBe(32.5)
+    expect(markers.map(m => m.title.endsWith(m.id.includes('start') ? 'start unknown' : 'estimate unknown'))).toEqual([true, true])
+    // These cases have no design oracle. Attach unmasked real product elements
+    // and their measured semantics, without manufacturing a reference image.
+    for (const marker of markers) {
+      const target = page.locator(`.bd-card[data-id="${marker.id}"]`)
+      await info.attach(`${marker.id}-${width}-${theme}`, { body: await captureStable(target, { animations: 'disabled', caret: 'hide', scale: 'device' }), contentType: 'image/png' })
+    }
+    await info.attach(`s5-semantics-${width}-${theme}`, { body: Buffer.from(JSON.stringify(markers, null, 2)), contentType: 'application/json' })
+  } finally { await context.close() }
 })
