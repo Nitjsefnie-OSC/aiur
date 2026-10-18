@@ -79,7 +79,7 @@ wait_for_node_name_release() {
     fi
     sleep 0.1
   done
-  [ "$(probe_named_node_liveness "$node")" != "up" ]
+  [ "$(probe_named_node_liveness "$node")" = "down" ]
 }
 
 load_aiur_instance_record() {

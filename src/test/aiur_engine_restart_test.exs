@@ -107,11 +107,12 @@ defmodule AiurEngineRestartTest do
 
     {out, 0} =
       run_sourced_engine(
-        "release_dir=#{inspect(release)}; probe_node_liveness() { printf unknown; }; wait_for_node_name_release 'aiur-test@127.0.0.1' 1 && echo RELEASED",
+        "sleep() { echo SLEPT; }; release_dir=#{inspect(release)}; probe_node_liveness() { printf unknown; }; wait_for_node_name_release 'aiur-test@127.0.0.1' && echo RELEASED",
         []
       )
 
     assert out =~ "RELEASED"
+    refute out =~ "SLEPT"
   end
 
   test "restart returns the failed boot status and reports lost handoff sessions" do
@@ -472,6 +473,7 @@ defmodule AiurEngineRestartTest do
     refute out =~ "BUILD"
     refute out =~ "RUN:"
     assert out =~ "still answers after the stop"
+    refute out =~ "STOPPED and was NOT restarted"
   end
 
   test "the restart dispatch arm drops the subcommand and forwards the rest" do

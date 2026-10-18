@@ -418,9 +418,6 @@ cmd_restart() {
     fi
   fi
 
-  aiur_restart_daemon_state="stopped"
-  trap aiur_restart_report_state EXIT INT TERM
-
   # cmd_stop's tmux teardown is best-effort (`|| true`), so a stop can report
   # success while the session survives. Starting from there would rebuild the
   # release under a live BEAM and then hit run_session's idempotent "already
@@ -429,6 +426,9 @@ cmd_restart() {
   if [ -n "${release_bin:-}" ] && [ "$(probe_control_liveness)" = "up" ]; then
     die "restart aborted: the previous session still answers after the stop; nothing was rebuilt or restarted"
   fi
+
+  aiur_restart_daemon_state="stopped"
+  trap aiur_restart_report_state EXIT INT TERM
 
   # TERM can end the BEAM process just before epmd releases its node name.
   # Wait here before an in-place release rebuild or a new distribution boot.
