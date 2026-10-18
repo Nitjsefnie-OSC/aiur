@@ -122,6 +122,23 @@ defmodule Aiur.MainWatch.GitHubTest do
     assert observation.checks == [%{name: "test", conclusion: "success"}]
     assert {%{status: :green}, []} = State.observe(State.new(), observation, observation.completed_at)
 
+    quarantined_only = fn request ->
+      cond do
+        String.contains?(request.url, "/commits?") -> ok([%{"sha" => "quarantine-red"}])
+        String.contains?(request.url, "event=push") -> ok(%{"workflow_runs" => runs})
+        String.contains?(request.url, "/check-runs?") -> ok(%{"check_runs" => [check(1, 1, "success"), quarantine]})
+        String.contains?(request.url, "/actions/runs?") -> ok(%{"workflow_runs" => []})
+        String.ends_with?(request.url, "/status") -> ok(%{"statuses" => []})
+        true -> flunk("unexpected quarantine-only request #{request.url}")
+      end
+    end
+
+    assert {:ok, %{observations: [only_blocking_success]}} =
+             GitHub.poll("main", ["ci"], token: "test-gh-token", request_fun: quarantined_only, actions_write: false)
+
+    assert only_blocking_success.checks == [%{name: "test", conclusion: "success"}]
+    assert {%{status: :green}, []} = State.observe(State.new(), only_blocking_success, only_blocking_success.completed_at)
+
     stale = %{observation | checks: [%{name: "quarantined tests (non-blocking)", conclusion: "failure"} | observation.checks]}
     assert {:ok, %{observations: [rebuilt]}} = GitHub.poll("main", ["ci"], token: "test-gh-token", request_fun: request, actions_write: false, history: [stale])
     assert rebuilt.checks == observation.checks
