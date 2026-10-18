@@ -80,8 +80,8 @@ def run(command, cwd=None):
     try:
         return subprocess.run(command, cwd=cwd, timeout=RUN_TIMEOUT_SECONDS).returncode
     except subprocess.TimeoutExpired:
-        notice(f'soak skipped: over budget (run exceeded {RUN_TIMEOUT_SECONDS}s)')
-        return 0
+        notice(f'soak run timed out after {RUN_TIMEOUT_SECONDS:g}s: {shlex.join(command)}', 'error')
+        return 124
 
 
 def plan_runs(kind, count, full, reduced, full_limit, max_files):
@@ -131,14 +131,20 @@ def soak_browser():
             break
         config = ['--config', configs[spec]] if configs[spec] else []
         command = ['node', 'scripts/run-browser-tests.mjs', spec, *config]
-        test_count = browser_test_count(spec) if (BROWSER_ROOT / spec).is_file() else None
-        if test_count is not None and test_count > MAX_BROWSER_TESTS_PER_SPEC:
-            notice(f'Playwright soak sampled {spec}: {test_count} tests exceeds '
-                   f'{MAX_BROWSER_TESTS_PER_SPEC}; running one test per repeat')
-            command.extend(['--grep', sample_grep(spec)])
+        titles = browser_test_list(spec, config)
+        if titles is None:
+            return 1
+        if not titles:
+            notice(f'Playwright soak skipped {spec}: test listing returned no cases')
+            continue
+        sampled = len(titles) > MAX_BROWSER_TESTS_PER_SPEC
+        if sampled:
+            notice(f'Playwright soak sampled {spec}: {len(titles)} tests exceeds '
+                   f'{MAX_BROWSER_TESTS_PER_SPEC}; running one listed test per repeat')
+            command.extend(['--grep', '^' + re.escape(titles[0]) + '$'])
         command.append(f'--repeat-each={n}')
         print(f'::group::Playwright soak: {spec} x{n}', flush=True)
-        status = run(command, cwd=BROWSER_ROOT)
+        status = run_browser(command, spec, cwd=BROWSER_ROOT, sampled=sampled)
         print('::endgroup::', flush=True)
         if status != 0:
             notice(f'Playwright soak failed for {spec}. Reproduce: cd src/browser && {shlex.join(command)}', 'error')
@@ -146,26 +152,37 @@ def soak_browser():
     return 0
 
 
-def browser_test_count(spec):
-    """Count declared Playwright tests, including generated test.each/table cases."""
-    source = (BROWSER_ROOT / spec).read_text(encoding='utf-8')
-    cases = len(re.findall(r'(?m)^\s*test\s*\(', source))
-    generated = re.search(r'\btest\.each\s*\(\s*\[([\s\S]*?)\]\s*\)', source)
-    if generated:
-        cases += len(re.findall(r'(?m)^\s*\[', generated.group(1)))
-    generated_describes = len(re.findall(r'\bfor\s*\([^\n]*\b(?:of|in)\b[^\n]*\)\s*test\s*\.describe\s*\(', source))
-    return max(cases, MAX_BROWSER_TESTS_PER_SPEC + 1 if generated_describes > 1 else cases)
+def browser_test_list(spec, config):
+    """List real Playwright titles without starting the fixture web server."""
+    command = ['npx', 'playwright', 'test', spec, *config, '--list', '--reporter=json']
+    result = subprocess.run(command, cwd=BROWSER_ROOT, capture_output=True, text=True, timeout=RUN_TIMEOUT_SECONDS)
+    if result.returncode:
+        notice(f'Playwright soak could not list {spec}: {shlex.join(command)}; {result.stderr.strip()}', 'error')
+        return None
+    return playwright_titles(json.loads(result.stdout))
 
 
-def sample_grep(spec):
-    """Choose one stable title to exercise an oversized spec within the budget."""
-    source = (BROWSER_ROOT / spec).read_text(encoding='utf-8')
-    match = re.search(r'\btest\s*\.each\s*\([\s\S]*?\)\s*\(\s*([\'\"])(.*?)\1', source)
-    if not match:
-        match = re.search(r'\btest\s*\(\s*([\'\"])(.*?)\1', source, re.DOTALL)
-    if match:
-        return match.group(2)
-    return '__aiur_soak_no_matching_test__'
+def playwright_titles(report):
+    titles = []
+
+    def visit(suite):
+        titles.extend(test['title'] for test in suite.get('specs', []))
+        for child in suite.get('suites', []):
+            visit(child)
+
+    for suite in report.get('suites', []):
+        visit(suite)
+    return titles
+
+
+def run_browser(command, spec, cwd, sampled):
+    try:
+        return subprocess.run(command, cwd=cwd, timeout=RUN_TIMEOUT_SECONDS).returncode
+    except subprocess.TimeoutExpired:
+        classification = 'suspected hang' if sampled else 'soak skipped: over budget'
+        notice(f'Playwright {classification}: {spec}; command: {shlex.join(command)} '
+               f'(timed out after {RUN_TIMEOUT_SECONDS:g}s)', 'warning')
+        return 0
 
 
 def main(argv):
