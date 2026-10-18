@@ -97,7 +97,7 @@ export function makeCard(it) {
     (t.sec === 'plan' && (t.cue?.failed || t.cue?.blockedChain) ? ' blk' : '') + (cls.hasAg ? ' has-ag' : '') + (t.status === 'not_planned' ? ' np' : '');
   const hue = finite(e.hue, 0, 360);
   if (hue !== null) el.style.setProperty('--h', hue);
-  if (e.unsorted) el.style.setProperty('--ec', 'var(--muted)');
+  if (e.unsorted && hue === null) el.style.setProperty('--ec', 'var(--muted)');
   if (pg?.known) { el.style.setProperty('--pct', t.pct + '%'); el.style.setProperty('--ph', Math.round(42 + t.pct * 1.03)); }
   if ((det === 'mini' && it.h > 34) || (det === 'line' && it.h > 3.2 * ctx.L.fs)) el.classList.add('tall');
   const glow = glowHTML(t), sr = srHTML(t, ctx.snap);

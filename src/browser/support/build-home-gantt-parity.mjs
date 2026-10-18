@@ -8,6 +8,7 @@ const source = await readFile(new URL('../../test/fixtures/build_home/design-sou
 const anchor = '  window.AiurBuild = {'
 expect(source.split(anchor)).toHaveLength(2)
 const probe = source.replace(anchor, `window.__ganttComposition = {
+  geometry() { return { state: { view:S.view, span:S.span, flow:S.flow, K:S.K, histFrom:S.histFrom }, dims: { w:vp.clientWidth,h:vp.clientHeight }, rows:{hist:D.hist,now:D.now,plan:D.plan}, order:D.order, layout:L, offsets:Object.fromEntries(['hist','plan'].map(k=>[k,{top:secs[k].el.offsetTop,height:secs[k].el.offsetHeight}])) }; },
   stop() { S.ready = false; snapping = true; },
   allHistory() { S.histFrom = 0; relayout(); update(); },
   targets() {
@@ -36,6 +37,16 @@ export async function freezeGanttComposition(pair) {
   await pair.product.evaluate(async () => {
     const { S, ctx } = await import('/build-home/state.js'); S.ready = false; ctx.snapping = true
   })
+  // Compare the same loaded history window. The dense reference initially
+  // includes the previous day; the server snapshot can begin with today only.
+  const from = await pair.design.evaluate(() => __ganttComposition.geometry().state.histFrom)
+  const loaded = await pair.product.evaluate(async from => {
+    const { ensureFrom } = await import('/build-home/history.js')
+    const { S } = await import('/build-home/state.js')
+    await ensureFrom(from)
+    return S.histFrom
+  }, from)
+  expect(loaded, 'matching history window before Gantt comparison').toBe(from)
   await alignBoard(pair)
   for (const page of [pair.design, pair.product]) await page.locator('#bd-vp').evaluate(el => {
     document.body.style.minHeight = Math.ceil(el.getBoundingClientRect().bottom + scrollY) + 'px'
@@ -121,4 +132,16 @@ export async function compareRenderedGanttEdges(pair) {
       edge[field].forEach((value, i) => expect(Math.abs(value - expected[n][field][i]), `${edge.layer} ${edge.id} ${field}[${i}]`).toBeLessThanOrEqual(0.5))
     }
   })
+}
+
+export async function attachGanttGeometryDiagnostics(pair, info) {
+  const design = await pair.design.evaluate(() => {
+    const data = __ganttComposition.geometry()
+    return JSON.parse(JSON.stringify(data, (key, value) => key === 'el' || key === '_it' ? undefined : value))
+  })
+  const product = await pair.product.evaluate(async () => {
+    const { ctx, S } = await import('/build-home/state.js')
+    return JSON.parse(JSON.stringify({ state: { view:S.view, span:S.span, flow:S.flow, K:S.K, histFrom:S.histFrom }, dims:{w:ctx.vp.clientWidth,h:ctx.vp.clientHeight}, rows:{hist:ctx.D.hist,now:ctx.D.now,plan:ctx.D.plan}, order:ctx.D.order, layout:ctx.L, offsets:Object.fromEntries(['hist','plan'].map(k=>[k,{top:ctx.secs[k].el.offsetTop,height:ctx.secs[k].el.offsetHeight}])) }, (key, value) => key === 'el' || key === '_it' ? undefined : value))
+  })
+  await info.attach('gantt-layout-diagnostics', { body: Buffer.from(JSON.stringify({design,product})), contentType:'application/json' })
 }

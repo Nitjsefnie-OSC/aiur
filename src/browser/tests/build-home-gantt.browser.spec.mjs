@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { openFixture } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 import { openParityPair, expectDesignParity, waitParityReady, PARITY_VIEWPORTS, FIXTURE_META } from '../support/design-parity.mjs'
-import { freezeGanttComposition, scrollGanttComposition, attachGanttRasterDiagnostics, compareRenderedGanttEdges } from '../support/build-home-gantt-parity.mjs'
+import { freezeGanttComposition, scrollGanttComposition, attachGanttRasterDiagnostics, attachGanttGeometryDiagnostics, compareRenderedGanttEdges } from '../support/build-home-gantt-parity.mjs'
 import { runOn, compareRecords } from '../support/build-home-motion.mjs'
 import { loadGanttRegionHistory, markGanttRegion, markFixedGanttRegion } from '../support/build-home-gantt-regions.mjs'
 
@@ -343,6 +343,27 @@ for (const dataset of ['live', 'dense']) for (const width of [1440, 390]) for (c
   } finally { await pair.close() }
 })
 
+test('known Unsorted follows the palette while missing epics remain neutral', async ({ page }) => {
+  await page.goto('/build-fixture/dense?view=gantt')
+  await expect(page.locator('.bd-card').first()).toBeVisible()
+  const colors = await page.evaluate(async () => {
+    const { ctx } = await import('/build-home/state.js'), { makeCard } = await import('/build-home/cards.js')
+    document.documentElement.dataset.palette = 'gruvbox'
+    ctx.D.epics['palette-reference'] = { key: 'palette-reference', hue: 0 }
+    const color = epic => {
+      const t = { ...ctx.D.hist[0], id: 'palette-probe', epic }, el = makeCard({ t, sec: 'hist', h: 32.5 })
+      ctx.root.append(el)
+      const value = getComputedStyle(el.querySelector('.bd-dot')).backgroundColor
+      el.remove(); return value
+    }
+    const swatch = document.createElement('i'); swatch.style.background = 'var(--muted)'; ctx.root.append(swatch)
+    const neutral = getComputedStyle(swatch).backgroundColor; swatch.remove()
+    return { known: color(null), reference: color('palette-reference'), missing: color('missing-palette-epic'), neutral }
+  })
+  expect(colors.known).toBe(colors.reference); expect(colors.known).not.toBe(colors.neutral)
+  expect(colors.missing).toBe(colors.neutral)
+})
+
 // Core retains the original four width/theme cells. The explicit full command
 // runs every registered dataset, palette and span; no acceptance cell is skipped.
 const compositionCells = ['live', 'dense', 'newrepo', 'noqueue', 'offline'].flatMap(dataset => PARITY_VIEWPORTS.flatMap(viewport => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ ...viewport, dataset, theme, palette, span: 1 })))))
@@ -361,6 +382,7 @@ for (const cell of compositionCells) {
         try {
           await expectDesignParity(pair, { name: `gantt-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}-span${cell.span}-${position}`, region: '#bd-vp', preserveAnimations: true })
         } catch (error) {
+          await attachGanttGeometryDiagnostics(pair, test.info())
           if (cell.dataset === 'live' && cell.viewport.width === 390 && cell.theme === 'dark' && position === 'now') await attachGanttRasterDiagnostics(pair, test.info())
           throw error
         }
