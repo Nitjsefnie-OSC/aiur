@@ -1,9 +1,41 @@
+import { alignBoard, alignEtaMask, primeBoardPaint } from './build-home-band-canvas.mjs'
+
+export async function prepareTreeMotion(pair) {
+  if (pair.cell.viewport.width === 390) await alignBoard(pair)
+  await alignEtaMask(pair)
+  pair.allowlist = pair.allowlist.map(e => e.id === 'now-band-eta-pending'
+    ? { ...e, kind: 'pixel-mask', selector: '.bd-now-eta' } : e)
+}
+
+export async function prepareTreeFrame(pair, region) {
+  await primeBoardPaint(pair, '#bd-lanes')
+  await primeBoardPaint(pair, '#bd-sb')
+  // Transparent overlay frames include the board behind their sibling host.
+  return region === '#bd-tree' ? '.bd-vpw' : region
+}
+
+async function scrollTree(page, centerCard = false) {
+  await page.locator('#bd-vp').evaluate((el, centerCard) => {
+    const card = document.querySelector('.bd-card[data-id="615"], .bd-card[data-id="AIUR-615"]')
+    const top = centerCard ? el.scrollTop + card.getBoundingClientRect().top - el.getBoundingClientRect().top - 180
+      : document.querySelector('#bd-sec-plan').offsetTop
+    const before = el.scrollTop
+    return new Promise(resolve => {
+      const done = () => resolve()
+      el.addEventListener('scroll', done, { once: true })
+      el.scrollTop = top
+      if (el.scrollTop === before) { el.removeEventListener('scroll', done); resolve() }
+    })
+  }, centerCard)
+  await page.clock.runFor(704)
+}
+
 // Both designs expose the same fixture number; the product listens to pointer events.
 export async function hoverTreeCard(page) {
-  await page.locator('#bd-vp').evaluate(el => { el.scrollTop = document.querySelector('#bd-sec-plan').offsetTop })
-  await page.clock.runFor(704)
+  await scrollTree(page)
   const card = page.locator('.bd-card[data-id="615"], .bd-card[data-id="AIUR-615"]').first()
   if (!await card.count()) throw new Error('unreachable tree card 615')
+  await scrollTree(page, true)
   await page.locator('.bd-lt').evaluate(el => getComputedStyle(el).opacity)
   await card.evaluate(el => {
     el.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }))

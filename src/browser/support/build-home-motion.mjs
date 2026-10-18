@@ -351,7 +351,7 @@ async function modal(page, ctx, close = false, fromUrl = false) {
 
 async function tree(page, ctx) {
   await hoverTreeCard(page)
-  await click(page, '[data-lt="lock"]')
+  await page.locator('[data-lt="lock"]').click({ force: true })
   if (!await page.locator('.bd-lt.show.locked').count()) throw new Error('unreachable locked tree control')
   const animation = await cssMotion(page, '#bd-tree', ctx, '[data-lt="tree"]')
   if (await page.locator('#bd-tree').evaluate(el => el.hidden)) throw new Error('unreachable open tree overlay')
