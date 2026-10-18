@@ -212,7 +212,7 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
   })).toMatchObject({ view: 'gantt', plan: true, finite: true })
   await page.evaluate(async () => {
     const { ctx, fx } = await import('/build-home/state.js')
-    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
+    ctx.snapping = true; fx.scrollVP(ctx.secs.plan.el.offsetTop, false); fx.update()
   })
   await expect(page.locator('.bd-card.gplan').first()).toBeVisible()
   expect(await page.locator('.bd-card.gplan .bd-in').first().evaluate(el => {
@@ -223,22 +223,28 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
   await expect(page.locator('.bd-card.gplan')).toHaveCount(0)
   await expect(page.locator('.bd-leg-h')).toHaveCount(0)
   await expect(page.locator('.bd-lane-g')).toHaveText('Order')
-  const first = await page.evaluate(async () => {
-    const { ctx, fx } = await import('/build-home/state.js')
-    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
-  })
+  const timelineClasses = async () => {
+    await page.evaluate(async () => {
+      const { ctx, fx } = await import('/build-home/state.js')
+      ctx.snapping = true; fx.scrollVP(ctx.secs.plan.el.offsetTop, false); fx.update()
+    })
+    await expect.poll(() => page.evaluate(async () => {
+      const { ctx } = await import('/build-home/state.js')
+      return [...ctx.R.values()].filter(el => el.classList.contains('noanim')).length
+    })).toBe(0)
+    return page.evaluate(async () => {
+      const { ctx } = await import('/build-home/state.js')
+      return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
+    })
+  }
+  const first = await timelineClasses()
   await page.getByRole('tab', { name: 'Gantt', exact: true }).click()
   await expect(page.locator('.bd-leg-h')).toHaveCount(1)
   await expect(page.locator('#bd-edges')).toHaveClass(/gantt/)
   await page.getByRole('tab', { name: 'Timeline', exact: true }).click()
-  expect(await page.evaluate(async () => {
-    const { ctx, fx } = await import('/build-home/state.js')
-    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop; fx.update()
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    return [...ctx.R].map(([id, el]) => [id, el.className]).sort()
-  })).toEqual(first)
+  await expect(page.locator('.bd-card.gplan')).toHaveCount(0)
+  await expect(page.locator('.bd-lane-g')).toHaveText('Order')
+  expect(await timelineClasses()).toEqual(first)
 })
 
 test('B4 EC-20 rendered card heights stay equal across zones while tick labels differ', async ({ browser }) => {
