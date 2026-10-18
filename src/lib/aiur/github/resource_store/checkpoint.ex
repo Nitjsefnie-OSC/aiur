@@ -6,12 +6,16 @@ defmodule Aiur.GitHub.ResourceStore.Checkpoint do
   alias Aiur.Fs
 
   @revision_table __MODULE__.Revision
+  @key_revision_table __MODULE__.KeyRevision
+  @entry_cache __MODULE__.EncodedEntries
   @event [:aiur, :github, :resource_store, :checkpoint]
 
   @spec init() :: atom()
   def init do
     :ets.new(@revision_table, [:named_table, :public, :set, write_concurrency: true])
     :ets.insert(@revision_table, {:revision, 0})
+    :ets.new(@key_revision_table, [:named_table, :public, :set, write_concurrency: true])
+    :ets.new(@entry_cache, [:named_table, :public, :set, write_concurrency: true])
   end
 
   @spec mark_dirty() :: pos_integer() | :ok
@@ -19,6 +23,63 @@ defmodule Aiur.GitHub.ResourceStore.Checkpoint do
     :ets.update_counter(@revision_table, :revision, 1, {:revision, 0})
   rescue
     ArgumentError -> :ok
+  end
+
+  @spec mark_entry_dirty(term()) :: :ok
+  def mark_entry_dirty(key) do
+    :ets.delete(@entry_cache, key)
+    :ets.update_counter(@key_revision_table, key, 1, {key, 0})
+    mark_dirty()
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @spec mark_entries_dirty([term()]) :: :ok
+  def mark_entries_dirty(keys) do
+    Enum.each(keys, &mark_entry_dirty/1)
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @spec remove_entries([term()]) :: :ok
+  def remove_entries(keys) do
+    Enum.each(keys, fn key ->
+      :ets.delete(@entry_cache, key)
+      :ets.delete(@key_revision_table, key)
+    end)
+
+    mark_dirty()
+    :ok
+  rescue
+    ArgumentError -> :ok
+  end
+
+  @spec cached_entry(term(), term(), (term() -> iodata())) :: iodata()
+  def cached_entry(key, entry, encode) do
+    revision = key_revision(key)
+
+    case :ets.lookup(@entry_cache, key) do
+      [{^key, {^revision, cached_encoded}}] ->
+        cached_encoded
+
+      _other ->
+        encoded_entry = encode.(entry)
+        true = :ets.insert(@entry_cache, {key, {revision, encoded_entry}})
+        encoded_entry
+    end
+  rescue
+    ArgumentError -> encode.(entry)
+  end
+
+  defp key_revision(key) do
+    case :ets.lookup(@key_revision_table, key) do
+      [{^key, revision}] -> revision
+      _other -> 0
+    end
+  rescue
+    ArgumentError -> 0
   end
 
   @spec run(map(), (:ets.table() -> {:ok, iodata()} | {:error, term()}), keyword()) ::
@@ -38,15 +99,10 @@ defmodule Aiur.GitHub.ResourceStore.Checkpoint do
 
   defp write_checkpoint(state, revision, table, path, render) do
     with {:ok, encoded} <- render.(table),
-         digest = :erlang.md5(encoded),
-         false <- digest == state.last_written,
          :ok <- write(path, encoded) do
       :telemetry.execute(@event, %{entries: :ets.info(table, :size)}, %{result: :written})
-      {:ok, %{state | last_written: digest, last_written_revision: revision}}
+      {:ok, %{state | last_written_revision: revision}}
     else
-      true ->
-        {:ok, %{state | last_written_revision: revision}}
-
       {:error, reason} = error ->
         Logger.warning("GitHub.ResourceStore checkpoint failed; reason=#{inspect(reason)}")
         {error, state}

@@ -22,6 +22,8 @@ defmodule Aiur.GitHub.ResourceStore.Memory do
 
   require Logger
 
+  alias Aiur.GitHub.ResourceStore.Checkpoint
+
   @table Aiur.GitHub.ResourceStore.Table
   @max_entries 100_000
 
@@ -79,6 +81,8 @@ defmodule Aiur.GitHub.ResourceStore.Memory do
       end)
 
     shed = Enum.filter(victims, fn {key, recorded_at, _bytes} -> shed?(table, key, recorded_at) end)
+
+    if shed != [], do: Checkpoint.mark_entries_dirty(Enum.map(shed, &elem(&1, 0)))
 
     if shed != [] do
       Logger.warning(

@@ -2,6 +2,7 @@ defmodule Aiur.GitHub.ResourceStore.CheckpointTest do
   use Aiur.TestSupport
 
   alias Aiur.GitHub.ResourceStore
+  alias Aiur.GitHub.ResourceStore.Checkpoint
 
   test "an unchanged periodic checkpoint skips rendering", %{path: path} do
     restart_store!(path)
@@ -57,6 +58,59 @@ defmodule Aiur.GitHub.ResourceStore.CheckpointTest do
     assert {:ok, contents} = File.read(path)
     assert %{"entries" => entries} = Jason.decode!(contents)
     assert Map.has_key?(entries, "issue|owner|repo|9902")
+  end
+
+  test "forgetting an entry removes it from the next periodic checkpoint", %{path: path} do
+    restart_store!(path)
+    key = ResourceStore.key(:issue, "owner", "repo", 9903)
+    ResourceStore.put_resource(key, %{"number" => 9903})
+    assert :ok = ResourceStore.flush()
+    ResourceStore.forget(key)
+
+    test_pid = self()
+    handler_id = "resource-store-checkpoint-#{System.unique_integer([:positive])}"
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:aiur, :github, :resource_store, :checkpoint],
+        fn _event, measurements, metadata, pid -> send(pid, {:checkpoint, measurements, metadata}) end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+    send(Process.whereis(ResourceStore), :checkpoint)
+
+    assert_receive {:checkpoint, %{entries: 0}, %{result: :written}}, 1_000
+    assert {:ok, contents} = File.read(path)
+    assert %{"entries" => %{}} = Jason.decode!(contents)
+  end
+
+  test "checkpoint encoding reuses unchanged entries and refreshes only a dirty key", %{path: path} do
+    restart_store!(path)
+    first_key = ResourceStore.key(:issue, "owner", "repo", 9904)
+    second_key = ResourceStore.key(:issue, "owner", "repo", 9905)
+    first_entry = %{recorded_at_ms: 1}
+    second_entry = %{recorded_at_ms: 1}
+    parent = self()
+
+    encode = fn entry ->
+      send(parent, {:encoded, entry})
+      Jason.encode!(entry)
+    end
+
+    Checkpoint.cached_entry(first_key, first_entry, encode)
+    Checkpoint.cached_entry(second_key, second_entry, encode)
+    Checkpoint.cached_entry(first_key, first_entry, encode)
+    assert_received {:encoded, ^first_entry}
+    assert_received {:encoded, ^second_entry}
+    refute_received {:encoded, _entry}
+
+    Checkpoint.mark_entry_dirty(first_key)
+    Checkpoint.cached_entry(first_key, first_entry, encode)
+    assert_received {:encoded, ^first_entry}
+    Checkpoint.cached_entry(second_key, second_entry, encode)
+    refute_received {:encoded, _entry}
   end
 
   setup do

@@ -1099,8 +1099,9 @@ defmodule Aiur.GitHub.ResourceStore do
       repo = String.downcase(repo)
 
       with_table(:ok, fn table ->
+        keys = :ets.match_object(table, {{resource_type, owner, repo, :_}, :_}) |> Enum.map(&elem(&1, 0))
         :ets.match_delete(table, {{resource_type, owner, repo, :_}, :_})
-        Checkpoint.mark_dirty()
+        Checkpoint.remove_entries(keys)
         ResourceEvents.publish_cleared(resource_type, owner, repo)
         :ok
       end)
@@ -1146,9 +1147,12 @@ defmodule Aiur.GitHub.ResourceStore do
     with_table({:error, :unavailable}, fn table ->
       # All preparation precedes mutation; readers, writers, checkpoint and
       # expiry run on this same owner for membership, so none see a partial set.
+      old_keys = :ets.match_object(table, {{:sub_issue, owner, repo, :_}, :_}) |> Enum.map(&elem(&1, 0))
       :ets.match_delete(table, {{:sub_issue, owner, repo, :_}, :_})
       :ets.insert(table, entries)
-      Checkpoint.mark_dirty()
+      new_keys = Enum.map(entries, &elem(&1, 0))
+      Checkpoint.remove_entries(old_keys -- new_keys)
+      Checkpoint.mark_entries_dirty(new_keys)
       ResourceEvents.publish_replaced(:sub_issue, owner, repo)
       :ok
     end)
@@ -1301,8 +1305,9 @@ defmodule Aiur.GitHub.ResourceStore do
 
   defp reset_entries do
     with_table(:ok, fn table ->
+      keys = :ets.tab2list(table) |> Enum.map(&elem(&1, 0))
       :ets.delete_all_objects(table)
-      Checkpoint.mark_dirty()
+      Checkpoint.remove_entries(keys)
       :ok
     end)
   end
@@ -1316,7 +1321,7 @@ defmodule Aiur.GitHub.ResourceStore do
   defp forget_entry(key) do
     with_table(:ok, fn table ->
       :ets.delete(table, key)
-      Checkpoint.mark_dirty()
+      Checkpoint.remove_entries([key])
       :ok
     end)
   end
@@ -1379,7 +1384,7 @@ defmodule Aiur.GitHub.ResourceStore do
     if path, do: schedule(:checkpoint, checkpoint_interval(opts))
     schedule(:sweep, sweep_interval(opts))
 
-    {:ok, %{table: table, path: path, last_written: nil, last_written_revision: nil}, :hibernate}
+    {:ok, %{table: table, path: path, last_written_revision: nil}, :hibernate}
   end
 
   @impl true
@@ -1540,7 +1545,7 @@ defmodule Aiur.GitHub.ResourceStore do
         entry = Map.put(entry, :recorded_at_ms, now_ms())
 
         if swapped?(table, key, existing, entry) do
-          Checkpoint.mark_dirty()
+          Checkpoint.mark_entry_dirty(key)
           announce(key, existing || %{}, entry)
           {reply, :ok}
         else
@@ -1869,12 +1874,17 @@ defmodule Aiur.GitHub.ResourceStore do
     # the whole entry goes. One C-side match spec — nothing is copied into this
     # process — and the guard is re-evaluated at the instant of deletion, so an
     # entry a writer refreshed in the meantime no longer matches and survives.
+    deleted_keys =
+      :ets.select(table, [
+        {{:"$1", %{recorded_at_ms: :"$2"}}, [{:<, :"$2", cutoff}], [:"$1"]}
+      ])
+
     deleted =
       :ets.select_delete(table, [
         {{:_, %{recorded_at_ms: :"$1"}}, [{:<, :"$1", cutoff}], [true]}
       ])
 
-    if deleted > 0, do: Checkpoint.mark_dirty()
+    if deleted > 0, do: Checkpoint.remove_entries(deleted_keys)
 
     # Pass 2 — the body is past retention but the entry is still in use. An
     # entry is one flat map, and the processed mark and the validator on it must
@@ -1939,13 +1949,13 @@ defmodule Aiur.GitHub.ResourceStore do
   # Writes land in ETS directly from the poll fan-out rather than through this
   # process, so each mutation advances a shared revision. Periodic checkpoints
   # skip rendering when that revision is already persisted; forced flush and
-  # shutdown checkpoints still render, then compare the digest to avoid writing
-  # an identical document. This keeps a steady-state cycle free of table scans
-  # and disk writes every 30 seconds.
+  # shutdown checkpoints still render. Checkpoint caches the encoded JSON by
+  # key revision, so an ordinary periodic checkpoint only encodes changed
+  # entries before writing the complete restart document.
   #
-  # The document is rendered one entry at a time and only its digest is kept.
-  # Snapshotting the table and holding the previous document for the comparison
-  # put two decoded copies of every body on this process's heap (#3997). The
+  # The document is rendered one entry at a time. Snapshotting the table and
+  # holding a second decoded copy of every body on this process's heap caused
+  # excessive memory pressure (#3997). The
   # callbacks hibernate for the same reason: this process is idle between
   # timers, so whatever a checkpoint or the boot load allocated would otherwise
   # sit on its heap until the next one.
@@ -1970,7 +1980,12 @@ defmodule Aiur.GitHub.ResourceStore do
         acc
 
       encoded ->
-        [[Jason.encode!(encoded), ?:, Jason.encode!(encode_fields(key, entry))] | acc]
+        [
+          Checkpoint.cached_entry(key, entry, fn current ->
+            [Jason.encode!(encoded), ?:, Jason.encode!(encode_fields(key, current))]
+          end)
+          | acc
+        ]
     end
   end
 
