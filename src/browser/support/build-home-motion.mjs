@@ -235,8 +235,12 @@ async function scrollCurve(page, ctx) {
   await page.clock.runFor(16)
   await page.clock.runFor(704)
   // A tall band disables liveGuard so it cannot restart the curve midway through.
-  await page.locator('#bd-vp').evaluate(el => {
+  await page.locator('#bd-vp').evaluate(async el => {
     el.style.height = el.style.maxHeight = `${document.querySelector('#bd-now').offsetHeight + 40}px`
+    // Resolve the artificial viewport's layout before sampling its curve.
+    // A later mobile resize callback must see the same settled geometry.
+    if (window.AiurBuild) window.AiurBuild.render()
+    else (await import('/build-home/state.js')).fx.relayout()
   })
   await scrollTo(page, 270)
   await page.clock.runFor(704)

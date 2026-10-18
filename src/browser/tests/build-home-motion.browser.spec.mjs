@@ -242,6 +242,7 @@ function collectAllowlist(design, product, entries) {
 // Barrier keeps both pages on each chosen frame while the shared screenshot helper runs.
 function frameBarrier(pair, name, reduce) {
   let count = 0, resolve, pending, aborted = false
+  const errors = []
   const frame = async (fraction, region) => {
     if (aborted) return
     if (reduce && ['modal.open', 'modal.reduce', 'modal.url', 'modal.close'].includes(name)) return // S-18 records the admitted tkin difference numerically.
@@ -265,12 +266,13 @@ function frameBarrier(pair, name, reduce) {
       if (name.startsWith('snap.')) await primeBoardPaint(pair)
       await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true })
     }
+    catch (error) { errors.push(error) }
     finally {
       try { for (const [page, visibility] of chrome) await page.locator('#bd-tools').evaluate((el, value) => { el.style.visibility = value }, visibility) }
       finally { resolve() }
     }
   }
-  return { frame, abort() { aborted = true; resolve?.() } }
+  return { frame, errors, abort() { aborted = true; resolve?.() } }
 }
 
 for (const selectedCell of interactionCells) test.describe(`product interactions ${selectedCell.dataset} ${selectedCell.viewport.width} ${selectedCell.theme} ${selectedCell.palette} ${selectedCell.reducedMotion}`, () => {
@@ -305,6 +307,8 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
         throw new Error(JSON.stringify({ design: design.reason, product: product.reason }))
       collectAllowlist(design, product, entries)
+      if (name === 'snap.scroll-curve') console.log('Numeric scroll curve matched all 27 frames')
+      if (barrier.errors.length) throw barrier.errors[0]
     } finally { await pair.close() }
   })
 })
