@@ -246,7 +246,7 @@ async function scrollCurve(page, ctx) {
   await page.clock.runFor(704)
   const input = await page.evaluate(() => ({ from: document.querySelector('#bd-vp').scrollTop,
     to: document.querySelector('#bd-sec-hist').offsetTop + document.querySelector('#bd-sec-hist').offsetHeight - 46, at: performance.now() }))
-  await click(page, '#bd-nowbtn')
+  await click(page, '#bd-nowbtn', ctx.reduce)
   await ctx.onFrame?.(0, '#bd-vp')
   const frame = []
   for (let index = 0; index < 27; index++) {
