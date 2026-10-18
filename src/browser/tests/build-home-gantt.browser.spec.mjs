@@ -238,6 +238,7 @@ test('B5/B7 fixture route switches Gantt and Timeline with the legend, time labe
     })
   }
   const first = await timelineClasses()
+  expect(first.length).toBeGreaterThan(0)
   await page.getByRole('tab', { name: 'Gantt', exact: true }).click()
   await expect(page.locator('.bd-leg-h')).toHaveCount(1)
   await expect(page.locator('#bd-edges')).toHaveClass(/gantt/)
