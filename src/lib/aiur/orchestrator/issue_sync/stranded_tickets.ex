@@ -157,14 +157,14 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
       {:stranded_repair, issue.id},
       fn -> update_state_fun.(issue.identifier, restored) end,
       fn current, result ->
-         if Reconciler.issue_input(current, issue.id) == input and stranded_ticket?(current, issue) and
-              not CiLifecycle.approved_and_armed?(current, issue) do
-           apply_stranded_repair(current, issue, restored, result)
-         else
-           Lifecycle.wake_tick(current)
-         end
-       end
-     )
+        if Reconciler.issue_input(current, issue.id) == input and stranded_ticket?(current, issue) and
+             not CiLifecycle.approved_and_armed?(current, issue) do
+          apply_stranded_repair(current, issue, restored, result)
+        else
+          Lifecycle.wake_tick(current)
+        end
+      end
+    )
   end
 
   defp restore_ci_wait(state, issue, update_state_fun) do
