@@ -6,8 +6,8 @@ defmodule Aiur.AgentRunner.TurnLoopResumePortClosedTest do
   import ExUnit.CaptureLog
 
   alias Aiur.AgentRunner.TurnLoop
-  alias Aiur.SessionHandle
   alias Aiur.AppServer.Rpc.StreamDiagnostics
+  alias Aiur.SessionHandle
   alias Aiur.Workspace.Provisioner
 
   defmodule FakeOrchestrator do
