@@ -37,7 +37,7 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     refute log =~ "private issue body"
   end
 
-  test "a closed ticket with an active label still alerts using only the reason name" do
+  test "a closed ticket with an active label is repaired to done" do
     issue = %{
       "state" => "closed",
       "labels" => [%{"name" => "agent:rework"}],
@@ -45,10 +45,9 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     }
 
     log = capture_log(fn -> merge(issue) end)
-    refute_received :terminated
-
-    assert log =~ "ticket.3778.agent.attention.merge_terminal_write_failed"
-    assert log =~ "no_state_label_written"
+    assert_received :terminated
+    refute log =~ "ticket.3778.agent.attention.merge_terminal_write_failed"
+    refute log =~ "no_state_label_written"
     refute log =~ "private issue body"
     refute log =~ "ticket was not closed"
   end
@@ -185,7 +184,11 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     request_fun = fn request ->
       case request.method do
         :get ->
-          {:ok, %{status: 200, body: %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}}
+          if String.contains?(request.url, "/pulls?") do
+            {:ok, %{status: 200, body: []}}
+          else
+            {:ok, %{status: 200, body: %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}}
+          end
 
         :post ->
           Agent.update(labels, &Enum.uniq(&1 ++ request.body["labels"]))
@@ -212,11 +215,23 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       opts: [request_fun: request_fun]
     }
 
+    parent = self()
+
     updater = fn "3778", target ->
       if Agent.get_and_update(attempts, fn count -> {count == 0, count + 1} end) do
+        send(parent, {:merge_write_attempt, 1})
         {:error, {:github, :github_issue_response_too_large, %{}}}
       else
-        IssueState.apply_issue_state_update(context, %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}, target, "agent:#{target}")
+        result =
+          IssueState.apply_issue_state_update(
+            context,
+            %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})},
+            target,
+            "agent:#{target}"
+          )
+
+        send(parent, {:merge_write_attempt, 2, result})
+        result
       end
     end
 
@@ -226,11 +241,15 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       merge_terminal_write_sleep_fun: fn _ -> :ok end
     )
 
+    assert_received {:merge_write_attempt, 1}
+
     merge(%{"state" => "closed", "labels" => [%{"name" => "agent:in-progress"}]}, fn state, _ -> state end,
       pr_body: nil,
       update_issue_state_fun: updater,
       open_pull_requests_fun: fn _ -> {:ok, []} end
     )
+
+    assert_receive {:merge_write_attempt, 2, _result}, 1_000
 
     assert Agent.get(labels, & &1) == ["agent:done"]
     assert Agent.get(attempts, & &1) == 2
