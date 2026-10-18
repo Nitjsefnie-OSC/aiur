@@ -106,9 +106,10 @@ reads.
 The wrapper injects the credential only into the real `gh` process it spawns
 for a governed call, for the duration of that call — never into the agent's
 environment and never into the sibling processes the wrapper launches.
-Each governed `gh` call has a 120-second deadline. On timeout the supervisor
-terminates its process tree. The large guard body travels through an anonymous
-pipe, so an agent-writable `TMPDIR` cannot replace the code being executed.
+
+- Each governed call has a 120-second deadline. On timeout the supervisor
+  terminates its process tree. The large guard body travels through an anonymous
+  pipe, so an agent-writable `TMPDIR` cannot replace the code being executed.
 
 So `env | grep -i -E 'GITHUB_TOKEN|GH_TOKEN'` in an agent shell returns nothing, and a bare `curl` to `api.github.com` from an agent workspace is unauthenticated.
 
