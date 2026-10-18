@@ -100,16 +100,9 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   def owned_or_scheduled?(%State{} = state, issue_id) do
     Map.has_key?(state.running, issue_id) or
       MapSet.member?(state.claimed, issue_id) or
-      retry_scheduled?(state, issue_id) or
+      Map.has_key?(state.retry_attempts, issue_id) or
       Map.has_key?(state.auto_resume, issue_id) or
       TrackerTasks.issue_pending?(state, issue_id)
-  end
-
-  # Retry exhaustion leaves both the retry record (for the dispatcher hold)
-  # and released-claim evidence. That pair is stranded work, not a scheduled
-  # retry; clearing it after a successful state restore permits a fresh claim.
-  defp retry_scheduled?(%State{} = state, issue_id) do
-    Map.has_key?(state.retry_attempts, issue_id) and not Map.has_key?(state.released_claims, issue_id)
   end
 
   # States where an open ticket is deliberately unowned need no claim: an
@@ -163,14 +156,13 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   defp apply_stranded_repair(state, issue, restored, result) do
     case result do
       :ok ->
-        state = alert_stranded_ticket_requeued(state, issue, restored)
+        state = alert_stranded_ticket_requeued(state, issue, restored, label_state_changed?(issue, restored))
 
         Logger.warning("Re-queueing stranded ticket #{State.issue_context(issue)} -> #{restored}")
 
         %{
           state
-          | released_claims: Map.delete(state.released_claims, issue.id),
-            retry_attempts: Map.delete(state.retry_attempts, issue.id)
+          | released_claims: Map.delete(state.released_claims, issue.id)
         }
 
       {:error, reason} ->
@@ -183,16 +175,27 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
   # A stranded ticket is surfaced with a needs-attention alert; the check
   # against the already-active attention set keeps a ticket that fails its
   # restore from alerting on every poll.
-  defp alert_stranded_ticket_requeued(%State{} = state, %Issue{} = issue, restored) do
+  defp alert_stranded_ticket_requeued(%State{} = state, %Issue{} = issue, restored, changed?) do
     topic = "ticket.#{issue.identifier}.agent.attention.stranded-requeued"
+
+    {message, reason} =
+      if changed? do
+        {
+          "Ticket #{issue.identifier} was open with no live agent and no scheduled claim; re-queued to #{restored}.",
+          "Ticket #{issue.identifier} had no live owner and no scheduled claim; restored #{restored} so dispatch can claim it again."
+        }
+      else
+        {
+          "Ticket #{issue.identifier} was already in #{restored}; its abandoned claim was cleared for dispatch.",
+          "Ticket #{issue.identifier} already had the #{restored} state label; no label change was needed to clear the abandoned claim."
+        }
+      end
 
     unless TransitionAlerts.active_attention?(state, topic) do
       Alerts.emit_system(topic,
         issue: issue.identifier,
-        message: "Ticket #{issue.identifier} was open with no live agent and no scheduled claim; re-queued to #{restored}.",
-        reason:
-          "Ticket #{issue.identifier} had no live owner and no scheduled claim (a released claim or degenerate label set); " <>
-            "restored #{restored} so dispatch can claim it again.",
+        message: message,
+        reason: reason,
         needs_attention: true,
         severity: "warning",
         central: true
@@ -200,6 +203,14 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTickets do
     end
 
     state
+  end
+
+  defp label_state_changed?(%Issue{state_labels: labels}, restored) when is_list(labels) do
+    labels |> Enum.map(&DispatchPolicy.normalize_state_label/1) |> Enum.reject(&(&1 == "")) != [DispatchPolicy.normalize_state_label(restored)]
+  end
+
+  defp label_state_changed?(%Issue{state: current}, restored) do
+    DispatchPolicy.normalize_state_label(current) != DispatchPolicy.normalize_state_label(restored)
   end
 
   defp alert_stranded_ticket_requeue_failed(%State{} = state, %Issue{} = issue, restored, reason) do

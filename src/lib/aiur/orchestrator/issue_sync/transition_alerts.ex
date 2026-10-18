@@ -6,6 +6,7 @@ defmodule Aiur.Orchestrator.IssueSync.TransitionAlerts do
   alias Aiur.AlertFeed
   alias Aiur.Alerts
   alias Aiur.Config
+  alias Aiur.DecisionAttention
   alias Aiur.DispatchBudgetStore
   alias Aiur.GitHub.ResourceStore
   alias Aiur.Issue
@@ -225,6 +226,25 @@ defmodule Aiur.Orchestrator.IssueSync.TransitionAlerts do
   @doc false
   @spec active_attention?(State.t(), String.t()) :: boolean()
   def active_attention?(state, topic), do: MapSet.member?(state.active_attention_topics, topic)
+
+  @doc false
+  @spec resolve_stranded_attention_if_cleared(State.t(), Issue.t(), MapSet.t()) :: State.t()
+  @spec resolve_stranded_attention_if_cleared(State.t(), Issue.t(), MapSet.t(), function()) :: State.t()
+  def resolve_stranded_attention_if_cleared(%State{} = state, %Issue{} = issue, terminal_states, resolve_fun \\ &DecisionAttention.resolve/2)
+      when is_struct(terminal_states, MapSet) and is_function(resolve_fun, 2) do
+    topic = "ticket.#{issue.identifier}.agent.attention.stranded-requeued"
+    state_slug = DispatchPolicy.state_slug(issue.state)
+
+    no_longer_dispatchable? =
+      state_slug in ["ci-wait", "merging"] or DispatchPolicy.terminal_issue_state?(issue.state, terminal_states)
+
+    if no_longer_dispatchable? and active_attention?(state, topic) do
+      :ok = resolve_fun.(issue, "stranded-requeued")
+      %{state | active_attention_topics: MapSet.delete(state.active_attention_topics, topic)}
+    else
+      state
+    end
+  end
 
   defp lifetime_latch_active?(%State{} = state, issue_id) when is_binary(issue_id) do
     lifetime_latch_status(state, issue_id) == :active

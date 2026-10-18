@@ -10,7 +10,32 @@ defmodule Aiur.Orchestrator.IssueSync.TransitionAlertsTest do
   alias Aiur.ExecutorWakeInbox
   alias Aiur.GitHub.ResourceStore
   alias Aiur.Orchestrator.IssueSync
+  alias Aiur.Orchestrator.IssueSync.TransitionAlerts
   alias Aiur.Orchestrator.State
+
+  test "resolves a stranded reminder when observed state stops requiring an agent" do
+    for state_name <- ["ci-wait", "merging", "done"] do
+      issue = issue("stranded-#{state_name}", state_name)
+      topic = "ticket.#{issue.identifier}.agent.attention.stranded-requeued"
+      parent = self()
+      state = %State{active_attention_topics: MapSet.new([topic])}
+
+      resolved =
+        TransitionAlerts.resolve_stranded_attention_if_cleared(
+          state,
+          issue,
+          MapSet.new(["done"]),
+          fn resolved_issue, slug ->
+            send(parent, {:stranded_resolved, resolved_issue.identifier, slug})
+            :ok
+          end
+        )
+
+      assert_receive {:stranded_resolved, identifier, "stranded-requeued"}, 1000
+      assert identifier == issue.identifier
+      refute MapSet.member?(resolved.active_attention_topics, topic)
+    end
+  end
 
   test "alerts when the tracker adds or removes agent:paused" do
     Publisher.set_tracked_fn(fn _ -> true end)

@@ -161,6 +161,7 @@ defmodule Aiur.Orchestrator.IssueSync do
 
         state_acc
         |> TransitionAlerts.emit_task_state_transition_alert(previous_issue, issue)
+        |> TransitionAlerts.resolve_stranded_attention_if_cleared(issue, terminal_states)
         |> TransitionAlerts.emit_tracker_pause_transition_alert(previous_issue, issue)
         |> Dependencies.emit_dependency_transition_events(previous_issue, issue)
         |> TelemetryEvents.observe(previous_issue, issue)
