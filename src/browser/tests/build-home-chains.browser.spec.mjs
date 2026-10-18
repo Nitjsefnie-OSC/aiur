@@ -100,6 +100,8 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   })
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => earlierCalls.length)).toBeGreaterThan(0)
+  // Idle paging and the lock can recur between Fit's candidate spans.
+  await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
   await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe('9012')
   await expect.poll(() => page.evaluate(() => !!st.ctx.D.byId['9001'])).toBe(true)
