@@ -438,7 +438,7 @@ jobs:
         if: ${{ needs.changes.outputs.docs_only != 'true' }}
         run: make dialyzer
   browser:
-    name: browser smoke (${{ matrix.shard }}/10)
+    name: browser smoke (${{ matrix.shard }}/7)
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.full_ci == 'true' }}
     runs-on: ubuntu-latest
@@ -448,11 +448,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        shard: [1, 2, 3, 4, 5, 6, 7]
         include: [{ shard: 1, verify_fixtures: true, upload_evidence: true },
           { shard: 2, visual_regression: first },
           { shard: 5, visual_regression: second },
-          { shard: 7, upload_evidence: true }, { shard: 9, upload_evidence: true }]
+          { shard: 7, upload_evidence: true }]
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
