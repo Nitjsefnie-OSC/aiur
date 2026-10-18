@@ -10,7 +10,10 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   const failures = []
   // Keep independent captures when one phase differs, then fail with every actual discrepancy.
   const check = async (name, action) => { try { await test.step(name, action) } catch (error) { failures.push(error) } }
-  const pixels = (pair, name, region) => check(name, () => expectDesignParity(pair, { name, region }))
+  const pixels = (pair, name, region) => check(name, async () => {
+    await prepareChainParity(pair) // Fit replaces the band's ETA element.
+    await expectDesignParity(pair, { name, region })
+  })
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
   try {
     await prepareChainParity(pair)
