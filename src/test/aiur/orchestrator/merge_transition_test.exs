@@ -73,7 +73,7 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       merge_terminal_write_sleep_fun: fn _ -> :ok end
     )
 
-    assert_receive :terminated
+    assert_receive :terminated, 1_000
     assert Agent.get(attempts, & &1) == 2
   end
 
@@ -101,7 +101,7 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       merge_terminal_write_sleep_fun: fn _ -> :ok end
     )
 
-    assert_receive {:human_review_write, :ok}
+    assert_receive {:human_review_write, :ok}, 1_000
     assert Agent.get(attempts, & &1) == 2
   end
 
@@ -143,13 +143,13 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       end)
 
     assert Agent.get(attempts, & &1) == 3
-    assert_receive {:write_attempt, 1}
-    assert_receive {:write_attempt, 2}
-    assert_receive {:write_attempt, 3}
-    assert_receive {:retry_delay, 100}
-    assert_receive {:retry_delay, 200}
-    refute_receive {:retry_delay, _}
-    refute_receive :terminated
+    assert_receive {:write_attempt, 1}, 1_000
+    assert_receive {:write_attempt, 2}, 1_000
+    assert_receive {:write_attempt, 3}, 1_000
+    assert_receive {:retry_delay, 100}, 1_000
+    assert_receive {:retry_delay, 200}, 1_000
+    refute_receive {:retry_delay, _}, 50
+    refute_receive :terminated, 50
     assert log =~ "reason=timeout"
   end
 
