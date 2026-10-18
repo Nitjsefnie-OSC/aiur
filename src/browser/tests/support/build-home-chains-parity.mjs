@@ -118,6 +118,12 @@ export const treeRecord = page => page.locator('#bd-tree').evaluate(host => ({
 
 // Reuse C9-T08's existing C7-T03 ETA-copy exception; chain/tab/tree pixels stay visible.
 export async function prepareChainParity(pair) {
+  // Date is frozen, but the live clock's monotonic elapsed time keeps advancing.
+  await pair.product.evaluate(async now => {
+    const { setNow } = await import('/build-home/clock.js')
+    const { fx } = await import('/build-home/state.js')
+    setNow(now); fx.refreshBandClock()
+  }, await pair.design.evaluate(() => Date.now()))
   pair.allowlist = pair.allowlist.map(entry => entry.id === 'now-band-eta-pending'
     ? { ...entry, kind: 'pixel-mask', selector: '.bd-now-eta' } : entry)
   await alignEtaMask(pair)
