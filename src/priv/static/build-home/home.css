@@ -56,3 +56,4 @@ span.ax-cnt:hover { color: var(--muted); background: none; }
 .cv-in-st.bad { color: var(--block-ink); }
 .cv-in-st[hidden] { display: none; }
 .cv-send:disabled { opacity: .5; cursor: default; }
+.bd-opt > .ax-mono { width: 14px; height: 14px; border-radius: 50%; font-size: .5rem; }
