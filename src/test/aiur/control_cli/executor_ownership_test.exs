@@ -12,28 +12,35 @@ defmodule Aiur.ControlCLI.ExecutorOwnershipTest do
     :ok
   end
 
-  test "take writes the Executor owner marker and release removes only its own marker" do
-    issue = %Issue{id: "5077", identifier: "5077", title: "Executor work", state: "todo", labels: []}
+  test "the owner passed by the invoking CLI wins and release removes only its own marker" do
+    issue = %Issue{
+      id: "5077",
+      identifier: "5077",
+      title: "Executor work",
+      state: "todo",
+      labels: []
+    }
+
     Application.put_env(:aiur, :memory_tracker_issues, [issue])
-    previous_owner = System.get_env("AIUR_EXECUTOR_OWNER")
-    System.put_env("AIUR_EXECUTOR_OWNER", "codex")
+    Application.put_env(:aiur, :memory_tracker_recipient, self())
+    output = capture_io(fn -> AgentControlCLI.take(["5077"], "cli-owner") end)
+    assert output =~ "ticket #5077 held by cli-owner"
+    assert_received {:memory_tracker_ensure_labels, ["agent:executor:cli-owner"]}
+    assert_received {:memory_tracker_add_label, "5077", "agent:executor:cli-owner"}
 
-    on_exit(fn ->
-      if previous_owner, do: System.put_env("AIUR_EXECUTOR_OWNER", previous_owner), else: System.delete_env("AIUR_EXECUTOR_OWNER")
-    end)
+    Application.put_env(:aiur, :memory_tracker_issues, [
+      %{issue | labels: ["agent:executor:cli-owner"]}
+    ])
 
-    output = capture_io(fn -> AgentControlCLI.take(["5077"]) end)
-    assert output =~ "ticket #5077 held by codex"
-    assert_received {:memory_tracker_add_label, "5077", "agent:executor:codex"}
+    refused =
+      capture_io(fn ->
+        capture_io(:stderr, fn -> AgentControlCLI.release(["5077"], "other") end)
+      end)
 
-    Application.put_env(:aiur, :memory_tracker_issues, [%{issue | labels: ["agent:executor:codex"]}])
-    System.put_env("AIUR_EXECUTOR_OWNER", "other")
-    refused = capture_io(fn -> capture_io(:stderr, fn -> AgentControlCLI.release(["5077"]) end) end)
     assert refused =~ "owned by another Executor"
 
-    System.put_env("AIUR_EXECUTOR_OWNER", "codex")
-    released = capture_io(fn -> AgentControlCLI.release(["5077"]) end)
+    released = capture_io(fn -> AgentControlCLI.release(["5077"], "cli-owner") end)
     assert released =~ "Executor hold released for #5077"
-    assert_received {:memory_tracker_remove_label, "5077", "agent:executor:codex"}
+    assert_received {:memory_tracker_remove_label, "5077", "agent:executor:cli-owner"}
   end
 end
