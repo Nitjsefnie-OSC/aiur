@@ -169,6 +169,13 @@ defmodule Aiur.DecisionStore.RequestsTest do
 
       assert {:error, {:conflict, {:expired_decision_requires_reraise, id}}} = request(pid, payload)
       assert id == decision.decision_id
+
+      assert {:ok, %{status: :accepted, decision: rearmed}} =
+               request(pid, Map.put(payload, "version", 2))
+
+      assert rearmed.decision_id == decision.decision_id
+      assert rearmed.version == 2
+      assert rearmed.decision_status == :open
     end
 
     test "changed content re-arms a dismissed Command that is not a legacy attention", %{dir: dir} do

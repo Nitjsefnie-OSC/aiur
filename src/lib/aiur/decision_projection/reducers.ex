@@ -45,6 +45,13 @@ defmodule Aiur.DecisionProjection.Reducers do
     {:ok, %{decision | decision_status: :dismissed, delivery_status: :not_dispatched}}
   end
 
+  def transition(
+        %Decision{decision_status: :expired, blocking: true, answer: nil} = decision,
+        %DecisionEvent{type: :decision_dismissed}
+      ) do
+    {:ok, %{decision | decision_status: :dismissed, delivery_status: :not_dispatched}}
+  end
+
   def transition(%Decision{decision_status: :dismissed} = decision, %DecisionEvent{type: :decision_dismissed}) do
     {:ok, decision}
   end
@@ -79,7 +86,8 @@ defmodule Aiur.DecisionProjection.Reducers do
   # answerable. The event records why and who. An open or deferred Command gets
   # no answer, so it stays durably distinguishable from a decided one.
   def transition(%Decision{decision_status: status} = decision, %DecisionEvent{type: :decision_mooted})
-      when status in [:open, :deferred] do
+      when status in [:open, :deferred] or
+             (status == :expired and decision.blocking and is_nil(decision.answer)) do
     {:ok, %{decision | decision_status: :moot, delivery_status: :not_dispatched}}
   end
 

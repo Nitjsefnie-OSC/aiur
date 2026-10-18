@@ -188,6 +188,45 @@ defmodule Aiur.DecisionStore.WithdrawalsTest do
     assert replayed.decision_status == :decided
   end
 
+  test "expired blockers can be mooted or dismissed after their ticket is no longer active", %{dir: dir} do
+    pid = start_store!(dir)
+    opts = [actor: %{kind: :operator, id: "dashboard"}]
+
+    assert {:ok, %{decision: closed_ticket}} =
+             request(pid, %{"question" => "Should closed work continue?", "blocking" => true}, ticket: %{@ticket | identifier: "closed-41"})
+
+    assert {:ok, %{decision: dismissed_ticket}} =
+             request(pid, %{"question" => "Should retired work continue?", "blocking" => true}, ticket: %{@ticket | identifier: "closed-42"})
+
+    for decision <- [closed_ticket, dismissed_ticket] do
+      assert {:ok, %{decision: %{decision_status: :expired}}} =
+               DecisionStore.expire(
+                 decision.decision_id,
+                 "agent_not_running",
+                 [now: DateTime.add(decision.created_at, 600, :second)],
+                 pid
+               )
+    end
+
+    assert {:ok, %{status: :accepted, decision: mooted}} =
+             DecisionStore.moot(
+               closed_ticket.decision_id,
+               %{"reason_class" => "ticket_closed"},
+               opts,
+               pid
+             )
+
+    assert mooted.decision_status == :moot
+    assert mooted.answer == nil
+
+    assert {:ok, %{status: :accepted, decision: dismissed}} =
+             DecisionStore.dismiss(dismissed_ticket.decision_id, opts, pid)
+
+    assert dismissed.decision_status == :dismissed
+    assert {:ok, ids} = DecisionStore.blocked_ticket_ids(pid)
+    assert ids == MapSet.new()
+  end
+
   describe "moot disposition (#2099)" do
     test "retires an open Command with a recorded reason and no answer", %{dir: dir} do
       pid = start_store!(dir)

@@ -180,9 +180,20 @@ defmodule Aiur.DecisionStore.Requests do
   @spec evaluate_and_apply(term(), term(), term()) :: term()
   def evaluate_and_apply(decision, requested_version, state) do
     case evaluate(decision, requested_version, state) do
-      {:duplicate, existing} -> {:reply, {:ok, %{status: :duplicate, decision: existing}}, state}
-      {:reject, reason} -> {:reply, {:error, {:conflict, reason}}, state}
-      {:accept, decision} -> accept(decision, state)
+      {:duplicate, existing} ->
+        {:reply, {:ok, %{status: :duplicate, decision: existing}}, state}
+
+      {:reject, reason} ->
+        {:reply, {:error, {:conflict, reason}}, state}
+
+      {:accept, decision} ->
+        accept(decision, state)
+
+      {:supersede_expired, decision, expired} ->
+        case Dedup.moot_expired_reraise(state, expired, decision) do
+          {:ok, next_state} -> accept(decision, next_state)
+          {:error, reason} -> {:reply, {:error, reason}, Persistence.journal_failure_state(state, reason)}
+        end
     end
   end
 
@@ -201,8 +212,16 @@ defmodule Aiur.DecisionStore.Requests do
   # the new one as a duplicate of the existing Command rather than appending it.
   defp evaluate_fresh(decision, 1, state) do
     case Dedup.find_creation_duplicate(decision, state) do
-      nil -> {:accept, %{decision | version: 1}}
-      existing -> {:duplicate, existing}
+      nil ->
+        decision = %{decision | version: 1}
+
+        case Dedup.find_expired_reraise_duplicate(decision, state) do
+          nil -> {:accept, decision}
+          expired -> {:supersede_expired, decision, expired}
+        end
+
+      existing ->
+        {:duplicate, existing}
     end
   end
 
@@ -211,6 +230,9 @@ defmodule Aiur.DecisionStore.Requests do
 
   defp evaluate_against_existing(decision, requested_version, existing) do
     cond do
+      requested_version == existing.version + 1 ->
+        {:accept, %{decision | version: requested_version}}
+
       expired_unanswered_blocking?(existing) ->
         {:reject, {:expired_decision_requires_reraise, existing.decision_id}}
 
@@ -219,9 +241,6 @@ defmodule Aiur.DecisionStore.Requests do
 
       requested_version == existing.version ->
         {:reject, {:idempotency_conflict, requested_version}}
-
-      requested_version == existing.version + 1 ->
-        {:accept, %{decision | version: requested_version}}
 
       requested_version < existing.version ->
         {:reject, {:stale_version, requested_version, existing.version}}

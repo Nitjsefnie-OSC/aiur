@@ -32,9 +32,11 @@ valid.
 
 Open blocking Commands (including deferred Commands) count toward the
 decision-based `waiting_for_human` state. An unanswered blocking Command that
-reaches its expiry time remains answerable and continues to hold that gate
-until the Executor answers it. Expired nonblocking Commands and moot Commands
-do not hold the gate.
+reaches its expiry time remains visible and answerable, but no longer holds the
+dispatch gate: expiry means its original worker is gone. A matching re-raise
+moots the expired record before opening its replacement. The Executor may also
+moot or dismiss an expired blocker when its ticket is closed or its question is
+otherwise no longer relevant.
 
 Agents classify the action, not the subsystem around it. Routine,
 reversible operational choices should use `supervisor_allowed`; irreversible
@@ -73,9 +75,11 @@ version. A separate `aiur executor-answer` must use the new version.
 
 Aiur warns when reversible human-required Commands offer only low-risk options.
 It raises attention when an Executor-unanswerable nonblocking Command expires.
-Unanswered blocking Commands stay open and answerable until the Executor
-responds. These signals expose stale context and misclassification without
-changing who may answer.
+Unanswered blocking Commands stay answerable until the Executor responds or
+the record is mooted. When a blocking request is expired, the agent may
+re-raise it with a new `source_id`; a matching request supersedes the stale
+record. Revisions that keep the original `source_id` may use the next version
+to reopen that same Command with updated content.
 
 A blocking Command never waits in silence. When it is created, the Executor gets
 one `ticket.<N>.agent.attention.operator-decision` wake with the decision id,

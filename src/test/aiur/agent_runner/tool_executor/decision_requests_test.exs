@@ -415,7 +415,10 @@ defmodule Aiur.AgentRunner.ToolExecutor.DecisionRequestsTest do
       retry = executor.("emit_event", %{"name" => "decision.requested", "message" => "Deploy now?", "payload" => payload})
       assert retry["success"] == false
       error = Jason.decode!(retry["output"])["error"]
-      assert error["message"] == "Decision #{decision_id} expired. Re-raise it with a new decision request."
+
+      assert error["message"] ==
+               "Decision #{decision_id} expired. Re-raise it with a new source_id; a matching request will supersede this stale blocker."
+
       assert error["reason"] == "expired_decision_requires_reraise"
     end
 
