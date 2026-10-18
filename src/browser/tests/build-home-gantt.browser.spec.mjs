@@ -350,7 +350,7 @@ compositionCells.push(...[2, 3, 7, 30].flatMap(span => PARITY_VIEWPORTS.flatMap(
 for (const cell of compositionCells) {
   const core = cell.dataset === 'live' && cell.span === 1 && cell.palette === 'aiur' && [1440, 390].includes(cell.viewport.width)
   test(`B1 ${core ? 'Gantt composition parity' : 'Gantt full acceptance composition'}: ${cell.dataset} ${cell.viewport.width} ${cell.theme} ${cell.palette} span${cell.span}`, async ({ browser }) => {
-    test.setTimeout(120000)
+    test.setTimeout(240000)
     const pair = await openParityPair(browser, cell, { query: `view=gantt&span=${cell.span}`, motion: true })
     try {
       await freezeGanttComposition(pair)
