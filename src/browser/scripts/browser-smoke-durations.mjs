@@ -6,6 +6,12 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
+  // New chain suites: guarded local runner wall time, 2026-10-18, rounded up.
+  // Commands: node --test tests/build-home-chains.test.mjs; node scripts/run-browser-tests.mjs tests/build-home-chains{,-parity,-states}.browser.spec.mjs.
+  'test:build-home-chains-unit': 1,
+  'test:build-home-chains': 123,
+  'test:browser-suite -- build-home-chains-parity': 93,
+  'test:browser-suite -- build-home-chains-states': 48,
   // PR #4805 suite-duration logs (2026-10-18): units/browser from run 39093008001 at ea5f25e39.
   // Parity uses the slower observed run 39064291733 at c4d059a24 (job 117557027408).
   'test:build-home-edges-unit': 0.2,
