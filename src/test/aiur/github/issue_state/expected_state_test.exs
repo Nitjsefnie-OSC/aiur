@@ -99,9 +99,12 @@ defmodule Aiur.GitHub.IssueState.ExpectedStateTest do
 
     test "rejects a stale expected state before mutating labels" do
       test_pid = self()
+      issue_key = ResourceStore.key(:issue, "owner", "repo", "42")
+      :ok = ResourceStore.put_etag(issue_key, "stale-validator")
 
       request_fun = fn request ->
         send(test_pid, {:request, request})
+        refute Map.has_key?(request, :etag)
 
         {:ok,
          %{

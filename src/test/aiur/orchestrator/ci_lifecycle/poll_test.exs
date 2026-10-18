@@ -19,6 +19,35 @@ defmodule Aiur.Orchestrator.CiLifecycle.PollTest do
   setup :ci_lifecycle_setup
 
   describe "CI lifecycle coordination" do
+    test "a broker-held CI poll stays due and retries on the next orchestrator tick" do
+      ticket = issue(unique_identifier("ci-broker-retry"), "ci-wait")
+      calls = :ets.new(:ci_broker_retry_calls, [:set, :public])
+      :ets.insert(calls, {:count, 0})
+
+      state = %State{last_ci_poll_started_at_ms: System.monotonic_time(:millisecond)}
+
+      opts = [
+        ci_issue_fetcher: fn ["ci-wait", "human-review"] -> {:ok, [ticket]} end,
+        ci_poller: fn _targets, _opts ->
+          :ets.update_counter(calls, :count, 1)
+
+          {:ok,
+           %{
+             results: [],
+             errors: [{ticket.identifier, {:pr_lookup, {:github, :local_hold, %{reason: :github_budget_broker_timeout}}}}]
+           }}
+        end,
+        parked_ready_alert_loader: fn -> MapSet.new() end,
+        draft_stall_alert_loader: fn -> MapSet.new() end
+      ]
+
+      failed = CiLifecycle.poll_github_ci(state, opts)
+      assert failed.last_ci_poll_started_at_ms == nil
+      retried = CiLifecycle.poll_github_ci(failed, opts)
+      assert :ets.lookup_element(calls, :count, 2) == 2
+      assert retried.last_ci_poll_started_at_ms == nil
+    end
+
     test "CI poll fetch runs outside the owner and late results preserve current state" do
       recipient = self()
       ticket = issue(unique_identifier("async-ci"), "human-review")

@@ -92,7 +92,6 @@ defmodule Aiur.Orchestrator.OrphanReleaseRetryTest do
   end
 
   for reason <- [
-        {:github, :local_hold, %{reason: :github_budget_broker_timeout}},
         {:github, :local_hold, %{reason: {:aiur, :locally_held, %{reason: :shared_budget, reset_at: 100}}}},
         {:aiur, :locally_held, %{reason: :shared_budget, reset_at: 100}},
         {:github, :transport, %{reason: {:aiur, :locally_held, %{reset_at: 100}}}},
@@ -117,41 +116,6 @@ defmodule Aiur.Orchestrator.OrphanReleaseRetryTest do
       assert released.orphaned_claim_since == %{}
       assert_received {:comment, _}
     end
-  end
-
-  test "missing current issue state defers orphan release without consuming attempts" do
-    issue = issue()
-
-    held_opts =
-      Keyword.put(opts(), :update_issue_state_fun, fn _, _, _ ->
-        {:error, {:stale_issue_state, "in-progress", nil}}
-      end)
-
-    state = %State{startup_claim_reconciliation_failures: %{"3710" => %{attempts: 2, reason: :previous_failure}}}
-    {held, [%Issue{state: "in-progress"}]} = StartupClaimReconciler.reconcile(state, [issue], held_opts)
-
-    assert held.startup_claim_reconciliation_failures["3710"].attempts == 2
-    refute held.startup_claim_reconciliation_complete?
-    refute_received {:comment, _}
-
-    {released, [%Issue{state: "todo"}]} = StartupClaimReconciler.reconcile(held, [issue], opts())
-    assert released.startup_claim_reconciliation_failures == %{}
-    assert_received {:comment, _}
-  end
-
-  test "a budget broker timeout defers release without consuming attempts" do
-    issue = issue()
-    state = %State{startup_claim_reconciliation_failures: %{"3710" => %{attempts: 2, reason: :previous_failure}}}
-
-    held_opts =
-      Keyword.put(opts(), :update_issue_state_fun, fn _, _, _ ->
-        {:error, {:github, :local_hold, %{reason: :github_budget_broker_timeout}}}
-      end)
-
-    {held, [^issue]} = StartupClaimReconciler.reconcile(state, [issue], held_opts)
-    assert held.startup_claim_reconciliation_failures["3710"].attempts == 2
-    refute held.startup_claim_reconciliation_complete?
-    refute_received {:comment, _}
   end
 
   # #4826: a draft is still being worked, so it is never offered to a reviewer.

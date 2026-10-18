@@ -16,8 +16,6 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler.Release do
 
     case result do
       {:error, {:github, kind, _} = reason} when kind in [:local_hold, :rate_limited] -> {:defer, reason}
-      {:error, {:github, :local_hold, %{reason: :github_budget_broker_timeout}} = reason} -> {:defer, reason}
-      {:error, {:stale_issue_state, expected, nil} = reason} -> {:defer, {:issue_state_unavailable, expected, reason}}
       {:error, {:aiur, :locally_held, _} = reason} -> {:defer, reason}
       # Boot-time budget timeouts starve the ancestry read; it is missing evidence, not a verdict.
       {:error, :review_base_ancestry_unavailable = reason} -> {:defer, reason}

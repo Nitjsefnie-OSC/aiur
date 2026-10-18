@@ -109,8 +109,9 @@ defmodule Aiur.Orchestrator.CiLifecycle.Poll do
       :no_targets ->
         state
 
-      {started_at, :held} ->
-        %{state | last_ci_poll_started_at_ms: started_at}
+      {_started_at, :held} ->
+        Logger.warning("GithubCIPoller held by local budget; retrying on the next orchestrator tick")
+        %{state | last_ci_poll_started_at_ms: nil}
 
       {started_at, result} ->
         state = %{state | last_ci_poll_started_at_ms: started_at}
@@ -119,8 +120,11 @@ defmodule Aiur.Orchestrator.CiLifecycle.Poll do
   end
 
   defp apply_ci_poll(state, {:error, reason}, _generations, _baseline, _opts) do
-    Logger.warning("GithubCIPoller target refresh skipped; reason=#{inspect(reason)}")
-    TrackerHealth.note_github_connectivity_failure(state, :ci, reason)
+    Logger.warning("GithubCIPoller target refresh failed; retrying on the next orchestrator tick reason=#{inspect(reason)}")
+
+    state
+    |> Map.put(:last_ci_poll_started_at_ms, nil)
+    |> TrackerHealth.note_github_connectivity_failure(:ci, reason)
   end
 
   defp apply_ci_observation(state, {:ok, %{results: results, errors: errors}}, targets, issues_by_target, opts)
@@ -131,11 +135,15 @@ defmodule Aiur.Orchestrator.CiLifecycle.Poll do
     |> log_ci_poll_errors(errors)
     |> apply_ci_poll_results(results, issues_by_target, opts)
     |> RestackScheduler.reconcile(Map.values(issues_by_target))
+    |> retry_ci_poll_on_errors(errors)
   end
 
   defp apply_ci_observation(state, {:error, reason}, _targets, _issues, _opts) do
-    Logger.warning("GithubCIPoller failed; reason=#{inspect(reason)}")
-    TrackerHealth.note_github_connectivity_failure(state, :ci, reason)
+    Logger.warning("GithubCIPoller failed; retrying on the next orchestrator tick reason=#{inspect(reason)}")
+
+    state
+    |> Map.put(:last_ci_poll_started_at_ms, nil)
+    |> TrackerHealth.note_github_connectivity_failure(:ci, reason)
   end
 
   defp apply_ci_observation(state, other, _targets, _issues, _opts) do
@@ -237,6 +245,13 @@ defmodule Aiur.Orchestrator.CiLifecycle.Poll do
   defp log_ci_poll_errors(state, errors) do
     Logger.warning("GithubCIPoller partial failures; reason=#{inspect(errors)}")
     state
+  end
+
+  defp retry_ci_poll_on_errors(state, []), do: state
+
+  defp retry_ci_poll_on_errors(state, errors) do
+    Logger.warning("GithubCIPoller will retry #{length(errors)} failed target(s) on the next orchestrator tick")
+    %{state | last_ci_poll_started_at_ms: nil}
   end
 
   defp apply_ci_poll_results(state, results, issues_by_target, opts) do

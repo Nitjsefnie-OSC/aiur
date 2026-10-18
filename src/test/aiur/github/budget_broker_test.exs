@@ -251,10 +251,87 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
 
     assert {:ok, "ok", 0} = command(server, broker, [])
 
-    assert_receive {[:aiur, :github, :budget_broker, :command], %{duration_ms: duration, pending: pending, mailbox: mailbox}, %{outcome: :completed}}, 1_000
+    assert_receive {[:aiur, :github, :budget_broker, :command], %{duration_ms: duration, mailbox_wait_ms: mailbox_wait, pending: pending, mailbox: mailbox}, %{outcome: :completed}}, 1_000
     assert is_integer(duration) and duration >= 0
+    assert is_integer(mailbox_wait) and mailbox_wait >= 0
     assert pending == 0
     assert is_integer(mailbox) and mailbox >= 0
+  end
+
+  test "broker telemetry includes time spent waiting in the GenServer mailbox", %{root: root} do
+    test_pid = self()
+
+    handler =
+      :telemetry.attach(
+        "budget-broker-mailbox-#{inspect(test_pid)}",
+        [:aiur, :github, :budget_broker, :command],
+        fn event, measurements, metadata, pid ->
+          send(pid, {event, measurements, metadata})
+        end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+    server = start_supervised!({BudgetBroker, name: __MODULE__.MailboxObserved}, id: :mailbox_observed)
+    broker = Path.join(root, "mailbox.py")
+
+    File.write!(broker, """
+    import json, sys
+    for line in sys.stdin:
+        request = json.loads(line)
+        print(json.dumps({"id": request["id"], "output": "ok", "status": 0}), flush=True)
+    """)
+
+    :ok = :sys.suspend(server)
+    task = Task.async(fn -> command(server, broker, []) end)
+    Process.sleep(40)
+    :ok = :sys.resume(server)
+    assert {:ok, "ok", 0} = Task.await(task)
+
+    assert_receive {[:aiur, :github, :budget_broker, :command], %{mailbox_wait_ms: mailbox_wait}, %{outcome: :completed}}, 1_000
+    assert mailbox_wait >= 30
+  end
+
+  test "resident Python broker reports inbox and SQLite stage durations", %{root: root, server: server} do
+    test_pid = self()
+
+    handler =
+      :telemetry.attach(
+        "budget-broker-stages-#{inspect(test_pid)}",
+        [:aiur, :github, :budget_broker, :command],
+        fn event, measurements, metadata, pid ->
+          send(pid, {event, measurements, metadata})
+        end,
+        test_pid
+      )
+
+    on_exit(fn -> :telemetry.detach(handler) end)
+
+    assert {:ok, _output, 0} = command(server, Budget.broker_path(), ["snapshot" | common(root)])
+
+    assert_receive {[:aiur, :github, :budget_broker, :command], measurements, %{outcome: :completed}}, 1_000
+    assert is_number(measurements.python_queue_wait_ms)
+    assert is_integer(measurements.python_queue_depth)
+    assert is_number(measurements.sqlite_open_ms)
+    assert is_number(measurements.sqlite_lock_wait_ms)
+    assert is_number(measurements.sqlite_transaction_ms)
+  end
+
+  test "one-minute broker summary reports latency percentiles and timeout counts" do
+    summary =
+      BudgetBroker.summarize_stats([
+        {:completed, %{duration_ms: 10, mailbox_wait_ms: 1, mailbox: 2, pending: 1, python_queue_wait_ms: 3, python_queue_depth: 4, sqlite_lock_wait_ms: 5, sqlite_transaction_ms: 6}},
+        {:timeout, %{duration_ms: 100, mailbox_wait_ms: 20, mailbox: 8, pending: 3, python_queue_wait_ms: 30, python_queue_depth: 12, sqlite_lock_wait_ms: 40, sqlite_transaction_ms: 50}}
+      ])
+
+    assert summary.commands == 2
+    assert summary.timeouts == 1
+    assert summary.duration_p50_ms == 10
+    assert summary.duration_p99_ms == 100
+    assert summary.mailbox_depth_max == 8
+    assert summary.python_queue_depth_max == 12
+    assert summary.sqlite_lock_wait_p99_ms == 40
+    assert summary.sqlite_transaction_p99_ms == 50
   end
 
   defp command(server, broker, args), do: BudgetBroker.command(server, broker, args, System.monotonic_time(:millisecond) + 5_000)

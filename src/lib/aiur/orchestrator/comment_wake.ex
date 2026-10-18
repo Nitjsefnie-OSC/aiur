@@ -825,7 +825,7 @@ defmodule Aiur.Orchestrator.CommentWake do
 
         state
 
-      attempt >= max_attempts ->
+      Aiur.Orchestrator.CommentReworkRetry.limit_reached?(attempt, reason, max_attempts) ->
         Logger.warning("#{source} rework transition retry exhausted: issue_identifier=#{issue_number} attempts=#{attempt} reason=#{inspect(reason)}")
 
         state
@@ -841,7 +841,7 @@ defmodule Aiur.Orchestrator.CommentWake do
             delay_ms
           )
 
-        Logger.info("#{source} rework transition retry scheduled: issue_identifier=#{issue_number} attempt=#{next_attempt}/#{max_attempts} delay_ms=#{delay_ms}")
+        Logger.warning("#{source} rework retry issue=#{issue_number} attempt=#{Aiur.Orchestrator.CommentReworkRetry.attempt_label(next_attempt, reason, max_attempts)} delay=#{delay_ms}ms")
 
         put_comment_rework_retry(state, key, {timer_ref, issue_number, source})
     end

@@ -957,25 +957,29 @@ def execute(args):
 def read_requests(inbox):
     try:
         for line in sys.stdin:
-            inbox.put(json.loads(line))
+            request = json.loads(line)
+            request["_received_ns"] = time.monotonic_ns()
+            inbox.put(request)
     finally:
         inbox.put(None)
 
 
-def run_batch(requests, command_parser):
+def run_batch(requests, command_parser, queue_depth=0):
     parsed = []
     for request in requests:
+        request["_python_queue_wait_ms"] = max((time.monotonic_ns() - request.get("_received_ns", time.monotonic_ns())) / 1_000_000, 0)
+        request["_python_queue_depth"] = queue_depth
         try:
             with contextlib.redirect_stderr(io.StringIO()):
                 args = command_parser.parse_args(request["args"])
             parsed.append((request, args))
         except (Exception, SystemExit) as error:
-            yield {"id": request["id"], "status": 1, "output": str(error)}
+            yield {"id": request["id"], "status": 1, "output": str(error), "python_queue_wait_ms": request["_python_queue_wait_ms"], "python_queue_depth": queue_depth}
     for db, group in itertools.groupby(parsed, key=lambda item: item[1].db):
         active = []
         for request, args in group:
             if request["deadline_ms"] <= now_ms():
-                yield {"id": request["id"], "status": 2, "output": "broker deadline expired before admission"}
+                yield {"id": request["id"], "status": 2, "output": "broker deadline expired before admission", "python_queue_wait_ms": request["_python_queue_wait_ms"], "python_queue_depth": queue_depth}
             else:
                 active.append((request, args))
         if active:
@@ -986,6 +990,7 @@ COMMIT_MARGIN_MS = 50
 
 
 def begin_batch(conn, requests, replies):
+    started_ns = time.monotonic_ns()
     # SQLite's long busy wait can lose every lock race to a hot resident peer.
     # Short waits plus jitter give competing daemons chances to acquire it,
     # while preserving the caller's absolute deadline and fail-closed behavior.
@@ -993,19 +998,23 @@ def begin_batch(conn, requests, replies):
         active = []
         for request, args in requests:
             if request["deadline_ms"] - COMMIT_MARGIN_MS <= now_ms():
-                replies.append({"id": request["id"], "status": 2, "output": "broker deadline expired waiting for SQLite"})
+                replies.append({"id": request["id"], "status": 2, "output": "broker deadline expired waiting for SQLite", "python_queue_wait_ms": request.get("_python_queue_wait_ms", 0), "python_queue_depth": request.get("_python_queue_depth", 0)})
             else:
                 active.append((request, args))
         requests[:] = active
         if not requests:
-            return False
+            lock_wait_ms = (time.monotonic_ns() - started_ns) / 1_000_000
+            for reply in replies:
+                reply["sqlite_lock_wait_ms"] = lock_wait_ms
+                reply["sqlite_transaction_ms"] = 0
+            return False, lock_wait_ms
         remaining = min(request["deadline_ms"] for request, _args in requests) - COMMIT_MARGIN_MS - now_ms()
         if remaining <= 0:
             continue
         conn.conn.execute(f"PRAGMA busy_timeout = {min(remaining, 20)}")
         try:
             conn.conn.execute("BEGIN IMMEDIATE")
-            return True
+            return True, (time.monotonic_ns() - started_ns) / 1_000_000
         except sqlite3.OperationalError as error:
             if "locked" not in str(error).lower():
                 raise
@@ -1013,13 +1022,22 @@ def begin_batch(conn, requests, replies):
 
 
 def run_transaction(db, requests):
+    requests = list(requests)
+    requests_by_id = {request["id"]: request for request, _args in requests}
     replies = []
     conn = None
+    sqlite_open_ms = 0
+    transaction_started_ns = None
     try:
+        open_started_ns = time.monotonic_ns()
         conn = connection(db)
-        requests = list(requests)
-        if not begin_batch(conn, requests, replies):
+        sqlite_open_ms = (time.monotonic_ns() - open_started_ns) / 1_000_000
+        acquired, lock_wait_ms = begin_batch(conn, requests, replies)
+        if not acquired:
+            for reply in replies:
+                reply["sqlite_open_ms"] = sqlite_open_ms
             return replies
+        transaction_started_ns = time.monotonic_ns()
         conn.batching = True
         if any(args.command in ("acquire", "release", "reconcile", "renew", "hold") for _request, args in requests):
             _ensure_writable(conn)
@@ -1052,6 +1070,16 @@ def run_transaction(db, requests):
             remaining = [(request, args) for request, args in requests if request["id"] not in expired]
             return waiting_replies + timed_out + (run_transaction(db, remaining) if remaining else [])
         conn.conn.execute("COMMIT")
+        transaction_ms = (time.monotonic_ns() - transaction_started_ns) / 1_000_000
+        for reply in replies:
+            request = requests_by_id.get(reply["id"], {})
+            reply.update({
+                "python_queue_wait_ms": request.get("_python_queue_wait_ms", 0),
+                "python_queue_depth": request.get("_python_queue_depth", 0),
+                "sqlite_open_ms": sqlite_open_ms,
+                "sqlite_lock_wait_ms": lock_wait_ms,
+                "sqlite_transaction_ms": transaction_ms,
+            })
         return replies
     except Exception as error:
         if conn is not None and conn.in_transaction:
@@ -1060,7 +1088,16 @@ def run_transaction(db, requests):
         local_timeout = isinstance(error, TimeoutError) or (isinstance(error, sqlite3.OperationalError) and "locked" in str(error).lower())
         active_ids = {request["id"] for request, _args in requests}
         completed = [reply for reply in replies if reply["id"] not in active_ids]
-        return completed + [{"id": request["id"], "status": 2 if local_timeout else 1, "output": str(error)} for request, _args in requests]
+        transaction_ms = 0 if transaction_started_ns is None else (time.monotonic_ns() - transaction_started_ns) / 1_000_000
+        failed = [{
+            "id": request["id"], "status": 2 if local_timeout else 1, "output": str(error),
+            "python_queue_wait_ms": request.get("_python_queue_wait_ms", 0),
+            "python_queue_depth": request.get("_python_queue_depth", 0),
+            "sqlite_open_ms": sqlite_open_ms,
+            "sqlite_lock_wait_ms": 0,
+            "sqlite_transaction_ms": transaction_ms,
+        } for request, _args in requests]
+        return completed + failed
     finally:
         if conn is not None:
             conn.batching = False
@@ -1090,7 +1127,7 @@ def serve():
                 batch.append(request)
             # Replies are published only after the batch commits: a granted
             # lease must be durable before a caller may contact GitHub.
-            for reply in run_batch(batch, command_parser):
+            for reply in run_batch(batch, command_parser, inbox.qsize()):
                 print(json.dumps(reply), flush=True)
     finally:
         for conn in SESSION_CONNECTIONS.values():
