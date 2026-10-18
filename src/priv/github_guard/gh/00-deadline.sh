@@ -22,7 +22,7 @@ except ValueError:
 seconds = max(1, min(seconds, 120))
 
 # Feed the large body through an anonymous pipe. The shell inherits the read
-# end as fd 3 and sources /dev/fd/3; no agent-writable pathname exists.
+# end and sources it by descriptor; no agent-writable pathname exists.
 body_read, body_write = os.pipe()
 def write_body(fd, contents):
     with os.fdopen(fd, "w", encoding="utf-8") as body_file:
