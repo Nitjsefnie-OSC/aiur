@@ -33,6 +33,8 @@ The build timeline at `/build` labels daemon state separately from socket reacha
 
 While the socket is open but the fleet snapshot is unread, such as during startup, the footer reads “Daemon up · unread” with the age of the last good reading. A source that a GitHub budget hold delays is named in the footer with the age of its last read, for example “history held 2m”. Hover the footer for the full sentence.
 
+Before the first timeline load finishes, the footer shows the last daemon state the server read, with its age. A recent reading can show “Daemon live · <1m ago”; a reading 30 seconds old or older shows “Daemon stale” with its age and the dot turned off. It reads “Daemon status unknown” only when no daemon state has been observed yet.
+
 History, queue and open-ticket headers label stale or partial reads with their age. Failed reads show unavailable markers instead of empty sections; disabled sources keep their reason. Filters and unloaded history days have distinct empty messages. Before the first snapshot, the timeline shows a loading skeleton; a failed initial read stops its animation.
 
 **Reconnect** retries a dropped socket immediately, or requests a fresh snapshot when the socket is open. It reads “Reconnecting…” while pending and returns to **Reconnect** after ten seconds if the page is still degraded. This control also works with read-only access.
@@ -60,7 +62,9 @@ On narrow screens, scroll within the **Build queue** table to see prerequisites,
 
 The operator-facing UI and CLI call these records **Commands**.
 
-Open the settings cog in the sticky top bar to pause or resume all agents, change the theme, or switch between Gruvbox (the default) and the aiur palette. Pause requires writable access and a known fleet state; an unavailable state reads “Pause state unknown”. The “All agents paused” chip appears only when pause is confirmed.
+Open the settings cog in the sticky top bar to pause or resume new agent starts, change the theme, or switch between Gruvbox (the default) and the aiur palette. A global pause leaves existing agents running and observed; pause an individual agent from its row for containment.
+
+Pause requires writable access and a known fleet state; an unavailable state reads “Pause state unknown”. The “New starts paused” chip appears only when pause is confirmed.
 
 The theme starts dark until you toggle it. Both choices stay in this browser; another tab keeps its current palette until reload. Fonts are served by the dashboard, including offline.
 
@@ -214,6 +218,10 @@ Full log combines the newest materialized prior runs that fit a bounded projecti
 
 Retained summaries that exceed the read budget also report unavailable.
 
+The Build page usage strip shows API budgets and provider windows or credits. Hover or focus a usage line for account details, observation age, and budget holds.
+
+Unknown readings stay marked as unobserved; expired windows and stale readings are identified explicitly. Reset labels refresh every 30 seconds while the tab is visible. Locked sessions show an authentication message without financial values.
+
 ### Read an experiment
 
 Open **Experiments** below Analytics and select an experiment. The shareable
@@ -225,6 +233,27 @@ errors are shown explicitly.
 Frozen baseline details include the revision, capture time, Aiur version and
 SHA-256 hash. A warning identifies metric packs that changed since the freeze.
 
-When a frozen analysis `result.json` is present in an experiment directory, the
-page shows its group summaries, sample counts and analyst labels. Below the
+The page reads the cached report analysis matching the current frozen inputs
+(or a legacy root-level `result.json`) for group summaries, sample counts and
+analyst labels. Below the
 analysis minimum, interval, p-value and effect cells say **not enough data**.
+
+The median-change chart shows stored percentage estimates and confidence
+intervals, with the expected direction labelled. Hollow points mark **not enough
+data** or unavailable estimates; no interval is drawn below the sample minimum.
+
+Select a metric to see its
+box-and-dot distribution and time series; metric and stratum selections are
+shareable through `?metric=` and `?stratum=`. Stratum chips appear only for stored
+stratum analyses.
+
+Cohorts use both colour and marker shape; additional cohorts use numbered markers. On phones, the time
+series scrolls within its container. Every chart has a **Show data** table.
+
+Sample meters distinguish the minimum sample guard from estimated power
+requirements. Missing estimates and sample counts remain unavailable; captured
+empty samples show zero.
+
+Sample points come from
+frozen snapshots; if none exist, the page says so and shows only stored group
+summaries. Rolling medians appear only when supplied in the stored analysis.

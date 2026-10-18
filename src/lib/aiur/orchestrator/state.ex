@@ -32,6 +32,7 @@ defmodule Aiur.Orchestrator.State do
           max_concurrent_agents: integer() | nil,
           session_max_concurrent_agents: integer() | nil,
           effective_concurrent_agents: integer() | nil,
+          priority_dispatch_reservations: %{optional(String.t()) => pos_integer()},
           load_envelope_state: map(),
           capacity_hold:
             %{
@@ -140,11 +141,6 @@ defmodule Aiur.Orchestrator.State do
           agent_rate_limits: map() | nil,
           codex_totals: map() | nil,
           codex_rate_limits: map() | nil,
-          events_etag: String.t() | nil,
-          events_last_id: String.t() | nil,
-          firehose_partial_streak: non_neg_integer(),
-          firehose_truncation_alert_active: boolean(),
-          firehose_truncation_alert_resolution_emitted: boolean(),
           github_comments_since: String.t() | map() | nil,
           github_comment_etags: map(),
           github_comment_issue_updated_at: map(),
@@ -302,11 +298,6 @@ defmodule Aiur.Orchestrator.State do
     agent_rate_limits: nil,
     codex_totals: nil,
     codex_rate_limits: nil,
-    events_etag: nil,
-    events_last_id: nil,
-    firehose_partial_streak: 0,
-    firehose_truncation_alert_active: false,
-    firehose_truncation_alert_resolution_emitted: false,
     github_comments_since: nil,
     github_comment_etags: %{},
     github_comment_issue_updated_at: %{},
@@ -348,7 +339,8 @@ defmodule Aiur.Orchestrator.State do
     orphaned_agent_reap_count: 0,
     control_lifecycle: %ControlLifecycle{},
     prewarm_hold_ticks: 0,
-    prewarm_hold_since_ms: nil
+    prewarm_hold_since_ms: nil,
+    priority_dispatch_reservations: %{}
   ]
 
   @spec handle_worker_runtime_info(t(), String.t(), map()) :: {:noreply, t()}
