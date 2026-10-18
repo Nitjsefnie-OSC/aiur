@@ -12,10 +12,10 @@ export const recordedSeconds = {
   // Full 24-case run: 203.5s summed test durations, all passed.
   'test:build-home-chains': 204,
   // Green P1–P4 cells after Now-band integration, 2026-10-18: summed test durations.
-  // Desktop groups: 175.7s / 150.0s. Phone minute-rounded output is bounded above by 426s.
+  // Retain the slower 1440 run (175.7s); restored 1024/phone cells use conservative minute-rounded bounds.
   'test:build-home-chains-parity:1': 176,
-  'test:build-home-chains-parity:2': 150,
-  'test:build-home-chains-parity:3': 430,
+  'test:build-home-chains-parity:2': 195,
+  'test:build-home-chains-parity:3': 505,
   'test:browser-suite -- build-home-chains-states': 48,
   // PR #5020 local focused npm wall times (2026-10-18), rounded up to 0.1s.
   // Source heads (per-command results in PR): dd3fef20e, b31b9cc85; motion a08f421bb.
