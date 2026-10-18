@@ -238,7 +238,7 @@ async function captureParityPixels(pair, { name, region, fullPage, preserveAnima
   const opts = { animations: preserveAnimations ? 'allow' : 'disabled', caret: 'hide', scale: 'device', maskColor: '#ff00ff', ...(region ? {} : { fullPage }) }
   await pair.design.bringToFront()
   if (region) await settleRegionImages(pair.design, region)
-  const png = await captureStable(design, { ...opts, mask: designMask }, preserveAnimations && region ? pair.design : undefined)
+  const png = await captureStable(design, { ...opts, mask: designMask }, region ? pair.design : undefined)
   await pair.product.bringToFront()
   if (region) await settleRegionImages(pair.product, region)
   checkPage(pair.design)
@@ -247,7 +247,7 @@ async function captureParityPixels(pair, { name, region, fullPage, preserveAnima
   await mkdir(path.dirname(file), { recursive: true })
   await writeFile(file, png)
   // Use the same capture protocol on both sides, including rounded image clips.
-  const actual = await captureStable(product, { ...opts, mask: productMask }, preserveAnimations && region ? pair.product : undefined)
+  const actual = await captureStable(product, { ...opts, mask: productMask }, region ? pair.product : undefined)
   expect(actual).toMatchSnapshot(`${name}.png`, { threshold: PARITY_THRESHOLD, maxDiffPixels: PARITY_FLOOR })
   checkPage(pair.design)
   checkPage(pair.product)
