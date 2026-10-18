@@ -100,12 +100,14 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
           if first_attempt? do
             {:error, :timeout}
           else
-            Agent.update(labels, fn _ -> ["agent:done"] end)
-            {:ok, %{status: 200, body: [%{"name" => "agent:done"}]}}
+            Agent.update(labels, &Enum.uniq(&1 ++ request.body["labels"]))
+            {:ok, %{status: 200, body: Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}
           end
 
         :delete ->
-          {:ok, %{status: 200, body: [%{"name" => "agent:done"}]}}
+          removed = URI.decode(request.url |> String.split("/") |> List.last())
+          Agent.update(labels, &Enum.reject(&1, fn label -> label == removed end))
+          {:ok, %{status: 200, body: Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}
 
         :patch ->
           {:ok, %{status: 200, body: %{}}}
@@ -127,7 +129,10 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       result =
         IssueState.apply_issue_state_update(
           context,
-          %{"state" => "closed", "labels" => []},
+          %{
+            "state" => "closed",
+            "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})
+          },
           "done",
           "agent:done"
         )

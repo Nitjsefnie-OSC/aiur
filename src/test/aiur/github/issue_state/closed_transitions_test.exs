@@ -175,6 +175,32 @@ defmodule Aiur.GitHub.IssueState.ClosedTransitionsTest do
       refute_receive {:request, %{method: :post}}, 100
     end
 
+    test "closed cancelled issue keeps its existing terminal label" do
+      test_pid = self()
+
+      request_fun = fn req ->
+        send(test_pid, {:request, req})
+
+        case req.method do
+          :get ->
+            {:ok, %{status: 200, body: %{"state" => "closed", "labels" => [%{"name" => "sym:cancelled"}, %{"name" => "sym:rework"}]}}}
+
+          :delete ->
+            {:ok, %{status: 200, body: [%{"name" => "sym:cancelled"}]}}
+
+          method ->
+            flunk("unexpected #{method} for a closed cancelled issue")
+        end
+      end
+
+      assert {:error, {:no_state_label_written, %{"labels" => [%{"name" => "sym:cancelled"}]}}} =
+               IssueState.update_issue_state("42", "rework", request_fun: request_fun)
+
+      assert_received {:request, %{method: :get}}
+      assert_received {:request, %{method: :delete}}
+      refute_received {:request, %{method: :post}}
+    end
+
     test "add_active_issue_label re-checks issue closed state before adding (stale-label race)" do
       test_pid = self()
       calls = :ets.new(:calls, [:set, :public])
