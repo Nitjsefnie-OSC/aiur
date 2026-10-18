@@ -37,7 +37,11 @@ for (const dataset of ['live', 'dense']) test(`windowed edge count follows visib
 
 test('B4/B12 odd edges draw cycles, failed and unknown without errors', async ({ page }, info) => {
   const errors = []; page.on('pageerror', e => errors.push(e.message))
+  // Pin the reviewed baseline palette: the shell default is independent of OS colorScheme.
+  await page.addInitScript(() => { localStorage.setItem('aiur-theme', 'light'); localStorage.setItem('aiur-palette', 'gruvbox') })
   await open(page, 'odd-edges')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  await expect(page.locator('html')).toHaveAttribute('data-palette', 'gruvbox')
   const edges = await page.evaluate(() => {
     const { ctx, fx } = st, result = {}
     for (const sec of ['hist', 'nq']) {
