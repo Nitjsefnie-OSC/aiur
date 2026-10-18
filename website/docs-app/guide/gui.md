@@ -94,6 +94,10 @@ The temporary, unlinked `/build` route reads the repository timeline from local 
 It requires dashboard authentication and loads history by active day in the browser’s time zone.
 Live changes are coalesced; snapshots distinguish unavailable sources from empty sections.
 
+List (`?view=list`) shows Live, Planned, Not queued and newest-first History as table rows.
+Ticket rows support keyboard focus. Use **Load earlier day** to fetch more history.
+Unknown values stay explicit, and degraded section headings show their source state and read age.
+
 The Now band shows every active agent between history and the plan. It settles
 at the nearest viewport edge after scrolling; **Live** returns to it. Minimize
 keeps the state counts visible (`live=min`), and a state preset expands it.

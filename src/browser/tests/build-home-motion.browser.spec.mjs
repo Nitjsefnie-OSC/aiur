@@ -284,7 +284,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
       test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
-      if (name === 'snap.list-view') { await pair.product.locator('[data-v="list"]').evaluate(el => el.click()); test.fixme(!await pair.product.locator('.bd-list').count(), 'Declared dependency #3149: List renderer') }
+      if (name === 'snap.list-view') { await pair.product.locator('[data-v="list"]').evaluate(el => el.click()); await expect(pair.product.locator('.bd-list')).toHaveCount(1) }
       if (name.startsWith('columns.')) {
         await Promise.all([pair.design, pair.product].map(async page => {
           await page.addInitScript(() => {
