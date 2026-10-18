@@ -73,7 +73,7 @@ defmodule Aiur.Orchestrator.Reconciler.Nonterminal do
         terminal_states,
         observe_membership_fun
       ) do
-    if Issue.parked?(issue) or Issue.executor_owner(issue) do
+    if Issue.parked?(issue) or not is_nil(Issue.executor_owner(issue)) do
       park_running_issue(state, issue)
     else
       reconcile_unparked_issue_state(
