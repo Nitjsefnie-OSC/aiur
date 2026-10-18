@@ -11,8 +11,10 @@ defmodule Aiur.Orchestrator.GlobalPause do
   All state mutation runs inside the orchestrator GenServer process.
   """
 
+  alias Aiur.Issue
   alias Aiur.ModelAvailability
   alias Aiur.Orchestrator.{DispatchPolicy, GlobalPauseStore, Lifecycle, SnapshotStore, State, StatusReport}
+  alias Aiur.Orchestrator.PauseResume.Resume
 
   @call_timeout 15_000
 
@@ -147,10 +149,35 @@ defmodule Aiur.Orchestrator.GlobalPause do
   defp maybe_refresh_after_global_pause_change(state, true, false, opts) do
     backends = Keyword.get(opts, :backends, DispatchPolicy.read_provider_backends())
     ModelAvailability.probe_stale_limits(backends, opts)
-    state |> Lifecycle.request_refresh_state() |> elem(0)
+
+    state
+    |> resume_legacy_global_pause_entries()
+    |> Lifecycle.request_refresh_state()
+    |> elem(0)
   end
 
   defp maybe_refresh_after_global_pause_change(state, _current, _on?, _opts), do: state
+
+  # Older releases parked running workers when global pause was enabled. Release
+  # only those legacy holds during unpause; new pauses leave workers untouched.
+  defp resume_legacy_global_pause_entries(%State{} = state) do
+    Enum.reduce(state.running, state, fn
+      {issue_id, %{paused_reason: :global_pause, issue: issue} = entry}, acc ->
+        resume_legacy_global_pause_entry(acc, issue_id, entry, issue)
+
+      _, acc ->
+        acc
+    end)
+  end
+
+  defp resume_legacy_global_pause_entry(state, issue_id, entry, issue) do
+    if Issue.paused?(issue), do: state, else: resume_legacy_global_pause_entry(state, issue_id, entry)
+  end
+
+  defp resume_legacy_global_pause_entry(state, issue_id, entry) do
+    {_reply, next} = Resume.resume_running_issue(state, entry)
+    if Map.has_key?(next.running, issue_id), do: next, else: state
+  end
 
   defp publish_global_pause(%State{} = state) do
     SnapshotStore.publish_global_pause(

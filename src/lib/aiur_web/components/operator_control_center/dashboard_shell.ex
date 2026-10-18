@@ -58,7 +58,7 @@ defmodule AiurWeb.OperatorControlCenter.DashboardShell do
           <b id="route-title" role="heading" aria-level="1">{@title || @route.label}</b>
           <span class="status-badge status-badge-offline brand-live"><span class="status-badge-dot"></span>Offline</span>
         </div>
-        <span class={["ax-paused", @pause_state.globally_paused == true && "show"]} id="ax-paused">Provisioning paused</span>
+        <span class={["ax-paused", @pause_state.globally_paused == true && "show"]} id="ax-paused">New starts paused</span>
       </header>
       <div class="app-layout">
         <aside class="sidenav">
@@ -260,8 +260,8 @@ defmodule AiurWeb.OperatorControlCenter.DashboardShell do
   end
 
   defp pause_label(nil), do: "Pause state unknown"
-  defp pause_label(true), do: "Resume provisioning"
-  defp pause_label(false), do: "Pause provisioning"
+  defp pause_label(true), do: "Resume new starts"
+  defp pause_label(false), do: "Pause new starts"
 
   defp pause_title(nil, _writable), do: "The daemon's pause state is not available"
   defp pause_title(_paused, false), do: "Read-only dashboard: pausing is unavailable"
