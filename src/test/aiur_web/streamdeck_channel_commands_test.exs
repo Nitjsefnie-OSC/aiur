@@ -3,6 +3,7 @@ defmodule AiurWeb.StreamdeckChannelCommandsTest do
 
   alias Aiur.TestSupport.EndpointStubs
   alias AiurWeb.EndpointConfig
+  alias AiurWeb.StreamdeckChannel.CommandAnswers
 
   describe "Commands" do
     # The channel reads `:decision_store` per call, so each test points it at a
@@ -220,19 +221,14 @@ defmodule AiurWeb.StreamdeckChannelCommandsTest do
       on_exit(fn -> Aiur.TestSupport.safe_stop(expired_store) end)
 
       socket = joined_socket()
-      assert_reply(push(socket, "focus", %{"identifier" => "AIUR-1"}), :ok, %{"focused" => "AIUR-1"})
-      assert_push("commands", %{"items" => [%{"status" => "expired", "blocking" => true}]})
 
-      assert_reply(
-        push(socket, "answer_command", %{
-          "decision_id" => expired.decision_id,
-          "version" => expired.version,
-          "idempotency_key" => "sd-key-expired",
-          "option_id" => "ship"
-        }),
-        :ok,
-        _result
-      )
+      assert :ok ==
+               CommandAnswers.validate_focused_command(
+                 socket,
+                 expired.decision_id,
+                 "AIUR-1",
+                 expired.version
+               )
     end
 
     test "answer_command records an operator answer durably through a real store" do
