@@ -170,15 +170,12 @@ class SoakTest(unittest.TestCase):
     def test_browser_samples_spec_with_more_than_two_thousand_generated_tests(self):
         spec = self.browser / 'tests/build-home-motion.browser.spec.mjs'
         spec.parent.mkdir(parents=True)
-        spec.write_text("import { test } from '@playwright/test';\n" +
-                        "for (const cell of Array.from({length: 2338}, (_, index) => index)) {\n" +
-                        "  test.describe(`cell ${cell}`, () => test(`motion [cell] ${cell}+`, async () => {}));\n}\n")
-        result, calls = self.soak('browser', SOAK_SPECS='["tests/build-home-motion.browser.spec.mjs"]',
-                                  PLAYWRIGHT_LIST_COUNT='2338', PLAYWRIGHT_LIST_TITLE='motion [cell]+')
+        spec.write_text("import { test } from '@playwright/test';\nfor (const cell of Array.from({length: 2338}, (_, index) => index)) {\n  test.describe(`cell ${cell}`, () => test(`motion [cell]+ ${cell}`, async () => {}));\n}\n")
+        result, calls = self.soak('browser', SOAK_SPECS='["tests/build-home-motion.browser.spec.mjs"]', PLAYWRIGHT_LIST_COUNT='2338', PLAYWRIGHT_LIST_TITLE='motion [cell]+')
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertEqual(len(calls), 1)
-        self.assertEqual(calls[0][1:], ['scripts/run-browser-tests.mjs', 'tests/build-home-motion.browser.spec.mjs',
-                                       '--grep', '^' + re.escape('motion [cell]+ 0') + '$', '--repeat-each=5'])
+        self.assertEqual(calls[0][1:], ['scripts/run-browser-tests.mjs', 'tests/build-home-motion.browser.spec.mjs', '--grep', '^' + re.escape('motion [cell]+ 0') + '$', '--repeat-each=5'])
+        self.assertIn('test(`motion [cell]+ ${cell}`', spec.read_text())
         self.assertIn('soak sampled tests/build-home-motion.browser.spec.mjs: 2338 tests exceeds 200', result.stdout)
         listed = json.loads(self.list_calls.read_text().splitlines()[0])
         self.assertEqual(listed[1:], ['playwright', 'test', 'tests/build-home-motion.browser.spec.mjs',
