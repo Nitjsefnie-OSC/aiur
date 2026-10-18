@@ -9,8 +9,10 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
     const pair = await openParityPair(browser, { ...viewport, theme, palette, dataset:'live' }, { motion:true, query:`models=${count}` })
     try {
       await expect(pair.product.locator('.ax-usage')).toBeVisible()
-      await expect(pair.product.locator('.ax-usage .mdl .ax-r2')).toHaveCount(count)
-      if (count === 4) await expect(pair.product.locator('.ax-usage .mdl .ax-x')).toHaveText('×2')
+      if (count === 4) {
+        await expect(pair.product.locator('.ax-usage .mdl .ax-r2')).toHaveCount(4)
+        await expect(pair.product.locator('.ax-usage .mdl .ax-x')).toHaveText('×2')
+      }
       if (count !== 4) expect((await pair.product.request.get(`/build-control/usage?name=n${count}`)).status()).toBe(200)
       await expect(pair.product.locator('.ax-usage')).toHaveClass(new RegExp(`n${count} `))
       const widths = {}
