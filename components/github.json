@@ -59,6 +59,7 @@
     "Aiur.GitHub.Tracker",
     "Aiur.GitHub.TrustSnapshot",
     "Aiur.GitHub.ViewStateSweep",
+    "Aiur.GitHub.WorkspacePreflight",
     "Aiur.GitHubCostCLI",
     "Aiur.GitHubUsageCLI",
     "Aiur.GlobalConfigStartup",
@@ -74,7 +75,8 @@
     "github-access",
     "kernel",
     "signal",
-    "tracker"
+    "tracker",
+    "workspace"
   ],
   "optional": [
     "event-bus",
