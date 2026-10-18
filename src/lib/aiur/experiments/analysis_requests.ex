@@ -1,7 +1,53 @@
 defmodule Aiur.Experiments.AnalysisRequests do
   @moduledoc false
 
-  alias Aiur.Experiments.{Journal, Paths, Persistence, Reader, Schema}
+  alias Aiur.Experiments.{Journal, Paths, Persistence, Reader, ReportRecords, Schema}
+
+  @spec submitted(String.t(), String.t(), map()) :: :ok | {:error, term()}
+  def submitted(id, mode, record) do
+    with {:ok, rows} <- history(id) do
+      request = Enum.find(latest(rows), &(&1["state"] == "open" and &1["mode"] == mode))
+      fulfill_submitted(id, request, mode, record)
+    end
+  end
+
+  defp fulfill_submitted(_id, nil, _mode, _record), do: :ok
+
+  defp fulfill_submitted(id, request, "spec", record) do
+    submission = %{"mode" => "spec", "version" => length(record["amendments"] || []) + 1}
+    with {:ok, _request} <- fulfill(id, request["request_id"], submission), do: :ok
+  end
+
+  defp fulfill_submitted(id, request, "report", record) do
+    submission = %{"mode" => "report", "version" => record["header"]["report_version"], "analysis_type" => record["header"]["analysis_type"]}
+
+    case fulfill(id, request["request_id"], submission) do
+      {:ok, _request} -> :ok
+      {:error, :submission_mismatch} -> :ok
+      error -> error
+    end
+  end
+
+  @spec default_mode(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def default_mode(id) do
+    with {:ok, _spec, _read_only?} <- Reader.spec(id), {:ok, records} <- ReportRecords.read(id) do
+      {:ok, if(records["preregistration"], do: "report", else: "spec")}
+    end
+  end
+
+  @spec dispatch(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def dispatch(id, request_id, fields) do
+    allowed = ~w(dispatch_requested ticket_status dispatch_attempts next_attempt_ms routing_promoted dispatched_analysis_type)
+
+    if Enum.all?(Map.keys(fields), &(&1 in allowed)) do
+      update(id, request_id, &dispatch_fields(&1, fields))
+    else
+      {:error, :invalid_dispatch_update}
+    end
+  end
+
+  defp dispatch_fields(%{"state" => "open"} = request, fields), do: {:ok, Map.merge(request, fields)}
+  defp dispatch_fields(_request, _fields), do: {:error, :request_closed}
 
   # Mutations are called only by Store, keeping deduplication and appends serialized.
   @spec request(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
@@ -119,6 +165,8 @@ defmodule Aiur.Experiments.AnalysisRequests do
   defp rank("report", "confirmatory"), do: 2
 
   defp new(id, mode, opts) do
+    at = now()
+
     %{
       "schema_version" => Schema.current(),
       "request_id" => "req-" <> random(),
@@ -132,7 +180,8 @@ defmodule Aiur.Experiments.AnalysisRequests do
       "state" => "open",
       "triggers" => List.wrap(opts[:trigger]),
       "revision" => 1,
-      "at" => now()
+      "at" => at,
+      "requested_at" => at
     }
   end
 

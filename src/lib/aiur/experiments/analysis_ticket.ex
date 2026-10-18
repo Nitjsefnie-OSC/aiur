@@ -21,16 +21,19 @@ defmodule Aiur.Experiments.AnalysisTicket do
     deliverable = if mode == "spec", do: "pre-registration", else: "#{request["analysis_type"]} report"
 
     """
-    <!-- aiur-experiment-analysis request=#{request["request_id"]} nonce=#{request["nonce"]} -->
+    #{marker(request)}
     Run the `aiur-experiment` skill in **#{mode}** mode for experiment `#{id}`.
     Skill: `.claude/skills/aiur-experiment/SKILL.md`.
 
-    - Request revision: #{request["revision"]}. Re-read the request before submitting; a stronger analysis may supersede this brief.
-    - Inputs: `aiur experiments show #{id} --json`, `aiur experiments events #{id} --json`.
+    - Request revision: #{request["revision"]}. Before submitting refresh via `aiur experiments analyze #{id} --local --json`; follow its current mode and analysis type if superseded.
+    - Inputs: use the sanitized evidence in this brief and `aiur experiments events #{id} --json`.
     - In spec mode, use only baseline values and sample counts; never read post-period outcomes.
-    - In report mode, use `aiur experiments stats #{id} --json` and its pinned snapshot.
+    - In report mode, use `aiur experiments show #{id} --json` and `aiur experiments stats #{id} --json` with its pinned snapshot.
     - Deliverable: a stored #{deliverable} via `aiur experiments preregister` or `aiur experiments report submit`, matching this request.
-    - No code change and no PR. When submit succeeds, post the summary and stored version in the workpad and move this issue to done; no human review is needed.
+    - No code change and no PR. Only when submit exits 0 and fulfills the request, post the summary and stored version in the workpad and move this issue to done; no human review is needed.
     """
   end
+
+  @spec marker(map()) :: String.t()
+  def marker(request), do: "<!-- aiur-experiment-analysis request=#{request["request_id"]} nonce=#{request["nonce"]} -->"
 end

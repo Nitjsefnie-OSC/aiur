@@ -1,7 +1,7 @@
 defmodule Aiur.Experiments do
   @moduledoc "Versioned experiment specs and their durable audit trail."
 
-  alias Aiur.Experiments.{AnalysisRequests, Arms, Capture, Catalog, Checkpointer, Evaluator, Journal, Paths, Reader, ReportMarkdown, ReportReads, SampleStatus, Schema, Store, WindowEvents}
+  alias Aiur.Experiments.{AnalysisRequests, Analyst, Arms, Capture, Catalog, Checkpointer, Evaluator, Journal, Paths, Reader, ReportMarkdown, ReportReads, SampleStatus, Schema, Store, WindowEvents}
 
   @spec metric_catalog() :: map()
   def metric_catalog, do: Catalog.load()
@@ -13,7 +13,8 @@ defmodule Aiur.Experiments do
   def children(recording?), do: if(child(recording?), do: [Store, Capture, Checkpointer, Aiur.Experiments.StatsRunner], else: [])
 
   @spec window_children(boolean()) :: [module()]
-  def window_children(recording?), do: if(child(recording?), do: [Aiur.Experiments.Auto.Notifier, Aiur.Experiments.Auto.WindowManager], else: [])
+  def window_children(recording?),
+    do: if(child(recording?), do: [Aiur.Experiments.Auto.Notifier, Aiur.Experiments.Auto.WindowManager, Aiur.Experiments.Analyst, Aiur.Experiments.AnalystTrigger], else: [])
 
   @spec child(boolean()) :: module() | nil
   def child(false), do: nil
@@ -97,6 +98,17 @@ defmodule Aiur.Experiments do
 
   @spec request_analysis(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def request_analysis(id, mode, opts \\ []), do: mutate({:analysis_request, id, mode, opts})
+
+  @spec analyze(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def analyze(id, opts \\ []), do: Analyst.analyze(id, opts)
+
+  @doc false
+  @spec reconcile_analysis_requests(String.t()) :: :ok | {:error, term()}
+  def reconcile_analysis_requests(id), do: mutate({:reconcile_analysis, id})
+
+  @doc false
+  @spec update_analysis_dispatch(String.t(), String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def update_analysis_dispatch(id, request_id, fields), do: mutate({:analysis_request_update, :dispatch, id, request_id, fields})
 
   @spec analysis_requests(String.t()) :: {:ok, [map()]} | {:error, term()}
   def analysis_requests(id) do

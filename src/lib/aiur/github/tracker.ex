@@ -16,6 +16,7 @@ defmodule Aiur.GitHub.Tracker do
   alias Aiur.GitHub.Client
   alias Aiur.GitHub.Config
   alias Aiur.GitHub.IssueCreation
+  alias Aiur.GitHub.IssueLookup
   alias Aiur.GitHub.Issues
   alias Aiur.GitHub.Labels
   alias Aiur.GitHub.LocalHold
@@ -29,6 +30,10 @@ defmodule Aiur.GitHub.Tracker do
   @impl Aiur.Tracker.IssueTracker
   @spec create_issue(map(), keyword()) :: {:ok, map()} | {:error, term()}
   def create_issue(attrs, opts), do: IssueCreation.create(attrs, opts)
+
+  @impl Aiur.Tracker.IssueTracker
+  @spec find_issue(String.t(), keyword()) :: {:ok, map() | nil} | {:error, term()}
+  def find_issue(marker, opts), do: IssueLookup.find(marker, opts)
 
   @impl Aiur.Tracker.IssueTracker
   @spec blocked_by(String.t()) :: {:ok, [String.t()]} | {:error, term()}

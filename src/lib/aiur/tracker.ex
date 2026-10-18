@@ -159,6 +159,13 @@ defmodule Aiur.Tracker do
     if Code.ensure_loaded?(tracker) and function_exported?(tracker, :create_issue, 2), do: tracker.create_issue(attrs, opts), else: {:error, :unsupported}
   end
 
+  @doc "Reconciles an uncertain issue creation against an exact body marker."
+  @spec find_issue(String.t(), keyword()) :: {:ok, map() | nil} | {:error, term()}
+  def find_issue(marker, opts \\ []) do
+    tracker = adapter()
+    if Code.ensure_loaded?(tracker) and function_exported?(tracker, :find_issue, 2), do: tracker.find_issue(marker, opts), else: {:error, :unsupported}
+  end
+
   @doc "Reopens a closed issue; trackers that never auto-close an issue have nothing to undo."
   @spec reopen_issue(String.t()) :: :ok | {:error, term()}
   def reopen_issue(issue_id) do

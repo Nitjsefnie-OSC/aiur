@@ -5,6 +5,7 @@ defmodule Aiur.Experiments.Store do
 
   alias Aiur.Experiments.{
     AnalysisInput,
+    AnalysisRecovery,
     AnalysisRequests,
     Catalog,
     Checkpoint,
@@ -55,9 +56,11 @@ defmodule Aiur.Experiments.Store do
   end
 
   @impl true
+  def handle_call({:reconcile_analysis, id}, _from, state), do: {:reply, AnalysisRecovery.reconcile(id), state}
+
   def handle_call({:analysis_request, id, mode, opts}, _from, state), do: {:reply, AnalysisRequests.request(id, mode, opts), state}
 
-  def handle_call({:analysis_request_update, action, id, request_id, value}, _from, state) when action in [:attach_ticket, :fulfill, :cancel],
+  def handle_call({:analysis_request_update, action, id, request_id, value}, _from, state) when action in [:attach_ticket, :fulfill, :cancel, :dispatch],
     do: {:reply, apply(AnalysisRequests, action, [id, request_id, value]), state}
 
   def handle_call({:create, attrs, opts}, from, state) do

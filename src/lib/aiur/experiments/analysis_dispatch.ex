@@ -1,0 +1,70 @@
+defmodule Aiur.Experiments.AnalysisDispatch do
+  @moduledoc false
+  alias Aiur.Experiments
+  alias Aiur.Experiments.AnalysisTicket
+
+  @spec ticket(map(), map(), map()) :: {:ok, map()} | {:error, term()}
+  def ticket(request, attrs, deps) do
+    cond do
+      request["state"] != "open" -> {:ok, request}
+      request["ticket"] -> promote(request, deps)
+      is_integer(request["next_attempt_ms"]) and request["next_attempt_ms"] > deps.clock.() -> {:error, :ticket_retry_pending}
+      true -> attempt(request, attrs, deps)
+    end
+  end
+
+  defp promote(request, deps) do
+    if request["analysis_type"] == "confirmatory" and request["ticket"]["analysis_type"] != "confirmatory" and request["routing_promoted"] != true do
+      with :ok <- deps.promote.(request["ticket"]["number"]),
+           do: Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], %{"routing_promoted" => true})
+    else
+      {:ok, request}
+    end
+  end
+
+  defp attempt(request, attrs, deps) do
+    attempts = (request["dispatch_attempts"] || 0) + 1
+    type = if request["ticket_status"] in ["creating", "uncertain"], do: request["dispatched_analysis_type"], else: request["analysis_type"]
+    fields = %{"dispatch_requested" => true, "ticket_status" => "creating", "dispatch_attempts" => attempts, "dispatched_analysis_type" => type, "next_attempt_ms" => deps.clock.() + backoff(attempts)}
+
+    with {:ok, pending} <- Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], fields) do
+      result = send_or_reconcile(request, attrs, deps)
+      finish(pending, result, deps)
+    end
+  end
+
+  defp send_or_reconcile(%{"ticket_status" => status} = request, _attrs, deps) when status in ["creating", "uncertain"] do
+    case deps.find.(AnalysisTicket.marker(request)) do
+      {:ok, nil} -> {:uncertain, :outcome_unknown}
+      {:ok, ticket} -> {:ok, ticket}
+      {:error, reason} -> {:uncertain, reason}
+    end
+  end
+
+  defp send_or_reconcile(_request, attrs, deps) do
+    case deps.labels.(attrs.labels) do
+      :ok -> classify(deps.create.(attrs))
+      {:error, reason} -> {:retryable, reason}
+    end
+  end
+
+  defp classify({:ok, ticket}), do: {:ok, ticket}
+  defp classify({:error, {:github, kind, _detail} = reason}) when kind in [:auth, :permission, :rate_limited], do: {:retryable, reason}
+  defp classify({:error, {:github, :http, %{status: status}} = reason}) when status in [400, 404, 422], do: {:retryable, reason}
+  defp classify({:error, reason}) when reason in [:unsupported, :missing_github_repo, :missing_github_token], do: {:retryable, reason}
+  defp classify({:error, reason}), do: {:uncertain, reason}
+
+  defp finish(request, {:ok, ticket}, deps) do
+    with {:ok, attached} <- Experiments.attach_analysis_ticket(request["experiment_id"], request["request_id"], Map.put(ticket, "analysis_type", request["dispatched_analysis_type"])),
+         do: promote(attached, deps)
+  end
+
+  defp finish(request, {status, reason}, deps) do
+    with {:ok, _updated} <- Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], %{"ticket_status" => to_string(status)}) do
+      if request["dispatch_attempts"] == 3, do: deps.alert.(request)
+      {:error, reason}
+    end
+  end
+
+  defp backoff(attempt), do: min(60_000 * Integer.pow(2, min(attempt - 1, 6)), 3_600_000)
+end
