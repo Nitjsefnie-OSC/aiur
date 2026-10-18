@@ -108,31 +108,6 @@ defmodule Aiur.TestSupport.RuntimeChildren do
     end
   end
 
-  @doc "Restarts the shared decision store after it booted with an unresolved state path."
-  @spec restart_decision_store() :: :ok | :error
-  def restart_decision_store do
-    ensure_aiur_supervisor_running()
-
-    with :ok <- terminate_decision_store(),
-         {:ok, _pid} <- Supervisor.restart_child(Aiur.Supervisor, Aiur.DecisionStore),
-         true <- Process.whereis(Aiur.DecisionStore) do
-      :ok
-    else
-      _ -> :error
-    end
-  catch
-    :exit, _reason -> :error
-  end
-
-  defp terminate_decision_store do
-    case Supervisor.terminate_child(Aiur.Supervisor, Aiur.DecisionStore) do
-      :ok -> :ok
-      {:error, :not_found} -> :ok
-      {:error, :not_started} -> :ok
-      _ -> :error
-    end
-  end
-
   @doc """
   Ensures the shared `Aiur.WorkflowStore` singleton is running, restarting the
   supervised child when a prior test terminated it and left it down. Tolerates

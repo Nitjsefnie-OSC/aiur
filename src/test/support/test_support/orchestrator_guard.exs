@@ -235,9 +235,22 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   defp recover_decision_store([]), do: :ok
 
   defp recover_decision_store(_leaks) do
-    case RuntimeChildren.restart_decision_store() do
-      :ok -> :ok
-      :error -> :error
+    with :ok <- RuntimeChildren.ensure_aiur_supervisor_running(),
+         :ok <- terminate_decision_store(),
+         {:ok, _pid} <- Supervisor.restart_child(Aiur.Supervisor, Aiur.DecisionStore),
+         :writable <- Aiur.DecisionStore.health() do
+      :ok
+    else
+      _ -> :error
+    end
+  catch
+    :exit, _reason -> :error
+  end
+
+  defp terminate_decision_store do
+    case Process.whereis(Aiur.DecisionStore) do
+      pid when is_pid(pid) -> Supervisor.terminate_child(Aiur.Supervisor, Aiur.DecisionStore)
+      nil -> :ok
     end
   end
 

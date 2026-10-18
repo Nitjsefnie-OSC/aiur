@@ -2,7 +2,6 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
   use Aiur.TestSupport
 
   alias Aiur.TestSupport.OrchestratorGuard
-  alias Aiur.TestSupport.RuntimeChildren
 
   setup do
     on_exit(fn -> assert :ok = Aiur.TestSupport.ensure_orchestrator_running() end)
@@ -57,7 +56,11 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     on_exit(fn ->
       restore_app_env(:decision_state_dir, original_dir)
       restore_instance_key(original_key)
-      if Aiur.DecisionStore.health() != :writable, do: RuntimeChildren.restart_decision_store()
+
+      if Aiur.DecisionStore.health() != :writable do
+        if Process.whereis(Aiur.DecisionStore), do: Supervisor.terminate_child(Aiur.Supervisor, Aiur.DecisionStore)
+        Supervisor.restart_child(Aiur.Supervisor, Aiur.DecisionStore)
+      end
     end)
 
     Application.delete_env(:aiur, :decision_state_dir)
