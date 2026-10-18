@@ -11,11 +11,9 @@ export const recordedSeconds = {
   'test:build-home-chains-unit': 1,
   // Full 24-case run: 203.5s summed test durations, all passed.
   'test:build-home-chains': 204,
-  // Green P1–P4 cells after Now-band integration, 2026-10-18: summed test durations.
-  // Retain the slower 1440 run (175.7s); restored 1024/phone cells use conservative minute-rounded bounds.
-  'test:build-home-chains-parity:1': 176,
-  'test:build-home-chains-parity:2': 195,
-  'test:build-home-chains-parity:3': 505,
+  // Routine P1–P4: 1440px, both themes and palettes. Local green test sum 175.7s.
+  // Conservative placeholder until this PR's CI suite-duration record is available.
+  'test:build-home-chains-parity': 176,
   'test:browser-suite -- build-home-chains-states': 48,
   // PR #5020 local focused npm wall times (2026-10-18), rounded up to 0.1s.
   // Source heads (per-command results in PR): dd3fef20e, b31b9cc85; motion a08f421bb.

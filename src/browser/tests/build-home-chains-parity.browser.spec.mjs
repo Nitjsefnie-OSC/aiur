@@ -5,8 +5,11 @@ import { prepareChainCanvas, prepareChainParity, largestRoot, hoverRoot, assertC
 
 test.setTimeout(120_000)
 const root = await largestRoot('live'), denseRoot = await largestRoot('dense', 'plan')
-const cells = PARITY_VIEWPORTS.flatMap(v => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset: 'live', ...v, theme, palette }))))
-for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width} ${cell.theme} ${cell.palette}`, async ({ browser }) => {
+const full = process.env.AIUR_PARITY_FULL === '1'
+const cells = PARITY_VIEWPORTS.filter(v => full || v.viewport.width === 1440).flatMap(v => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset: 'live', ...v, theme, palette }))))
+for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width} ${cell.theme} ${cell.palette}`, {
+  tag: ['@full-parity', ...(cell.viewport.width === 1440 ? ['@routine-parity'] : [])],
+}, async ({ browser }) => {
   test.setTimeout(cell.viewport.width === 390 ? 240_000 : 120_000)
   const failures = []
   // Keep independent captures when one phase differs, then fail with every actual discrepancy.
