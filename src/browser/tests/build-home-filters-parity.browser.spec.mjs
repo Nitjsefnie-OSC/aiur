@@ -39,7 +39,7 @@ async function isolateFilters(page) {
   // Keep inherited paint and container queries, but align capture to an integer pixel origin.
   await page.locator('#bd-filters').evaluate(host => {
     const fields = ['fontFamily', 'fontSize', 'lineHeight', 'color'], before = fields.map(k => getComputedStyle(host)[k])
-    const root = host.closest('.bd-root'), width = root.clientWidth, wrap = document.createElement('div'); wrap.className = 'bd-toolbar'
+    const root = host.closest('.bd-root'), width = root.clientWidth, wrap = document.createElement('div'); wrap.className = 'bd-toolbar'; wrap.id = 'filter-capture'
     // Container queries also establish fixed-position containing blocks; detach the real root to align those too.
     document.body.append(root)
     Object.assign(root.style, { position: 'fixed', top: '0', left: '0', width: width + 'px', height: '100vh', zIndex: '2147483647' })
@@ -50,6 +50,14 @@ async function isolateFilters(page) {
     if (document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest('#bd-filters') !== host) throw new Error('filter capture is covered by page chrome')
   })
 }
+async function captureFilters(pair, name) {
+  // Capture the bar and its open popover together, including their relationship.
+  for (const page of [pair.design, pair.product]) await page.locator('#filter-capture').evaluate(wrap => {
+    const targets = [...wrap.querySelectorAll('#bd-filters, #bd-pop')]
+    wrap.style.height = Math.ceil(Math.max(...targets.map(el => el.getBoundingClientRect().bottom)) - wrap.getBoundingClientRect().top) + 'px'
+  })
+  await expectDesignParity(pair, { name, region: '#filter-capture' })
+}
 for (const cell of cells) test(`filter parity ${cell.dataset} ${cell.viewport.width} ${cell.theme} ${cell.palette}`, async ({ browser }) => {
   test.setTimeout(180000)
   const pair = await openFiltersPair(browser, cell)
@@ -58,8 +66,7 @@ for (const cell of cells) test(`filter parity ${cell.dataset} ${cell.viewport.wi
     for (const key of [null, ...(cell.dataset === 'live' ? ['epic', 'feature', 'model', 'tstate', 'astate'] : ['feature'])]) {
       if (key) for (const page of [pair.design, pair.product]) await page.locator(`[data-g="${key}"]`).dispatchEvent('click')
       expect(await normalize(pair.product)).toBe(await normalize(pair.design))
-      await expectDesignParity(pair, { name: `filters-${key ?? 'closed'}-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}`, region: '#bd-filters' })
-      if (key) await expectDesignParity(pair, { name: `popover-${key}-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}`, region: '#bd-pop' })
+      await captureFilters(pair, `filters-${key ?? 'closed'}-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}`)
     }
   } finally { await pair.close() }
 })
@@ -70,7 +77,6 @@ for (const query of ['model=claude&tstate=merged,failed&astate=active', 'epic=do
     for (const page of [pair.design, pair.product]) await expect(page.locator('.bd-fg')).toHaveCount(5)
     for (const page of [pair.design, pair.product]) { await isolateFilters(page); await page.locator('[data-g="tstate"]').dispatchEvent('click') }
     expect(await normalize(pair.product)).toBe(await normalize(pair.design))
-    await expectDesignParity(pair, { name: 'selected-' + query.split('=')[0], region: '#bd-filters' })
-    await expectDesignParity(pair, { name: 'selected-popover-' + query.split('=')[0], region: '#bd-pop' })
+    await captureFilters(pair, 'selected-' + query.split('=')[0])
   } finally { await pair.close() }
 })
