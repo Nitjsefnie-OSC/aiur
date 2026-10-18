@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect } from '@playwright/test'
 import { scrollGanttComposition } from './build-home-gantt-parity.mjs'
-import { primeBoardPaint } from './build-home-band-canvas.mjs'
+import { primeBoardPaint, alignEtaMask } from './build-home-band-canvas.mjs'
 
 export async function loadGanttRegionHistory(pair, dataset) {
   const snapshot = JSON.parse(await readFile(new URL(`../../test/fixtures/build_home/${dataset}.json`, import.meta.url), 'utf8'))
@@ -13,6 +13,8 @@ export async function loadGanttRegionHistory(pair, dataset) {
       sections: { ...ctx.snap.sections, hist: snapshot.sections.hist }, history: { ...snapshot.history, from: 0, more: false } })
     ctx.snapping = true
   }, snapshot)
+  // Receiving the larger window recreates the band header and its existing ETA mask.
+  await alignEtaMask(pair)
   const targets = await pair.design.evaluate(() => __ganttComposition.targets())
   for (const name of ['full', 'two', 'three', 'labelled', 'empty', 'tick', 'line']) expect(targets[name], `fixture missing ${name} Gantt region`).toBeTruthy()
   return targets
@@ -66,8 +68,8 @@ export async function markFixedGanttRegion(pair, selector, name) {
     document.querySelectorAll('[data-gantt-region]').forEach(node => node.removeAttribute('data-gantt-region'))
     el.dataset.ganttRegion = name
     const box = el.getBoundingClientRect()
-    // Only the external toolbar legend needs the established isolated-region
-    // canvas. Cards and the sticky band retain their real composed background.
+    // Fix the external toolbar legend in place. Static cards use the canvas
+    // below; the sticky band retains its real composed background.
     if (name === 'legend') Object.assign(el.style, { position: 'fixed', left: '100px', top: '100px', width: box.width + 'px', height: box.height + 'px', boxSizing: 'border-box', margin: '0', zIndex: '10000', background: 'var(--bg)' })
     const origin = el.getBoundingClientRect()
     return { width: origin.width, height: origin.height, icons: [...el.querySelectorAll('svg')].map(svg => {
