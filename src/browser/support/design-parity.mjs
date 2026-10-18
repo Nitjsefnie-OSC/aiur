@@ -163,9 +163,10 @@ export async function captureStable(target, opts, page) {
       const offset = await page.evaluate(() => ({ x: scrollX, y: scrollY }))
       const viewport = page.viewportSize()
       // Expanding an already-visible clip fires responsive relayouts and clears locks.
-      const visible = viewport && !offset.x && !offset.y && box.x >= 0 && box.y >= 0
+      const visible = viewport && box.x >= 0 && box.y >= 0
         && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height
-      return page.screenshot({ ...opts, fullPage: !visible, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
+      const clip = visible ? box : { ...box, x: box.x + offset.x, y: box.y + offset.y }
+      return page.screenshot({ ...opts, fullPage: !visible, clip })
     }
     let png
     try { png = await shoot() }

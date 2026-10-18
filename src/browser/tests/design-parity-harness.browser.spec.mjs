@@ -3,6 +3,7 @@ import { mkdtemp, cp, appendFile, writeFile, rm, symlink, mkdir } from 'node:fs/
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
+import { PNG } from 'pngjs'
 import { PARITY_VIEWPORTS, DESIGN_ROOT, FIXTURE_META, parityContextOptions, openDesign, openProduct, expectDesignParity, compareParityPixels, assertCellState, waitParityReady, guardNetwork, checkPage, captureStable, loadAllowlist, applyAllowlist, verifyDesignSource } from '../support/design-parity.mjs'
 import { resolveDesignPath, routeDesign } from '../support/design-parity-environment.mjs'
 
@@ -163,6 +164,16 @@ test('loading phase holds the skeleton', async ({ browser }) => {
   await delay(1000)
   expect((await page.screenshot({ animations: 'disabled', scale: 'device' })).equals(a)).toBe(true)
 })
+test('capture keeps a visible fixed region after document scrolling', async ({ page }) => {
+  await page.setContent('<body style="margin:0;height:3000px;background:white"><div id="fixed" style="position:fixed;top:100px;left:40px;width:100px;height:80px;background:red"></div>')
+  await page.evaluate(() => scrollTo(0, 400))
+  expect(await page.evaluate(() => scrollY)).toBe(400)
+  const png = PNG.sync.read(await captureStable(page.locator('#fixed'), { animations: 'disabled' }, page))
+  expect([png.width, png.height]).toEqual([100, 80])
+  expect([...png.data.subarray((40 * png.width + 50) * 4, (40 * png.width + 50) * 4 + 4)]).toEqual([255, 0, 0, 255])
+  expect(await page.evaluate(() => scrollY)).toBe(400)
+})
+
 // Synthetic captures: a real page.screenshot here can hit the same Chromium transient on the retry (#4054).
 test('settle guard survives a transient capture failure', async () => {
   let n = 0
