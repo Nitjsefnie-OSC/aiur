@@ -127,4 +127,6 @@ export const recordedSeconds = {
   // Initial local harness timings (2026-10-18): 215.5s including admission wait; parity 109.9s.
   'test:build-home-filters': 216,
   'test:build-home-filters-parity': 110,
+  // Scoped desktop/reduced/mobile filter motion: local harness 49.3s (2026-10-18).
+  'test:build-home-filters-motion': 50,
 }
