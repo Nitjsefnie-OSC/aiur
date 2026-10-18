@@ -29,7 +29,7 @@ def write_body(fd, contents):
         body_file.write(contents)
 
 child = subprocess.Popen(
-    ["/bin/sh", "-c", "script=$1; shift; . /dev/fd/" + str(body_read), script, *args],
+    ["/bin/sh", "-c", "source_path=$1; shift; . \"$source_path\"", script, "/dev/fd/" + str(body_read), *args],
     stdin=None,
     pass_fds=(body_read,),
     start_new_session=True,

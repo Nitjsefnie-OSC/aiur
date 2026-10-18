@@ -85,19 +85,40 @@ defmodule Aiur.AgentGitHubGuard.DeadlineTest do
 
   test "the guard body cannot be swapped through the caller TMPDIR", context do
     tmpdir = Path.join(context.workspace, "guard-tmp")
+    pythonpath = Path.join(context.workspace, "attacker-python")
+    File.mkdir_p!(pythonpath)
     File.mkdir_p!(tmpdir)
+    marker = Path.join(context.workspace, "swapped-code-ran")
     fake_gh = Path.join(context.workspace, "fake-gh")
     File.write!(fake_gh, "#!/bin/sh\nprintf 'ok\\n'\n")
     File.chmod!(fake_gh, 0o700)
 
+    File.write!(Path.join(pythonpath, "sitecustomize.py"), """
+    import subprocess
+
+    original_popen = subprocess.Popen
+
+    def replace_guard(args, *positional, **options):
+        if isinstance(args, list) and len(args) > 4 and args[0] == "/bin/sh" and ". \\\"$script\\\"" in args[2]:
+            script_path = args[4]
+            if not script_path.startswith("/dev/fd/"):
+                with open(script_path, "w", encoding="utf-8") as guard:
+                    guard.write("touch #{marker}\\n")
+        return original_popen(args, *positional, **options)
+
+    subprocess.Popen = replace_guard
+    """)
+
     assert {"ok\n", 0} =
              run_guard(context, ["auth", "status"],
                TMPDIR: tmpdir,
+               PYTHONPATH: pythonpath,
                AIUR_REAL_GH: fake_gh,
                AIUR_GITHUB_BUDGET_ENABLED: "0",
                AIUR_GH_CALL_TIMEOUT_SECONDS: "2"
              )
 
+    refute File.exists?(marker)
     assert Path.wildcard(Path.join(tmpdir, "aiur-gh-guard.*")) == []
   end
 
