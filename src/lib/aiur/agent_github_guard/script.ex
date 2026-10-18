@@ -18,7 +18,7 @@ defmodule Aiur.AgentGitHubGuard.Script do
   # directory in file-name order, so list order and name order must agree.
   @parts [
     gh: ~w(
-      00-identity 10-classify 15-disposition 20-merge-gate 30-state-cache-shapes
+      00-deadline 00-identity 10-classify 15-disposition 20-merge-gate 30-state-cache-shapes
       35-state-cache-store 40-broker 50-paginated-api 55-holds 60-output
     ),
     git: ~w(00-destructive 10-worktree-push)
