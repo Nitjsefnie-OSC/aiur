@@ -39,6 +39,31 @@ defmodule Aiur.AgentGitHubGuard.DeadlineTest do
     assert process_gone?(child_pid)
   end
 
+  test "the deadline also kills descendants that start their own session", context do
+    broker = Path.join(context.workspace, "nested-never-answers.py")
+    broker_pid_file = Path.join(context.workspace, "nested-broker.pid")
+    fake_gh = Path.join(context.workspace, "nested-gh")
+
+    File.write!(broker, "import os,time\nopen(os.environ['AIUR_GH_NEVER_ANSWERS_PID_FILE'],'w').write(str(os.getpid()))\ntime.sleep(5)\n")
+    File.chmod!(broker, 0o700)
+    File.write!(fake_gh, "#!/bin/sh\nexec \"$NESTED_GH_WRAPPER\" api rate_limit\n")
+    File.chmod!(fake_gh, 0o700)
+
+    assert {output, 124} =
+             run_guard(context, ["auth", "status"],
+               AIUR_GH_CALL_TIMEOUT_SECONDS: "1",
+               AIUR_GH_NESTED_WRAPPER: context.wrapper,
+               AIUR_GITHUB_BUDGET_ROOT: Path.join(context.state_path, "nested-budget"),
+               AIUR_GITHUB_BUDGET_KEY: String.duplicate("d", 64),
+               AIUR_GITHUB_BUDGET_BROKER: broker,
+               AIUR_GH_NEVER_ANSWERS_PID_FILE: broker_pid_file,
+               AIUR_REAL_GH: fake_gh
+             )
+
+    assert output =~ "terminated process group"
+    assert process_gone?(broker_pid_file |> File.read!() |> String.to_integer())
+  end
+
   test "the supervisor preserves wrapper argv0 and caller stdin", context do
     stdin_file = Path.join(context.workspace, "stdin")
     File.write!(stdin_file, "")

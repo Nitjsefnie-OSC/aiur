@@ -30,10 +30,16 @@ child = subprocess.Popen(
 )
 
 def terminate_process_group():
+    descendants = descendant_pids(child.pid)
     try:
         os.killpg(child.pid, signal.SIGTERM)
     except ProcessLookupError:
         pass
+    for pid in descendants:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
     try:
         child.wait(timeout=0.5)
     except subprocess.TimeoutExpired:
@@ -42,7 +48,39 @@ def terminate_process_group():
         os.killpg(child.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
+    for pid in descendants:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
     child.wait()
+
+def descendant_pids(root):
+    parents = {}
+    try:
+        for entry in os.listdir("/proc"):
+            if not entry.isdigit():
+                continue
+            try:
+                with open(f"/proc/{entry}/stat", encoding="ascii") as stat_file:
+                    fields = stat_file.read().rsplit(")", 1)[1].split()
+                parents[int(entry)] = int(fields[1])
+            except (OSError, ValueError, IndexError):
+                continue
+    except OSError:
+        try:
+            listing = subprocess.run(["ps", "-axo", "pid=,ppid="], check=True, capture_output=True, text=True).stdout
+            parents = {int(pid): int(parent) for line in listing.splitlines() if len(line.split()) == 2 for pid, parent in [line.split()]}
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            return []
+    found = {root}
+    descendants = []
+    while True:
+        children = [pid for pid, parent in parents.items() if parent in found and pid not in found]
+        if not children:
+            return descendants
+        found.update(children)
+        descendants.extend(children)
 
 def stop_child(signum, _frame):
     terminate_process_group()
