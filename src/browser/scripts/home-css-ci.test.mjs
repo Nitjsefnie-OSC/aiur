@@ -9,6 +9,8 @@ import test from 'node:test'
 import { discoverSuites, shardCommands, suiteArgs, suiteCommand, suiteShard, SUITE_SCRIPT } from './browser-suites.mjs'
 import { shards } from './run-browser-smoke-shard.mjs'
 
+const shardIds = Object.keys(shards).map(Number)
+
 // Playwright pins this YAML parser; use it without adding a test-only dependency.
 const { yaml } = createRequire(import.meta.url)('../node_modules/playwright-core/lib/utilsBundle.js')
 const root = new URL('../../../', import.meta.url)
@@ -48,10 +50,10 @@ test('browser shards have bounded timeouts and home matrix keeps an independent 
   assert.match(browser.steps[1].run, /scripts\/report-ci-run-attempt\.sh/)
   assert.equal(browser.steps[2].uses, './.github/actions/browser-smoke')
   assert.equal(browser.steps[2].with.shard, '${{ matrix.shard }}')
-  assert.equal(browser.name, 'browser smoke (${{ matrix.shard }}/6)')
+  assert.equal(browser.name, 'browser smoke (${{ matrix.shard }}/' + shardIds.length + ')')
   assert.equal(browser['timeout-minutes'], 22)
   assert.equal(browser.strategy['fail-fast'], false)
-  assert.deepEqual(browser.strategy.matrix.shard, Object.keys(shards).map(Number))
+  assert.deepEqual(browser.strategy.matrix.shard, shardIds)
   assert.deepEqual(browser.strategy.matrix.include, [
     { shard: 1, verify_fixtures: true, upload_evidence: true },
     { shard: 2, visual_regression: 'first' },
@@ -80,19 +82,20 @@ test('browser shards execute every core suite exactly once', () => {
     mkdirSync(bin)
     // Stub only npm: execute the real shard runner and record its selected suites.
     writeFileSync(join(bin, 'npm'), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$BROWSER_SHARD_CALLS"\n', { mode: 0o755 })
-    for (const shard of [1, 2, 3, 4, 5, 6]) {
+    for (const shard of shardIds) {
       const result = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), String(shard)], {
         cwd: new URL('../', import.meta.url), encoding: 'utf8',
         env: { ...process.env, PATH: bin + ':' + process.env.PATH, BROWSER_SHARD_CALLS: calls }
       })
       assert.equal(result.status, 0, result.stderr)
     }
-    const invalid = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), '7'], {
+    const invalidId = Math.max(...shardIds) + 1
+    const invalid = spawnSync(process.execPath, [fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), String(invalidId)], {
       cwd: new URL('../', import.meta.url), encoding: 'utf8',
       env: { ...process.env, PATH: bin + ':' + process.env.PATH, BROWSER_SHARD_CALLS: calls }
     })
-    assert.notEqual(invalid.status, 0, 'only the six workflow shard ids are accepted')
-    assert.match(invalid.stderr, /Unknown browser smoke shard: 7/)
+    assert.notEqual(invalid.status, 0, 'only configured workflow shard ids are accepted')
+    assert.match(invalid.stderr, new RegExp('Unknown browser smoke shard: ' + invalidId))
     const expected = [...scripts['test:core'].matchAll(/npm run ([\w:-]+)/g)].map(match => match[1])
       .filter(name => name !== 'fixture:preflight' && name !== SUITE_SCRIPT)
       .concat(discoverSuites().map(suiteCommand)).sort()
