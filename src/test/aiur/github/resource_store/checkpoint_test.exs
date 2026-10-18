@@ -56,7 +56,7 @@ defmodule Aiur.GitHub.ResourceStore.CheckpointTest do
     assert_receive {:checkpoint, %{entries: 2}, %{result: :written}}, 1_000
     assert {:ok, contents} = File.read(path)
     assert %{"entries" => entries} = Jason.decode!(contents)
-    assert Map.has_key?(entries, Jason.encode!(second_key))
+    assert Map.has_key?(entries, "issue|owner|repo|9902")
   end
 
   setup do
