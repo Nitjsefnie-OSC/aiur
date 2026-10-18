@@ -149,7 +149,7 @@
     "kind": "copy",
     "selector": "#bd-vp",
     "cells": {},
-    "reason": "earlier days could not load · scroll up to retry",
+    "reason": "earlier days could not load \u00b7 scroll up to retry",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -162,7 +162,7 @@
     "kind": "copy",
     "selector": "#bd-vp",
     "cells": {},
-    "reason": "loaded · total unknown",
+    "reason": "loaded \u00b7 total unknown",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
