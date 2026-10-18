@@ -15,6 +15,7 @@ import './usage.js';
 
 import './span.js';
 import './states.js';
+import './list.js';
 
 export function writeOwnData() {
   if (ctx.bdStates != null) ctx.root.dataset.bdStates = ctx.bdStates;
