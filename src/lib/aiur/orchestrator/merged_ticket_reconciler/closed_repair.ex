@@ -7,6 +7,7 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler.ClosedRepair do
   @max_repairs_per_poll 5
   @stale_merge_after_seconds 24 * 60 * 60
 
+  @spec reconcile(State.t(), [Issue.t()], [RecentMerge.t()], DateTime.t(), keyword(), function(), function()) :: State.t()
   def reconcile(state, issues, merges, now, opts, record_fun, repair_fun) do
     open_ids = MapSet.new(issues, & &1.identifier)
 

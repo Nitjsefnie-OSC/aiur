@@ -3,6 +3,7 @@ defmodule Aiur.GitHub.IssueState.ClosedIssue do
 
   alias Aiur.GitHub.{IssueState, StatePolicy}
 
+  @spec apply(map(), map()) :: {:error, term()}
   def apply(context, issue) do
     if Keyword.get(context.opts, :expected_state) == :none do
       {:error, {:no_state_label_written, issue}}

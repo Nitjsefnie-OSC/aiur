@@ -11,6 +11,7 @@ defmodule Aiur.GitHub.IssueState do
 
   alias Aiur.GitHub.Config
   alias Aiur.GitHub.{Errors, HumanReviewGate, Issues, Labels, LocalHold, StatePolicy, Transport, WriteThrough}
+  alias Aiur.GitHub.IssueState.ClosedIssue
   require Logger
 
   @spec update_issue_state(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
@@ -120,7 +121,7 @@ defmodule Aiur.GitHub.IssueState do
   end
 
   defp handle_closed_active_target(context, current_issue_body) do
-    Aiur.GitHub.IssueState.ClosedIssue.apply(context, current_issue_body)
+    ClosedIssue.apply(context, current_issue_body)
   end
 
   defp revalidate_expected_state(%{opts: opts} = context, issue_body) do
