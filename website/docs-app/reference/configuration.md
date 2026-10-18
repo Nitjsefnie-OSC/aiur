@@ -220,8 +220,8 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 
 When a prewarm build or freshness probe holds fleet dispatch, an independent idle
 watchdog releases the gate for cold-clone fallback once the hold has been stalled
-for 10 minutes. Each base build also has a one-hour total runtime bound; Aiur
-terminates a build that exceeds it and releases dispatch for cold-clone fallback.
+for 10 minutes. Each base refresh has a one-hour total runtime bound from before clone/fetch;
+Aiur terminates its process group at expiry and releases dispatch for cold-clone fallback.
 
 For the idle watchdog, "stalled" means the hold's worker is dead with no
 completion signal in flight. Timed-out builds are not retried automatically; restart Aiur to retry.
