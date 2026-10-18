@@ -46,6 +46,7 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
   # A merge older than this no longer explains why a ticket is open now: the
   # ticket has had a full day to be reopened deliberately.
   @stale_merge_after_seconds 24 * 60 * 60
+  @max_closed_label_repairs_per_poll 5
 
   # A draft pull request with no update within this window no longer stands
   # between a ticket and `done`. Deliberately longer than the merge-staleness
@@ -65,19 +66,84 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
     now = now_fun.()
     merges = recent_merges_fun.()
 
-    Enum.reduce(issues, {state, []}, fn issue, {state_acc, retained} ->
-      case merged_pull_request_for(state_acc, issue, merges, now) do
-        nil ->
-          {state_acc, [issue | retained]}
+    {state, retained} =
+      Enum.reduce(issues, {state, []}, fn issue, {state_acc, retained} ->
+        case merged_pull_request_for(state_acc, issue, merges, now) do
+          nil ->
+            {state_acc, [issue | retained]}
 
-        merge ->
-          reconcile_merged_ticket(state_acc, issue, merge, opts, retained)
-      end
-    end)
-    |> then(fn {state, retained} -> {state, Enum.reverse(retained)} end)
+          merge ->
+            reconcile_merged_ticket(state_acc, issue, merge, opts, retained)
+        end
+      end)
+
+    repair_recent_closed_tickets(state, issues, merges, now, opts)
+    |> then(fn state -> {state, Enum.reverse(retained)} end)
   end
 
   def reconcile(%State{} = state, _issues, _opts), do: {state, []}
+
+  # The normal candidate listing is state=open, so it cannot repair a ticket
+  # whose merge closed it before the state-label write succeeded. RecentMerge
+  # retains a bounded set; inspect only a few absent branch tickets per poll,
+  # using conditional issue reads and requiring closed + zero state labels.
+  defp repair_recent_closed_tickets(state, issues, merges, now, opts) do
+    open_ids = MapSet.new(issues, & &1.identifier)
+
+    merges
+    |> Enum.filter(&recent_branch_ticket_merge?(&1, now))
+    |> Enum.reject(&(is_nil(&1.ticket_id) or MapSet.member?(open_ids, &1.ticket_id)))
+    |> Enum.uniq_by(& &1.ticket_id)
+    |> Enum.reject(&already_reconciled_merge?(state, &1))
+    |> Enum.take(@max_closed_label_repairs_per_poll)
+    |> Enum.reduce(state, &repair_closed_ticket(&2, &1, opts))
+  end
+
+  defp recent_branch_ticket_merge?(%RecentMerge{ticket_id: id, merged_by: merged_by} = merge, now)
+       when is_binary(id) and is_binary(merged_by) and merged_by != "",
+       do: not stale_merge?(merge, now)
+
+  defp recent_branch_ticket_merge?(_merge, _now), do: false
+
+  defp already_reconciled_merge?(state, %RecentMerge{ticket_id: id} = merge),
+    do: MapSet.member?(state.merged_ticket_reconciliations, {id, merge.id})
+
+  defp repair_closed_ticket(state, %RecentMerge{ticket_id: id} = merge, opts) do
+    fetch_fun =
+      Keyword.get(opts, :fetch_issue_states_fun, &Aiur.Tracker.fetch_issue_states_by_ids/1)
+
+    case fetch_fun.([id]) do
+      {:ok, [%Issue{state: issue_state, state_labels: labels} = issue]} ->
+        if String.downcase(to_string(issue_state || "")) == "closed" and labels in [nil, []] do
+          repair_closed_issue(state, issue, merge, opts)
+        else
+          state
+        end
+
+      _ ->
+        state
+    end
+  end
+
+  defp repair_closed_issue(state, issue, merge, opts) do
+    update =
+      Keyword.get(opts, :update_issue_state_fun, fn identifier, target, expected ->
+        TicketTransition.write_state(identifier, target,
+          writer: :merged_ticket_reconciler,
+          expected_state: expected
+        )
+      end)
+
+    case update.(issue.identifier, "done", :none) do
+      :ok ->
+        state = record_reconciled(state, issue, merge)
+        emit_reconciled_alert(issue, merge, 0, 0, opts)
+        state
+
+      {:error, reason} ->
+        emit_failed_alert(state, issue, merge, reason, opts)
+    end
+  end
 
   defp reconcile_merged_ticket(state, %Issue{} = issue, merge, opts, retained) do
     OptimisticLedger.close(issue.identifier, :merged, System.system_time(:millisecond))
