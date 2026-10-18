@@ -5,6 +5,7 @@ defmodule Aiur.GitHub.Issues do
 
   require Logger
   alias Aiur.{Bounded, Config, GitHub, Issue, TestTicketScope, TrackerIdentity}
+  alias Aiur.GitHub.IssueExecutorOwner
 
   alias Aiur.GitHub.{
     BoundedBlockedBy,
@@ -978,7 +979,7 @@ defmodule Aiur.GitHub.Issues do
       dispatch_authorization: :deferred,
       paused: paused_label?(label_names, prefix),
       parked: parked_label?(label_names, prefix),
-      executor_owner: executor_owner(label_names, prefix),
+      executor_owner: IssueExecutorOwner.from_labels(label_names, prefix),
       queued: queued_label?(label_names, prefix),
       labels: Enum.map(label_names, &String.downcase/1),
       assigned_to_worker: true,
@@ -1168,16 +1169,6 @@ defmodule Aiur.GitHub.Issues do
 
     Enum.any?(label_names, fn name ->
       normalize_label_name(name) == parked_label
-    end)
-  end
-
-  defp executor_owner(label_names, prefix) when is_list(label_names) do
-    owner_prefix = normalize_label_name(Labels.executor_label_prefix(prefix))
-
-    Enum.find_value(label_names, fn label ->
-      normalized = normalize_label_name(label)
-      owner = String.replace_prefix(normalized, owner_prefix, "")
-      if owner != normalized and owner != "", do: owner
     end)
   end
 

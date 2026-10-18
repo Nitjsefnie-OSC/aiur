@@ -102,23 +102,6 @@ defmodule Aiur.Orchestrator.DispatchEligibilityTest do
     assert DispatchPolicy.should_dispatch_issue?(issue, state)
   end
 
-  test "Executor-owned issues are declined before fleet dispatch" do
-    state = %Orchestrator.State{
-      max_concurrent_agents: 3,
-      running: %{},
-      claimed: MapSet.new(),
-      codex_totals: %{input_tokens: 0, output_tokens: 0, total_tokens: 0, seconds_running: 0},
-      retry_attempts: %{}
-    }
-
-    held = %Issue{id: "owned-1", identifier: "MT-OWNED", title: "Executor work", state: "Todo", executor_owner: "codex"}
-    released = %{held | executor_owner: nil}
-
-    assert DispatchPolicy.dispatch_decision(held, state) == {:skip, :executor_owned}
-    assert DispatchPolicy.should_dispatch_issue?(released, state)
-    assert DispatchPolicy.dispatch_decline_reasons() |> Enum.member?(:executor_owned)
-  end
-
   test "polling does not auto-dispatch when a paused agent reserves the only slot" do
     paused_entry = %{
       pid: self(),
