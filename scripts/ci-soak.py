@@ -258,7 +258,8 @@ def run_browser(command, spec, sampled, test_count, timeout):
     try:
         return subprocess.run(command, cwd=BROWSER_ROOT, timeout=timeout).returncode
     except subprocess.TimeoutExpired:
-        if sampled or test_count <= MAX_BROWSER_TESTS_PER_SPEC:
+        suspected_hang = sampled or test_count <= MAX_BROWSER_TESTS_PER_SPEC
+        if suspected_hang:
             notice(f'Playwright suspected hang: {spec}; command: {shlex.join(command)} '
                    f'(timed out after {timeout:g}s)', 'error')
             return 124

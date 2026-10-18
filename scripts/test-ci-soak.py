@@ -286,6 +286,14 @@ class SoakTest(unittest.TestCase):
         self.assertIn('node scripts/run-browser-tests.mjs tests/build-home-motion.browser.spec.mjs --grep',
                       result.stdout)
 
+    def test_timeout_at_exact_sample_limit_fails_as_suspected_hang(self):
+        result, calls = self.soak(
+            'browser', SOAK_SPECS='["tests/a.spec.mjs"]',
+            PLAYWRIGHT_LIST_COUNT='200', TIMEOUT_ON='tests/a.spec.mjs',
+            AIUR_SOAK_TEST_TIMEOUT='0.05')
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn('::error::Playwright suspected hang: tests/a.spec.mjs; command:', result.stdout)
+
     def test_browser_listing_timeout_fails_instead_of_reporting_no_tests(self):
         result, calls = self.soak(
             'browser', SOAK_SPECS='["tests/a.spec.mjs"]',
