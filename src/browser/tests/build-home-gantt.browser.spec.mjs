@@ -32,6 +32,7 @@ test.beforeEach(async ({ page }) => {
     window.row = (id, start, end, extra = {}) => ({ id, num: 7, title: 'Ticket', sec: 'hist', status: 'done', epic: 'a', start, end, est: null, pts: 3, deps: [], also: [], ...extra })
     window.initCards = () => {
       state.resetState(); state.S.view = 'gantt'
+      state.ctx.snap = { daemon: { state: 'live' }, sources: { agents: { state: 'ok' } } }
       state.ctx.L = { det: 'full', base: 'full', fs: 13 }
       state.ctx.D = { epics: { a: { key: 'a', hue: 100 } }, features: {}, byId: {} }
     }
