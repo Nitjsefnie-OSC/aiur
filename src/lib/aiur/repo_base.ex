@@ -26,13 +26,11 @@ defmodule Aiur.RepoBase do
   alias Aiur.RepoBase.Migration
   alias Aiur.RepoBase.StateTree
 
-  # The probe owns its 30-second timeout, so a *live* probe self-resolves. This
-  # watchdog instead bounds *idle* dispatch holds: it re-arms while the hold's
-  # worker (probe or build) is alive, and fires only once the worker has been
-  # dead for a full interval — releasing the gate for cold-clone fallback. A
-  # slow-but-progressing cold build (deps + compile + dialyzer PLT) is never
-  # killed by it; only a hold whose completion signal was lost is.
+  # The probe owns its 30-second timeout. The idle watchdog releases holds whose
+  # completion signal was lost; a separate total build deadline bounds even a
+  # live but wedged build and releases dispatch for cold-clone fallback.
   @dispatch_hold_timeout_ms 600_000
+  @build_hold_timeout_ms 3_600_000
 
   ## ---- Public API ----
 
@@ -197,6 +195,7 @@ defmodule Aiur.RepoBase do
        freshness: :unknown,
        remote_head_fun: Keyword.get(opts, :remote_head_fun, &Clone.remote_head/1),
        dispatch_hold_timeout_ms: Keyword.get(opts, :dispatch_hold_timeout_ms, @dispatch_hold_timeout_ms),
+       build_hold_timeout_ms: Keyword.get(opts, :build_hold_timeout_ms, @build_hold_timeout_ms),
        dispatch_watchdog: nil
      }}
   end
@@ -231,7 +230,8 @@ defmodule Aiur.RepoBase do
 
   def handle_info({:build_head, _pid, _head}, state), do: {:noreply, state}
 
-  def handle_info({:build_done, pid, head, result}, %{build: %{pid: pid, ref: ref}} = state) do
+  def handle_info({:build_done, pid, head, result}, %{build: %{pid: pid, ref: ref, timer: timer}} = state) do
+    if is_reference(timer), do: Process.cancel_timer(timer)
     Process.demonitor(ref, [:flush])
     state = %{state | build: nil}
 
@@ -247,7 +247,8 @@ defmodule Aiur.RepoBase do
   def handle_info({:build_done, _pid, _head, _result}, state), do: {:noreply, state}
 
   # The build worker crashed without a clean :build_done.
-  def handle_info({:DOWN, ref, :process, _pid, reason}, %{build: %{ref: ref}} = state) do
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %{build: %{ref: ref, timer: timer}} = state) do
+    if is_reference(timer), do: Process.cancel_timer(timer)
     log_and_emit_error({:build_crashed, reason})
 
     {:noreply,
@@ -273,10 +274,8 @@ defmodule Aiur.RepoBase do
   def handle_info({:dispatch_hold_timeout, watchdog_ref}, %{dispatch_watchdog: %{ref: watchdog_ref}} = state) do
     if hold_phase?(state.phase) do
       if hold_progress?(state) do
-        # The hold's worker is still alive, so the operation is progressing (a
-        # live probe self-resolves via its own 30-second timeout; a live build
-        # is a real process that may legitimately run for many minutes). Re-arm
-        # the idle watchdog instead of tearing the work down.
+        # A live worker avoids the idle timeout. Builds also have a separate
+        # total deadline that survives this re-arm.
         {:noreply, rearm_dispatch_watchdog(state)}
       else
         # The worker is dead with no completion signal in flight — the absorbing
@@ -297,6 +296,19 @@ defmodule Aiur.RepoBase do
       {:noreply, clear_dispatch_watchdog(state)}
     end
   end
+
+  def handle_info({:build_hold_timeout, build_ref}, %{build: %{ref: build_ref}, phase: :building} = state) do
+    reason = {:repo_base_build_hold_timeout, state.build_hold_timeout_ms}
+    log_and_emit_error(reason)
+
+    {:noreply,
+     state
+     |> abort_build()
+     |> clear_dispatch_watchdog()
+     |> Map.merge(%{phase: {:error, reason}, freshness: :unknown})}
+  end
+
+  def handle_info({:build_hold_timeout, _build_ref}, state), do: {:noreply, state}
 
   def handle_info(_msg, state), do: {:noreply, state}
 
@@ -367,12 +379,14 @@ defmodule Aiur.RepoBase do
     parent = self()
 
     {pid, ref} = spawn_monitor(fn -> build_worker(parent, base, repo_url, command) end)
+    timer = Process.send_after(self(), {:build_hold_timeout, ref}, state.build_hold_timeout_ms)
 
-    %{state | phase: :building, base_path: base, build: %{pid: pid, ref: ref, head: nil}, freshness: :unknown}
+    %{state | phase: :building, base_path: base, build: %{pid: pid, ref: ref, head: nil, timer: timer}, freshness: :unknown}
   end
 
   defp abort_build(%{build: %{}} = state) do
     kill_build(state)
+    if is_reference(state.build.timer), do: Process.cancel_timer(state.build.timer)
     %{state | build: nil}
   end
 
@@ -386,9 +400,10 @@ defmodule Aiur.RepoBase do
     |> Map.merge(%{phase: :idle, freshness: :unknown})
   end
 
-  defp kill_build(%{build: %{pid: pid, ref: ref}}) do
+  defp kill_build(%{build: %{pid: pid, ref: ref, timer: timer}}) do
     Process.demonitor(ref, [:flush])
     Process.exit(pid, :kill)
+    if is_reference(timer), do: Process.cancel_timer(timer)
     :ok
   end
 

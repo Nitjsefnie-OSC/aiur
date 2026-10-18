@@ -19,9 +19,8 @@ defmodule Aiur.RepoBase.Watchdog do
 
   defp ensure_dispatch_watchdog(state), do: state
 
-  # A hold is "progressing" while its worker is alive. There is no continuous
-  # deadline across phases: any successful transition is itself progress, so
-  # leaving a hold clears the watchdog and a fresh hold arms a fresh one.
+  # A hold is "progressing" while its worker is alive. The build's separate
+  # total deadline is owned by that build and survives idle-watchdog re-arms.
   @doc false
   @spec clear_released_watchdog(map()) :: map()
   def clear_released_watchdog(%{phase: phase} = state) when phase in [:cloning, :fetching, :building, :checking],
@@ -29,14 +28,16 @@ defmodule Aiur.RepoBase.Watchdog do
 
   def clear_released_watchdog(state), do: clear_dispatch_watchdog(state)
 
-  # Restart the idle clock for a hold whose worker is still alive: cancel the
-  # fired timer and arm a fresh interval. A fresh ref keeps a stale in-flight
-  # message from matching the new record.
+  # Restart the idle clock for a hold whose worker is still alive. The original
+  # build deadline is carried forward, so a live wedged build cannot hold the
+  # fleet forever. A fresh ref rejects stale in-flight messages.
   @doc false
   @spec rearm_dispatch_watchdog(map()) :: map()
   def rearm_dispatch_watchdog(%{dispatch_watchdog: %{timer: timer}} = state) do
     if is_reference(timer), do: Process.cancel_timer(timer)
-    ensure_dispatch_watchdog(%{state | dispatch_watchdog: nil})
+    ref = make_ref()
+    new_timer = Process.send_after(self(), {:dispatch_hold_timeout, ref}, state.dispatch_hold_timeout_ms)
+    %{state | dispatch_watchdog: %{state.dispatch_watchdog | ref: ref, timer: new_timer}}
   end
 
   def rearm_dispatch_watchdog(state), do: state
