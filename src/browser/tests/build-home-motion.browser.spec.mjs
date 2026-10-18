@@ -246,10 +246,15 @@ function frameBarrier(pair, name, reduce) {
     if (aborted) return
     if (reduce && ['modal.open', 'modal.reduce', 'modal.url', 'modal.close'].includes(name)) return // S-18 records the admitted tkin difference numerically.
     if (count++ % 2 === 0) { pending = new Promise(done => { resolve = done }); return pending }
+    const chrome = []
     try {
       // Column application can cross different clock frames; numeric records retain that timing.
       if (name.startsWith('columns.')) await Promise.all([pair.design, pair.product].map(page => page.clock.setSystemTime(FIXTURE_META.now)))
       if (name.startsWith('snap.')) {
+        // The relocated board must not reveal external toolbar controls through its corners.
+        for (const page of [pair.design, pair.product]) chrome.push([page, await page.locator('#bd-tools').evaluate(el => {
+          const value = el.style.visibility; el.style.visibility = 'hidden'; return value
+        })])
         // Span changes rebuild the header, replacing the pending ETA slot.
         await alignEtaMask(pair)
         // Tall fixed viewports must fit inside both screenshot documents.
@@ -260,7 +265,10 @@ function frameBarrier(pair, name, reduce) {
       if (name.startsWith('snap.')) await primeBoardPaint(pair)
       await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true })
     }
-    finally { resolve() }
+    finally {
+      try { for (const [page, visibility] of chrome) await page.locator('#bd-tools').evaluate((el, value) => { el.style.visibility = value }, visibility) }
+      finally { resolve() }
+    }
   }
   return { frame, abort() { aborted = true; resolve?.() } }
 }

@@ -287,6 +287,7 @@ test('span URL pages before settling and paging state survives server patches', 
 })
 
 test('replaced cards release noanim after two frames', async ({ page }) => {
+  await expect.poll(() => page.evaluate(() => ctx.snapping || ctx.content.classList.contains('scrolling'))).toBe(false)
   await page.clock.install({ time: new Date(0) }); await page.clock.pauseAt(new Date(60_000))
   expect(await page.evaluate(() => {
     const [uid, el] = [...ctx.R][0], row = ctx.D.byId[el.dataset.id]
