@@ -164,7 +164,7 @@ defmodule Aiur.Orchestrator.ControlCLITest do
           assert output =~ "__AIUR_CONTROL_EXIT__:1"
         end)
 
-      assert stderr =~ "error: aiur is globally paused; per-ticket resume has no effect."
+      assert stderr =~ "error: aiur is globally paused; per-ticket resume is refused while new starts are paused."
       assert stderr =~ "Run `aiurdev resume` (no arguments) to lift the global pause."
     end
 

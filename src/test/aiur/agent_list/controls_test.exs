@@ -68,9 +68,9 @@ defmodule Aiur.AgentList.ControlsTest do
       )
 
     state = state(orchestrator, %{identifier: "A", status: :running, work_state: :working})
-    refute String.contains?(Controls.toggle_pause(state).remote_control_hint || "", "per-agent pause has no effect")
+    assert Controls.toggle_pause(state).remote_control_hint == nil
 
     paused = %{state | summaries: [%{identifier: "A", status: :running, work_state: :paused}]}
-    assert Controls.toggle_pause(paused).remote_control_hint =~ "per-agent resume has no effect"
+    assert Controls.toggle_pause(paused).remote_control_hint =~ "per-agent resume is refused while new starts are paused"
   end
 end
