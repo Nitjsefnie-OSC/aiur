@@ -54,7 +54,7 @@ async function openCardParityPair(browser, cell, options) {
   return pair
 }
 async function open(page, dataset = 'unknowns') {
-  await page.goto('/build-fixture/' + dataset)
+  await page.goto('/build-fixture/' + dataset + '?tstate=not+planned')
   await expect(page.locator('#bd-content')).toHaveCount(1)
   await page.evaluate(async () => {
     window.st = await import('/build-home/state.js')
