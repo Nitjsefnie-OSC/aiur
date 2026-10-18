@@ -26,15 +26,15 @@ defmodule Aiur.Experiments.AnalysisDispatch do
     fields = %{"promotion_attempts" => attempts, "promotion_next_attempt_ms" => deps.clock.() + backoff(attempts)}
 
     with {:ok, pending} <- Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], fields) do
-      case deps.promote.(request["ticket"]["number"]) do
-        :ok ->
-          Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], %{"routing_promoted" => true})
-
-        {:error, _reason} = error ->
-          if attempts == 3, do: deps.alert.(pending)
-          error
-      end
+      promotion_result(deps.promote.(request["ticket"]["number"]), pending, deps)
     end
+  end
+
+  defp promotion_result(:ok, request, _deps), do: Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], %{"routing_promoted" => true})
+
+  defp promotion_result({:error, _reason} = error, request, deps) do
+    if request["promotion_attempts"] == 3, do: deps.alert.(request)
+    error
   end
 
   defp attempt(request, attrs, deps) do

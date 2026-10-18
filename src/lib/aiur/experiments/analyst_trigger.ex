@@ -74,11 +74,13 @@ defmodule Aiur.Experiments.AnalystTrigger do
     with {:ok, samples} <- SampleStatus.read(spec), {:ok, records} <- ReportRecords.read(id) do
       if spec["status"] == "report_due" or minimum_met?(samples, spec), do: invoke(request, id, report_opts("sample_guard_met", "interim"))
       n = get_in(records, ["preregistration", "planned_n_per_cohort"])
-      if is_integer(n) and counts_met?(samples, spec, fn _ -> n end), do: invoke(request, id, report_opts("planned_n_met", "confirmatory"))
+      if planned_met?(samples, spec, n), do: invoke(request, id, report_opts("planned_n_met", "confirmatory"))
     else
       error -> observe(error, id)
     end
   end
+
+  defp planned_met?(samples, spec, n), do: is_integer(n) and counts_met?(samples, spec, fn _ -> n end)
 
   defp minimum_met?(samples, spec), do: counts_met?(samples, spec, & &1.needed_n)
 
