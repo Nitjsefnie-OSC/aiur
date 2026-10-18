@@ -7,7 +7,7 @@
 export const preflightSeconds = 120
 export const recordedSeconds = {
   // PR #5020 local focused npm wall times (2026-10-18), rounded up to 0.1s.
-  // Source heads (per-command results in PR): dd3fef20e, b31b9cc85, 06351bdb3.
+  // Source heads (per-command results in PR): dd3fef20e, b31b9cc85; motion a08f421bb.
   // These are local measurements, not CI performance or savings claims.
   'test:build-home-band-parity:1': 507.9,
   'test:build-home-band-parity:2': 480.8,
@@ -15,7 +15,7 @@ export const recordedSeconds = {
   'test:build-home-band-parity:4': 470.4,
   'test:build-home-now-band': 98.5,
   'test:browser-suite -- build-home-live-button-parity': 79.6,
-  'test:build-home-band-motion': 327.1,
+  'test:build-home-band-motion': 350.3,
   // PR #4805 suite-duration logs (2026-10-18): units/browser from run 39093008001 at ea5f25e39.
   // Parity uses the latest green run 39093008001 at ea5f25e39 (102.5s).
   'test:build-home-edges-unit': 0.2,
