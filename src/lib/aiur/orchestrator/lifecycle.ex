@@ -302,7 +302,8 @@ defmodule Aiur.Orchestrator.Lifecycle do
       |> Enum.reject(&(&1 == ""))
       |> Enum.reduce(state.queued_demand_hints, &Map.put(&2, &1, until_cycle))
 
-    request_refresh(%{state | queued_demand_hints: hints})
+    {:reply, receipt, refreshed} = request_refresh(%{state | queued_demand_hints: hints})
+    {:reply, Map.put(receipt, :latest_dispatch_hold, refreshed.dispatch_selection_hold), refreshed}
   end
 
   @doc false
