@@ -12,6 +12,7 @@ if [ "$push_command" = true ] && [ "$queue_install" = true ] && [ -x "$(dirname 
   queue_branch=$(git_in_context symbolic-ref --quiet --short HEAD 2>/dev/null || true)
   queue_slug=${push_url#https://github.com/}
   queue_slug=${queue_slug%.git}
+
   queue_refspec=
   queue_hits_branch=false
   after_push=false
@@ -32,6 +33,27 @@ if [ "$push_command" = true ] && [ "$queue_install" = true ] && [ -x "$(dirname 
   done
   # A push with no refspec pushes the current branch.
   [ -n "$queue_refspec" ] || queue_hits_branch=true
+
+  # Once the ticket is handed off, no worker wake may move the PR head while
+  # the reviewer is examining it. Read the live tracker state at push time;
+  # rework is the explicit exception after changes were requested. The leaf
+  # workspace directory is the tracker issue number (or `pr-<number>` for a
+  # watched PR workspace).
+  ticket_leaf=${AIUR_AGENT_WORKSPACE##*/}
+  ticket_number=${ticket_leaf#pr-}
+  ticket_number=${ticket_number##*-}
+  case "$ticket_number" in *[!0-9]* | '') ticket_number= ;; esac
+  if [ -n "$queue_branch" ] && [ "$queue_hits_branch" = true ] && [ "$queue_slug" != "$push_url" ] &&
+    [ -n "$ticket_number" ]; then
+    ticket_state=$("$(dirname "$0")/gh" api "repos/$queue_slug/issues/$ticket_number" --jq '.labels[].name' 2>/dev/null || true)
+    case " $ticket_state " in
+      *" agent:human-review "*|*" agent:ci-wait "*)
+        printf '%s\n' "aiur: refusing git push: ticket #$ticket_number is handed off for review or CI" >&2
+        printf '%s\n' 'aiur: wait for the review verdict; pushes are allowed again after the ticket enters agent:rework' >&2
+        exit 64
+        ;;
+    esac
+  fi
 
   if [ -n "$queue_branch" ] && [ "$queue_hits_branch" = true ] && [ "$queue_slug" != "$push_url" ]; then
     queue_state=$("$(dirname "$0")/gh" api graphql \

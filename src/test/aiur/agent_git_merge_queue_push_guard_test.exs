@@ -15,7 +15,11 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
     refute real_git =~ ".aiur-runtime/bin", "resolved the agent git guard instead of the real git"
 
     # Stands in for the governed gh: answers the guard's one GraphQL lookup.
-    File.write!(Path.join(bin, "gh"), "#!/bin/sh\n[ -n \"${FAKE_QUEUE_STATE:-}\" ] || exit 1\nprintf '%s\\n' \"$FAKE_QUEUE_STATE\"\n")
+    File.write!(
+      Path.join(bin, "gh"),
+      "#!/bin/sh\ncase \"$*\" in *graphql*) printf '%s\\n' \"${FAKE_QUEUE_STATE:-false MERGEABLE APPROVED}\" ;; *issues/*) printf '%s\\n' \"${FAKE_TICKET_STATE:-agent:in-progress}\" ;; *) exit 1 ;; esac\n"
+    )
+
     File.chmod!(Path.join(bin, "gh"), 0o755)
 
     # Real git for everything but the push itself, which must not reach GitHub.
@@ -35,9 +39,9 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
     {:ok, workspace: workspace, git: Path.join(bin, "git"), fake_git: fake_git}
   end
 
-  defp push(context, state, args \\ ["origin", "HEAD"]) do
+  defp push(context, state, args \\ ["origin", "HEAD"], ticket_state \\ "agent:in-progress") do
     System.cmd(context.git, ["-C", context.workspace, "push" | args],
-      env: [{"AIUR_REAL_GIT", context.fake_git}, {"FAKE_QUEUE_STATE", state}],
+      env: [{"AIUR_REAL_GIT", context.fake_git}, {"AIUR_AGENT_WORKSPACE", context.workspace}, {"FAKE_QUEUE_STATE", state}, {"FAKE_TICKET_STATE", ticket_state}],
       stderr_to_stdout: true
     )
   end
@@ -61,5 +65,15 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
     assert {"PUSHED\n", 0} = push(context, "")
     # A rescue ref is not the pull request's head branch.
     assert {"PUSHED\n", 0} = push(context, "true MERGEABLE APPROVED", ["origin", "HEAD:refs/heads/rescue/4200"])
+  end
+
+  test "refuses pushes while the ticket is handed off and allows review rework", context do
+    for state <- ["agent:human-review", "agent:ci-wait"] do
+      assert {output, 64} = push(context, "false MERGEABLE APPROVED", ["origin", "HEAD"], state)
+      assert output =~ "ticket #4200 is handed off"
+      refute output =~ "PUSHED"
+    end
+
+    assert {"PUSHED\n", 0} = push(context, "false MERGEABLE APPROVED", ["origin", "HEAD"], "agent:rework")
   end
 end
