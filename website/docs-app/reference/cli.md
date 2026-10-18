@@ -120,7 +120,7 @@ If writing fails, the lease stays held and status names `aiur workspace-recover 
 | `aiur message 142 --message-id ID "Check review"` | Names this send. A repeat with the same id, ticket and text returns the first copy and queues nothing new. The same id with other text is refused. Use it only to retry a send whose outcome was unknown. | `aiur message 142 --message-id cli-1a2b "Check the latest review"` |
 | `aiur stop` | Gracefully stops the BEAM and its tmux lifetime session, reaping agent process trees and workspace-rooted descendants before a final launcher backstop removes stragglers. A stopped daemon makes `stop` and `--todo` exit nonzero. | `aiur stop` |
 | `aiur restart` | Stops the running session, refreshes the release, and starts it again detached. See [Restart semantics](#restart-semantics). | `aiur restart` |
-| `aiur restart --keep-agents` | Preflights and hands live providers to the new daemon; prints adoption/fallback reasons and gap. Paused agents are skipped and named. A failed preflight resumes captured workers before aborting. Unsupported daemons abort before stop. May combine with `--no-build`; waits up to 120s and exits 0 with fallbacks if startup succeeds. | `aiurdev restart --keep-agents` |
+| `aiur restart --keep-agents` | Preflights and hands live providers to the new daemon; prints adoption/fallback reasons and gap. Paused agents are skipped and named. A failed preflight resumes captured workers before aborting. Unsupported daemons abort before stop. May combine with `--no-build`; waits up to 120s, waits for the prior node name to be released, retries a failed boot once, and exits nonzero after the final boot failure. | `aiurdev restart --keep-agents` |
 | `aiur status --handoff [--json]` | Last handoff id, timestamps, gap and `adopted[]`/`fallback[]` with before/after provider pids and session ids; JSON is `null` before any handoff; alerts record `system.restart.handoff.completed` / `.fallback`. | `aiur status --handoff --json` |
 | `aiur agents --json` | Current running agents with issue, provider pid, session id and adopted handoff id. | `aiurdev agents --json` |
 | `aiur restart --no-build` | Bounces the daemon on whatever release is already on disk. Use it for a fast restart, or to bounce without taking uncommitted source edits live. It has no effect on the installed `aiur`, which never builds. It cannot rescue a failed development rebuild: that removes the incomplete release, so there is nothing left to start, and `restart` says so instead of suggesting it. | `aiur restart --no-build` |
@@ -161,6 +161,7 @@ Only a retry with the same `--message-id` is safe. It returns the first copy ins
 | Development release | Refreshes between stop and start, then boots current code. |
 | Daemon already stopped | Starts it. |
 | Daemon still answers after stop | Aborts rather than rebuilding underneath it. |
+| Startup boot fails | Cleans up and retries once; exits nonzero if the retry also fails. |
 
 After-stop failures report that the daemon was not restarted; a failed rebuild retains the handoff and providers until the configured relay orphan timeout (default 30 minutes). Without `--keep-agents`, restart reaps agents as `stop` does; with it, agent sockets, relays and the pidfile survive.
 

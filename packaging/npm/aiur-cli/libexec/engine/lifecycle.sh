@@ -418,6 +418,9 @@ cmd_restart() {
     fi
   fi
 
+  aiur_restart_daemon_state="stopped"
+  trap aiur_restart_report_state EXIT INT TERM
+
   # cmd_stop's tmux teardown is best-effort (`|| true`), so a stop can report
   # success while the session survives. Starting from there would rebuild the
   # release under a live BEAM and then hit run_session's idempotent "already
@@ -432,9 +435,6 @@ cmd_restart() {
   if [ -n "${release_bin:-}" ] && ! wait_for_node_name_release "${AIUR_RELEASE_NODE}"; then
     die "restart aborted: node name ${AIUR_RELEASE_NODE} is still registered; nothing was rebuilt or restarted"
   fi
-
-  aiur_restart_daemon_state="stopped"
-  trap aiur_restart_report_state EXIT INT TERM
 
   if [ -n "${AIUR_RESTART_BUILD_CMD:-}" ] && [ "$skip_build" -eq 0 ]; then
     local build_status=0 receipt

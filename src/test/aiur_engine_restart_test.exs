@@ -96,6 +96,24 @@ defmodule AiurEngineRestartTest do
     assert out =~ "RUN:--bg"
   end
 
+  test "restart treats an absent local epmd daemon as a released node name" do
+    release = Aiur.TestSupport.tmp_root!("restart-no-epmd")
+    epmd_dir = Path.join(release, "erts-1/bin")
+    File.mkdir_p!(epmd_dir)
+    epmd = Path.join(epmd_dir, "epmd")
+    File.write!(epmd, "#!/bin/sh\nexit 1\n")
+    File.chmod!(epmd, 0o755)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(release) end)
+
+    {out, 0} =
+      run_sourced_engine(
+        "release_dir=#{inspect(release)}; probe_node_liveness() { printf unknown; }; wait_for_node_name_release 'aiur-test@127.0.0.1' 1 && echo RELEASED",
+        []
+      )
+
+    assert out =~ "RELEASED"
+  end
+
   test "restart returns the failed boot status and reports lost handoff sessions" do
     {out, status} =
       run_sourced_engine(
