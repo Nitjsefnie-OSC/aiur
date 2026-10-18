@@ -284,9 +284,8 @@ cmd_stop() {
 # source tree and performs a plain bounce.
 aiur_restart_daemon_state="untouched"
 
-# Keep the failure trap armed from stop through confirmed start. Otherwise a
-# failed rebuild, missing tmux, boot failure or interruption can leave the fleet
-# down while the command sounds like nothing changed.
+# Keep the failure trap armed through confirmed start so a failed rebuild,
+# missing tmux, boot failure or interruption cannot sound harmless.
 aiur_restart_report_state() {
   [ "$aiur_restart_daemon_state" = "stopped" ] || return 0
 
