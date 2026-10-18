@@ -1,4 +1,4 @@
-// Recorded browser smoke suite durations in seconds: baseline slowest of 11 ci runs on main and merge_group
+// Recorded browser smoke suite durations in seconds: the slowest of 11 ci runs on main and merge_group
 // (2026-10-18, runs 39094806634..39100789804). check-browser-smoke-shards.mjs sums them per shard
 // and fails when a shard passes 75% of its budget or runs a suite missing here. Refresh from a shard log's
 // "suite durations" lines when a suite grows or a new one lands.
@@ -15,18 +15,14 @@ export const recordedSeconds = {
   // Conservative placeholder until this PR's CI suite-duration record is available.
   'test:build-home-chains-parity': 176,
   'test:browser-suite -- build-home-chains-states': 48,
-  // PR #5020 local focused npm wall times (2026-10-18), rounded up to 0.1s.
-  // Source heads (per-command results in PR): dd3fef20e, b31b9cc85; motion a08f421bb.
-  // These are local measurements, not CI performance or savings claims.
-  // Parity values below measured the earlier 92-case matrix, not the revised 104-case matrix.
-  // Current-head CI must measure the new partition wall times; these remain historical observations.
-  'test:build-home-band-parity:1': 507.9,
-  'test:build-home-band-parity:2': 480.8,
-  'test:build-home-band-parity:3': 373.7,
-  'test:build-home-band-parity:4': 470.4,
-  'test:build-home-now-band': 98.5,
-  'test:browser-suite -- build-home-live-button-parity': 79.6,
-  'test:build-home-band-motion': 350.3,
+  // CI run39148293958 (d9ee8e071), job117736821220: actual suite wall seconds.
+  'test:build-home-now-band': 44.7,
+  'test:browser-suite -- build-home-live-button-parity': 52.7,
+  // Conservative CI-measured full-selection bounds from review5564161995 (#5124).
+  // Routine commands select fewer cells; these are NOT routine measurements.
+  // Refresh with routine suite-duration logs after the first new-head CI run.
+  'test:build-home-band-parity': 303,
+  'test:build-home-band-motion': 280,
   // PR #4805 suite-duration logs (2026-10-18): units/browser from run 39093008001 at ea5f25e39.
   // Parity uses the latest green run 39093008001 at ea5f25e39 (102.5s).
   'test:build-home-edges-unit': 0.2,

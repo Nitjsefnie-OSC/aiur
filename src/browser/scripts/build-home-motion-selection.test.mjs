@@ -1,3 +1,4 @@
+import { fullBandCommands } from './run-build-home-band-full.mjs'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
@@ -18,15 +19,16 @@ function collect(config, full, grep, selectedSpec = spec, extra = []) {
   })
   assert.equal(child.status, 0, child.error?.message || child.stderr)
   const report = JSON.parse(child.stdout)
-  const titles = []
-  function visit(suites = []) {
+  const titles = [], qualified = []
+  function visit(suites = [], prefix = '') {
     for (const suite of suites) {
       titles.push(...suite.specs.map(spec => spec.title))
-      visit(suite.suites)
+      qualified.push(...suite.specs.map(spec => prefix + suite.title + ' / ' + spec.title))
+      visit(suite.suites, prefix + suite.title + ' / ')
     }
   }
   visit(report.suites)
-  return { titles: titles.sort(), config: report.config }
+  return { titles: titles.sort(), qualified: qualified.sort(), config: report.config }
 }
 
 test('chain parity defaults to four routine cells and retains the tagged full matrix', () => {
@@ -58,38 +60,39 @@ test('routine motion collects every determinism case; full mode preserves the or
   assert.equal(full.config.fullyParallel, false)
 })
 
-test('band suite collects every product snap and the required live grain and pulse cells', () => {
+test('routine band motion keeps the mobile snap sequences', () => {
   const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts
-  const script = scripts['test:build-home-band-motion'], grep = /--grep '([^']+)'/.exec(script)?.[1]
-  assert.ok(grep, 'band motion script must select its product cases')
+  const grep = /--grep '([^']+)'/.exec(scripts['test:build-home-band-motion'])?.[1]
+  assert.ok(grep)
   const { titles } = collect('playwright.design-parity.config.mjs', false, grep)
-  for (const name of ['settle-near-top', 'settle-near-bottom', 'pinned', 'guard-up', 'guard-down', 'tall-band', 'list-view', 'scroll-curve', 'scrollbar-drag', 'reduce']) {
-    assert.equal(titles.filter(title => title === 'snap.' + name).length, 3, name)
-  }
-  assert.equal(titles.filter(title => title === 'grain.static .bd-now').length, 1)
-  assert.equal(titles.filter(title => title === 'inventory .bd-now-h > b i').length, 1)
-  assert.equal(titles.length, 32)
+  for (const name of ['settle-near-top', 'settle-near-bottom', 'pinned', 'guard-up', 'guard-down', 'tall-band', 'list-view', 'scroll-curve', 'scrollbar-drag', 'reduce'])
+    assert.equal(titles.filter(title => title === 'snap.' + name).length, 1, name)
+  assert.equal(titles.length, 10)
   assert.ok(scripts['test:core'].includes('npm run test:build-home-band-motion'))
 })
 
 
-test('band parity shards collect the complete matrix exactly once', () => {
-  const scripts = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).scripts
-  const parity = 'tests/build-home-now-band-parity.browser.spec.mjs'
-  const whole = collect('playwright.design-parity.config.mjs', false, undefined, parity).titles
-  const placed = []
-  for (let i = 1; i <= 4; i++) {
-    const name = 'test:build-home-band-parity:' + i, script = scripts[name]
-    assert.ok(script.includes(parity))
-    assert.ok(script.includes('--fully-parallel'))
-    const shard = /--shard=(\d+\/\d+)/.exec(script)?.[1]
-    assert.ok(shard)
-    const { titles } = collect('playwright.design-parity.config.mjs', false, undefined, parity, ['--fully-parallel', '--shard=' + shard])
-    assert.equal(titles.length, 26)
-    placed.push(...titles)
-    assert.ok(scripts['test:core'].includes('npm run ' + name))
+test('routine parity keeps mobile live/offline pixels in every theme and palette', () => {
+  const spec = 'tests/build-home-now-band-parity.browser.spec.mjs'
+  const { titles } = collect('playwright.build-home-band.config.mjs', false, undefined, spec)
+  const expected = []
+  for (const dataset of ['live', 'offline']) for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) {
+    expected.push(`band pixels and card geometry: ${dataset} 390 ${theme} ${palette}`)
+    expected.push(`mobile composed headers without masks: ${dataset} ${theme} ${palette}`)
   }
-  assert.equal(whole.length, 104)
-  assert.equal(new Set(placed).size, 104)
-  assert.deepEqual(placed.sort(), whole)
+  assert.deepEqual(titles, expected.sort())
+})
+
+test('full job partitions preserve all 104 pixel and 32 motion cells exactly once', () => {
+  for (const index of [0, 1]) {
+    const commands = [1, 2, 3, 4].map(part => fullBandCommands(part)[index])
+    const sample = commands[0], selectedSpec = sample[1], grep = sample.includes('--grep') ? sample[sample.indexOf('--grep') + 1] : undefined
+    const whole = collect('playwright.design-parity.config.mjs', false, grep, selectedSpec).qualified
+    const placed = commands.flatMap(args => collect('playwright.design-parity.config.mjs', false, grep, selectedSpec,
+      ['--fully-parallel', args.find(arg => arg.startsWith('--shard='))]).qualified)
+    assert.equal(whole.length, index === 0 ? 104 : 32)
+    assert.equal(new Set(placed).size, whole.length)
+    assert.deepEqual(placed.sort(), whole)
+  }
+  assert.throws(() => fullBandCommands(0), /1..4/)
 })
