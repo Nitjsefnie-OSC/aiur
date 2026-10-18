@@ -3,7 +3,7 @@
 # Keep the complete governed call, including broker and real-gh descendants,
 # inside one process group so a deadline can terminate every child.
 if command -v python3 >/dev/null 2>&1; then
-  exec python3 -c '
+  exec python3 -I -c '
 import os, signal, subprocess, sys, threading
 
 script = sys.argv[1]
@@ -34,8 +34,14 @@ def write_body(fd, contents):
         # source pipe as normal child completion.
         pass
 
+shell_program = (
+    'source_path=$1; shift; '
+    'if [ -f "$source_path" ]; then '
+    'echo "aiur: refusing regular-file deadline body" >&2; exit 127; '
+    'fi; . "$source_path"'
+)
 child = subprocess.Popen(
-    ["/bin/sh", "-c", "source_path=$1; shift; if [ -f \"$source_path\" ]; then echo \"aiur: refusing regular-file deadline body\" >&2; exit 127; fi; . \"$source_path\"", script, "/dev/fd/" + str(body_read), *args],
+    ["/bin/sh", "-c", shell_program, script, "/dev/fd/" + str(body_read), *args],
     stdin=None,
     pass_fds=(body_read,),
     start_new_session=True,
