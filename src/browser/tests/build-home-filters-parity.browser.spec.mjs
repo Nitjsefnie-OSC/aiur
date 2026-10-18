@@ -42,10 +42,12 @@ async function isolateFilters(page) {
     const root = host.closest('.bd-root'), width = root.clientWidth, wrap = document.createElement('div'); wrap.className = 'bd-toolbar'
     // Container queries also establish fixed-position containing blocks; detach the real root to align those too.
     document.body.append(root)
-    Object.assign(root.style, { position: 'fixed', top: '0', left: '0', width: width + 'px', height: '100vh' })
+    Object.assign(root.style, { position: 'fixed', top: '0', left: '0', width: width + 'px', height: '100vh', zIndex: '2147483647' })
     Object.assign(wrap.style, { position: 'fixed', top: '0', left: '0', width: root.clientWidth + 'px', height: '100vh', alignItems: 'flex-start', background: 'var(--bg)', zIndex: '9999' })
     root.append(wrap); wrap.append(host)
     if (JSON.stringify(fields.map(k => getComputedStyle(host)[k])) !== JSON.stringify(before)) throw new Error('filter capture changed inherited paint')
+    const box = host.querySelector('.bd-fg').getBoundingClientRect()
+    if (document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)?.closest('#bd-filters') !== host) throw new Error('filter capture is covered by page chrome')
   })
 }
 for (const cell of cells) test(`filter parity ${cell.dataset} ${cell.viewport.width} ${cell.theme} ${cell.palette}`, async ({ browser }) => {
