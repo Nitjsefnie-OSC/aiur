@@ -122,13 +122,14 @@ test('B6 Fit cancels a live-band scroll frame already queued before centering', 
       if (typeof key === 'string' && key.startsWith('scrollVP:')) oldScrollFrames.push(callback)
       else frame(key, callback)
     }
-    st.fx.renderTools = () => { tools(); st.fx.scrollVP(0, true) }
+    st.fx.renderTools = () => { tools(); st.ctx.snapping = true; st.fx.scrollVP(0, true) }
   })
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
   const result = await page.evaluate(() => {
     const before = st.ctx.vp.scrollTop, count = oldScrollFrames.length
     oldScrollFrames.splice(0).forEach(callback => callback(performance.now() + 1000))
+    st.ctx.snapping = false
     return { before, after: st.ctx.vp.scrollTop, count }
   })
   expect(result.count).toBeGreaterThan(0)
