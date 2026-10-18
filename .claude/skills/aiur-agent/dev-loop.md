@@ -387,8 +387,13 @@ The Elixir examples below apply only to Aiur's Elixir core.
     queue tests the merge; a refresh push only cancels in-flight CI and risks
     the approval, and it cannot fix a red or cancelled check. The state writer
     still requires the exact head's full required-check gate before handoff.
-    The agent `git` guard refuses a push to a PR in the merge queue unless it
-    is conflicting or has changes requested.
+    The agent `git` guard refuses pushes to ticket branches in `agent:ci-wait`
+    or `agent:human-review`, including detached-HEAD pushes named by their
+    destination ref; `gh pr update-branch` is refused in those states too.
+    Review rework is allowed. If a conflict blocks the handoff, move the ticket
+    back to `agent:in-progress` with `aiur_set_ticket_state` before integrating
+    the base and pushing. It also refuses a push to a PR in the merge queue
+    unless GitHub reports it `CONFLICTING` or changes are requested.
 
     If paths overlap or the merge conflicts, allow up to 3 integrations per
     handoff without asking, recording the pre-merge head and rescue ref first.

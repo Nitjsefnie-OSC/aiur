@@ -14,10 +14,10 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
     real_git = System.get_env("AIUR_REAL_GIT") || System.find_executable("git")
     refute real_git =~ ".aiur-runtime/bin", "resolved the agent git guard instead of the real git"
 
-    # Stands in for the governed gh: answers the guard's one GraphQL lookup.
+    # Stands in for the governed gh: answers queue GraphQL and ticket-label REST reads.
     File.write!(
       Path.join(bin, "gh"),
-      "#!/bin/sh\ncase \"$*\" in *graphql*) printf '%s\\n' \"${FAKE_QUEUE_STATE:-false MERGEABLE APPROVED}\" ;; *issues/*join*) printf '%s %s\\n' 'priority:2' \"${FAKE_TICKET_STATE:-agent:in-progress}\" ;; *issues/*) printf '%s\\n%s\\n' 'priority:2' \"${FAKE_TICKET_STATE:-agent:in-progress}\" ;; *) exit 1 ;; esac\n"
+      "#!/bin/sh\ncase \"$*\" in *graphql*) printf '%s\\n' \"${FAKE_QUEUE_STATE:-false MERGEABLE APPROVED}\" ;; *issues/*join*) printf '%s\\n' \"${FAKE_TICKET_LABELS:-priority:2 agent:in-progress}\" ;; *issues/*) printf '%s\\n' \"${FAKE_TICKET_LABELS:-priority:2 agent:in-progress}\" | tr ' ' '\\n' ;; *) exit 1 ;; esac\n"
     )
 
     File.chmod!(Path.join(bin, "gh"), 0o755)
@@ -36,14 +36,25 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
       assert {_, 0} = System.cmd(real_git, ["-C", workspace | args], stderr_to_stdout: true)
     end
 
+    assert {_, 0} =
+             System.cmd(real_git, ["-C", workspace, "-c", "user.name=Agent Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "--quiet", "-m", "initial"], stderr_to_stdout: true)
+
     {:ok, workspace: workspace, git: Path.join(bin, "git"), fake_git: fake_git}
   end
 
-  defp push(context, state, args \\ ["origin", "HEAD"], ticket_state \\ "agent:in-progress") do
-    System.cmd(context.git, ["-C", context.workspace, "push" | args],
-      env: [{"AIUR_REAL_GIT", context.fake_git}, {"AIUR_AGENT_WORKSPACE", context.workspace}, {"FAKE_QUEUE_STATE", state}, {"FAKE_TICKET_STATE", ticket_state}],
-      stderr_to_stdout: true
-    )
+  defp push(context, state, args \\ ["origin", "HEAD"], ticket_state \\ "agent:in-progress", detached \\ false, labels \\ nil) do
+    detached_flag = if detached, do: "--detached", else: ""
+    labels = labels || "priority:2 " <> ticket_state
+    if detached, do: System.cmd(context.fake_git, ["-C", context.workspace, "checkout", "--detach"], stderr_to_stdout: true)
+
+    result =
+      System.cmd(context.git, ["-C", context.workspace, "push" | args],
+        env: [{"AIUR_REAL_GIT", context.fake_git}, {"AIUR_AGENT_WORKSPACE", context.workspace}, {"FAKE_QUEUE_STATE", state}, {"FAKE_TICKET_LABELS", labels}, {"FAKE_TICKET_STATE", ticket_state}],
+        stderr_to_stdout: true
+      )
+
+    if detached_flag != "", do: System.cmd(context.fake_git, ["-C", context.workspace, "checkout", "aiur/4200-x"], stderr_to_stdout: true)
+    result
   end
 
   test "refuses a push to a pull request that is in the merge queue", context do
@@ -69,11 +80,20 @@ defmodule Aiur.AgentGitMergeQueuePushGuardTest do
 
   test "refuses pushes while the ticket is handed off and allows review rework", context do
     for state <- ["agent:human-review", "agent:ci-wait"] do
-      assert {output, 64} = push(context, "false MERGEABLE APPROVED", ["origin", "HEAD"], state)
-      assert output =~ "ticket #4200 is handed off"
-      refute output =~ "PUSHED"
+      for label_order <- [:priority_first, :state_first] do
+        ticket_labels = if label_order == :priority_first, do: "priority:2 " <> state, else: state <> " priority:2"
+        assert {output, 64} = push(context, "false MERGEABLE APPROVED", ["origin", "HEAD"], state, false, ticket_labels)
+        assert output =~ "first move the ticket to agent:in-progress"
+        refute output =~ "PUSHED"
+      end
     end
 
     assert {"PUSHED\n", 0} = push(context, "false MERGEABLE APPROVED", ["origin", "HEAD"], "agent:rework")
+  end
+
+  test "refuses detached pushes to a branch ref after handoff", context do
+    assert {output, 64} = push(context, "false MERGEABLE APPROVED", ["origin", "HEAD:refs/heads/aiur/4200-x"], "agent:human-review", true)
+    assert output =~ "ticket #4200 is handed off"
+    refute output =~ "PUSHED"
   end
 end
