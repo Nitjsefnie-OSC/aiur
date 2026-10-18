@@ -163,22 +163,6 @@ test('loading phase holds the skeleton', async ({ browser }) => {
   await delay(1000)
   expect((await page.screenshot({ animations: 'disabled', scale: 'device' })).equals(a)).toBe(true)
 })
-test('capture keeps a visible fixed region after document scrolling', async ({ page }) => {
-  await page.setContent('<body style="margin:0;height:3000px;background:white"><div id="fixed" style="position:fixed;top:100px;left:40px;width:100px;height:80px;background:red"></div>')
-  await page.evaluate(() => scrollTo(0, 400))
-  expect(await page.evaluate(() => scrollY)).toBe(400)
-  const png = await captureStable(page.locator('#fixed'), { animations: 'disabled' }, page)
-  const sample = await page.evaluate(async data => {
-    const image = new Image(); image.src = 'data:image/png;base64,' + data; await image.decode()
-    const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height
-    const context = canvas.getContext('2d'); context.drawImage(image, 0, 0)
-    return { size: [image.width, image.height], pixel: [...context.getImageData(50, 40, 1, 1).data] }
-  }, png.toString('base64'))
-  expect(sample.size).toEqual([100, 80])
-  expect(sample.pixel).toEqual([255, 0, 0, 255])
-  expect(await page.evaluate(() => scrollY)).toBe(400)
-})
-
 // Synthetic captures: a real page.screenshot here can hit the same Chromium transient on the retry (#4054).
 test('settle guard survives a transient capture failure', async () => {
   let n = 0

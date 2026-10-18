@@ -163,10 +163,9 @@ export async function captureStable(target, opts, page) {
       const offset = await page.evaluate(() => ({ x: scrollX, y: scrollY }))
       const viewport = page.viewportSize()
       // Expanding an already-visible clip fires responsive relayouts and clears locks.
-      const visible = viewport && box.x >= 0 && box.y >= 0
+      const visible = viewport && !offset.x && !offset.y && box.x >= 0 && box.y >= 0
         && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height
-      const clip = visible ? box : { ...box, x: box.x + offset.x, y: box.y + offset.y }
-      return page.screenshot({ ...opts, fullPage: !visible, clip })
+      return page.screenshot({ ...opts, fullPage: !visible, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
     }
     let png
     try { png = await shoot() }
@@ -238,7 +237,7 @@ async function captureParityPixels(pair, { name, region, fullPage, preserveAnima
   const opts = { animations: preserveAnimations ? 'allow' : 'disabled', caret: 'hide', scale: 'device', maskColor: '#ff00ff', ...(region ? {} : { fullPage }) }
   await pair.design.bringToFront()
   if (region) await settleRegionImages(pair.design, region)
-  const png = await captureStable(design, { ...opts, mask: designMask }, region ? pair.design : undefined)
+  const png = await captureStable(design, { ...opts, mask: designMask }, preserveAnimations && region ? pair.design : undefined)
   await pair.product.bringToFront()
   if (region) await settleRegionImages(pair.product, region)
   checkPage(pair.design)
@@ -247,7 +246,7 @@ async function captureParityPixels(pair, { name, region, fullPage, preserveAnima
   await mkdir(path.dirname(file), { recursive: true })
   await writeFile(file, png)
   // Use the same capture protocol on both sides, including rounded image clips.
-  const actual = await captureStable(product, { ...opts, mask: productMask }, region ? pair.product : undefined)
+  const actual = await captureStable(product, { ...opts, mask: productMask }, preserveAnimations && region ? pair.product : undefined)
   expect(actual).toMatchSnapshot(`${name}.png`, { threshold: PARITY_THRESHOLD, maxDiffPixels: PARITY_FLOOR })
   checkPage(pair.design)
   checkPage(pair.product)

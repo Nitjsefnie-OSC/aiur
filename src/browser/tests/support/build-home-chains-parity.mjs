@@ -131,10 +131,10 @@ export async function prepareChainParity(pair) {
   pair.allowlist = pair.allowlist.map(entry => entry.id === 'now-band-eta-pending'
     ? { ...entry, kind: 'pixel-mask', selector: '.bd-now-eta' } : entry)
   await alignEtaMask(pair)
-  if (pair.cell.viewport.width === 390) await primeBoardPaint(pair, '#bd-lanes')
+  await primeBoardPaint(pair, '#bd-lanes')
 }
 
 export async function prepareChainCanvas(pair) {
-  // Keep the mobile board above unrelated page chrome at the same raster origin.
-  if (pair.cell.viewport.width === 390) await alignBoard(pair)
+  // Use the band's canonical canvas for every width, clear of unrelated page chrome.
+  await alignBoard(pair)
 }
