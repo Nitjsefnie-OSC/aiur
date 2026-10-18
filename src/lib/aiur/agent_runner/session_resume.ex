@@ -175,10 +175,10 @@ defmodule Aiur.AgentRunner.SessionResume do
   # thread. Skips anything that can't be resumed later (non-resumable backend,
   # remote worker, no thread id) so we never leave a misleading handle.
   @doc false
-  @spec persist_session_handle(map(), String.t(), worker_host()) :: :ok
-  def persist_session_handle(session, identifier, worker_host) do
+  @spec persist_session_handle(map(), String.t(), worker_host(), keyword()) :: :ok
+  def persist_session_handle(session, identifier, worker_host, handle_opts \\ []) do
     case session_handle_to_save(session, worker_host) do
-      {:ok, attrs} -> persist_handle_best_effort(identifier, attrs)
+      {:ok, attrs} -> persist_handle_best_effort(identifier, attrs, handle_opts)
       :skip -> :ok
     end
   end

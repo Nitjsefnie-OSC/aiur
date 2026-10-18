@@ -76,9 +76,11 @@ defmodule Aiur.AgentRunner.SessionLifecycleTest do
       identifier = "SESSION-RESUME-#{System.unique_integer([:positive])}"
       active_state = Enum.at(Aiur.Config.settings!().tracker.active_states, 0)
       issue = %Issue{id: "gid-#{identifier}", identifier: identifier, state: active_state, selected_backend: "codex", labels: ["agent:#{active_state}"]}
-      :ok = SessionHandle.save(identifier, %{backend: "codex", thread_id: "abandoned"})
-      :ok = SessionHandle.drop_thread(identifier)
-      on_exit(fn -> SessionHandle.clear(identifier) end)
+      handle_opts = [dir: Path.join(root, "session-handles"), hostname: "test-host", repo_name: "session-lifecycle-test"]
+      File.mkdir_p!(handle_opts[:dir])
+      :ok = SessionHandle.save(identifier, %{backend: "codex", thread_id: "abandoned"}, handle_opts)
+      :ok = SessionHandle.drop_thread(identifier, handle_opts)
+      on_exit(fn -> SessionHandle.clear(identifier, handle_opts) end)
 
       port = start_supervised!(ResumeTestPort)
       orchestrator = start_supervised!(ResumeTestOrchestrator)
@@ -92,6 +94,7 @@ defmodule Aiur.AgentRunner.SessionLifecycleTest do
           [
             orchestrator: orchestrator,
             max_turns: 1,
+            session_handle_opts: handle_opts,
             session_start_fun: fn session_workspace, _opts ->
               {:ok, %{thread_id: "fresh", workspace: session_workspace, port: port}}
             end,
