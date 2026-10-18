@@ -6,14 +6,16 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
-  // Chain measurements, 2026-10-18, rounded up; parity's failed-run evidence is called out below.
+  // Green chain measurements, 2026-10-18; summed per-test durations, rounded up.
   // Commands: node --test tests/build-home-chains.test.mjs; node scripts/run-browser-tests.mjs tests/build-home-chains{,-parity,-states}.browser.spec.mjs.
   'test:build-home-chains-unit': 1,
-  // 23-case run 156.7s (21 passed, 2 failed) plus new empty-page case 12.5s.
-  'test:build-home-chains': 170,
-  // Expanded 12-cell pixel run: 269.4s summed test durations (all red), 2026-10-18.
-  // Refresh this evidence after #3146 supplies the missing Now band.
-  'test:browser-suite -- build-home-chains-parity': 270,
+  // Full 24-case run: 203.5s summed test durations, all passed.
+  'test:build-home-chains': 204,
+  // Green P1–P4 cells after Now-band integration, 2026-10-18: summed test durations.
+  // Desktop groups: 175.7s / 150.0s. Phone minute-rounded output is bounded above by 426s.
+  'test:build-home-chains-parity:1': 176,
+  'test:build-home-chains-parity:2': 150,
+  'test:build-home-chains-parity:3': 430,
   'test:browser-suite -- build-home-chains-states': 48,
   // PR #5020 local focused npm wall times (2026-10-18), rounded up to 0.1s.
   // Source heads (per-command results in PR): dd3fef20e, b31b9cc85; motion a08f421bb.
