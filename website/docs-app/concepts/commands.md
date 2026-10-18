@@ -30,10 +30,11 @@ while the worker keeps working; it must not trigger a self-pause. Bare coordinat
 pauses and explicit operator-decision pauses (including legacy attentions) remain
 valid.
 
-Only open blocking Commands
-(including deferred Commands) count toward the decision-based `waiting_for_human`
-state. Expired and moot Commands do not hold that gate, even if an attention
-chip remains visible.
+Open blocking Commands (including deferred Commands) count toward the
+decision-based `waiting_for_human` state. An unanswered blocking Command that
+reaches its expiry time remains answerable and continues to hold that gate
+until the Executor answers it. Expired nonblocking Commands and moot Commands
+do not hold the gate.
 
 Agents classify the action, not the subsystem around it. Routine,
 reversible operational choices should use `supervisor_allowed`; irreversible
@@ -71,8 +72,9 @@ Reclassification records the Executor's rationale and increments the Command
 version. A separate `aiur executor-answer` must use the new version.
 
 Aiur warns when a human-required Command is reversible and all of its
-options are low-risk. It also raises attention when an Executor-unanswerable
-Command expires without a decision. These signals expose stale context and
+options are low-risk. It also raises attention when an Executor-unanswerable,
+nonblocking Command expires without a decision. Unanswered blocking Commands
+remain open for the Executor to answer. These signals expose stale context and
 upstream misclassification; they do not weaken the answer-authorization floor.
 
 A blocking Command never waits in silence. When it is created, the Executor gets

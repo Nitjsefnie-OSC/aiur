@@ -212,6 +212,29 @@ defmodule AiurWeb.StreamdeckChannelCommandsTest do
       assert reason =~ "not_answerable"
     end
 
+    test "answer_command accepts an expired unanswered blocking Command", %{decision: decision} do
+      expired = %{decision | decision_status: :expired, blocking: true, answer: nil}
+      {:ok, expired_store} = FakeDecisionStore.start_link(expired, self())
+      EndpointStubs.put(decision_store: expired_store)
+
+      on_exit(fn -> Aiur.TestSupport.safe_stop(expired_store) end)
+
+      socket = joined_socket()
+      assert_reply(push(socket, "focus", %{"identifier" => "AIUR-1"}), :ok, %{"focused" => "AIUR-1"})
+      assert_push("commands", %{"items" => [%{"status" => "expired", "blocking" => true}]})
+
+      assert_reply(
+        push(socket, "answer_command", %{
+          "decision_id" => expired.decision_id,
+          "version" => expired.version,
+          "idempotency_key" => "sd-key-expired",
+          "option_id" => "ship"
+        }),
+        :ok,
+        _result
+      )
+    end
+
     test "answer_command records an operator answer durably through a real store" do
       # The other answer_command tests drive a fake store to assert the wire
       # call; this one goes end to end through a real `DecisionStore` so the

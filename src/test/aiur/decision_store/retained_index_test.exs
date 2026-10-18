@@ -118,7 +118,11 @@ defmodule Aiur.DecisionStore.RetainedIndexTest do
   # the same lifecycles would see, so that is exactly what is compared.
   defp assert_invariant(index, blocking_ids) do
     counts = RetainedIndex.canonical_counts(index)
-    open_ids = ids(index, :open)
+
+    open_ids =
+      ids(index, :open) ++
+        Enum.filter(ids(index, :expired), &MapSet.member?(blocking_ids, &1))
+
     deferred_ids = ids(index, :deferred)
 
     assert counts.awaiting == length(open_ids)

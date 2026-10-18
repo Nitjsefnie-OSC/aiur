@@ -6,7 +6,7 @@ defmodule Aiur.DecisionStore.RetainedSnapshot.QueryPlan do
 
   @lifecycle_statuses [:deferred, :expired, :dismissed, :moot, :decided, :acknowledged, :resolved]
   @open_statuses [:open, :deferred]
-  @awaiting_statuses [:open]
+  @awaiting_statuses [:open, :expired]
   @historic_statuses [:expired, :dismissed, :moot, :decided, :acknowledged, :resolved]
   # Command history as the operator reads it: everything they have finished
   # with. A deferral is finished for them — the Executor owns the answer — so it
@@ -70,7 +70,11 @@ defmodule Aiur.DecisionStore.RetainedSnapshot.QueryPlan do
   defp lifecycle_match?(_decision, nil), do: true
   defp lifecycle_match?(%Decision{decision_status: :expired, blocking: true, answer: nil}, :open), do: true
   defp lifecycle_match?(decision, :open), do: decision.decision_status in [:open, :deferred]
-  defp lifecycle_match?(decision, :awaiting), do: decision.decision_status in @awaiting_statuses
+
+  defp lifecycle_match?(%Decision{decision_status: :expired, blocking: true, answer: nil}, :awaiting),
+    do: true
+
+  defp lifecycle_match?(decision, :awaiting), do: decision.decision_status == :open
   defp lifecycle_match?(decision, :historic), do: decision.decision_status in @historic_statuses
   defp lifecycle_match?(decision, :history), do: decision.decision_status in @history_statuses
   defp lifecycle_match?(decision, lifecycle), do: decision.decision_status == lifecycle

@@ -37,6 +37,8 @@ defmodule AiurWeb.OperatorControlCenterComponentsCommandHistoryTest do
     html = render_inbox([expired], :open)
 
     assert html =~ "Question dec-expired-blocking"
+    answer = render_component(&DecisionAction.decision_action/1, %{decision: expired, state: %{}, writable: true})
+    assert answer =~ ~s(phx-submit="answer-decision")
     assert html =~ "Expired"
     assert html =~ ~s(class="decision-card)
   end
