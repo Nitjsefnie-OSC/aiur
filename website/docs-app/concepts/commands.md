@@ -70,11 +70,10 @@ and legacy-attention Commands remain human-only.
 Reclassification records the Executor's rationale and increments the Command
 version. A separate `aiur executor-answer` must use the new version.
 
-Aiur warns when reversible human-required Commands offer only low-risk options.
-It raises attention when an Executor-unanswerable nonblocking Command expires.
-Expired blockers remain answerable until answered or mooted. Agents can re-raise
-with a new `source_id`; a matching request supersedes the stale record. A higher
-version on the same `source_id` reopens that Command with updated content.
+Aiur warns when reversible human-required Commands offer only low-risk options
+and when an Executor-unanswerable nonblocking Command expires. Expired blockers
+remain answerable until answered or mooted. Re-raise with a new `source_id` to
+supersede one, or use a higher version to reopen the same Command.
 
 A blocking Command never waits in silence. When it is created, the Executor gets
 one `ticket.<N>.agent.attention.operator-decision` wake with the decision id,
