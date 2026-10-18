@@ -12,7 +12,6 @@ defmodule Aiur.Orchestrator.CommentWake do
   alias Aiur.CurrentRunMembership
   alias Aiur.Events.UniversalSubscriptions
   alias Aiur.GitHub.{Config, LocalHold}
-  alias Aiur.GitHub.Errors, as: GitHubErrors
   alias Aiur.GitHub.Issues, as: GitHubIssues
   alias Aiur.{Issue, Tracker}
   alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, MembershipLifecycle, MergedTicketReconciler, PrAnchored, PushRouting, ReviewFreshness, ReworkGate, State, TicketTransition, TrackerTasks}
@@ -23,7 +22,6 @@ defmodule Aiur.Orchestrator.CommentWake do
 
   @comment_rework_retry_delay_ms 2_000
   @comment_rework_max_attempts 5
-  @merge_terminal_write_attempts 3
 
   # Where a merged PR that never claimed to close its ticket leaves that ticket:
   # open, back in front of a human. Never `done` — see `merged_pr_closes_ticket?/2`.
@@ -1705,46 +1703,12 @@ defmodule Aiur.Orchestrator.CommentWake do
         LocalHold.caller_opts(opts)
       )
 
-    result = write_merged_target_state(target, identifier, update_issue_state_fun, opts)
+    result = MergeTransition.write_terminal_target(target, identifier, update_issue_state_fun, opts)
+    result = if target == "done", do: Alerts.StaleNotClosed.resolve_on_ok(result, identifier), else: result
 
     audit_merge_attribution(identifier, MergeAttribution.resolve(merged_by_login, opts), merger_allowed_fun, emit_alert_fun)
     refresh_other_closed_issues(identifier, opts)
     {target, result}
-  end
-
-  defp write_merged_target_state("done", identifier, update_issue_state_fun, opts) do
-    LocalHold.run(
-      fn -> write_merged_done_state(identifier, update_issue_state_fun, opts) end,
-      LocalHold.caller_opts(Keyword.put(opts, :local_hold_max_wait_ms, 3_600_000))
-    )
-  end
-
-  defp write_merged_target_state(target, identifier, update_issue_state_fun, opts)
-       when target in ["rework", "human-review"] do
-    retry_merge_terminal_write(fn -> update_issue_state_fun.(to_string(identifier), target) end, opts)
-  end
-
-  defp write_merged_target_state({:error, _} = error, _identifier, _update_issue_state_fun, _opts), do: error
-
-  defp write_merged_done_state(identifier, update_issue_state_fun, opts) do
-    retry_merge_terminal_write(fn -> update_issue_state_fun.(to_string(identifier), "done") end, opts)
-    |> Alerts.StaleNotClosed.resolve_on_ok(identifier)
-  end
-
-  defp retry_merge_terminal_write(write_fun, opts, attempt \\ 1) do
-    case write_fun.() do
-      {:error, reason} = error when attempt < @merge_terminal_write_attempts ->
-        if GitHubErrors.retryable_github_error?(reason) do
-          sleep_fun = Keyword.get(opts, :merge_terminal_write_sleep_fun, &Process.sleep/1)
-          sleep_fun.(100 * attempt)
-          retry_merge_terminal_write(write_fun, opts, attempt + 1)
-        else
-          error
-        end
-
-      result ->
-        result
-    end
   end
 
   defp apply_merged_issue_target(
