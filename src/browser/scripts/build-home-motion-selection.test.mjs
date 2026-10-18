@@ -74,7 +74,8 @@ test('routine band motion keeps the mobile snap sequences', () => {
 
 test('routine parity keeps mobile live/offline pixels in every theme and palette', () => {
   const spec = 'tests/build-home-now-band-parity.browser.spec.mjs'
-  const { titles } = collect('playwright.build-home-band.config.mjs', false, undefined, spec)
+  const { titles, config } = collect('playwright.build-home-band.config.mjs', false, undefined, spec)
+  assert.equal(config.workers, 1, 'a fixture server must not mix datasets from concurrent workers')
   const expected = []
   for (const dataset of ['live', 'offline']) for (const theme of ['dark', 'light']) for (const palette of ['gruvbox', 'aiur']) {
     expected.push(`band pixels and card geometry: ${dataset} 390 ${theme} ${palette}`)
