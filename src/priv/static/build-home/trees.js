@@ -4,12 +4,12 @@ import { edgeClass } from './edges.js';
 import { agentState } from './now-state.js';
 import { ensureFrom, loadEarlier, H } from './history.js';
 import { writeURL } from './url.js';
-import { colKey } from './layout.js';
+import { colKey, histDays } from './layout.js';
 import { esc, $ } from './dom.js';
 import { I } from './icons.js';
 
 let fitToken = 0, hoverGen = 0, openRoot = null, returnFocus = null;
-onReset(() => { fitToken++; hoverGen++; openRoot = null; returnFocus = null; });
+onReset(() => { fitToken++; hoverGen++; openRoot = null; returnFocus = null; ctx.fitHistory = null; });
 const tab = () => ctx.content?.querySelector(':scope > .bd-lt');
 const cardOf = id => [...ctx.R.values()].find(el => el.dataset.id === id) || ctx.L?.band.items.find(it => it.t.id === id)?.el;
 const refText = t => fx.refText ? fx.refText(t) : t.num == null ? '—' : '#' + t.num;
@@ -28,7 +28,7 @@ export function onHover(e) {
 export function onLeave() { if (!ctx.lockId) clearLater(200); }
 export function toggleLock(b) {
   if (b.dataset.lt === 'lock') { if (ctx.lockId) unlock(); else if (ctx.hoverId) lockTree(ctx.hoverId); }
-  else if (ctx.lockId) { if (b.dataset.lt === 'fit') fitTree(ctx.lockId); else openTree(ctx.lockId); }
+  else if (ctx.lockId) { if (b.dataset.lt === 'fit') return fitTree(ctx.lockId); return openTree(ctx.lockId); }
 }
 export function setHover(id, el) {
   if (ctx.hoverId === id) return;
@@ -73,32 +73,55 @@ export function treeRange(id) {
   return [a, b];
 }
 export async function fitTree(id) {
-  const token = ++fitToken, life = ctx.life;
+  let token = ++fitToken;
+  const life = ctx.life;
   const current = () => token === fitToken && ctx.life === life && !life.disposed && ctx.content?.isConnected && !!ctx.D.byId[id];
-  // Unknown dates cannot define a history range. Bound discovery per Fit action;
-  // any remaining links stay visible as gaps instead of draining all history.
-  let pages = 0;
-  while (pages++ < 3 && current() && ctx.lockId === id && H.more && chainGaps(ctx.D, chainOf(ctx.D, id)).unloaded) {
-    if (!await loadEarlier()) break;
-  }
-  if (!current() || ctx.lockId !== id) return;
-  const from = fitFrom(ctx.D, id);
-  if (from != null && S.histFrom > from) await ensureFrom(from, () => current() && ctx.lockId === id);
-  if (!current() || ctx.lockId !== id) return;
-  const room = ctx.vp.clientHeight - LH - 70;
-  // Full relayout intentionally unlocks; preserve this Fit's token through that synchronous loop.
-  for (const span of SPANS) {
-    S.span = span; fx.relayout();
+  const request = {}; ctx.fitHistory = request;
+  const release = life.cleanup(() => { if (ctx.fitHistory === request) ctx.fitHistory = null; });
+  const firstFrame = Symbol('fit-1'), secondFrame = Symbol('fit-2');
+  let scheduled = false;
+  try {
+    // Unknown dates cannot define a history range. Bound discovery per Fit action;
+    // any remaining links stay visible as gaps instead of draining all history.
+    let pages = 0;
+    while (pages++ < 3 && current() && ctx.lockId === id && H.more && chainGaps(ctx.D, chainOf(ctx.D, id)).unloaded) {
+      if (!await loadEarlier()) break;
+    }
+    if (!current() || ctx.lockId !== id) return;
+    const from = fitFrom(ctx.D, id);
+    if (from != null && S.histFrom > from) await ensureFrom(from, () => current() && ctx.lockId === id);
+    if (!current() || ctx.lockId !== id) return;
+    const room = ctx.vp.clientHeight - LH - 70;
+    // Density depends on the requested span's loaded days. Wait before measuring,
+    // with a separate finite budget even if an empty page makes no density progress.
+    let densityPages = 0;
+    for (const span of SPANS) {
+      while (current() && ctx.lockId === id && H.more && histDays(ctx.D.hist).length < span && densityPages < 30) {
+        densityPages++;
+        if (!await loadEarlier(Math.min(31, span - histDays(ctx.D.hist).length))) break;
+      }
+      if (!current() || ctx.lockId !== id) return;
+      S.span = span; fx.relayout();
+      // Full relayout releases the lock synchronously. Restore it before yielding
+      // for another page so user cancellation still supersedes this Fit.
+      lockTree(id); token = fitToken;
+      const [a, b] = treeRange(id);
+      if (b - a <= room) break;
+    }
+    const finishToken = fitToken;
+    writeURL(); fx.renderTools();
     const [a, b] = treeRange(id);
-    if (b - a <= room) break;
-  }
-  const finishToken = fitToken;
-  writeURL(); fx.renderTools();
-  const [a, b] = treeRange(id);
-  if (Number.isFinite(a) && Number.isFinite(b)) ctx.vp.scrollTo({ top: (a + b) / 2 - ctx.vp.clientHeight / 2 + LH / 2, behavior: 'instant' });
-  fx.update();
-  const finish = () => ctx.life === life && !life.disposed && fitToken === finishToken && ctx.content?.isConnected && ctx.D.byId[id];
-  life.frame('fit-1', () => { if (finish()) life.frame('fit-2', () => { if (finish()) { fx.update(); lockTree(id); } }); });
+    if (Number.isFinite(a) && Number.isFinite(b)) ctx.vp.scrollTo({ top: (a + b) / 2 - ctx.vp.clientHeight / 2 + LH / 2, behavior: 'instant' });
+    fx.update();
+    const finish = () => ctx.life === life && !life.disposed && fitToken === finishToken && ctx.content?.isConnected && ctx.D.byId[id];
+    life.frame(firstFrame, () => {
+      if (!finish()) return release();
+      life.frame(secondFrame, () => {
+        try { if (finish()) { fx.update(); lockTree(id); } } finally { release(); }
+      });
+    });
+    scheduled = true;
+  } finally { if (!scheduled) release(); }
 }
 export function reapply() {
   const id = ctx.lockId || ctx.hoverId;

@@ -104,7 +104,7 @@ export function relayout({ live = false } = {}) {
       });
     }
   }
-  if (S.span > 1 && histDays(ctx.D.hist).length < S.span && H.more) ensureDays(S.span);
+  if (!ctx.fitHistory && S.span > 1 && histDays(ctx.D.hist).length < S.span && H.more) ensureDays(S.span);
 }
 export const colFor = it => it.sec === 'now' ? ctx.bandMap[it.key] : ctx.colMap[it.key];
 export function place(el, it) {
@@ -165,7 +165,7 @@ export function update(force) {
   if (changed && (ctx.hoverId || ctx.treeId)) fx.reapply();
   fx.drawEdges(false);
   if (ctx.vp.scrollTop >= 260) H.retryArmed = true;
-  if (S.ready && H.state !== 'loading' && ctx.vp.scrollTop < 260 && H.more && H.retryArmed) loadEarlier();
+  if (!ctx.fitHistory && S.ready && H.state !== 'loading' && ctx.vp.scrollTop < 260 && H.more && H.retryArmed) loadEarlier();
   if (!focusId()) ctx.a11y.focusId = null;
 }
 function deferred() {

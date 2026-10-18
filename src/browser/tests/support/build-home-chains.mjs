@@ -52,7 +52,19 @@ export async function lock(page, id) {
   await expect(tray(page)).toHaveClass(/show/)
   await expect.poll(() => page.evaluate(() => st.ctx.hoverId)).toBe(String(id))
   await page.waitForTimeout(230) // Let the tab finish moving before aiming at its lock button.
-  await page.locator('[data-lt="lock"]').click()
+  const button = page.locator('[data-lt="lock"]')
+  // A dense board can finish shifting after the initial hover. Aim at the live
+  // tab bounds and verify the pointer hits the button before pressing it.
+  await expect(async () => {
+    await card(page, id).hover()
+    await expect.poll(() => page.evaluate(() => st.ctx.hoverId), { timeout: 500 }).toBe(String(id))
+    await page.waitForTimeout(230)
+    const target = await button.boundingBox()
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2)
+    await expect.poll(() => button.evaluate(el => el.matches(':hover')), { timeout: 500 }).toBe(true)
+    await expect.poll(() => page.evaluate(() => st.ctx.hoverId), { timeout: 500 }).toBe(String(id))
+  }).toPass({ timeout: 5000 })
+  await page.mouse.down(); await page.mouse.up()
   await expect(page.locator('[data-lt="lock"]')).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe(String(id))
 }

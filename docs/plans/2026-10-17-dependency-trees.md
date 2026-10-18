@@ -8,3 +8,5 @@ Implement MP-E8-C9-T11 using the frozen research ticket at commit 6732f5f9f448b1
 Blocker #3145 is integrated at c4d059a240b7cd8e823ebdec2d2741cea854e1b9 and remains open. Keep the PR draft against its branch until it merges. Run relevant Node/browser tests, mutation checks in an isolated worktree, lint and pre-PR gates. Document the reachable dependency surface in the existing build guide; record any operator-only check honestly in the PR.
 
 Fit discovers undated unloaded direct links through at most three existing one-day history pages per action. It also stops when the links load, paging ends, a page fails/makes no progress, or the user changes the lock. Known loaded dates still use ensureFrom; the client never guesses an unloaded row's date. Intake retains unloaded child ids from the index alongside reverse links derived from loaded deps.
+
+Fit waits for the candidate span's history density before measuring its range, with a separate 30-page limit. It owns paging until its final frame, so background viewport/span paging cannot bypass those budgets; lifecycle cleanup releases that ownership.
