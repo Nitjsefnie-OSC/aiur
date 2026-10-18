@@ -62,16 +62,26 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
 
     app_env_leaks = app_env_leaks()
     instance_key_leak = if actual_instance_key == expected_instance_key, do: [], else: ["AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"]
-    state_leaks = app_env_leaks ++ instance_key_leak
+    store_leaks = decision_store_leaks()
+    state_leaks = app_env_leaks ++ instance_key_leak ++ store_leaks
 
-    if state_leaks != [] do
-      last = :persistent_term.get(@last_finished_key, nil) || "unknown"
-      raise "test suite left shared state changed after #{last}: #{Enum.join(state_leaks, "; ")}"
-    end
+    state_errors =
+      if state_leaks == [] do
+        []
+      else
+        last = :persistent_term.get(@last_finished_key, nil) || "unknown"
+        ["test suite found shared state changed after #{last} (upper bound only; plain-test culprit is unknown): #{Enum.join(state_leaks, "; ")}"]
+      end
 
-    case :persistent_term.get(@suite_leaks_key, []) do
+    orchestrator_errors =
+      case :persistent_term.get(@suite_leaks_key, []) do
+        [] -> []
+        leaks -> ["plain ExUnit tests broke Aiur.Orchestrator: #{Enum.join(leaks, ", ")}"]
+      end
+
+    case state_errors ++ orchestrator_errors do
       [] -> :ok
-      leaks -> raise "plain ExUnit tests broke Aiur.Orchestrator: #{Enum.join(leaks, ", ")}"
+      errors -> raise Enum.join(errors, "\n")
     end
   end
 
@@ -94,6 +104,8 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
 
   @doc false
   @spec verify_shared_state_before_test!(map()) :: :ok
+  def verify_shared_state_before_test!(%{async: true}), do: :ok
+
   def verify_shared_state_before_test!(context) do
     expected = :persistent_term.get(@app_env_key, capture_app_env())
     expected_instance_key = :persistent_term.get(@instance_key_key, System.get_env("AIUR_INSTANCE_KEY"))
@@ -105,8 +117,14 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     if leaks != [] do
       Enum.each(@guarded_app_env_keys, fn key -> restore_app_env(key, Map.fetch!(expected, key)) end)
       restore_instance_key(expected_instance_key)
+    end
+
+    store_leaks = decision_store_leaks()
+    recover_decision_store(store_leaks)
+
+    if leaks != [] or store_leaks != [] do
       last = last_finished() || "unknown"
-      raise "#{test_name(context)} started after #{last} left shared test state changed (restored): #{Enum.join(leaks, "; ")}"
+      raise "#{test_name(context)} started after last finished test #{last} (upper bound; plain-test culprit unknown); restored shared state: #{Enum.join(leaks ++ store_leaks, "; ")}"
     end
 
     :ok
@@ -140,14 +158,29 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     # A call on the supervisor processes any child exit already in its mailbox.
     RuntimeChildren.supervisor_accepting_calls?(Process.whereis(Aiur.Supervisor), 1_000)
 
-    if leak = leak() do
-      restored = restore(leak)
+    orchestrator_leak = leak()
+    orchestrator_restore = if orchestrator_leak, do: restore(orchestrator_leak)
+    shared_leaks = verify_shared_state_restored!(context)
+    store_leaks = decision_store_leaks()
+    recover_decision_store(store_leaks)
 
-      raise "#{test_name(context)} left Aiur.Orchestrator #{leak} (restore: #{inspect(restored)}). " <>
-              "Restore it in on_exit with Aiur.TestSupport.ensure_orchestrator_running/0 or await_supervised_restart/3."
-    end
+    orchestrator_errors =
+      if orchestrator_leak do
+        [
+          "#{test_name(context)} left Aiur.Orchestrator #{orchestrator_leak} (restore: #{inspect(orchestrator_restore)}). Restore it in on_exit with Aiur.TestSupport.ensure_orchestrator_running/0 or await_supervised_restart/3."
+        ]
+      else
+        []
+      end
 
-    verify_shared_state_restored!(context)
+    shared_state_errors =
+      if shared_leaks == [] and store_leaks == [],
+        do: [],
+        else: ["#{test_name(context)} left shared test state changed (restored): #{Enum.join(shared_leaks ++ store_leaks, "; ")}"]
+
+    errors = orchestrator_errors ++ shared_state_errors
+
+    if errors != [], do: raise(Enum.join(errors, "\n"))
 
     :ok
   end
@@ -166,7 +199,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     end)
   end
 
-  defp verify_shared_state_restored!(%{aiur_expected_shared_state: expected} = context) do
+  defp verify_shared_state_restored!(%{aiur_expected_shared_state: expected}) do
     actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
     expected_instance_key = expected.instance_key
 
@@ -183,14 +216,30 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     if leaks != [] do
       Enum.each(@guarded_app_env_keys, fn key -> restore_app_env(key, Map.fetch!(expected.app_env, key)) end)
       restore_instance_key(expected_instance_key)
-
-      raise "#{test_name(context)} left shared test state changed (restored): #{Enum.join(leaks, "; ")}"
     end
 
-    :ok
+    leaks
   end
 
-  defp verify_shared_state_restored!(_context), do: :ok
+  defp verify_shared_state_restored!(_context), do: []
+
+  defp decision_store_leaks do
+    case Aiur.DecisionStore.health() do
+      {:unavailable, {:path_unresolved, reason}} -> ["Aiur.DecisionStore retained unavailable path state: #{inspect(reason)}"]
+      _ -> []
+    end
+  catch
+    :exit, reason -> ["Aiur.DecisionStore health could not be read: #{inspect(reason)}"]
+  end
+
+  defp recover_decision_store([]), do: :ok
+
+  defp recover_decision_store(_leaks) do
+    case RuntimeChildren.restart_decision_store() do
+      :ok -> :ok
+      :error -> :error
+    end
+  end
 
   defp restore_app_env(key, :error), do: Application.delete_env(:aiur, key)
   defp restore_app_env(key, {:ok, value}), do: Application.put_env(:aiur, key, value)
