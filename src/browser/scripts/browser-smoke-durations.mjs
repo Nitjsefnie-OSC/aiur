@@ -6,9 +6,9 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
-  // Local governed npm run test:build-home-gantt, warm build (2026-10-18): 129s including fixture startup.
-  // Remeasure after #3146 enables the four pending composition cells.
-  'test:build-home-gantt': 129,
+  // Local governed core command on 7b958263f (2026-10-18): 518s wall time.
+  // Measured command-log birth/end times; includes fixture startup and the build-gate wait.
+  'test:build-home-gantt': 518,
   // CI run39148293958 (d9ee8e071), job117736821220: actual suite wall seconds.
   'test:build-home-now-band': 44.7,
   'test:browser-suite -- build-home-live-button-parity': 52.7,
