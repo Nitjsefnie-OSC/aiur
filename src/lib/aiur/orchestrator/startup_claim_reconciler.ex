@@ -165,7 +165,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp release_orphaned_claim(%State{} = state, %Issue{} = issue, opts) do
     if TrackerTasks.owner?(state) do
       input = Reconciler.issue_input(state, issue.id) |> Tuple.delete_at(1)
-      update = fn -> Release.run(issue, Keyword.put(opts, :state, state)) end
+      update = fn -> Release.run(issue, opts) end
 
       current =
         TrackerTasks.run(state, {:startup_release, issue.id}, update, fn arg1, arg2 ->
@@ -181,7 +181,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconciler do
   defp reject_pending_releases(state, issues), do: Enum.reject(issues, &TrackerTasks.running?(state, {:startup_release, &1.id}))
 
   defp release_orphaned_claim_sync(%State{} = state, %Issue{} = issue, opts) do
-    case Release.run(issue, Keyword.put(opts, :state, state)) do
+    case Release.run(issue, opts) do
       {:ok, target} ->
         Logger.warning("Released orphaned startup claim to #{target}; no live runtime owns it #{State.issue_context(issue)}")
         emit_released_alert(issue, target, opts)

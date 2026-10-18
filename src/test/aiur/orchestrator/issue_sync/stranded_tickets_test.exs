@@ -198,23 +198,29 @@ defmodule Aiur.Orchestrator.IssueSync.StrandedTicketsTest do
     end
 
     test "restores an approved queued stranded PR to ci-wait without requeueing work" do
-      waiting = issue("approved-queued", "rework")
+      for {identifier, projection} <- [
+            {"approved-queued", %{merge_queue_entry: %{id: "queue"}, auto_merge_request: nil}},
+            {"approved-auto-merge", %{merge_queue_entry: nil, auto_merge_request: %{enabled_at: "now"}}}
+          ] do
+        waiting = issue(identifier, "rework")
 
-      state = %State{
-        released_claims: %{waiting.id => %{cause: :tracker_retry_exhausted}},
-        ci_lifecycle: %{poll_cache: %{waiting.identifier => %{review_decision: "APPROVED", merge_queue_entry: %{id: "queue"}}}}
-      }
+        state = %State{
+          released_claims: %{waiting.id => %{cause: :tracker_retry_exhausted}},
+          ci_lifecycle: %{poll_cache: %{waiting.identifier => Map.put(projection, :review_decision, "APPROVED")}}
+        }
 
-      parent = self()
+        parent = self()
 
-      next_state =
-        IssueSync.sync_stranded_ticket_reconciliation(state, [waiting], fn identifier, target ->
-          send(parent, {:restored, identifier, target})
-          :ok
-        end)
+        next_state =
+          IssueSync.sync_stranded_ticket_reconciliation(state, [waiting], fn id, target ->
+            send(parent, {:restored, id, target})
+            :ok
+          end)
 
-      assert_receive {:restored, "its-everdred/aiur#approved-queued", "ci-wait"}, 1000
-      assert next_state.released_claims == %{}
+        expected_identifier = "its-everdred/aiur##{identifier}"
+        assert_receive {:restored, ^expected_identifier, "ci-wait"}, 1000
+        assert next_state.released_claims == %{}
+      end
     end
 
     test "closed and done tickets are excluded from stranded repair" do
