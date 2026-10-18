@@ -250,9 +250,24 @@ async function scrollCurve(page, ctx) {
   await ctx.onFrame?.(0, '#bd-vp')
   const frame = []
   for (let index = 0; index < 27; index++) {
+    // Native scroll events must reach the app before the next virtual frame.
+    const before = await page.evaluate(() => {
+      const vp = document.querySelector('#bd-vp')
+      window.motionScrollPaint = new Promise(resolve => {
+        const done = () => { vp.removeEventListener('scroll', done); resolve() }
+        window.motionScrollCancel = done
+        vp.addEventListener('scroll', done, { once: true })
+      })
+      return vp.scrollTop
+    })
     await page.evaluate(() => requestAnimationFrame(now => { window.motionFrameStamp = now }))
     await page.clock.runFor(16)
-    frame.push(await page.evaluate(at => ({ scrollTop: document.querySelector('#bd-vp').scrollTop, elapsed: window.motionFrameStamp - at }), input.at))
+    frame.push(await page.evaluate(async ({ at, before }) => {
+      const vp = document.querySelector('#bd-vp')
+      if (vp.scrollTop === before) window.motionScrollCancel()
+      await window.motionScrollPaint
+      return { scrollTop: vp.scrollTop, elapsed: window.motionFrameStamp - at }
+    }, { at: input.at, before }))
     if (index === 12 || index === 26) await ctx.onFrame?.(index === 12 ? .5 : 1, '#bd-vp')
   }
   return { samples: [await state(page, ctx)], frame, input: { from: input.from, to: input.to } }
