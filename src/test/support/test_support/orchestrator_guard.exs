@@ -22,12 +22,14 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
 
   # persistent_term, not GenServer state: after_suite callbacks run once formatters have stopped.
   @suite_leaks_key {__MODULE__, :suite_leaks}
+  @instance_key_key {__MODULE__, :instance_key}
   @last_finished_key {__MODULE__, :last_finished}
 
   @impl true
   def init(_opts) do
     Process.register(self(), __MODULE__)
     :persistent_term.put(@suite_leaks_key, [])
+    :persistent_term.put(@instance_key_key, System.get_env("AIUR_INSTANCE_KEY"))
     :persistent_term.put(@last_finished_key, nil)
     {:ok, nil}
   end
@@ -51,6 +53,13 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   @spec verify_suite!() :: :ok
   def verify_suite! do
     if leak = leak(), do: record_leak(:persistent_term.get(@last_finished_key, nil), leak)
+
+    expected_instance_key = :persistent_term.get(@instance_key_key, nil)
+    actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
+
+    if actual_instance_key != expected_instance_key do
+      raise "test suite left AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"
+    end
 
     case :persistent_term.get(@suite_leaks_key, []) do
       [] -> :ok

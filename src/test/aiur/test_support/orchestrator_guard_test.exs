@@ -25,6 +25,19 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     refute Process.whereis(Aiur.Orchestrator)
   end
 
+  test "verify_suite! fails when AIUR_INSTANCE_KEY is left changed" do
+    original_key = System.get_env("AIUR_INSTANCE_KEY")
+    System.put_env("AIUR_INSTANCE_KEY", "leaked-instance-key")
+
+    on_exit(fn ->
+      if original_key, do: System.put_env("AIUR_INSTANCE_KEY", original_key), else: System.delete_env("AIUR_INSTANCE_KEY")
+    end)
+
+    assert_raise RuntimeError, ~r/test suite left AIUR_INSTANCE_KEY changed/, fn ->
+      OrchestratorGuard.verify_suite!()
+    end
+  end
+
   test "the ExUnit wiring reports setup restarts and fails leaks from both case templates" do
     src_dir = Path.expand("../../..", __DIR__)
     mix = System.find_executable("mix") || flunk("mix executable not found")
