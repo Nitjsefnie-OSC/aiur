@@ -263,7 +263,7 @@ function frameBarrier(pair, name, reduce) {
           document.body.style.minHeight = Math.ceil(el.getBoundingClientRect().bottom + scrollY) + 'px'
         })
       }
-      if (name.startsWith('snap.')) await primeBoardPaint(pair)
+      if (name.startsWith('snap.')) await primeBoardPaint(pair, true)
       await expectDesignParity(pair, { name: `${name}-${fraction}`, region, preserveAnimations: true })
     }
     catch (error) { errors.push(error) }

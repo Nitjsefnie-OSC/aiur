@@ -203,7 +203,7 @@ async function scrollTo(page, value) {
 }
 
 async function snap(page, ctx, kind) {
-  if (kind === 'list-view') await click(page, '[data-v="list"]')
+  if (kind === 'list-view') await click(page, '[data-v="list"]', true)
   const geometry = await page.evaluate(() => {
     const vp = document.querySelector('#bd-vp'), band = document.querySelector('#bd-now')
     if (!vp || (!band && !document.querySelector('.bd-list'))) throw new Error('unreachable snap viewport')
