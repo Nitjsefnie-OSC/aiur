@@ -72,10 +72,16 @@ defmodule Aiur.Experiments.Analyst do
   end
 
   defp retry_one(request, deps) do
-    if request["state"] == "open" and request["dispatch_requested"] and is_nil(request["ticket"]) and request["next_attempt_ms"] <= deps.clock.() do
+    if request["state"] == "open" and request["dispatch_requested"] and retry_due?(request, deps.clock.()) do
       with {:ok, attrs} <- AnalystBrief.build(request["experiment_id"], request), do: AnalysisDispatch.ticket(request, attrs, deps)
     end
   end
+
+  defp retry_due?(%{"ticket" => ticket} = request, now) when not is_nil(ticket) do
+    request["analysis_type"] == "confirmatory" and request["routing_promoted"] != true and (request["promotion_next_attempt_ms"] || 0) <= now
+  end
+
+  defp retry_due?(request, now), do: (request["next_attempt_ms"] || 0) <= now
 
   defp alert(request) do
     Aiur.Alerts.emit_system("system.experiments.analyst_failed",

@@ -248,4 +248,34 @@ defmodule Aiur.Experiments.AnalystTest do
     assert opts[:analysis_type] == "confirmatory"
     assert opts[:trigger] == "planned_n_met"
   end
+
+  test "failed confirmatory promotion retries autonomously with backoff and never creates another ticket", %{id: id} do
+    parent = self()
+    clock = :atomics.new(1, [])
+    attempts = :atomics.new(1, [])
+
+    pid =
+      start_analyst(
+        clock: fn -> :atomics.get(clock, 1) end,
+        promote: fn number ->
+          send(parent, {:promotion_attempt, number})
+          if :atomics.add_get(attempts, 1, 1) == 1, do: {:error, :timeout}, else: :ok
+        end
+      )
+
+    assert {:ok, _interim} = Experiments.analyze(id, mode: "report")
+    assert_received {:created, _}
+    assert {:error, :timeout} = Experiments.analyze(id, mode: "report", analysis_type: "confirmatory")
+    assert_received {:promotion_attempt, 42}
+    send(pid, :retry)
+    :sys.get_state(pid)
+    refute_received {:promotion_attempt, _}
+    :atomics.put(clock, 1, 100_000)
+    send(pid, :retry)
+    :sys.get_state(pid)
+    assert_received {:promotion_attempt, 42}
+    assert {:ok, [request]} = Experiments.analysis_requests(id)
+    assert request["routing_promoted"] == true
+    refute_received {:created, _}
+  end
 end

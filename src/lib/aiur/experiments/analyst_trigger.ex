@@ -1,6 +1,7 @@
 defmodule Aiur.Experiments.AnalystTrigger do
   @moduledoc false
   use GenServer
+  require Logger
   alias Aiur.Events.Exchange
   alias Aiur.Experiments
   alias Aiur.Experiments.{Reader, ReportRecords, SampleStatus}
@@ -39,38 +40,59 @@ defmodule Aiur.Experiments.AnalystTrigger do
     route(List.last(String.split(event["topic"] || "", ".")), id, kind, request)
   end
 
-  defp route(event, id, "feature", request) when event in ~w(created preregister), do: request.(id, mode: "spec", trigger: "created", requested_by: "daemon")
-  defp route(event, id, _kind, request) when event in ~w(sample_guard_met report_due), do: request.(id, report_opts("sample_guard_met", "interim"))
-  defp route("planned_n_met", id, _kind, request), do: request.(id, report_opts("planned_n_met", "confirmatory"))
-  defp route("cancelled", id, _kind, _request), do: cancel(id)
+  defp route(event, id, "feature", request) when event in ~w(created preregister), do: invoke(request, id, mode: "spec", trigger: "created", requested_by: "daemon")
+  defp route(event, id, _kind, request) when event in ~w(sample_guard_met report_due), do: invoke(request, id, report_opts("sample_guard_met", "interim"))
+  defp route("planned_n_met", id, _kind, request), do: invoke(request, id, report_opts("planned_n_met", "confirmatory"))
+  defp route("cancelled", id, _kind, _request), do: observe(cancel(id), id)
   defp route(_event, _id, _kind, _request), do: :ok
 
   defp reconcile(request) do
-    with {:ok, rows} <- Experiments.list(), do: Enum.each(rows, &reconcile_one(&1.id, request))
+    case Experiments.list() do
+      {:ok, rows} -> Enum.each(rows, &reconcile_one(&1.id, request))
+      error -> observe(error, "store")
+    end
   end
 
   defp reconcile_one(id, request) do
-    with {:ok, spec, false} <- Reader.spec(id), do: reconcile_spec(spec, request)
+    case Reader.spec(id) do
+      {:ok, spec, false} -> reconcile_spec(spec, request)
+      {:ok, _spec, true} -> observe({:error, :store_read_only}, id)
+      error -> observe(error, id)
+    end
   end
 
-  defp reconcile_spec(%{"id" => id, "status" => status}, _request) when status in ~w(cancelled abandoned), do: cancel(id)
+  defp reconcile_spec(%{"id" => id, "status" => status}, _request) when status in ~w(cancelled abandoned), do: observe(cancel(id), id)
 
-  defp reconcile_spec(%{"id" => id, "status" => status} = spec, request) when status in ~w(active report_due) do
-    if get_in(spec, ["design", "change", "evidence", "source"]) == "feature", do: request.(id, mode: "spec", trigger: "created", requested_by: "daemon")
-    if status == "report_due", do: request.(id, report_opts("sample_guard_met", "interim"))
-    request_planned(id, spec, request)
+  defp reconcile_spec(%{"id" => id, "status" => status} = spec, request) when status in ~w(draft active report_due) do
+    if get_in(spec, ["design", "change", "evidence", "source"]) == "feature", do: invoke(request, id, mode: "spec", trigger: "created", requested_by: "daemon")
+    if status != "draft", do: request_reports(id, spec, request)
   end
 
   defp reconcile_spec(_spec, _request), do: :ok
 
-  defp request_planned(id, spec, request) do
-    with {:ok, records} <- ReportRecords.read(id),
-         %{"planned_n_per_cohort" => n} <- records["preregistration"],
-         {:ok, [_ | _] = samples} <- SampleStatus.read(spec) do
-      met? = Enum.all?(samples, fn row -> map_size(row.counts) == 2 and Enum.all?(Map.values(row.counts), &(is_integer(&1) and &1 >= n)) end)
-      if met?, do: request.(id, report_opts("planned_n_met", "confirmatory"))
+  defp request_reports(id, spec, request) do
+    with {:ok, samples} <- SampleStatus.read(spec), {:ok, records} <- ReportRecords.read(id) do
+      if spec["status"] == "report_due" or minimum_met?(samples, spec), do: invoke(request, id, report_opts("sample_guard_met", "interim"))
+      n = get_in(records, ["preregistration", "planned_n_per_cohort"])
+      if is_integer(n) and counts_met?(samples, spec, fn _ -> n end), do: invoke(request, id, report_opts("planned_n_met", "confirmatory"))
+    else
+      error -> observe(error, id)
     end
   end
+
+  defp minimum_met?(samples, spec), do: counts_met?(samples, spec, & &1.needed_n)
+
+  defp counts_met?([], _spec, _threshold), do: false
+
+  defp counts_met?(samples, spec, threshold) do
+    groups = if spec["design"]["kind"] == "ab", do: Enum.map(spec["design"]["cohorts"], & &1["id"]), else: ~w(before after)
+    Enum.all?(samples, fn row -> Enum.sort(Map.keys(row.counts)) == Enum.sort(groups) and Enum.all?(Map.values(row.counts), &(is_integer(&1) and &1 >= threshold.(row))) end)
+  end
+
+  defp invoke(request, id, opts), do: observe(request.(id, opts), id)
+  defp observe({:error, :ticket_retry_pending}, _id), do: :ok
+  defp observe({:error, reason}, id), do: Logger.warning("Experiment analyst request failed for #{id}: #{inspect(reason)}")
+  defp observe(_result, _id), do: :ok
 
   defp cancel(id) do
     with {:ok, requests} <- Experiments.analysis_requests(id) do

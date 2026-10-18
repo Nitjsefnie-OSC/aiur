@@ -225,7 +225,7 @@ stderr.
 
 Feature creation requests a spec; the sample guard requests an interim report, and the registered planned count requests a confirmatory report.
 
-The component subscribes to X3 notifications and reconciles local experiment state each minute, so missed deliveries do not lose requests.
+The component subscribes to X3 notifications and reconciles each minute, recovering armed feature drafts and checking live minimum/planned counts across every cohort.
 
 Confirmatory supersedes interim on the same open request; completed trigger points are remembered across restarts.
 
@@ -237,7 +237,7 @@ Briefs expose the spec, metric definitions, baseline and counts; they exclude af
 
 A validated submission fulfills its matching open request; a downgraded interim report leaves a confirmatory request open and the CLI exits 1 despite storing the result.
 
-Failed ticket writes back off and raise attention after three attempts; uncertain writes reconcile by nonce and never blindly POST again.
+Ticket writes and confirmatory routing promotions back off and raise attention after three failures; uncertain creates reconcile by nonce and never blindly POST again.
 
 Set `experiments.analyst.auto_request: false` for CLI-only requests; disabled telemetry starts no experiment workers.
 

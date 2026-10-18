@@ -15,10 +15,25 @@ defmodule Aiur.Experiments.AnalysisDispatch do
 
   defp promote(request, deps) do
     if request["analysis_type"] == "confirmatory" and request["ticket"]["analysis_type"] != "confirmatory" and request["routing_promoted"] != true do
-      with :ok <- deps.promote.(request["ticket"]["number"]),
-           do: Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], %{"routing_promoted" => true})
+      if (request["promotion_next_attempt_ms"] || 0) > deps.clock.(), do: {:error, :ticket_retry_pending}, else: attempt_promotion(request, deps)
     else
       {:ok, request}
+    end
+  end
+
+  defp attempt_promotion(request, deps) do
+    attempts = (request["promotion_attempts"] || 0) + 1
+    fields = %{"promotion_attempts" => attempts, "promotion_next_attempt_ms" => deps.clock.() + backoff(attempts)}
+
+    with {:ok, pending} <- Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], fields) do
+      case deps.promote.(request["ticket"]["number"]) do
+        :ok ->
+          Experiments.update_analysis_dispatch(request["experiment_id"], request["request_id"], %{"routing_promoted" => true})
+
+        {:error, _reason} = error ->
+          if attempts == 3, do: deps.alert.(pending)
+          error
+      end
     end
   end
 
