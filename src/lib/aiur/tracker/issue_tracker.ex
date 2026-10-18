@@ -35,10 +35,15 @@ defmodule Aiur.Tracker.IssueTracker do
   @callback remove_label(String.t(), String.t()) :: :ok | {:error, term()}
   @callback reopen_issue(String.t()) :: :ok | {:error, term()}
 
+  @callback clone_url() :: String.t() | nil
+  @callback workspace_repo_segment() :: String.t() | nil
+
   @callback config_module() :: module()
   @callback code_host() :: module() | nil
 
-  @optional_callbacks config_module: 0,
+  @optional_callbacks clone_url: 0,
+                      workspace_repo_segment: 0,
+                      config_module: 0,
                       create_issue: 2,
                       find_issue: 2,
                       code_host: 0,
