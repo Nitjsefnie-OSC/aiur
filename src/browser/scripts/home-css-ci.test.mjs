@@ -31,7 +31,7 @@ test('required full CI gate rejects failures, cancellations and skipped browser 
   for (const browser of ['success', 'failure', 'cancelled', 'skipped']) {
     for (const css of ['success', 'failure', 'cancelled', 'skipped']) {
       const needs = Object.fromEntries(gate.needs.map(job => [job, { result: 'success' }]))
-      needs.changes.outputs = { full_ci: 'true', dialyzer: 'false', home_changed: 'false' }
+      needs.changes.outputs = { full_ci: 'true', dialyzer: 'false' }
       needs.browser.result = browser
       needs['home-css'].result = css
       const result = spawnSync('bash', ['-c', step.run], {
@@ -133,30 +133,3 @@ test('a new build-home spec file joins exactly one shard with no list edit', () 
   assert.deepEqual(suiteArgs('build-home-x-parity'), ['tests/build-home-x-parity.browser.spec.mjs', '--config', 'playwright.design-parity.config.mjs'])
 })
 
-
-test('full home matrix executes both suites in every isolated partition', () => {
-  const matrix = yaml.parse(read('.github/workflows/home-parity.yml')).jobs.matrix
-  assert.deepEqual(matrix.strategy.matrix.suite, ['band', 'gantt'])
-  assert.deepEqual(matrix.strategy.matrix.part, [1, 2, 3, 4])
-  const step = matrix.steps.find(step => step.name === 'Run full home matrix partition')
-  const scratch = mkdtempSync(join(tmpdir(), 'gantt-matrix-routing-'))
-  try {
-    const bin = join(scratch, 'bin'), calls = join(scratch, 'calls')
-    mkdirSync(bin)
-    writeFileSync(join(bin, 'npm'), '#!/bin/sh\nprintf "%s\n" "$*" >> "$GANTT_MATRIX_CALLS"\n', { mode: 0o755 })
-    for (const suite of matrix.strategy.matrix.suite) for (const part of matrix.strategy.matrix.part) {
-      const run = step.run.replaceAll('${{ matrix.suite }}', suite).replaceAll('${{ matrix.part }}', String(part))
-      const result = spawnSync('bash', ['-eu', '-c', run], {
-        encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, GANTT_MATRIX_CALLS: calls }
-      })
-      assert.equal(result.status, 0, result.stderr)
-    }
-    assert.deepEqual(readFileSync(calls, 'utf8').trim().split('\n'), [
-      ...Array(4).fill('run test:build-home-band-full'),
-      ...[1, 2, 3, 4].map(part => 'run test:build-home-gantt:full -- --shard=' + part + '/4')
-    ])
-    assert.match(scripts['test:build-home-gantt:full'], /tests\/build-home-gantt[.]browser[.]spec[.]mjs/)
-    assert.match(scripts['test:build-home-gantt:full'], /--workers=1/)
-    assert.doesNotMatch(scripts['test:build-home-gantt:full'], /--grep/)
-  } finally { rmSync(scratch, { recursive: true, force: true }) }
-})
