@@ -116,14 +116,17 @@ export async function fitTree(id) {
     }
     const finishToken = fitToken;
     writeURL(); fx.renderTools();
-    const [a, b] = treeRange(id);
-    if (Number.isFinite(a) && Number.isFinite(b)) fx.scrollVP((a + b) / 2 - ctx.vp.clientHeight / 2 + LH / 2, false);
+    const center = () => {
+      const [a, b] = treeRange(id);
+      if (Number.isFinite(a) && Number.isFinite(b)) fx.scrollVP((a + b) / 2 - ctx.vp.clientHeight / 2 + LH / 2, false);
+    };
+    center();
     fx.update();
     const finish = () => ctx.life === life && !life.disposed && fitToken === finishToken && ctx.content?.isConnected && ctx.D.byId[id];
     life.frame(firstFrame, () => {
       if (!finish()) return release();
       life.frame(secondFrame, () => {
-        try { if (finish()) { fx.update(); lockTree(id); } } finally { release(); }
+        try { if (finish()) { center(); fx.update(); lockTree(id); } } finally { release(); }
       });
     });
     scheduled = true;

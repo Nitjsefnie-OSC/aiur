@@ -102,7 +102,7 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => earlierCalls.length)).toBeGreaterThan(0)
   await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
-  await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
+  await expect.poll(() => page.evaluate(() => !st.ctx.isScrolling() && !st.ctx.snapping && st.ctx.root.dataset.bdPaging === 'idle')).toBe(true)
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe('9012')
   await expect.poll(() => page.evaluate(() => !!st.ctx.D.byId['9001'])).toBe(true)
   await expect(card(page, '9001')).toBeVisible()
@@ -115,17 +115,19 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   await expect(page.locator('.bd-zv')).toHaveText(Math.round(100 / span) + '%')
 })
 
-test('B6 Fit cancels a live-band scroll frame already queued before centering', async ({ page }) => {
+for (const timing of ['before', 'after']) test(`B6 Fit cancels a live-band scroll frame queued ${timing} initial centering`, async ({ page }) => {
   await open(page); await lock(page, '9012')
-  await page.evaluate(() => {
-    const frame = st.ctx.life.frame, tools = st.fx.renderTools
+  await page.evaluate(timing => {
+    const frame = st.ctx.life.frame, tools = st.fx.renderTools, scroll = st.fx.scrollVP
     window.oldScrollFrames = []
     st.ctx.life.frame = (key, callback) => {
       if (typeof key === 'string' && key.startsWith('scrollVP:')) oldScrollFrames.push(callback)
       else frame(key, callback)
     }
-    st.fx.renderTools = () => { tools(); st.ctx.snapping = true; st.fx.scrollVP(0, true) }
-  })
+    const queue = () => { st.ctx.snapping = true; scroll(0, true) }
+    st.fx.renderTools = () => { tools(); if (timing === 'before') queue() }
+    st.fx.scrollVP = (y, smooth) => { scroll(y, smooth); if (timing === 'after' && !smooth && !window.injectedScroll) { window.injectedScroll = true; queue() } }
+  }, timing)
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
   const result = await page.evaluate(() => {
@@ -271,7 +273,6 @@ test('B7 live dependencies refresh highlight, tab position and open overlay', as
   expect(positions.left).toBeCloseTo(positions.x, 1); expect(positions.top).toBeCloseTo(positions.y, 1)
   expect(await page.evaluate(() => st.ctx.lockId)).toBe('9012')
 })
-
 test('B8 removed root closes overlay and focuses the board', async ({ page }) => {
   await open(page); await whole(page, '9012')
   await diff(page, 'chain-remove-root')
@@ -279,7 +280,6 @@ test('B8 removed root closes overlay and focuses the board', async ({ page }) =>
   await expect(page.locator('#bd-vp')).toBeFocused()
   expect(await page.evaluate(() => st.ctx.lockId)).toBeNull()
 })
-
 test('B9 cards rendered by scrolling receive locked chain classes', async ({ page }) => {
   await open(page, { dataset: 'dense' })
   const id = await page.evaluate(() => [...st.ctx.R.values()].find(el => !el.closest('.bd-now')).dataset.id)
@@ -292,7 +292,6 @@ test('B9 cards rendered by scrolling receive locked chain classes', async ({ pag
   expect(classes.filter(c => !c.marked)).toEqual([])
   await expect(card(page, id)).toHaveCount(0); await expect(tray(page)).toHaveClass(/show/)
 })
-
 test.describe('B10 phone touch', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true })
   test('card tap opens the ticket without hover; arrow tap locks and opens tree', async ({ page }) => {

@@ -44,12 +44,14 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     }
     await installFitObserver(pair.product)
     for (const page of [pair.design, pair.product]) {
-      // The reference restores its lock after two frames; background tabs can suspend them.
       await page.bringToFront()
       await page.locator('[data-lt="fit"]').click()
-      if (page === pair.design) await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
-      else await waitForFit(page)
-      await expect(page.locator('.bd-lt.locked.show')).toHaveCount(1)
+      if (page === pair.design) {
+        // Reference Fit can page history between its zoom update and final lock.
+        await expect(page).toHaveURL(/[?&]span=/)
+        await expect(page.locator('.bd-lt.locked.show'), 'reference Fit completes after history relayouts').toHaveCount(1, { timeout: 30_000 })
+      } else await waitForFit(page)
+      await expect(page.locator('.bd-lt.locked.show'), `P3 ${page === pair.design ? 'design' : 'product'} Fit retains its locked tab`).toHaveCount(1)
     }
     await expect(pair.design.locator('.bd-lt.locked.show')).toHaveCount(1)
     const [designFit, productFit] = await Promise.all([fitState(pair.design), fitState(pair.product)])
