@@ -92,3 +92,24 @@ export async function whole(page, id) {
   await page.locator('[data-lt="tree"]').click()
   await expect(tree(page)).toBeVisible()
 }
+
+// Hold the native snap seam across Fit's final frame, then release it explicitly.
+export async function fitWaitsForSnap(page) {
+  await open(page); await lock(page, '9012')
+  await page.evaluate(() => {
+    const tools = st.fx.renderTools, frame = st.ctx.life.frame
+    let symbols = 0
+    st.fx.renderTools = () => { tools(); st.ctx.snapping = true }
+    st.ctx.life.frame = (key, callback) => frame(key, now => {
+      callback(now)
+      if (typeof key === 'symbol' && ++symbols >= 2) window.fitFinalFrameRan = true
+    })
+    window.releaseFitSnap = () => { st.fx.renderTools = tools; st.ctx.life.frame = frame; st.ctx.snapping = false }
+  })
+  await page.locator('[data-lt="fit"]').click()
+  await expect.poll(() => page.evaluate(() => window.fitFinalFrameRan)).toBe(true)
+  expect(await page.evaluate(() => st.ctx.fitHistory !== null)).toBe(true)
+  await page.evaluate(() => releaseFitSnap())
+  await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
+  await expect(tray(page)).toHaveClass(/locked/)
+}

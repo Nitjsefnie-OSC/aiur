@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { card, tree, tray, open, reveal, lock, whole } from './support/build-home-chains.mjs'
+import { card, tree, tray, open, reveal, lock, whole, fitWaitsForSnap } from './support/build-home-chains.mjs'
 import { installFitObserver } from './support/build-home-chains-parity.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
@@ -115,19 +115,18 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   await expect(page.locator('.bd-zv')).toHaveText(Math.round(100 / span) + '%')
 })
 
-for (const timing of ['before', 'after']) test(`B6 Fit cancels a live-band scroll frame queued ${timing} initial centering`, async ({ page }) => {
+test('B6 Fit cancels a live-band scroll frame already queued before centering', async ({ page }) => {
   await open(page); await lock(page, '9012')
-  await page.evaluate(timing => {
-    const frame = st.ctx.life.frame, tools = st.fx.renderTools, scroll = st.fx.scrollVP
+  await page.evaluate(() => {
+    const frame = st.ctx.life.frame, tools = st.fx.renderTools
     window.oldScrollFrames = []
     st.ctx.life.frame = (key, callback) => {
       if (typeof key === 'string' && key.startsWith('scrollVP:')) oldScrollFrames.push(callback)
       else frame(key, callback)
     }
-    const queue = () => { st.ctx.snapping = true; scroll(0, true) }
-    st.fx.renderTools = () => { tools(); if (timing === 'before') queue() }
-    st.fx.scrollVP = (y, smooth) => { scroll(y, smooth); if (timing === 'after' && !smooth && !window.injectedScroll) { window.injectedScroll = true; queue() } }
-  }, timing)
+    st.fx.liveGuard = st.fx.snapLive = () => {} // Isolate the older animator from new native scroll snaps.
+    st.fx.renderTools = () => { tools(); st.fx.scrollVP(0, true) }
+  })
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
   const result = await page.evaluate(() => {
@@ -141,6 +140,7 @@ for (const timing of ['before', 'after']) test(`B6 Fit cancels a live-band scrol
   expect(result.after).toBe(result.before)
 })
 
+test('B6 Fit stays pending until native band snapping settles', async ({ page }) => fitWaitsForSnap(page))
 for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim a released lock`, async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
