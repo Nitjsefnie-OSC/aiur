@@ -18,6 +18,14 @@ defmodule AiurWeb.Build.IndexReaderTest do
     def handle_call(:snapshot, _from, parent), do: {:reply, %Aiur.OpenTicketSource.Snapshot{}, parent}
   end
 
+  defmodule UnpublishedFleetServer do
+    use GenServer
+
+    def start_link(statuses), do: GenServer.start_link(__MODULE__, statuses)
+    def init(statuses), do: {:ok, statuses}
+    def handle_call(:fleet_view, _from, statuses), do: {:reply, %{statuses: statuses}, statuses}
+  end
+
   test "first cold index read projects an adopted running agent from the orchestrator snapshot" do
     {:ok, identity} =
       Aiur.TrackerIdentity.from_github(%{"node_id" => "I_kwDOExample12", "number" => 12}, {"aiur-team", "aiur"}, {"aiur-team", "aiur"})
@@ -29,10 +37,13 @@ defmodule AiurWeb.Build.IndexReaderTest do
       ]
     }
 
+    server = start_supervised!({UnpublishedFleetServer, snapshot.statuses})
+
     read =
       IndexReader.read(:all, parts(),
         repository_fun: fn -> {:ok, {"aiur-team", "aiur"}} end,
-        running_rows_fun: fn _opts -> {:ok, snapshot.statuses} end
+        orchestrator: server,
+        running_rows_fun: &AiurWeb.Build.Freshness.read_running_rows/1
       )
 
     assert Map.has_key?(read.now.rows, "12")
@@ -50,6 +61,14 @@ defmodule AiurWeb.Build.IndexReaderTest do
     assert {:ok, index} = assemble(read)
     assert index.sources.agents.state == "unavailable"
     assert index.sources.agents.reason == "read_failed"
+  end
+
+  test "timed out running snapshot remains a typed read error" do
+    read = IndexReader.read(:all, parts(), running_rows_fun: fn _opts -> {:error, :timeout} end)
+
+    assert read.now == {:error, :running_snapshot_timeout}
+    assert {:ok, index} = assemble(read)
+    assert index.sources.agents.state == "unavailable"
   end
 
   test "cached open and queue facts keep every open id with no duplicate history read" do
