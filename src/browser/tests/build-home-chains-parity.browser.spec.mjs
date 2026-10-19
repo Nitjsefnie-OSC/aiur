@@ -15,7 +15,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   const check = async (name, action) => { try { await test.step(name, action) } catch (error) { failures.push(error) } }
   const pixels = (pair, name, region) => check(name, async () => {
     await prepareChainParity(pair) // Fit replaces the band's ETA element.
-    await expectDesignParity(pair, { name, region, preserveAnimations: pair.cell.viewport.width === 390 })
+    await expectDesignParity(pair, { name, region, preserveAnimations: pair.cell.viewport.width === 390, viewportClip: true })
   })
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
   const root = await largestRoot(pair.product, 'live')
@@ -43,8 +43,14 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
       await expect(page.locator('#bd-tree')).toBeHidden()
     }
     await installFitObserver(pair.product)
-    for (const page of [pair.design, pair.product]) await page.locator('[data-lt="fit"]').click()
-    await waitForFit(pair.product)
+    for (const page of [pair.design, pair.product]) {
+      // The reference restores its lock after two frames; background tabs can suspend them.
+      await page.bringToFront()
+      await page.locator('[data-lt="fit"]').click()
+      if (page === pair.design) await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+      else await waitForFit(page)
+      await expect(page.locator('.bd-lt.locked.show')).toHaveCount(1)
+    }
     await expect(pair.design.locator('.bd-lt.locked.show')).toHaveCount(1)
     const [designFit, productFit] = await Promise.all([fitState(pair.design), fitState(pair.product)])
     await check('P3 Fit URL', async () => expect(productFit.url).toEqual(designFit.url))

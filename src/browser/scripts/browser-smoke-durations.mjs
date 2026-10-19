@@ -6,15 +6,15 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
-  // Green chain measurements, 2026-10-18; summed per-test durations, rounded up.
-  // Commands: node --test tests/build-home-chains.test.mjs; node scripts/run-browser-tests.mjs tests/build-home-chains{,-parity,-states}.browser.spec.mjs.
+  // PR #5016 CI run 39262684736, head 1c00bc44653008107322c9f8df40c0a3bdb0bd94.
+  // Job 118095248887: states passed in 24.8s. Jobs 118095249178 / 118095248860:
+  // interactions 131.2s (24/25 passed), routine parity 127.3s (3/4 passed).
+  // Actual command wall times, rounded up; refresh again after the repaired CI run.
+  // Unit was not reached after the browser failure; retain its local bound pending CI.
   'test:build-home-chains-unit': 1,
-  // Full 24-case run: 203.5s summed test durations, all passed.
-  'test:build-home-chains': 204,
-  // Routine P1–P4: 1440px, both themes and palettes. Local green test sum 175.7s.
-  // Conservative placeholder until this PR's CI suite-duration record is available.
-  'test:build-home-chains-parity': 176,
-  'test:browser-suite -- build-home-chains-states': 48,
+  'test:build-home-chains': 132,
+  'test:build-home-chains-parity': 128,
+  'test:browser-suite -- build-home-chains-states': 25,
   // Governed core commands (2026-10-18): 31 cases in 518s; 32 cases on 2ed995a67 in 445s.
   // Keep the slower observed bound; wall timings include fixture startup and build-gate wait.
   'test:build-home-gantt': 518,

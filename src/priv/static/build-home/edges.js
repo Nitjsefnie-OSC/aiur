@@ -44,6 +44,7 @@ export function drawEdgesSoon(ms) {
   edgeUntil = performance.now() + (ms || 0);
   if (was) return;
   const loop = () => {
+    if (!ctx.content?.isConnected) return;
     const moving = ctx.content.getAnimations({ subtree: true }).some(a =>
       ['left', 'width'].includes(a.transitionProperty) && a.playState === 'running' && a.effect.target.matches('.bd-card'));
     const done = performance.now() >= edgeUntil && !moving;

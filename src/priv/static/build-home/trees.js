@@ -80,7 +80,9 @@ export async function fitTree(id) {
   const life = ctx.life;
   const current = () => token === fitToken && ctx.life === life && !life.disposed && ctx.content?.isConnected && !!ctx.D.byId[id];
   const request = {}; ctx.fitHistory = request;
-  const release = life.cleanup(() => { if (ctx.fitHistory === request) ctx.fitHistory = null; });
+  let complete;
+  const completed = new Promise(resolve => { complete = resolve; });
+  const release = life.cleanup(() => { if (ctx.fitHistory === request) ctx.fitHistory = null; complete(); });
   const firstFrame = Symbol('fit-1'), secondFrame = Symbol('fit-2');
   let scheduled = false;
   try {
@@ -125,13 +127,13 @@ export async function fitTree(id) {
     });
     scheduled = true;
   } finally { if (!scheduled) release(); }
+  await completed;
 }
 export function reapply() {
   const id = ctx.lockId || ctx.hoverId;
   if (id) { ctx.hoverId = '~'; setHover(id, cardOf(id)); }
   if (openRoot) openTree(openRoot, { keep: true });
 }
-export function onTreesChanged(enabled) { if (!enabled) unlock(); }
 
 export function openTree(id, { keep = false } = {}) {
   const host = $('#bd-tree', ctx.root);
@@ -197,4 +199,4 @@ export function wireTrees() {
   });
 }
 Object.assign(fx, { onHover, onLeave, toggleLock, setHover, lockTree, unlock, fitTree, treeRange,
-  openTree, closeTree, reapply, onTreesChanged, wireTrees, chainOf: id => chainOf(ctx.D, id) });
+  openTree, closeTree, reapply, wireTrees, chainOf: id => chainOf(ctx.D, id) });

@@ -152,7 +152,7 @@ export async function openParityPair(browser, cell, opts = {}) {
   }
 }
 
-export async function captureStable(target, opts, page) {
+export async function captureStable(target, opts, page, viewportClip = false) {
   let previous
   for (let attempt = 0; attempt < 10; attempt++) {
     // Locator screenshots scroll into view, disturbing motion under measurement.
@@ -165,7 +165,7 @@ export async function captureStable(target, opts, page) {
       // Expanding an already-visible clip fires responsive relayouts and clears locks.
       const visible = viewport && !offset.x && !offset.y && box.x >= 0 && box.y >= 0
         && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height
-      return page.screenshot({ ...opts, fullPage: !visible, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
+      return page.screenshot({ ...opts, fullPage: viewportClip ? !visible : true, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
     }
     let png
     try { png = await shoot() }
@@ -203,14 +203,14 @@ export async function capturePairEvidence(pair) {
   }
 }
 
-export async function expectDesignParity(pair, { name, region, fullPage = false, preserveAnimations = false }) {
+export async function expectDesignParity(pair, { name, region, fullPage = false, preserveAnimations = false, viewportClip = false }) {
   const time = preserveAnimations ? await pair.design.evaluate(() => Date.now()) : FIXTURE_META.now
   await assertCellState(pair.design, pair.cell, time)
   await assertCellState(pair.product, pair.cell, time)
-  await compareParityPixels(pair, { name, region, fullPage, preserveAnimations })
+  await compareParityPixels(pair, { name, region, fullPage, preserveAnimations, viewportClip })
 }
 
-export async function compareParityPixels(pair, { name, region, fullPage = false, preserveAnimations = false }) {
+export async function compareParityPixels(pair, { name, region, fullPage = false, preserveAnimations = false, viewportClip = false }) {
   const { designMask, productMask } = await applyAllowlist(pair, pair.cell)
   // A region capture must not mask unrelated chrome that overlaps its raster origin.
   if (region) {
@@ -227,17 +227,17 @@ export async function compareParityPixels(pair, { name, region, fullPage = false
     window.parityHeld = document.getAnimations().filter(a => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity)
     window.parityHeld.forEach(a => { a.pause(); a.currentTime = 0 })
   })
-  try { await captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask }) }
+  try { await captureParityPixels(pair, { name, region, fullPage, preserveAnimations, viewportClip, designMask, productMask }) }
   finally { if (preserveAnimations) for (const page of [pair.design, pair.product]) if (!page.isClosed()) await page.evaluate(() => window.parityHeld?.forEach(a => a.play())) }
 }
 
-async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask }) {
+async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, viewportClip, designMask, productMask }) {
   const design = region ? await one(pair.design, region, 'design') : pair.design
   const product = region ? await one(pair.product, region, 'product') : pair.product
   const opts = { animations: preserveAnimations ? 'allow' : 'disabled', caret: 'hide', scale: 'device', maskColor: '#ff00ff', ...(region ? {} : { fullPage }) }
   await pair.design.bringToFront()
   if (region) await settleRegionImages(pair.design, region)
-  const png = await captureStable(design, { ...opts, mask: designMask }, preserveAnimations && region ? pair.design : undefined)
+  const png = await captureStable(design, { ...opts, mask: designMask }, preserveAnimations && region ? pair.design : undefined, viewportClip)
   await pair.product.bringToFront()
   if (region) await settleRegionImages(pair.product, region)
   checkPage(pair.design)
@@ -246,7 +246,7 @@ async function captureParityPixels(pair, { name, region, fullPage, preserveAnima
   await mkdir(path.dirname(file), { recursive: true })
   await writeFile(file, png)
   // Use the same capture protocol on both sides, including rounded image clips.
-  const actual = await captureStable(product, { ...opts, mask: productMask }, preserveAnimations && region ? pair.product : undefined)
+  const actual = await captureStable(product, { ...opts, mask: productMask }, preserveAnimations && region ? pair.product : undefined, viewportClip)
   expect(actual).toMatchSnapshot(`${name}.png`, { threshold: PARITY_THRESHOLD, maxDiffPixels: PARITY_FLOOR })
   checkPage(pair.design)
   checkPage(pair.product)

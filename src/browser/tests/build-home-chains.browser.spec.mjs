@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { card, tree, tray, open, reveal, lock, whole } from './support/build-home-chains.mjs'
+import { installFitObserver } from './support/build-home-chains-parity.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
@@ -37,9 +38,9 @@ test('B1 hover requires trees=1; arrow click still locks without it', async ({ p
 })
 
 test('B2 hover clears after 280ms on empty content and 200ms on leaving', async ({ page }) => {
-  await open(page); await reveal(page, '9012')
+  await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page); await reveal(page, '9012')
   await card(page, '9012').hover()
-  await page.clock.install(); await page.clock.pauseAt(new Date())
+  await page.clock.install({ time: 1791408000000 }); await page.clock.pauseAt(1791408001000)
   await expect(page.locator('.bd-content')).toHaveClass(/hovering/)
   // Dispatch on the real listener target; fixed clock makes the two boundaries exact.
   await page.locator('#bd-content').dispatchEvent('pointerover', { pointerType: 'mouse' })
@@ -100,6 +101,7 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   })
   await page.locator('[data-lt="fit"]').click()
   await expect.poll(() => page.evaluate(() => earlierCalls.length)).toBeGreaterThan(0)
+  await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
   await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe('9012')
   await expect.poll(() => page.evaluate(() => !!st.ctx.D.byId['9001'])).toBe(true)
@@ -409,6 +411,7 @@ test('B13 navigation cancels a pending Fit and removes tree document listeners',
 
 test('B13 teardown between Fit frames cancels the second frame', async ({ page }) => {
   await open(page); await lock(page, '3')
+  await installFitObserver(page)
   const result = await page.evaluate(async () => {
     const life = st.ctx.life, hook = await import('/build-home/hook.js')
     const frame = life.frame.bind(life), calls = []
@@ -428,7 +431,7 @@ test('B13 teardown between Fit frames cancels the second frame', async ({ page }
     const update = st.fx.update
     st.fx.update = (...args) => { if (life.disposed) calls.push('update'); return update(...args) }
     st.ctx.content.querySelector('[data-lt="fit"]').click()
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await window.chainParityFit
     return { disposed: life.disposed, calls, lock: st.ctx.lockId, before: window.lockBeforeTeardown, paging: st.ctx.fitHistory }
   })
   expect(result.disposed).toBe(true)
@@ -439,6 +442,7 @@ test('B13 teardown between Fit frames cancels the second frame', async ({ page }
 
 for (const action of ['lock', 'Escape']) test(`B13 ${action} between Fit frames supersedes the pending root`, async ({ page }) => {
   await open(page); await lock(page, '3')
+  await installFitObserver(page)
   const result = await page.evaluate(async action => {
     const life = st.ctx.life, frame = life.frame.bind(life)
     life.frame = (key, fn) => frame(key, () => {
@@ -449,7 +453,7 @@ for (const action of ['lock', 'Escape']) test(`B13 ${action} between Fit frames 
       }
     })
     st.ctx.content.querySelector('[data-lt="fit"]').click()
-    await new Promise(resolve => setTimeout(resolve, 100))
+    await window.chainParityFit
     return st.ctx.lockId
   }, action)
   expect(result).toBe(action === 'lock' ? '1' : null)

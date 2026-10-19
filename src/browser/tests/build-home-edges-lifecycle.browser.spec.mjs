@@ -197,3 +197,21 @@ test('B3 an unloaded blocker has no edge until earlier history is loaded', async
   }, full.default)
   expect(result).toEqual({ before: 0, loaded: true, parentRendered: true, after: 1 })
 })
+
+test('queued edge animation stops when navigation removes the board', async ({ page }) => {
+  const errors = []; page.on('pageerror', e => errors.push(e.message))
+  await open(page)
+  await page.evaluate(() => {
+    const frame = st.ctx.life.frame.bind(st.ctx.life)
+    window.pendingEdgeFrames = []
+    st.ctx.life.frame = (key, callback) => key === 'edges' ? pendingEdgeFrames.push(callback) : frame(key, callback)
+    st.fx.drawEdgesSoon(1000)
+  })
+  await expect.poll(() => page.evaluate(() => pendingEdgeFrames.length)).toBeGreaterThan(0)
+  await navigate(page, '/build?view=list')
+  await expect(page.locator('.bd-list')).toHaveCount(1)
+  await expect.poll(() => page.evaluate(() => st.ctx.content)).toBeNull()
+  // Release the queued native frame after the real view change, when the board is gone.
+  await page.evaluate(() => pendingEdgeFrames.splice(0).forEach(callback => callback()))
+  expect(errors).toEqual([])
+})

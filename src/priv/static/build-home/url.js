@@ -1,12 +1,10 @@
-import { S, ctx, fx } from './state.js';
+import { S, ctx } from './state.js';
 export function fromServer(state = {}) {
-  const trees = S.trees;
   Object.assign(S, {
     view: state.view ?? 'graph', span: state.span ?? 1, feature: state.feature ?? null,
     fmode: state.fmode ?? 'focus', liveMin: state.live_min ?? false,
     trees: state.trees ?? false, ticket: state.ticket ?? null,
   });
-  if (trees && !S.trees && ctx.content) fx.onTreesChanged(S.trees);
   for (const key of ['epic', 'model', 'tstate', 'astate']) S.f[key] = [...(state[key] ?? [])];
 }
 export function writeURL(extra) {
