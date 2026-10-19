@@ -37,6 +37,10 @@ export async function hoverRoot(page, root, product) {
     vp.scrollTop += el.getBoundingClientRect().top - vp.getBoundingClientRect().top - 180
   })
   await page.waitForTimeout(800)
+  await expect(page.locator('.bd-content')).not.toHaveClass(/\bscrolling\b/)
+  // Foreground changes recompute native hover at the actual pointer position.
+  await card.hover()
+  await expect(page.locator('.bd-content')).not.toHaveClass(/\bscrolling\b/)
   await card.dispatchEvent(product ? 'pointerover' : 'mouseover', { pointerType: 'mouse' })
   await expect(page.locator('.bd-lt.show')).toHaveCount(1)
   await page.waitForTimeout(250)
