@@ -331,3 +331,11 @@ test('visual route seeds the optional palette', async ({ page }) => {
   await openVisualRoute(page, { theme: 'dark', palette: 'aiur', route: '/build-orders' })
   expect(await page.evaluate(() => localStorage.getItem('aiur-palette'))).toBe('aiur')
 })
+
+// Explicit viewport captures must not scroll an offscreen region into view.
+test('viewport clipping preserves scroll without animation preservation', async ({ browser }) => {
+  const pair = { design: await pageFor(browser), product: await pageFor(browser), cell, allowlist: [] }
+  for (const page of [pair.design, pair.product]) await page.setContent('<style>body{margin:0;height:3000px}#region{position:absolute;top:2000px;left:50px;width:80px;height:80px;background:red}</style><div id="region"></div>')
+  await compareParityPixels(pair, { name: 'viewport-clip-scroll', region: '#region', viewportClip: true })
+  for (const page of [pair.design, pair.product]) expect(await page.evaluate(() => scrollY)).toBe(0)
+})
