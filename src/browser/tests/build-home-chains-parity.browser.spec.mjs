@@ -56,7 +56,7 @@ async function installReferenceFit(page) {
         document.querySelectorAll('.bd-card').forEach(card => card.getBoundingClientRect())
         const moving = document.querySelector('#bd-content').getAnimations({ subtree: true })
           .some(animation => ['left', 'width', 'top', 'height'].includes(animation.transitionProperty) && animation.playState === 'running')
-        if ((!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act, .bd-card.noanim, .bd-lane.leave') || moving) return frame(settle)
+        if ((!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act, .bd-sec .bd-card.noanim, .bd-lane.leave') || moving) return frame(settle)
         viewport.removeEventListener('scroll', onScroll)
         return frame(now => { callback(now); frame(() => { complete() }) })
       }

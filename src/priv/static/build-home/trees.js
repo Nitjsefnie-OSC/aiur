@@ -128,7 +128,7 @@ export async function fitTree(id) {
       cardOf(id)?.getBoundingClientRect();
       const moving = ctx.content.getAnimations({ subtree: true }).some(a =>
         ['left', 'width', 'top', 'height'].includes(a.transitionProperty) && a.playState === 'running');
-      if (ctx.snapping || ctx.isScrolling?.() || pendingColumns || ctx.content.querySelector('.bd-card.noanim') || moving) {
+      if (ctx.snapping || ctx.isScrolling?.() || pendingColumns || ctx.content.querySelector('.bd-sec .bd-card.noanim') || moving) {
         life.frame(secondFrame, settled); return;
       }
       try { fx.update(); lockTree(id); } finally { release(); }
