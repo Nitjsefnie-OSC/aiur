@@ -102,10 +102,14 @@ List (`?view=list`) shows Live, Planned, Not queued and newest-first History as 
 Ticket rows support keyboard focus. Use **Load earlier day** to fetch more history.
 Unknown values stay explicit, and degraded section headings show their source state and read age.
 
-The Now band shows every active agent between history and the plan. It settles
-at the nearest viewport edge after scrolling; **Live** returns to it. Minimize
-keeps the state counts visible (`live=min`), and a state preset expands it.
-The clock shows cached observation time when stale and `—` when unknown.
+The Now band shows active agents between history and the plan. It settles at
+the nearest viewport edge; **Live** returns to it. Minimize keeps state counts
+visible (`live=min`), and a state preset expands it. The clock shows cached
+observation time when stale and `—` when unknown.
+
+Agents in retry backoff are labeled **Retrying** and counted separately from
+running agents in the timeline and list. Tickets whose lifetime retry latch is
+spent have no live agent and are left out of Now.
 
 The toolbar selects Timeline, Gantt or List and retains the view in the URL.
 Use Left/Right arrows or Home/End to move between view tabs, then Enter or Space
@@ -240,6 +244,11 @@ The page reads the cached report analysis matching the current frozen inputs
 (or a legacy root-level `result.json`) for group summaries, sample counts and
 analyst labels. Below the
 analysis minimum, interval, p-value and effect cells say **not enough data**.
+
+The **Analyst report** card shows the analyst's Markdown, including tables. A
+pending message appears until a report exists. Reports may lag the evidence;
+the card identifies newer results with both report and result times. Tables
+over 4,096 cells are shown as text to keep reports bounded.
 
 The median-change chart shows stored percentage estimates and confidence
 intervals, with the expected direction labelled. Hollow points mark **not enough
