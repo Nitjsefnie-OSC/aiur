@@ -8,8 +8,8 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
 
   require Logger
 
-  alias Aiur.Alerts
   alias Aiur.AgentRunner.TurnProgress
+  alias Aiur.Alerts
   alias Aiur.CodeHost
   alias Aiur.Config
   alias Aiur.GitHub.Client
