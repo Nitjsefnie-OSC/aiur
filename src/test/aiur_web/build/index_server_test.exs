@@ -152,6 +152,44 @@ defmodule AiurWeb.Build.IndexServerTest do
     refute_received {:retry_timer, ^pid, :flush, _delay}
   end
 
+  test "startup settings loading retries with backoff and recovers without another signal" do
+    parent = self()
+    loading = %{parts() | settings: {:error, :workflow_not_loaded}}
+
+    pid =
+      start_supervised!(
+        {Index,
+         name: nil,
+         subscribe: fn -> :ok end,
+         read: fn
+           :all, _previous, _opts ->
+             loading
+
+           dirty, _previous, _opts ->
+             send(parent, {:settings_retry, self(), dirty})
+             receive(do: ({:return, value} -> value))
+         end,
+         timer: fn server, message, ms ->
+           send(parent, {:settings_timer, server, message, ms})
+           make_ref()
+         end,
+         daemon_timer: fn _, _, _ -> make_ref() end,
+         daemon_read: fn _ -> %{state: "live", heartbeat_at: 1, observed_at: 2} end,
+         clock: &now/0},
+        id: :settings_loading_index
+      )
+
+    assert {:error, :settings_loading} = Index.window(pid, "Etc/UTC")
+    assert_receive {:settings_timer, ^pid, :flush, 500}, 1_000
+    send(pid, :flush)
+    receive_barrier({:settings_retry, worker, dirty})
+    assert dirty == MapSet.new([:settings])
+    send(worker, {:return, parts()})
+    assert await_read_finish(pid, 100)
+    assert {:ok, _snapshot} = Index.window(pid, "Etc/UTC")
+    refute_received {:settings_timer, ^pid, :flush, _delay}
+  end
+
   test "a mount cuts its window in the caller, not in the shared server", %{pid: pid} do
     mfa = {Aiur.BuildOrder.Index.Pages, :window, 3}
     :erlang.trace(pid, true, [:call])

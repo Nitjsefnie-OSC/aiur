@@ -5,6 +5,12 @@ defmodule Aiur.WorkflowStoreTest do
   alias Aiur.GitHub.Config, as: GitHubConfig
   alias Aiur.WorkflowStore.Cache
 
+  test "reads during initial store publication report loading instead of nil workflow" do
+    state = %Aiur.WorkflowStore.State{workflow: nil}
+
+    assert {:reply, {:error, :workflow_not_loaded}, ^state} = Aiur.WorkflowStore.handle_call(:current, self(), state)
+  end
+
   # A write that lands in the instant after the store reads the config must not
   # be swallowed. The store used to read the file twice per reload — once to
   # load the workflow, once to stamp it — so a write in between paired the new

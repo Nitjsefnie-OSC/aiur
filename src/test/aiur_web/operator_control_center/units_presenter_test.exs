@@ -5,6 +5,17 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenterTest do
 
   import AiurWeb.OperatorControlCenter.UnitsPresenterFixtures
 
+  test "unpublished daemon snapshot renders Units as loading without zero counts" do
+    catalog = UnitsPresenter.load(%{daemon_starting?: true}, membership_fun: fn -> raise "must not read yet" end)
+    view = UnitsPresenter.project(catalog, UnitsURL.default_selection())
+
+    assert view.status == :loading
+    assert view.message == "The daemon is starting."
+    assert view.total_count == nil
+    assert view.count_status == :unavailable
+    assert UnitsPresenter.announcement(view) =~ "Loading Units"
+  end
+
   test "loads typed provider snapshots once and keeps later projection pure" do
     test_pid = self()
     alpha = identity("NODE-alpha", "41")

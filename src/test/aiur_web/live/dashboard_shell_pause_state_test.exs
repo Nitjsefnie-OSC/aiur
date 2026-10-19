@@ -10,6 +10,16 @@ defmodule AiurWeb.DashboardShellPauseStateTest do
 
   @endpoint Endpoint
 
+  defmodule StartingOrchestrator do
+    use GenServer
+
+    def start_link, do: GenServer.start_link(__MODULE__, :starting)
+    @impl true
+    def init(state), do: {:ok, state}
+    @impl true
+    def handle_call(_request, _from, state), do: {:reply, :starting, state}
+  end
+
   setup do
     previous_endpoint = Application.get_env(:aiur, Endpoint)
     previous_store = Application.get_env(:aiur, :global_pause_store_path)
@@ -97,6 +107,26 @@ defmodule AiurWeb.DashboardShellPauseStateTest do
 
   test "unavailable snapshots render unknown and keep the pause action disabled" do
     assert_unknown_pause_state(:missing_orchestrator)
+  end
+
+  test "unpublished daemon snapshot renders a loading pause state" do
+    {:ok, pid} = StartingOrchestrator.start_link()
+    on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+    assert :loading == PauseState.pause_state(pid)
+
+    html =
+      render_component(&DashboardShell.dashboard_shell/1,
+        route: RouteRegistry.current_route(:analytics),
+        routes: RouteRegistry.routes(%{}),
+        tracker_kind: "github",
+        agent_kind: "codex",
+        inner_block: [],
+        pause_state: %{globally_paused: :loading, writable: true, global_pause_error: nil}
+      )
+
+    assert html =~ "Loading daemon status"
+    refute html =~ "Pause state unknown"
+    assert html =~ "disabled"
   end
 
   test "read-only mode disables the shell toggle and ignores forged events" do

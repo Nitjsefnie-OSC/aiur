@@ -13,7 +13,7 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenter do
   alias Aiur.Projections.UnitsRow.Sources
   alias AiurWeb.OperatorControlCenter.RowToken
 
-  @type catalog_status :: :ready | :empty | :stale | :unavailable
+  @type catalog_status :: :ready | :empty | :stale | :unavailable | :loading
 
   @spec load(map(), keyword()) :: map()
   def load(payload, opts \\ [])
@@ -46,7 +46,7 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenter do
         issue_facts: issue_source(status)
       })
 
-    status = catalog_status(snapshot)
+    status = if Map.get(payload, :daemon_starting?) == true, do: :loading, else: catalog_status(snapshot)
 
     %{
       status: status,
@@ -304,7 +304,7 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenter do
 
   defp safe_rows(_fleet, _bucket), do: []
 
-  defp count_status(%{status: :unavailable}), do: :unavailable
+  defp count_status(%{status: status}) when status in [:unavailable, :loading], do: :unavailable
   defp count_status(%{status: :stale}), do: :partial
   defp count_status(%{truncated?: true}), do: :partial
   defp count_status(%{snapshot: %{truncated?: true}}), do: :partial

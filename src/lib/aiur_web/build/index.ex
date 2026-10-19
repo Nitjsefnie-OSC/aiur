@@ -222,8 +222,16 @@ defmodule AiurWeb.Build.Index do
     generation = if changes, do: state.generation + 1, else: state.generation
     if changes, do: broadcast(state, Map.merge(changes, %{index_generation: generation, now: clock(state)}))
     now_failed? = match?({:error, _}, parts[:now])
-    failures = if now_failed?, do: state.failures + 1, else: state.failures
-    retry_dirty = if now_failed?, do: MapSet.put(state.dirty, :now), else: state.dirty
+    settings_loading? = match?({:error, :settings_loading}, next)
+    failures = if now_failed? or settings_loading?, do: state.failures + 1, else: state.failures
+
+    retry_dirty =
+      cond do
+        now_failed? -> MapSet.put(state.dirty, :now)
+        settings_loading? -> MapSet.put(state.dirty, :settings)
+        true -> state.dirty
+      end
+
     state = %{state | parts: parts, index: next, generation: generation, history_at: history_at, failures: failures, dirty: retry_dirty}
     :ets.insert(state.table, {:index, with({:ok, index} <- next, do: {:ok, Core.base(index)})})
     :ets.insert(state.table, {:generation, generation})

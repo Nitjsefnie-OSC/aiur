@@ -54,12 +54,13 @@ defmodule AiurWeb.OperatorControlCenter.PauseState do
     end
   end
 
-  @spec pause_state(GenServer.server()) :: boolean() | nil
+  @spec pause_state(GenServer.server()) :: boolean() | :loading | nil
   def pause_state(orchestrator) do
     if orchestrator == Orchestrator do
       case SnapshotStore.read(orchestrator, 1_000) do
         {:current, %{globally_paused: paused}, _freshness} when is_boolean(paused) -> paused
         {:stale, _, _freshness} -> nil
+        :snapshot_unpublished -> loading_pause_state(orchestrator)
         _unavailable -> live_pause_state(orchestrator)
       end
     else
@@ -78,6 +79,22 @@ defmodule AiurWeb.OperatorControlCenter.PauseState do
     end
   end
 
+  defp loading_pause_state(orchestrator) do
+    case GlobalPause.global_pause_status(orchestrator, 1_000) do
+      {:ok, %{globally_paused: paused}} when is_boolean(paused) -> paused
+      _unavailable -> if live?(orchestrator), do: :loading, else: nil
+    end
+  end
+
+  defp live?(orchestrator) do
+    case GenServer.whereis(orchestrator) do
+      pid when is_pid(pid) -> Process.alive?(pid)
+      _missing -> false
+    end
+  catch
+    :exit, _reason -> false
+  end
+
   defp snapshot_pause_state(orchestrator) do
     case SnapshotStore.read(orchestrator, 1_000) do
       {:current, %{globally_paused: paused}, _freshness} when is_boolean(paused) ->
@@ -86,7 +103,10 @@ defmodule AiurWeb.OperatorControlCenter.PauseState do
       {:stale, _, _freshness} ->
         nil
 
-      unavailable when unavailable in [:orchestrator_unavailable, :snapshot_unpublished] ->
+      :snapshot_unpublished ->
+        loading_pause_state(orchestrator)
+
+      :orchestrator_unavailable ->
         live_pause_state(orchestrator)
 
       _unavailable ->

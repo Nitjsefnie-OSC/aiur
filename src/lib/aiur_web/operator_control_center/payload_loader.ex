@@ -216,6 +216,9 @@ defmodule AiurWeb.OperatorControlCenter.PayloadLoader do
       {status, snapshot, freshness} when status in [:current, :stale] ->
         Map.put(payload, :units_status_snapshot, Map.put(snapshot, :snapshot_freshness, freshness))
 
+      :snapshot_unpublished ->
+        Map.put(payload, :daemon_starting?, true)
+
       _unavailable_or_unpublished ->
         payload
     end
