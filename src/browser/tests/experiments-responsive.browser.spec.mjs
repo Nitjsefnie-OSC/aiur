@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test'
 import { assertNoDocumentOverflow } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
+// Viewport, target, facts, state and axe cases guard existing behavior against future regressions.
+// Scrolling and whole-word cases below constrain the CSS fixes in this PR.
 // Behavioural reflow checks for /experiments: no document overflow, 44px
 // targets, table-to-cards below 960px, and no fact dropped at any width.
 const VIEWPORTS = [320, 390, 768, 960, 1280].map(width => ({ width, height: 900 }))

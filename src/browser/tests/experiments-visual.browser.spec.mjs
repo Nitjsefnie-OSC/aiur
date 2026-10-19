@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { getMaskConfig, openVisualRoute } from '../support/visual.mjs'
 
+// Baseline cases deliberately guard existing page states against future visual regressions.
 test.use({ reducedMotion: 'reduce' })
 // The experiments project shares one worker across both scenario-changing files.
 
