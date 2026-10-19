@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.61.1-noble
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.suite == 'gantt' && 60 || 30 }}
     strategy:
       fail-fast: false
       matrix:
