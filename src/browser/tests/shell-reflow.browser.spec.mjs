@@ -22,6 +22,16 @@ for (const width of [390, 720]) {
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
       await expect.poll(() => navigation.evaluate(node => getComputedStyle(node).overflowX)).toBe('auto')
 
+      await page.locator('#ax-cog').click()
+      const settings = page.locator('#ax-menu')
+      await expect(settings).toBeVisible()
+      const settingsBounds = await settings.evaluate(node => {
+        const rect = node.getBoundingClientRect()
+        return { left: rect.left, right: rect.right }
+      })
+      expect(settingsBounds.left).toBeGreaterThanOrEqual(0)
+      expect(settingsBounds.right).toBeLessThanOrEqual(width)
+
       for (const link of await navigation.locator('a.snav').all()) {
         await link.evaluate(node => node.scrollIntoView({ block: 'nearest', inline: 'center' }))
         const bounds = await link.evaluate(node => {
@@ -34,6 +44,40 @@ for (const width of [390, 720]) {
         const label = link.locator('.snav-label')
         expect(await label.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
         await expect(link).toBeVisible()
+      }
+    } finally {
+      await context.close()
+    }
+  })
+
+  test(`Tab keeps each bottom navigation link fully visible at 200% text zoom (${width}px)`, async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      deviceScaleFactor: 2,
+      reducedMotion: 'reduce',
+      httpCredentials: dashboardCredentials
+    })
+    const page = await context.newPage()
+
+    try {
+      await openFixture(page)
+      await page.goto('/')
+      await page.evaluate(() => { document.documentElement.style.fontSize = '200%' })
+
+      const navigation = page.locator('.sidenav-nav')
+      const links = navigation.locator('a.snav')
+      await expect(links).toHaveCount(6)
+      await page.locator('#ax-cog').focus()
+
+      for (let index = 0; index < 6; index += 1) {
+        await page.keyboard.press('Tab')
+        const link = links.nth(index)
+        await expect(link).toBeFocused()
+        await expect.poll(() => link.evaluate(node => {
+          const nav = node.closest('.sidenav-nav').getBoundingClientRect()
+          const rect = node.getBoundingClientRect()
+          return rect.left >= nav.left - 1 && rect.right <= nav.right + 1
+        })).toBe(true)
       }
     } finally {
       await context.close()

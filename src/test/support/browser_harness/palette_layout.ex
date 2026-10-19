@@ -49,6 +49,13 @@ defmodule Aiur.BrowserHarness.FixtureLayout do
                 this.media = window.matchMedia("(min-width: 961px)");
                 this.onMedia = () => this.mirror();
                 this.media.addEventListener("change", this.onMedia);
+                this.nav = document.getElementById("ax-nav");
+                this.onNavFocus = (e) => {
+                  if (!this.media.matches && e.target.matches("a.snav")) {
+                    e.target.scrollIntoView({block: "nearest", inline: "nearest"});
+                  }
+                };
+                this.nav?.addEventListener("focusin", this.onNavFocus);
                 this.onKey = (e) => {
                   if (!["Enter", " ", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
                   e.preventDefault();
@@ -117,6 +124,7 @@ defmodule Aiur.BrowserHarness.FixtureLayout do
                 this.cleanDrag();
                 clearTimeout(this.resizeTimer);
                 this.media.removeEventListener("change", this.onMedia);
+                this.nav?.removeEventListener("focusin", this.onNavFocus);
                 this.el.removeEventListener("keydown", this.onKey);
                 this.el.removeEventListener("pointerdown", this.onDown);
                 this.el.removeEventListener("pointermove", this.onMove);
@@ -129,6 +137,22 @@ defmodule Aiur.BrowserHarness.FixtureLayout do
               mounted: function () {
                 this.cog = this.el.querySelector("#ax-cog");
                 this.menu = this.el.querySelector("#ax-menu");
+                this.fitMenu = () => {
+                  if (window.innerWidth <= 480) {
+                    var left = this.menu.getBoundingClientRect().left;
+                    var available = Math.max(0, window.innerWidth - left - 16);
+                    this.menu.style.minWidth = Math.min(210, available) + "px";
+                    this.menu.style.maxWidth = available + "px";
+                  } else {
+                    this.menu.style.removeProperty("min-width");
+                    this.menu.style.removeProperty("max-width");
+                  }
+                };
+                this.fitMenu();
+                this.onResize = () => this.fitMenu();
+                window.addEventListener("resize", this.onResize);
+                this.brandObserver = new ResizeObserver(this.fitMenu);
+                this.brandObserver.observe(this.el.closest(".ax-brand"));
                 this.onClick = (e) => {
                   if (this.cog.contains(e.target)) this.setOpen(!this.el.classList.contains("open"));
                   else if (!this.el.contains(e.target)) this.setOpen(false);
@@ -161,6 +185,8 @@ defmodule Aiur.BrowserHarness.FixtureLayout do
               destroyed: function () {
                 document.removeEventListener("click", this.onClick);
                 document.removeEventListener("keydown", this.onKey);
+                window.removeEventListener("resize", this.onResize);
+                this.brandObserver.disconnect();
               }
             };
 
