@@ -73,7 +73,7 @@ export function treeRange(id) {
   const set = chainOf(ctx.D, id); let a = Infinity, b = -Infinity;
   const add = (it, top) => { if (set.has(it.t.id)) { a = Math.min(a, top + it.y); b = Math.max(b, top + it.y + it.h); } };
   for (const s of ['hist', 'plan', 'nq']) ctx.L.secs[s].items.forEach(it => add(it, ctx.secs[s].el.offsetTop));
-  ctx.L.band.items.forEach(it => add(it, ctx.bandEl.offsetTop));
+  ctx.L.band.items.forEach(it => add(it, ctx.secs.hist.el.offsetTop + ctx.L.secs.hist.h));
   return [a, b];
 }
 export async function fitTree(id) {

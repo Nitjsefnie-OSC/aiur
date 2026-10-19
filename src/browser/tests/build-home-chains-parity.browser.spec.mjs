@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { openParityPair, expectDesignParity, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
 import { settleAnimations } from './support/browser-helpers.mjs'
 import { prepareChainCanvas, prepareChainParity, largestRoot, hoverRoot, assertChainPaint, fitState, installFitObserver, waitForFit, treeRecord } from './support/build-home-chains-parity.mjs'
@@ -6,6 +7,60 @@ import { prepareChainCanvas, prepareChainParity, largestRoot, hoverRoot, assertC
 test.setTimeout(120_000)
 const full = process.env.AIUR_PARITY_FULL === '1'
 const cells = PARITY_VIEWPORTS.filter(v => full || v.viewport.width === 1440).flatMap(v => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset: 'live', ...v, theme, palette }))))
+
+async function loadHistory(pair) {
+  const snapshot = JSON.parse(await readFile(new URL('../../test/fixtures/build_home/' + pair.cell.dataset + '.json', import.meta.url), 'utf8'))
+  const expected = snapshot.sections.hist.map(ticket => ticket.id).sort()
+  for (const page of [pair.design, pair.product]) {
+    await page.bringToFront()
+    await page.locator('[data-span="30"]').click()
+    const header = page.locator('#bd-sec-hist .bd-sech'), viewport = page.locator('#bd-vp')
+    // The mock unlocks on every history relayout. Compare identical loaded data;
+    // B6 separately exercises Fit while real history pages are still arriving.
+    for (let pages = 0; pages < 100; pages++) {
+      const before = await header.textContent()
+      if (/\ball [\d,]+ from\b/.test(before)) break
+      await viewport.evaluate(el => { el.scrollTop = 0 })
+      await expect.poll(() => header.textContent()).not.toBe(before)
+    }
+    await expect(header).toContainText('all ' + expected.length.toLocaleString('en-US') + ' from ')
+    await page.locator('[data-span="1"]').click()
+    await expect(page.locator('.bd-zv')).toHaveText('100%')
+    if (page === pair.product) {
+      await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
+      expect(await page.evaluate(async () => (await import('/build-home/state.js')).ctx.D.hist.map(ticket => ticket.id).sort())).toEqual(expected)
+    }
+  }
+}
+
+async function installReferenceFit(page) {
+  await page.evaluate(() => {
+    const frame = window.requestAnimationFrame, viewport = document.querySelector('#bd-vp')
+    const initialScroll = viewport.scrollTop
+    let scrolled = false, complete
+    window.referenceFitDone = new Promise(resolve => { complete = resolve })
+    const onScroll = () => { scrolled = true }
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    const restore = () => { window.requestAnimationFrame = frame; viewport.removeEventListener('scroll', onScroll) }
+    window.referenceFitRestore = restore
+    window.referenceFitObserved = false
+    window.requestAnimationFrame = callback => {
+      // This callback's source is pinned by the frozen design manifest.
+      if (!callback.toString().includes('lockTree(id)')) return frame(callback)
+      window.referenceFitObserved = true
+      window.requestAnimationFrame = frame
+      const settle = () => {
+        const moving = document.querySelector('#bd-content').getAnimations({ subtree: true })
+          .some(animation => ['left', 'width', 'top', 'height'].includes(animation.transitionProperty) && animation.playState === 'running')
+        if ((!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act') || moving) return frame(settle)
+        viewport.removeEventListener('scroll', onScroll)
+        return frame(now => { callback(now); frame(() => { complete() }) })
+      }
+      return frame(settle)
+    }
+  })
+}
+
 for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width} ${cell.theme} ${cell.palette}`, {
   tag: ['@full-parity', ...(cell.viewport.width === 1440 ? ['@routine-parity'] : [])],
 }, async ({ browser }) => {
@@ -20,6 +75,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
   const root = await largestRoot(pair.product, 'live')
   try {
+    await loadHistory(pair)
     await prepareChainCanvas(pair)
     await prepareChainParity(pair)
     for (const page of [pair.design, pair.product]) await hoverRoot(page, root, page === pair.product)
@@ -42,12 +98,14 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
       await page.keyboard.press('Escape')
       await expect(page.locator('#bd-tree')).toBeHidden()
     }
+    await installReferenceFit(pair.design)
     await installFitObserver(pair.product)
     for (const page of [pair.design, pair.product]) {
       await page.bringToFront()
       await page.locator('[data-lt="fit"]').click()
       if (page === pair.design) {
-        // Reference Fit can page history between its zoom update and final lock.
+        expect(await page.evaluate(() => window.referenceFitObserved), 'observe the original reference Fit callback').toBe(true)
+        await page.evaluate(() => window.referenceFitDone)
         await expect(page).toHaveURL(/[?&]span=/)
         await expect(page.locator('.bd-lt.locked.show'), 'reference Fit completes after history relayouts').toHaveCount(1, { timeout: 30_000 })
       } else await waitForFit(page)
@@ -60,12 +118,16 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     await check('P3 zoom label', async () => { expect(productFit.zoom).toBeTruthy(); expect(productFit.zoom).toEqual(designFit.zoom) })
     await check('P3 scroll', async () => expect(Math.abs(productFit.scroll - designFit.scroll)).toBeLessThanOrEqual(1))
     await pixels(pair, 'P3-chain-fit', '.bd-vpw')
-  } finally { await pair.close() }
+  } finally {
+    if (!pair.design.isClosed()) await pair.design.evaluate(() => window.referenceFitRestore?.())
+    await pair.close()
+  }
   // One narrow-cell case proves continuation-row wrapping; P1–P4 above cover every cell.
   if (cell.viewport.width === 390 && cell.theme === 'dark' && cell.palette === 'gruvbox') {
     const dense = await openParityPair(browser, { ...cell, dataset: 'dense' }, { query: '?trees=1' })
     const denseRoot = await largestRoot(dense.product, 'dense', 'plan')
     try {
+      await loadHistory(dense)
       await prepareChainCanvas(dense)
       await prepareChainParity(dense)
       for (const page of [dense.design, dense.product]) {
