@@ -30,11 +30,26 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`S-
         const { ctx, fx } = await import('/build-home/state.js')
         ctx.snapping = true
         const sec = id.includes('start') ? 'hist' : 'plan', it = ctx.L.secs[sec].items.find(it => it.t.id === id)
-        ctx.vp.scrollTop = Math.max(0, ctx.secs[sec].el.offsetTop + it.y - 100); fx.update()
+        fx.scrollVP(Math.max(0, ctx.secs[sec].el.offsetTop + it.y - 100), false); fx.update()
       }, marker.id)
       // Let the real column scheduler finish after the controlled scroll.
       await page.clock.runFor(500)
       const target = page.locator(`.bd-card[data-id="${marker.id}"]`)
+      // The board can extend below the mobile fold. A full-page clip still
+      // includes fixed navigation, so expose the card in the outer document
+      // before capturing it; moving the board or hiding navigation would mask it.
+      const size = await target.evaluate(el => {
+        const box = el.getBoundingClientRect()
+        window.scrollBy(0, Math.round(box.top + box.height / 2 - innerHeight / 2))
+        return { width: box.width, height: box.height }
+      })
+      await page.clock.runFor(40)
+      await expect.poll(() => target.evaluate((el, size) => {
+        const box = el.getBoundingClientRect()
+        return box.width === size.width && box.height === size.height &&
+          [0.25, 0.75].every(x => [0.25, 0.75].every(y =>
+            el.contains(document.elementFromPoint(box.left + box.width * x, box.top + box.height * y))))
+      }, size), { message: 'unknown-value card is fully exposed, with unchanged dimensions' }).toBe(true)
       // A locator screenshot can deadlock scrolling with the paused JS clock.
       // The shared page-clip path captures the same element without auto-scrolling.
       const png = await captureStable(target, { animations: 'disabled', caret: 'hide', scale: 'device' }, page)
