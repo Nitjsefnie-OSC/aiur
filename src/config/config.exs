@@ -1,5 +1,13 @@
 import Config
 
+# OTP terminate reports inspect the last message and server state while they
+# are translated into Logger events. Bound inspection here so a malformed or
+# unexpectedly large GenServer state cannot exhaust the daemon during logging.
+config :logger, :translator_inspect_opts,
+  limit: 100,
+  printable_limit: 4_096,
+  width: 120
+
 config :aiur, Aiur.Events.Trace, Aiur.Events.DebugLog
 
 config :aiur, env: config_env()
