@@ -10,8 +10,10 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
 
   alias Aiur.Alerts
   alias Aiur.AgentRunner.TurnProgress
+  alias Aiur.CodeHost
   alias Aiur.Config
-  alias Aiur.Orchestrator.{AgentTeardown, DispatchPolicy, Dispatcher, State, TrackerTasks}
+  alias Aiur.GitHub.Client
+  alias Aiur.Orchestrator.{AgentTeardown, Dispatcher, DispatchPolicy, ReworkGate, State, TrackerTasks}
   alias Aiur.Orchestrator.Dispatcher.Budgets
   alias Aiur.Orchestrator.StartupClaimReconciler.Release
 
@@ -20,43 +22,42 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
 
   def maybe_release(%State{} = state, %{paused_reason: :max_agent_duration, issue: %{id: issue_id} = issue} = entry, :paused, opts) do
     opts = Keyword.merge(Application.get_env(:aiur, :duration_cap_release_opts, []), opts)
-
-    release = fn ->
-      {baseline, entry} = baseline(entry, opts)
-      entry = Map.put(entry, :dispatch_latch_status, Budgets.dispatch_latch_status(state, issue_id))
-      progress = progress?(entry, baseline, opts)
-
-      if progress and DispatchPolicy.active_issue_state?(issue.state, DispatchPolicy.active_state_set()) and retry_budget_available?(entry, opts) do
-        case progress_release_target(issue, opts) do
-          {:ok, "rework"} ->
-            {:redispatch, %{issue | state: "rework"}}
-
-          {:ok, target} ->
-            {:release, target, "progress was detected"}
-
-          {:error, _} = error ->
-            error
-        end
-      else
-        reason = release_reason(progress, issue, entry, opts)
-        {:escalate, reason}
-      end
-      |> case do
-        {:release, target, reason} ->
-          release_options = if target, do: release_opts(opts, reason, forced_target: target), else: release_opts(opts, reason)
-          Release.run(issue, release_options)
-
-        redispatch ->
-          redispatch
-      end
-    end
-
+    release = fn -> release_decision(state, issue, entry, opts) end
     TrackerTasks.run(state, {:duration_cap_release, issue_id}, release, &apply_release(&1, &2, entry, opts))
   end
 
   def maybe_release(state, _running_entry, _status, _opts), do: state
 
-  defp release_opts(opts, reason, extra \\ []) do
+  defp release_decision(state, issue, entry, opts) do
+    {baseline, entry} = baseline(entry, opts)
+    entry = Map.put(entry, :dispatch_latch_status, Budgets.dispatch_latch_status(state, issue.id))
+    progress = progress?(entry, baseline, opts)
+
+    classify_release(issue, entry, progress, opts)
+    |> execute_release(issue, opts)
+  end
+
+  defp classify_release(issue, entry, true, opts) do
+    if DispatchPolicy.active_issue_state?(issue.state, DispatchPolicy.active_state_set()) and retry_budget_available?(entry, opts) do
+      case progress_release_target(issue, opts) do
+        {:ok, "rework"} -> {:redispatch, %{issue | state: "rework"}}
+        {:ok, target} -> {:release, target, "progress was detected"}
+        {:error, _} = error -> error
+      end
+    else
+      {:escalate, release_reason(true, issue, entry, opts)}
+    end
+  end
+
+  defp classify_release(issue, entry, false, opts), do: {:escalate, release_reason(false, issue, entry, opts)}
+
+  defp execute_release({:release, target, reason}, issue, opts) do
+    Release.run(issue, release_opts(opts, reason, forced_target: target))
+  end
+
+  defp execute_release(decision, _issue, _opts), do: decision
+
+  defp release_opts(opts, reason, extra) do
     Keyword.merge(
       [
         no_pr_target: "rework",
@@ -76,34 +77,36 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
         fun.(issue)
 
       _ ->
-        case Keyword.get(opts, :open_pr_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1).(issue.identifier) do
-          {:ok, nil} ->
-            {:ok, "rework"}
+        fetch_open_pr(issue, opts)
+    end
+  end
 
-          {:ok, %{"number" => number}} ->
-            fetch = Keyword.get(opts, :pr_fetcher, &Aiur.GitHub.Client.fetch_open_pull_request/1)
+  defp fetch_open_pr(issue, opts) do
+    fetcher = Keyword.get(opts, :open_pr_fetcher, &CodeHost.fetch_open_pull_request_for_branch/1)
 
-            case fetch.(number) do
-              {:ok, %{"draft" => true}} ->
-                {:ok, "rework"}
+    case fetcher.(issue.identifier) do
+      {:ok, nil} -> {:ok, "rework"}
+      {:ok, %{"number" => number}} -> fetch_and_classify_pr(number, opts)
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-              {:ok, %{} = pr} ->
-                case Aiur.Orchestrator.ReworkGate.open_pull_request_rework_verdict(pr, opts) do
-                  {:ok, :rework} -> {:ok, "rework"}
-                  {:skip, :no_unresolved_review_threads} -> {:ok, "human-review"}
-                  {:error, reason} -> {:error, reason}
-                end
+  defp fetch_and_classify_pr(number, opts) do
+    fetch = Keyword.get(opts, :pr_fetcher, &Client.fetch_open_pull_request/1)
 
-              {:ok, nil} ->
-                {:error, :pull_request_changed}
+    case fetch.(number) do
+      {:ok, %{"draft" => true}} -> {:ok, "rework"}
+      {:ok, %{} = pr} -> classify_pr(pr, opts)
+      {:ok, nil} -> {:error, :pull_request_changed}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-              {:error, reason} ->
-                {:error, reason}
-            end
-
-          {:error, reason} ->
-            {:error, reason}
-        end
+  defp classify_pr(pr, opts) do
+    case ReworkGate.open_pull_request_rework_verdict(pr, opts) do
+      {:ok, :rework} -> {:ok, "rework"}
+      {:skip, :no_unresolved_review_threads} -> {:ok, "human-review"}
+      {:error, reason} -> {:error, reason}
     end
   end
 

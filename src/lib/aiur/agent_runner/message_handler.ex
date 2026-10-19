@@ -17,6 +17,7 @@ defmodule Aiur.AgentRunner.MessageHandler do
 
   alias Aiur.AgentRunner.CodexUpdateRelay
   alias Aiur.AgentRunner.LiveObserver
+  alias Aiur.AgentRunner.TurnProgress
   alias Aiur.Protocol.MapAccess
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.Signal
@@ -245,7 +246,7 @@ defmodule Aiur.AgentRunner.MessageHandler do
   def send_worker_runtime_info(_recipient, _issue, _worker_host, _workspace), do: :ok
 
   defp workspace_fingerprint(workspace, worker_host) do
-    Aiur.AgentRunner.TurnProgress.workspace_digest(workspace, worker_host)
+    TurnProgress.workspace_digest(workspace, worker_host)
   end
 
   @doc false
