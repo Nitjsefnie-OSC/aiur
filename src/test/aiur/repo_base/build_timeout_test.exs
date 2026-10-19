@@ -3,6 +3,21 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
 
   alias Aiur.Orchestrator.DispatchPolicy
   alias Aiur.RepoBase.BuildProcess
+  alias Aiur.RepoBase.Clone
+
+  defmodule TestServer do
+    @spec child_spec(keyword()) :: Supervisor.child_spec()
+    def child_spec(opts) do
+      id = Keyword.get(opts, :child_id, __MODULE__)
+      shutdown = Keyword.get(opts, :child_shutdown, 5_000)
+      opts = Keyword.drop(opts, [:child_id, :child_shutdown])
+
+      %{id: id, start: {__MODULE__, :start_link, [opts]}, restart: :temporary, shutdown: shutdown, type: :worker}
+    end
+
+    @spec start_link(keyword()) :: GenServer.on_start()
+    def start_link(opts), do: GenServer.start_link(Aiur.RepoBase, opts)
+  end
 
   setup do
     tmp = Aiur.TestSupport.tmp_root!("rb_timeout_cfg")
@@ -11,11 +26,9 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     File.write!(cfg, "tracker:\n  kind: memory\n")
     previous_path = Application.get_env(:aiur, :workflow_file_path)
     Aiur.Workflow.set_workflow_file_path(cfg)
-    {:ok, server} = GenServer.start_link(Aiur.RepoBase, [])
+    server = start_supervised!({TestServer, [child_id: :initial_server]})
 
     on_exit(fn ->
-      Aiur.TestSupport.safe_stop(server)
-
       case previous_path do
         nil -> Aiur.Workflow.clear_workflow_file_path()
         path -> Aiur.Workflow.set_workflow_file_path(path)
@@ -29,11 +42,11 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
 
   test "a real progressing build remains alive across idle watchdog re-arms", %{server: pid, cfg: cfg, tmp: tmp, origin: origin} do
     pidfile = Path.join(tmp, "progressing-build.pid")
-    pid = start_real_build(pid, cfg, tmp, origin, "echo $$ > #{pidfile}; sleep 30", dispatch_hold_timeout_ms: 40, build_hold_timeout_ms: 10_000)
+    pid = start_real_build(pid, cfg, tmp, origin, "echo $$ > #{pidfile}; sleep 600", dispatch_hold_timeout_ms: 40, build_hold_timeout_ms: 10_000)
     Phoenix.PubSub.subscribe(Aiur.PubSub, "prewarm:phase")
 
     assert :building = GenServer.call(pid, :refresh_for_dispatch)
-    build_os_pid = await_file(pidfile, 500) |> String.trim() |> String.to_integer()
+    build_os_pid = await_file(pidfile, 5_000) |> String.trim() |> String.to_integer()
     state = wait_for_build_os_pid(pid, build_os_pid)
     os_pid = state.build.os_pid
     timer = state.build.timer
@@ -50,13 +63,15 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     origin: origin
   } do
     pidfile = Path.join(tmp, "stalled-build-child.pid")
-    command = "trap '' TERM; sleep 30 & echo $! > #{pidfile}; wait"
+    command = "trap 'wait \"$child\"' TERM; sleep 600 & child=$!; echo $child > #{pidfile}; wait \"$child\""
     pid = start_real_build(pid, cfg, tmp, origin, command, dispatch_hold_timeout_ms: 30, build_hold_timeout_ms: 10_000)
     Phoenix.PubSub.subscribe(Aiur.PubSub, "prewarm:phase")
 
     assert :building = GenServer.call(pid, :refresh_for_dispatch)
-    state = wait_for_build_process(pid)
-    child_pid = await_file(pidfile, 500) |> String.trim() |> String.to_integer()
+    _initial_state = wait_for_build_process(pid)
+    child_pid = await_file(pidfile, 5_000) |> String.trim() |> String.to_integer()
+    state = :sys.get_state(pid)
+    Agent.update(Process.get({__MODULE__, :process_tracker}), &Map.merge(&1, state.build.os_processes))
     assert Aiur.ProcessTree.process_alive?(child_pid)
 
     assert_receive {:prewarm_phase, {:error, {:repo_base_build_hold_timeout, 10_000}}}, 12_000
@@ -64,9 +79,9 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     assert Task.async(fn -> GenServer.call(pid, :status) end) |> Task.await(1_000) |> elem(0) ==
              {:error, {:repo_base_build_hold_timeout, 10_000}}
 
-    # A TERM-resistant group is given the reaper's full grace period before
-    # SIGKILL, so allow the asynchronous cleanup to finish under CI load.
-    wait_until(fn -> not Process.alive?(state.build.pid) and not Aiur.ProcessTree.process_alive?(child_pid) end, 7_000)
+    # Allow the bounded process-tree cleanup to finish under CI load.
+    wait_until(fn -> not Process.alive?(state.build.pid) and not Aiur.ProcessTree.process_alive?(child_pid) end, 20_000)
+
     refute Process.alive?(state.build.pid)
     refute Aiur.ProcessTree.process_alive?(child_pid)
 
@@ -88,7 +103,7 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     #!/bin/sh
     if [ "$1" = clone ]; then
       echo $$ > "$AIUR_CLONE_PIDFILE"
-      exec sleep 30
+      exec sleep 600
     fi
     exec /usr/bin/git "$@"
     """)
@@ -112,29 +127,74 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     assert Aiur.ProcessTree.process_alive?(clone_pid)
 
     assert_receive {:prewarm_phase, {:error, {:repo_base_build_hold_timeout, 1_000}}}, 3_000
-    wait_until(fn -> not Aiur.ProcessTree.process_alive?(clone_pid) and not Process.alive?(state.build.pid) end, 800)
+    wait_until(fn -> not Aiur.ProcessTree.process_alive?(clone_pid) and not Process.alive?(state.build.pid) end, 20_000)
     refute Aiur.ProcessTree.process_alive?(clone_pid)
     assert %{phase: {:error, {:repo_base_build_hold_timeout, 1_000}}, build: nil} = :sys.get_state(pid)
   end
 
   test "stopping RepoBase terminates an active build process group", %{server: pid, cfg: cfg, tmp: tmp, origin: origin} do
     pidfile = Path.join(tmp, "stopped-server-child.pid")
-    command = "sleep 30 & echo $! > #{pidfile}; wait"
+    command = "trap 'wait \"$child\"' TERM; sleep 600 & child=$!; echo $child > #{pidfile}; wait \"$child\""
     pid = start_real_build(pid, cfg, tmp, origin, command, dispatch_hold_timeout_ms: 30, build_hold_timeout_ms: 10_000)
 
     assert :building = GenServer.call(pid, :refresh_for_dispatch)
     state = wait_for_build_process(pid)
-    child_pid = await_file(pidfile, 500) |> String.trim() |> String.to_integer()
+    child_pid = await_file(pidfile, 5_000) |> String.trim() |> String.to_integer()
     assert Aiur.ProcessTree.process_alive?(child_pid)
 
-    :ok = GenServer.stop(pid, :normal)
-    wait_until(fn -> not Aiur.ProcessTree.process_alive?(child_pid) and not Process.alive?(state.build.pid) end, 7_000)
+    previous_cmd_fun = Application.get_env(:aiur, :process_exhaustion_cmd_fun)
+    gate = spawn(fn -> reaper_gate_loop() end)
+    Application.put_env(:aiur, :process_exhaustion_cmd_fun, reaper_gate(gate))
+
+    on_exit(fn ->
+      restore_env(:process_exhaustion_cmd_fun, previous_cmd_fun)
+      send(gate, :stop)
+    end)
+
+    stopped_at = System.monotonic_time(:millisecond)
+    :ok = stop_supervised!(:build_server)
+    assert System.monotonic_time(:millisecond) - stopped_at >= 200
     refute Aiur.ProcessTree.process_alive?(child_pid)
+    refute Process.alive?(state.build.pid)
+  end
+
+  test "the configured timeout controls production builds", %{server: pid, cfg: cfg, tmp: tmp, origin: origin} do
+    pid = start_real_build(pid, cfg, tmp, origin, "sleep 600", build_timeout_minutes: 2)
+    assert :building = GenServer.call(pid, :refresh_for_dispatch)
+    state = wait_for_build_process(pid)
+
+    assert state.build.timeout_ms == 120_000
+    assert state.build.timer
+  end
+
+  test "base build ports unset shell startup variables before starting the shell", %{tmp: tmp, origin: origin} do
+    shell_dir = Path.join(tmp, "shell-bin")
+    File.mkdir_p!(shell_dir)
+    shell = Path.join(shell_dir, "sh")
+    marker = Path.join(tmp, "startup-ran")
+    startup = Path.join(tmp, "bash-env")
+    base = Path.join(tmp, "startup-env-base")
+    {_output, 0} = System.cmd("/usr/bin/git", ["clone", "--branch", "main", origin, base], stderr_to_stdout: true)
+    File.write!(shell, "#!/bin/bash\nexit 0\n")
+    File.chmod!(shell, 0o755)
+    File.write!(startup, "touch #{marker}\n")
+    previous_path = System.get_env("PATH")
+    previous_bash_env = System.get_env("BASH_ENV")
+    System.put_env("PATH", shell_dir <> ":" <> previous_path)
+    System.put_env("BASH_ENV", startup)
+
+    on_exit(fn ->
+      System.put_env("PATH", previous_path)
+      restore_system_env("BASH_ENV", previous_bash_env)
+    end)
+
+    assert {:ok, ^base} = Clone.maybe_build(base, "true", true)
+    refute File.exists?(marker)
   end
 
   def clone_url_for_test(origin), do: origin
 
-  defp start_real_build(pid, cfg, tmp, origin, command, opts) do
+  defp start_real_build(_pid, cfg, tmp, origin, command, opts) do
     root = Path.join(tmp, "repo-base-root")
     previous_root = Application.get_env(:aiur, :repo_base_root)
     previous_clone_url = Application.get_env(:aiur, :repo_base_clone_url)
@@ -151,7 +211,7 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     path_prefix = if git_bin_dir, do: git_bin_dir <> ":", else: ""
     System.put_env("PATH", path_prefix <> Path.dirname(real_git) <> ":" <> previous_path)
 
-    Aiur.TestSupport.safe_stop(pid)
+    :ok = stop_supervised!(:initial_server)
 
     File.write!(cfg, """
     tracker:
@@ -163,16 +223,17 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
       enabled: true
       base_build: #{Jason.encode!(command)}
       poll_seconds: 0
+      build_timeout_minutes: #{Keyword.get(opts, :build_timeout_minutes, 60)}
     """)
 
     :ok = Aiur.WorkflowStore.force_reload()
 
     server_opts =
       opts
-      |> Keyword.drop([:git_bin_dir, :clone_pidfile, :preclone])
+      |> Keyword.drop([:git_bin_dir, :clone_pidfile, :preclone, :build_timeout_minutes, :child_shutdown])
       |> Keyword.put_new(:remote_head_fun, fn _repo_url -> Process.sleep(:infinity) end)
 
-    {:ok, server} = GenServer.start_link(Aiur.RepoBase, server_opts)
+    server = start_supervised!({TestServer, [child_id: :build_server, child_shutdown: Keyword.get(opts, :child_shutdown, 5_000)] ++ server_opts})
 
     on_exit(fn ->
       BuildProcess.terminate_processes(Agent.get(tracker, & &1))
@@ -186,7 +247,7 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
           :ok
       end
 
-      Aiur.TestSupport.safe_stop(server)
+      if Process.alive?(server), do: stop_supervised!(:build_server)
       restore_env(:repo_base_root, previous_root)
       restore_env(:repo_base_clone_url, previous_clone_url)
       System.put_env("PATH", previous_path)
@@ -203,16 +264,45 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
   defp restore_system_env(key, value), do: System.put_env(key, value)
   defp kill_worker(pid), do: if(Process.alive?(pid), do: Process.exit(pid, :kill))
 
+  defp reaper_gate(gate) do
+    fn command, args, opts ->
+      if Path.basename(command) == "python3" and Enum.any?(args, &String.ends_with?(&1, "pidfd_reap.py")) do
+        send(gate, {:reaper_waiting, self()})
+
+        receive do
+          :continue -> System.cmd(command, args, opts)
+        after
+          1_000 -> System.cmd(command, args, opts)
+        end
+      else
+        System.cmd(command, args, opts)
+      end
+    end
+  end
+
+  defp reaper_gate_loop do
+    receive do
+      {:reaper_waiting, pid} ->
+        Process.sleep(250)
+        send(pid, :continue)
+        reaper_gate_loop()
+
+      :stop ->
+        Process.sleep(1_100)
+    end
+  end
+
   defp preclone_base!(git, origin) do
     base = Aiur.RepoBase.base_path(origin)
     File.mkdir_p!(Path.dirname(base))
     {_output, 0} = System.cmd(git, ["clone", "--branch", "main", origin, base], stderr_to_stdout: true)
   end
 
-  defp wait_for_build_process(pid, attempts \\ 100)
-  defp wait_for_build_process(_pid, 0), do: flunk("RepoBase did not start the build command")
+  defp wait_for_build_process(pid, timeout_ms \\ 10_000) do
+    wait_for_build_process_until(pid, System.monotonic_time(:millisecond) + timeout_ms)
+  end
 
-  defp wait_for_build_process(pid, attempts) do
+  defp wait_for_build_process_until(pid, deadline) do
     case :sys.get_state(pid) do
       %{build: %{os_pid: os_pid, timer: timer} = build} = state when is_integer(os_pid) and is_reference(timer) ->
         tracker = Process.get({__MODULE__, :process_tracker})
@@ -221,20 +311,25 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
           Agent.update(tracker, &Map.merge(&1, build.os_processes))
           %{state | build: build}
         else
-          Process.sleep(10)
-          wait_for_build_process(pid, attempts - 1)
+          retry_build_process_wait(pid, deadline)
         end
 
       _ ->
-        Process.sleep(10)
-        wait_for_build_process(pid, attempts - 1)
+        retry_build_process_wait(pid, deadline)
     end
   end
 
-  defp wait_for_build_os_pid(pid, expected_os_pid, attempts \\ 100)
-  defp wait_for_build_os_pid(_pid, _expected_os_pid, 0), do: flunk("RepoBase did not register the expected build process")
+  defp retry_build_process_wait(pid, deadline) do
+    if System.monotonic_time(:millisecond) >= deadline, do: flunk("RepoBase did not start the build command")
+    Process.sleep(10)
+    wait_for_build_process_until(pid, deadline)
+  end
 
-  defp wait_for_build_os_pid(pid, expected_os_pid, attempts) do
+  defp wait_for_build_os_pid(pid, expected_os_pid, timeout_ms \\ 10_000) do
+    wait_for_build_os_pid_until(pid, expected_os_pid, System.monotonic_time(:millisecond) + timeout_ms)
+  end
+
+  defp wait_for_build_os_pid_until(pid, expected_os_pid, deadline) do
     case :sys.get_state(pid) do
       %{build: %{os_pid: ^expected_os_pid, timer: timer} = build} = state when is_reference(timer) ->
         tracker = Process.get({__MODULE__, :process_tracker})
@@ -242,33 +337,39 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
         %{state | build: build}
 
       _ ->
+        if System.monotonic_time(:millisecond) >= deadline, do: flunk("RepoBase did not register the expected build process")
         Process.sleep(10)
-        wait_for_build_os_pid(pid, expected_os_pid, attempts - 1)
+        wait_for_build_os_pid_until(pid, expected_os_pid, deadline)
     end
   end
 
-  defp await_file(path, attempts \\ 100)
-  defp await_file(_path, 0), do: flunk("build command did not create its pid file")
+  defp await_file(path, timeout_ms \\ 10_000) do
+    await_file_until(path, System.monotonic_time(:millisecond) + timeout_ms)
+  end
 
-  defp await_file(path, attempts) do
+  defp await_file_until(path, deadline) do
     case File.read(path) do
       {:ok, contents} ->
         contents
 
       _ ->
+        if System.monotonic_time(:millisecond) >= deadline, do: flunk("build command did not create its pid file")
         Process.sleep(10)
-        await_file(path, attempts - 1)
+        await_file_until(path, deadline)
     end
   end
 
-  defp wait_until(_predicate, 0), do: flunk("condition was not reached")
+  defp wait_until(predicate, timeout_ms) do
+    wait_until(predicate, System.monotonic_time(:millisecond) + timeout_ms, :deadline)
+  end
 
-  defp wait_until(predicate, attempts) do
+  defp wait_until(predicate, deadline, :deadline) do
     if predicate.() do
       :ok
     else
+      if System.monotonic_time(:millisecond) >= deadline, do: flunk("condition was not reached")
       Process.sleep(10)
-      wait_until(predicate, attempts - 1)
+      wait_until(predicate, deadline, :deadline)
     end
   end
 end

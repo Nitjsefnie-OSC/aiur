@@ -213,6 +213,7 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 | --- | --- | --- | --- |
 | `prewarm.base_build` | string | none | One-time base build command. |
 | `prewarm.base_build_file` | string | none | Sibling script loaded into `base_build`. |
+| `prewarm.build_timeout_minutes` | integer | 60 | Total time allowed for a base clone, fetch, and build. |
 | `prewarm.enabled` | boolean | false | Opts into one warm base checkout. |
 | `prewarm.poll_seconds` | integer | 0 | Base-refresh interval; 0 disables polling. |
 
@@ -220,8 +221,9 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 
 When a prewarm build or freshness probe holds fleet dispatch, an independent idle
 watchdog releases the gate for cold-clone fallback once the hold has been stalled
-for 10 minutes. Each base refresh has a one-hour total runtime bound from before clone/fetch;
-Aiur terminates its process group at expiry and releases dispatch for cold-clone fallback.
+for 10 minutes. Each base refresh has a total runtime bound from before clone/fetch,
+set by `prewarm.build_timeout_minutes` (60 minutes by default). At expiry Aiur
+terminates its process group and releases dispatch for cold-clone fallback.
 
 For the idle watchdog, "stalled" means the hold's worker is dead with no
 completion signal in flight. Timed-out builds are not retried automatically; restart Aiur to retry.

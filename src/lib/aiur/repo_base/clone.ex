@@ -110,7 +110,7 @@ defmodule Aiur.RepoBase.Clone do
     scrubbed = AgentEnvironment.scrub_shell_command(command, github_credential: false)
 
     {out, status} =
-      run_command("sh", ["-c", scrubbed], base_path, base_env(base_path) ++ AgentEnvironment.system_shell_startup_env(), on_process)
+      run_command("sh", ["-c", scrubbed], base_path, base_env(base_path) ++ AgentEnvironment.port_shell_startup_env(), on_process)
 
     case status do
       0 -> :ok
@@ -131,6 +131,8 @@ defmodule Aiur.RepoBase.Clone do
 
     case Port.info(port, :os_pid) do
       {:os_pid, os_pid} ->
+        process_group = Aiur.ProcessTree.process_group_for_pid(os_pid)
+
         identity =
           case Aiur.ProcessTree.process_identity(os_pid) do
             {:ok, value} -> {:known, value}
@@ -138,7 +140,6 @@ defmodule Aiur.RepoBase.Clone do
           end
 
         on_process.(:started, os_pid, nil, identity)
-        process_group = Aiur.ProcessTree.process_group_for_pid(os_pid)
         on_process.(:group, os_pid, process_group, identity)
         {out, status} = collect_port_output(port, [])
         on_process.(:finished, os_pid, process_group, identity)
@@ -158,11 +159,14 @@ defmodule Aiur.RepoBase.Clone do
   defp maybe_put_cwd(options, cwd), do: Keyword.put(options, :cd, String.to_charlist(cwd))
 
   defp port_env(overrides) do
-    System.get_env()
-    |> Map.merge(Map.new(overrides))
-    |> Enum.reject(fn {_name, value} -> is_nil(value) end)
-    |> Enum.map(fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end)
+    Enum.map(overrides, fn
+      {name, value} when is_nil(value) or value == false -> {port_charlist(name), false}
+      {name, value} -> {port_charlist(name), port_charlist(value)}
+    end)
   end
+
+  defp port_charlist(value) when is_binary(value), do: String.to_charlist(value)
+  defp port_charlist(value) when is_list(value), do: value
 
   @doc false
   @spec git([String.t()], Path.t() | nil) :: {String.t(), non_neg_integer()}

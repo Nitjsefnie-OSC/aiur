@@ -22,7 +22,12 @@ defmodule Aiur.RepoBase.BuildProcess do
 
   @doc false
   @spec terminate(map()) :: :ok
-  def terminate(%{build: %{}} = state), do: kill_async(state.build)
+  def terminate(%{build: %{pid: worker_pid} = build}) do
+    terminate_processes(Map.get(build, :os_processes, %{}))
+    if Process.alive?(worker_pid), do: Process.exit(worker_pid, :kill)
+    :ok
+  end
+
   def terminate(_state), do: :ok
 
   @doc false

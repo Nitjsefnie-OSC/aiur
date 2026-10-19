@@ -23,9 +23,11 @@ defmodule Aiur.RepoBase do
   alias Aiur.Config
   alias Aiur.Config.Paths
   alias Aiur.RepoBase.BuildProcess
+  alias Aiur.RepoBase.BuildTimeout
   alias Aiur.RepoBase.Clone
   alias Aiur.RepoBase.Migration
   alias Aiur.RepoBase.Preparer
+  alias Aiur.RepoBase.Settings
   alias Aiur.RepoBase.StateTree
 
   # The probe owns its 30-second timeout. The idle watchdog releases holds whose
@@ -189,6 +191,7 @@ defmodule Aiur.RepoBase do
        remote_head_fun: Keyword.get(opts, :remote_head_fun, &Clone.remote_head/1),
        dispatch_hold_timeout_ms: Keyword.get(opts, :dispatch_hold_timeout_ms, @dispatch_hold_timeout_ms),
        build_hold_timeout_ms: Keyword.get(opts, :build_hold_timeout_ms, @build_hold_timeout_ms),
+       build_hold_timeout_ms_override: Keyword.get(opts, :build_hold_timeout_ms),
        dispatch_watchdog: nil
      }}
   end
@@ -301,15 +304,22 @@ defmodule Aiur.RepoBase do
     end
   end
 
-  def handle_info({:build_hold_timeout, build_ref}, %{build: %{ref: build_ref}, phase: :building} = state) do
-    reason = {:repo_base_build_hold_timeout, state.build_hold_timeout_ms}
-    log_and_emit_error(reason)
+  def handle_info({:build_hold_timeout, timeout_ref}, %{build: %{timeout_ref: timeout_ref, deadline: deadline}} = state) do
+    case BuildTimeout.remaining(deadline) do
+      remaining when remaining > 0 ->
+        timer = BuildTimeout.schedule(self(), timeout_ref, deadline)
+        {:noreply, %{state | build: %{state.build | timer: timer}}}
 
-    {:noreply,
-     state
-     |> abort_build()
-     |> clear_dispatch_watchdog()
-     |> Map.merge(%{phase: {:error, reason}, freshness: :unknown})}
+      _ ->
+        reason = {:repo_base_build_hold_timeout, state.build_hold_timeout_ms}
+        log_and_emit_error(reason)
+
+        {:noreply,
+         state
+         |> abort_build()
+         |> clear_dispatch_watchdog()
+         |> Map.merge(%{phase: {:error, reason}, freshness: :unknown})}
+    end
   end
 
   def handle_info({:build_hold_timeout, _build_ref}, state), do: {:noreply, state}
@@ -319,7 +329,7 @@ defmodule Aiur.RepoBase do
   ## ---- async orchestration ----
 
   defp do_refresh_async(state) do
-    case resolve() do
+    case Settings.resolve() do
       :disabled ->
         disable_prewarm(state)
 
@@ -341,7 +351,7 @@ defmodule Aiur.RepoBase do
   # next probe and holds until it resolves. This keeps a remote advance from
   # creating a workspace off the previous recorded clone head.
   defp do_refresh_for_dispatch(state) do
-    case resolve() do
+    case Settings.resolve() do
       :disabled ->
         disable_prewarm(state)
 
@@ -373,7 +383,7 @@ defmodule Aiur.RepoBase do
   defp on_remote_head(state, {:error, reason}), do: probe_failed(state, reason)
 
   defp trigger_build(state) do
-    case resolve() do
+    case Settings.resolve() do
       {:ok, repo_url, base, command} -> start_build(state, base, repo_url, command)
       :disabled -> disable_prewarm(state)
     end
@@ -381,12 +391,15 @@ defmodule Aiur.RepoBase do
 
   defp start_build(state, base, repo_url, command) do
     kill_build(state)
+    timeout_ms = BuildTimeout.timeout_ms(state.build_hold_timeout_ms_override)
+    deadline = BuildTimeout.deadline(timeout_ms)
+    timeout_ref = make_ref()
+    timer = BuildTimeout.schedule(self(), timeout_ref, deadline)
     parent = self()
-
     {pid, ref} = spawn_monitor(fn -> build_worker(parent, base, repo_url, command) end)
-    timer = Process.send_after(self(), {:build_hold_timeout, ref}, state.build_hold_timeout_ms)
-    build = %{pid: pid, ref: ref, head: nil, os_pid: nil, os_processes: %{}, timer: timer}
-    %{state | phase: :building, base_path: base, build: build, freshness: :unknown}
+
+    build = BuildTimeout.build_state(pid, ref, timeout_ref, timer, deadline, timeout_ms)
+    %{state | phase: :building, base_path: base, build: build, freshness: :unknown, build_hold_timeout_ms: timeout_ms}
   end
 
   defp abort_build(%{build: %{}} = state) do
@@ -451,18 +464,6 @@ defmodule Aiur.RepoBase do
   @doc false
   @spec read_ledger(Path.t(), atom(), {module(), atom()} | nil) :: {:ok, String.t()} | {:error, term()}
   defdelegate read_ledger(path, kind, validator), to: Aiur.RepoBase.Ledger
-
-  # Pre-warm needs an enabled build command and an adapter-provided clone source.
-  defp resolve do
-    with {:ok, settings} <- Config.settings(),
-         %{enabled: true, base_build: command} when is_binary(command) and command != "" <-
-           settings.prewarm,
-         url when is_binary(url) and url != "" <- Clone.clone_url() do
-      {:ok, url, base_path(url), command}
-    else
-      _ -> :disabled
-    end
-  end
 
   defp schedule_poll do
     case poll_interval_ms() do
