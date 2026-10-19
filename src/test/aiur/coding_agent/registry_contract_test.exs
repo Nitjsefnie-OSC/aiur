@@ -6,6 +6,7 @@ defmodule Aiur.CodingAgent.RegistryContractTest do
   @moduletag :r7_characterization
 
   alias Aiur.CodingAgent.Registry
+  alias Aiur.Harness.Capabilities
 
   @required_keys [
     :adapter,
@@ -56,6 +57,35 @@ defmodule Aiur.CodingAgent.RegistryContractTest do
 
   defp valid_delivery_value?(field, value),
     do: Map.has_key?(@delivery_values, field) and value in Map.fetch!(@delivery_values, field)
+
+  # Future regression guard: nil-backend pane interrupts rely on this uniqueness.
+  test "at most one backend uses the tmux pane transport" do
+    pane_backends =
+      Enum.filter(Registry.entries(), fn {key, entry} ->
+        Capabilities.delivery_primitives_for_entry(key, entry).transport == :tmux_pane
+      end)
+
+    assert length(pane_backends) <= 1
+  end
+
+  @tag r7_characterization: false
+  test "declared children are valid child specs with no conflicting ids" do
+    assert failures(fn _key, entry ->
+             for child <- Map.get(entry, :children, []),
+                 not match?(%{id: _}, safe_child_spec(child)),
+                 do: {:bad_child, child}
+           end) == []
+
+    specs = for {_key, entry} <- Registry.entries(), child <- Map.get(entry, :children, []), do: Supervisor.child_spec(child, [])
+
+    assert specs |> Enum.uniq() |> Enum.frequencies_by(& &1.id) |> Enum.filter(fn {_, n} -> n > 1 end) == []
+  end
+
+  defp safe_child_spec(child) do
+    Supervisor.child_spec(child, [])
+  rescue
+    _ -> :invalid
+  end
 
   # Future regression guards for optional launch/display capabilities.
   @tag r7_characterization: false
