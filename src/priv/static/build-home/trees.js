@@ -123,7 +123,14 @@ export async function fitTree(id) {
     const settled = () => {
       if (!finish()) return release();
       // Keep edge paging paused until native scrolling can no longer move its anchor.
-      if (ctx.snapping || ctx.isScrolling?.()) { life.frame(secondFrame, settled); return; }
+      const columns = fx.visibleCols();
+      const pendingColumns = columns.length && columns.join('|') !== ctx.cols.join('|');
+      cardOf(id)?.getBoundingClientRect();
+      const moving = ctx.content.getAnimations({ subtree: true }).some(a =>
+        ['left', 'width', 'top', 'height'].includes(a.transitionProperty) && a.playState === 'running');
+      if (ctx.snapping || ctx.isScrolling?.() || pendingColumns || ctx.content.querySelector('.bd-card.noanim') || moving) {
+        life.frame(secondFrame, settled); return;
+      }
       try { fx.update(); lockTree(id); } finally { release(); }
     };
     life.frame(firstFrame, () => {
