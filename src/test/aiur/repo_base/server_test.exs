@@ -304,6 +304,7 @@ defmodule Aiur.RepoBase.ServerTest do
     } do
       pid = restart_enabled_server(pid, cfg, dispatch_hold_timeout_ms: 50)
       build_pid = install_live_build(pid, "same")
+      build_monitor = Process.monitor(build_pid)
 
       assert :building = GenServer.call(pid, :refresh_for_dispatch)
       assert %{dispatch_watchdog: %{}} = :sys.get_state(pid)
@@ -326,7 +327,7 @@ defmodule Aiur.RepoBase.ServerTest do
 
       assert :idle = GenServer.call(pid, :refresh_for_dispatch)
       assert %{phase: :idle, build: nil, probe: nil, dispatch_watchdog: nil} = :sys.get_state(pid)
-      refute Process.alive?(build_pid)
+      assert_receive {:DOWN, ^build_monitor, :process, ^build_pid, :killed}, 1_000
     end
 
     test "a hold with no worker record is released by the watchdog fallback", %{server: pid, cfg: cfg} do

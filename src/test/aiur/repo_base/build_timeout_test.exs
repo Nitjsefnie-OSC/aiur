@@ -64,7 +64,9 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     assert Task.async(fn -> GenServer.call(pid, :status) end) |> Task.await(1_000) |> elem(0) ==
              {:error, {:repo_base_build_hold_timeout, 10_000}}
 
-    wait_until(fn -> not Process.alive?(state.build.pid) and not Aiur.ProcessTree.process_alive?(child_pid) end, 800)
+    # A TERM-resistant group is given the reaper's full grace period before
+    # SIGKILL, so allow the asynchronous cleanup to finish under CI load.
+    wait_until(fn -> not Process.alive?(state.build.pid) and not Aiur.ProcessTree.process_alive?(child_pid) end, 7_000)
     refute Process.alive?(state.build.pid)
     refute Aiur.ProcessTree.process_alive?(child_pid)
 
@@ -126,7 +128,7 @@ defmodule Aiur.RepoBase.BuildTimeoutTest do
     assert Aiur.ProcessTree.process_alive?(child_pid)
 
     :ok = GenServer.stop(pid, :normal)
-    wait_until(fn -> not Aiur.ProcessTree.process_alive?(child_pid) and not Process.alive?(state.build.pid) end, 800)
+    wait_until(fn -> not Aiur.ProcessTree.process_alive?(child_pid) and not Process.alive?(state.build.pid) end, 7_000)
     refute Aiur.ProcessTree.process_alive?(child_pid)
   end
 
