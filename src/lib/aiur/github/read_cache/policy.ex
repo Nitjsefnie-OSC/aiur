@@ -309,7 +309,6 @@ defmodule Aiur.GitHub.ReadCache.Policy do
   @spec classify(map()) :: decision()
   def classify(request) when is_map(request) do
     cond do
-      caller(request) == "ci_required_checks" -> {:no_cache, :unsafe_kind}
       Map.get(request, :method) != :get and not graphql_read?(request) -> {:no_cache, :write}
       unsafe?(request) -> {:no_cache, :unsafe_kind}
       # `Identity.extract/1` answers `[]` exactly when the repository cannot be
@@ -355,15 +354,15 @@ defmodule Aiur.GitHub.ReadCache.Policy do
     end
   end
 
-  # Branch existence, branch protection, the workflow contents/state/action
+  # Branch existence, branch rules and protection, the workflow contents/state/action
   # listings, and the ruleset list/detail — the CIReadiness config surface,
   # minus the bare repository read and the candidate issue list (see above).
   # The optional query string rides along so `?ref=`/`?per_page=` URLs match.
-  @repo_config_rest ~r{/repos/[^/?#]+/[^/?#]+(?:/branches/[^/?#]+(?:/protection)?|/contents/\.github/workflows(?:/[^/?#]+)?|/actions/workflows|/rulesets(?:/[^/?#]+)?)(?:\?[^#]*)?$}
+  @repo_config_rest ~r{/repos/[^/?#]+/[^/?#]+(?:/branches/[^/?#]+(?:/protection)?|/rules/branches/[^/?#]+|/contents/\.github/workflows(?:/[^/?#]+)?|/actions/workflows|/rulesets(?:/[^/?#]+)?)(?:\?[^#]*)?$}
 
   # The ranked REST shapes (#2352), in the order they are matched, mapping a URL
   # to the call family it belongs to. Repository configuration is classified
-  # only by the anchored `@repo_config_rest` row at the end — branch protection,
+  # only by the anchored `@repo_config_rest` row at the end — branch rules and protection,
   # `.github/workflows` contents, workflow lists and rulesets — never by a bare
   # `/contents/{path}` or `/branches` list. The anchored forms are the only
   # ones anyone reads, so widening to the bare prefixes would hand an hour-long

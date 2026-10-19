@@ -481,6 +481,7 @@ defmodule Aiur.GitHub.ReadCache do
        when is_integer(status) and status in 200..299 and is_list(errors) and errors != [],
        do: false
 
+  defp success?({:ok, %{status: 404, body: body}}) when is_map(body), do: true
   defp success?({:ok, %{status: status}}) when is_integer(status) and status in 200..299, do: true
   defp success?(_result), do: false
 
