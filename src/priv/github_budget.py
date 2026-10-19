@@ -3,8 +3,8 @@
 
 The broker deliberately persists only SHA-256 credential and consumer fingerprints. A
 single SQLite transaction covers every decision so independently started Aiur
-nodes and their shell wrappers share the same leases, rate ceiling, stagger,
-and cooldowns. Daemons use a resident line protocol; shell wrappers retain
+nodes and their shell wrappers share the leases, priority capacity, rate ceiling,
+stagger, and cooldowns. Daemons use a resident line protocol; shell wrappers retain
 the one-shot CLI against the same database.
 """
 
@@ -507,17 +507,14 @@ def acquire(args):
                 "SELECT expires_at_ms FROM cache_claims WHERE token_key = ? AND cache_key = ?",
                 (args.token_key, cache_key),
             ).fetchone()
-
         token_hold = 0 if args.ignore_token_cooldown else cooldown
         hold_until = max(token_hold, resource_hold[1] if resource_hold and resource_hold[1] else 0)
-
         max_inflight, max_inflight_per_endpoint, requests_per_minute, stagger_ms = conn.execute(
             "SELECT MIN(max_inflight), MIN(max_inflight_per_endpoint), "
             "MIN(requests_per_minute), MAX(stagger_ms) FROM policies WHERE token_key = ? "
             "AND observed_at_ms > ?",
             (args.token_key, now - POLICY_RECONCILE_WINDOW_MS),
         ).fetchone()
-
         if hold_until > now:
             conn.execute("COMMIT")
             remaining = hold_until - now
@@ -583,8 +580,10 @@ def acquire(args):
             (args.token_key, now - 60000),
         ).fetchone()[0]
 
-        if total >= max_inflight or family >= max_inflight_per_endpoint:
-            if total >= max_inflight:
+        main_watch_family = args.endpoint_family in {"commits", "actions", "rest"}
+        caps = (max_inflight if args.priority else max(1, max_inflight - 1), max_inflight_per_endpoint if args.priority or not main_watch_family else max(1, max_inflight_per_endpoint - 1))
+        if total >= caps[0] or family >= caps[1]:
+            if total >= caps[0]:
                 earliest_expiry = conn.execute(
                     "SELECT MIN(expires_at_ms) FROM leases WHERE token_key = ?", (args.token_key,)
                 ).fetchone()[0]
@@ -877,6 +876,7 @@ def parser():
 
     acquire_parser = commands.add_parser("acquire", parents=[common])
     acquire_parser.add_argument("--resource", required=True)
+    acquire_parser.add_argument("--priority", action="store_true")
     acquire_parser.add_argument("--consumer-key", required=True)
     acquire_parser.add_argument("--ignore-token-cooldown", action="store_true")
     acquire_parser.add_argument("--endpoint-family", required=True)

@@ -8,6 +8,8 @@ defmodule Aiur.MainWatch.GitHub do
 
   @spec poll(String.t(), [String.t()], keyword()) :: {:ok, map()} | {:error, term()}
   def poll(branch, workflows, opts \\ []) do
+    request = request_fun(opts)
+    opts = Keyword.put(opts, :request_fun, fn call -> request.(Map.put(call, :priority, :main_watch)) end)
     poll_once(branch, workflows, opts)
   end
 
@@ -42,6 +44,7 @@ defmodule Aiur.MainWatch.GitHub do
            url: url,
            token: jwt,
            caller: "main_watch_permissions",
+           priority: :main_watch,
            credential_pinned?: true,
            credential_id: "github_app",
            credential_class: "github_app_jwt"
@@ -60,7 +63,7 @@ defmodule Aiur.MainWatch.GitHub do
   def rerun(id, opts) when is_integer(id) and id > 0 do
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts) do
-      request = %{method: :post, url: "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs/#{id}/rerun", token: token, body: %{}, caller: "main_watch_canary"}
+      request = %{method: :post, url: "#{Transport.base_url()}/repos/#{owner}/#{repo}/actions/runs/#{id}/rerun", token: token, body: %{}, caller: "main_watch_canary", priority: :main_watch}
 
       case request_fun(opts).(request) do
         {:ok, %{status: 201}} -> :ok
@@ -288,7 +291,7 @@ defmodule Aiur.MainWatch.GitHub do
   defp request_fun(opts), do: Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
 
   defp github_request(token, caller, _opts) do
-    %{method: :get, token: token, caller: caller}
+    %{method: :get, token: token, caller: caller, priority: :main_watch}
   end
 
   defp request_error(%{status: 401} = response, caller, opts) do

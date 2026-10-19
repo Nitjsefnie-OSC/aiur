@@ -8,7 +8,7 @@ defmodule Aiur.MainWatch.GitHubTest do
   end
 
   test "chronological watched observations exclude website failures, pending and cancelled commits" do
-    request = fn %{url: url} ->
+    request = fn %{url: url, priority: :main_watch} ->
       cond do
         String.contains?(url, "/commits?") ->
           ok(Enum.map(~w(new pending cancelled old), &%{"sha" => &1}))

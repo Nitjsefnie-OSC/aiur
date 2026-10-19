@@ -460,8 +460,14 @@ defmodule Aiur.GitHub.Budget do
       Integer.to_string(graphql_limit),
       "--search-limit",
       Integer.to_string(search_limit)
-    ] ++ billable_args
+    ] ++ billable_args ++ priority_args(request)
   end
+
+  # The main watcher owns one reserved share of the existing in-flight cap so
+  # bulk polling cannot starve default-branch health checks. The broker still
+  # enforces cooldowns, hourly ceilings, and requests-per-minute for it.
+  defp priority_args(%{priority: :main_watch}), do: ["--priority"]
+  defp priority_args(_request), do: []
 
   # The daemon and each agent workspace are separate actors with separate hourly
   # ceilings. The daemon's own calls default to the daemon consumer and the

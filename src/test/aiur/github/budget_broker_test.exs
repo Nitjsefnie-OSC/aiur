@@ -72,10 +72,56 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
 
     Enum.each(tasks, &send(&1.pid, :go))
     results = Enum.map(tasks, &Task.await(&1, 5_000))
-    assert Enum.count(results, &match?({:ok, "granted " <> _, 0}, &1)) == 2
-    assert Enum.count(results, &match?({:ok, "wait " <> _, 0}, &1)) == 6
+    assert Enum.count(results, &match?({:ok, "granted " <> _, 0}, &1)) == 1
+    assert Enum.count(results, &match?({:ok, "wait " <> _, 0}, &1)) == 7
     assert {:ok, output, 0} = command(server, broker, ["snapshot" | common(root)])
-    assert %{"inflight" => %{"rest" => 2}, "admissions" => [_, _]} = Jason.decode!(output)
+    assert %{"inflight" => %{"rest" => 1}, "admissions" => [_]} = Jason.decode!(output)
+  end
+
+  test "main-watch priority can use its reserved concurrency without bypassing the RPM ceiling", %{root: root, server: server} do
+    base_args = acquire_args(root)
+    global_args = base_args |> replace_arg("--max-inflight", "2") |> replace_arg("--max-inflight-per-endpoint", "3")
+    assert {:ok, "granted " <> first, 0} = command(server, Budget.broker_path(), global_args)
+
+    # With endpoint capacity above the global cap, ordinary work cannot take
+    # the reserved global slot but priority work can.
+    assert {:ok, "wait " <> _, 0} = command(server, Budget.broker_path(), global_args)
+    assert {:ok, "granted " <> priority, 0} = command(server, Budget.broker_path(), global_args ++ ["--priority"])
+
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(first)] ++ common(root))
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(priority)] ++ common(root))
+
+    endpoint_args = base_args |> replace_arg("--max-inflight", "3") |> replace_arg("--max-inflight-per-endpoint", "2") |> replace_arg("--endpoint-family", "commits")
+    assert {:ok, "granted " <> first, 0} = command(server, Budget.broker_path(), endpoint_args)
+    assert {:ok, "wait " <> _, 0} = command(server, Budget.broker_path(), endpoint_args)
+    assert {:ok, "granted " <> priority, 0} = command(server, Budget.broker_path(), endpoint_args ++ ["--priority"])
+
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(first)] ++ common(root))
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(priority)] ++ common(root))
+
+    actions_args = replace_arg(endpoint_args, "--endpoint-family", "actions")
+    assert {:ok, "granted " <> actions_first, 0} = command(server, Budget.broker_path(), actions_args)
+    assert {:ok, "granted " <> actions_priority, 0} = command(server, Budget.broker_path(), actions_args ++ ["--priority"])
+
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(actions_first)] ++ common(root))
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(actions_priority)] ++ common(root))
+
+    search_args = replace_arg(endpoint_args, "--endpoint-family", "search")
+    assert {:ok, "granted " <> search_first, 0} = command(server, Budget.broker_path(), search_args)
+    assert {:ok, "granted " <> search_second, 0} = command(server, Budget.broker_path(), search_args)
+    assert {:ok, "wait " <> _, 0} = command(server, Budget.broker_path(), search_args)
+
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(search_first)] ++ common(root))
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(search_second)] ++ common(root))
+
+    one_per_minute =
+      base_args
+      |> List.replace_at(Enum.find_index(base_args, &(&1 == "10000")), "1")
+      |> List.replace_at(Enum.find_index(base_args, &(&1 == "shared-key")), "rate-key")
+
+    assert {:ok, "granted " <> lease, 0} = command(server, Budget.broker_path(), one_per_minute)
+    assert {:ok, "wait " <> _, 0} = command(server, Budget.broker_path(), one_per_minute ++ ["--priority"])
+    assert {:ok, _, 0} = command(server, Budget.broker_path(), ["release", "--lease-id", String.trim(lease)] ++ common(root))
   end
 
   test "one batch commits successful admissions and rolls back only its failing command", %{root: root} do
@@ -227,6 +273,11 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
 
   defp command(server, broker, args), do: BudgetBroker.command(server, broker, args, System.monotonic_time(:millisecond) + 5_000)
   defp common(root), do: ["--db", Path.join(root, "budget.sqlite3"), "--token-key", "shared-key"]
+
+  defp replace_arg(args, key, value) do
+    index = Enum.find_index(args, &(&1 == key))
+    List.replace_at(args, index + 1, value)
+  end
 
   defp acquire_args(root) do
     [
