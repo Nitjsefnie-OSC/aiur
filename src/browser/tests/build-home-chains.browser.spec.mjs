@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { card, tree, tray, open, reveal, lock, whole, fitWaitsForSnap } from './support/build-home-chains.mjs'
+import { card, tree, tray, open, reveal, lock, whole } from './support/build-home-chains.mjs'
 import { installFitObserver } from './support/build-home-chains-parity.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
-
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 async function diff(page, name) {
   const response = await page.request.get('/build-control/diff?name=' + name)
@@ -23,7 +22,6 @@ async function arrowPoint(page, rootId = null) {
     return null
   }, rootId)
 }
-
 test('B1 hover requires trees=1; arrow click still locks without it', async ({ page }) => {
   await open(page, { trees: false })
   await reveal(page, '9012'); await card(page, '9012').hover()
@@ -36,7 +34,6 @@ test('B1 hover requires trees=1; arrow click still locks without it', async ({ p
   await page.mouse.click(point.x, point.y)
   await expect.poll(() => page.evaluate(() => st.ctx.lockId)).toBe(point.id)
 })
-
 test('B2 hover clears after 280ms on empty content and 200ms on leaving', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' }); await open(page); await reveal(page, '9012')
   await card(page, '9012').hover()
@@ -55,7 +52,6 @@ test('B2 hover clears after 280ms on empty content and 200ms on leaving', async 
   await page.clock.runFor(30)
   await expect(page.locator('.bd-content')).not.toHaveClass(/hovering/)
 })
-
 test('B3 cycle overlay has three actual levels and restores focus', async ({ page }) => {
   await open(page); await whole(page, '3')
   await expect(tree(page).locator('.bd-tree-h')).toContainText('#3 · 3 tickets · 3 levels')
@@ -70,7 +66,6 @@ test('B3 cycle overlay has three actual levels and restores focus', async ({ pag
   await page.keyboard.press('Escape')
   await expect(tray(page)).not.toHaveClass(/locked/)
 })
-
 test('B4 unloaded members and unknown dependency counts are explicit', async ({ page }) => {
   await open(page); await whole(page, '9012')
   await expect(tree(page).locator('.bd-tree-h')).toContainText('4 not on the board')
@@ -78,7 +73,6 @@ test('B4 unloaded members and unknown dependency counts are explicit', async ({ 
   await whole(page, '9024')
   await expect(tree(page).locator('.bd-tree-h')).toContainText('links not yet known')
 })
-
 test('B5 unknown node text and hostile titles stay honest and escaped', async ({ page }) => {
   await open(page); await whole(page, '9021')
   await expect(tree(page).locator('.bd-tn[data-id="9020"] em')).toHaveText('State unknown · —')
@@ -92,7 +86,6 @@ test('B5 unknown node text and hostile titles stay honest and escaped', async ({
   const title = await page.evaluate(() => st.ctx.D.byId['9021'].title)
   await expect(tree(page).locator('.bd-tn[data-id="9021"] .bd-tn1 > span')).toHaveText(title)
 })
-
 test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
@@ -114,7 +107,6 @@ test('B6 Fit pages history, updates zoom and restores its lock', async ({ page }
   await expect(page).toHaveURL(new RegExp('span=' + span))
   await expect(page.locator('.bd-zv')).toHaveText(Math.round(100 / span) + '%')
 })
-
 test('B6 Fit cancels a live-band scroll frame already queued before centering', async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
@@ -139,8 +131,26 @@ test('B6 Fit cancels a live-band scroll frame already queued before centering', 
   expect(result.before).toBeGreaterThan(0)
   expect(result.after).toBe(result.before)
 })
-
-test('B6 Fit stays pending until native band snapping settles', async ({ page }) => fitWaitsForSnap(page))
+// Hold native snapping across Fit's final frame, then release it explicitly.
+test('B6 Fit stays pending until native band snapping settles', async ({ page }) => {
+  await open(page); await lock(page, '9012')
+  await page.evaluate(() => {
+    const tools = st.fx.renderTools, frame = st.ctx.life.frame
+    let symbols = 0
+    st.fx.renderTools = () => { tools(); st.ctx.snapping = true }
+    st.ctx.life.frame = (key, callback) => frame(key, now => {
+      callback(now)
+      if (typeof key === 'symbol' && ++symbols >= 2) window.fitFinalFrameRan = true
+    })
+    window.releaseFitSnap = () => { st.fx.renderTools = tools; st.ctx.life.frame = frame; st.ctx.snapping = false }
+  })
+  await page.locator('[data-lt="fit"]').click()
+  await expect.poll(() => page.evaluate(() => window.fitFinalFrameRan)).toBe(true)
+  expect(await page.evaluate(() => st.ctx.fitHistory !== null)).toBe(true)
+  await page.evaluate(() => releaseFitSnap())
+  await expect.poll(() => page.evaluate(() => st.ctx.fitHistory === null)).toBe(true)
+  await expect(tray(page)).toHaveClass(/locked/)
+})
 for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim a released lock`, async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
@@ -160,7 +170,6 @@ for (const mode of ['cancel', 'failure']) test(`B6 Fit ${mode} does not reclaim 
     expect(await page.evaluate(() => fitFailureRequests)).toBe(1)
   }
 })
-
 test('B6 Fit limits discovery when an unloaded link never resolves', async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
@@ -190,7 +199,6 @@ test('B6 Fit limits discovery when an unloaded link never resolves', async ({ pa
   expect(await page.evaluate(() => st.ctx.snap.history.more)).toBe(true)
   expect(await page.evaluate(() => !!st.ctx.D.byId['9001'])).toBe(false)
 })
-
 test('B6 Fit waits for delayed density pages before measuring a span', async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
@@ -227,7 +235,6 @@ test('B6 Fit waits for delayed density pages before measuring a span', async ({ 
   expect(await page.evaluate(() => densityProbe.premature)).toEqual([])
   expect(await page.evaluate(() => st.S.span)).toBeLessThan(30)
 })
-
 test('B6 Fit bounds empty density pages without an automatic paging bypass', async ({ page }) => {
   await open(page); await lock(page, '9012')
   await page.evaluate(() => {
@@ -255,7 +262,6 @@ test('B6 Fit bounds empty density pages without an automatic paging bypass', asy
   expect(await page.evaluate(() => st.ctx.snap.history.more)).toBe(true)
   expect(await page.evaluate(() => st.ctx.lockId)).toBe('9012')
 })
-
 test('B7 live dependencies refresh highlight, tab position and open overlay', async ({ page }) => {
   await open(page); await whole(page, '9012')
   await page.addStyleTag({ content: '.bd-card { transition-duration: 1s !important; }' })
@@ -337,7 +343,6 @@ test.describe('B10 phone touch', () => {
     await page.screenshot({ path: test.info().outputPath('chain-tree-phone.png') })
   })
 })
-
 test('B11 Escape closes the ticket before the dependency tree', async ({ page }) => {
   await open(page, { modal: true }); await whole(page, '3')
   await tree(page).locator('.bd-tn[data-id="3"]').click()
@@ -348,7 +353,6 @@ test('B11 Escape closes the ticket before the dependency tree', async ({ page })
   await page.keyboard.press('Escape')
   await expect(tree(page)).toBeHidden()
 })
-
 test('B12 browser Back disabling trees clears a lock', async ({ page }) => {
   await open(page, { trees: false })
   await page.evaluate(() => window.liveSocket.pushHistoryPatch(new Event('click'), '/build', 'push', null))
@@ -361,7 +365,6 @@ test('B12 browser Back disabling trees clears a lock', async ({ page }) => {
   expect(await page.evaluate(() => st.ctx.lockId)).toBeNull()
   await expect(page.locator('.bd-content')).not.toHaveClass(/hovering/)
 })
-
 test('B12 Escape without an active tree lock preserves hover', async ({ page }) => {
   await open(page); await reveal(page, '9012'); await card(page, '9012').hover()
   await expect.poll(() => page.evaluate(() => st.ctx.hoverId)).toBe('9012')
@@ -370,7 +373,6 @@ test('B12 Escape without an active tree lock preserves hover', async ({ page }) 
   expect(await page.evaluate(() => st.ctx.hoverId)).toBe('9012')
   await expect(tray(page)).toHaveClass(/show/)
 })
-
 test('B13 navigation cancels a pending Fit and removes tree document listeners', async ({ page }) => {
   const errors = []; page.on('pageerror', error => errors.push(error.message))
   await page.addInitScript(() => {
@@ -408,7 +410,6 @@ test('B13 navigation cancels a pending Fit and removes tree document listeners',
   expect(await page.evaluate(() => lateTreeCalls)).toEqual([])
   expect(errors).toEqual([])
 })
-
 test('B13 teardown between Fit frames cancels the second frame', async ({ page }) => {
   await open(page); await lock(page, '3')
   await installFitObserver(page)
