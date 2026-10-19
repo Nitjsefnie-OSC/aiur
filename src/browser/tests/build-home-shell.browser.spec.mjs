@@ -294,7 +294,14 @@ test('B18 disconnect releases in-flight guard and ignores old reply', async ({ p
 
 test('B19 scrollbar geometry, track click, active timer and drag', async ({ page }) => {
   await ready(page); await isolateScrollbar(page)
+  await page.evaluate(async () => { (await import('/build-home/state.js')).ctx.life.dispose() })
   await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') }); await page.clock.pauseAt(new Date('2030-01-02T00:00:00Z'))
+  await page.evaluate(async () => {
+    const { ctx } = await import('/build-home/state.js')
+    ctx.life = (await import('/build-home/life.js')).createLife()
+    const { shell } = await import('/build-home/shell.js')
+    shell()
+  })
   const measure = () => page.evaluate(async () => {
     const { ctx } = await import('/build-home/state.js'); (await import('/build-home/shell.js')).syncSB()
     const sb = document.querySelector('#bd-sb'), th = sb.querySelector('i')
@@ -306,7 +313,9 @@ test('B19 scrollbar geometry, track click, active timer and drag', async ({ page
   await page.locator('#bd-vp').evaluate(el => new Promise(resolve => {
     el.addEventListener('scroll', resolve, { once: true }); el.scrollTop = (el.scrollHeight - el.clientHeight) / 2
   }))
-  m = await measure(); expect(m.y).toBeCloseTo(0.5 * (m.track - m.height), 0)
+  await expect.poll(async () => (await measure()).y).toBeCloseTo(0.5 * (m.track - m.height), 0)
+  m = await measure()
+  await page.locator('#bd-vp').dispatchEvent('scroll')
   await page.clock.runFor(699); await expect(page.locator('#bd-sb')).toHaveClass(/\bact\b/)
   await page.clock.runFor(2); await expect(page.locator('#bd-sb')).not.toHaveClass(/\bact\b/)
   await page.locator('#bd-vp').evaluate(el => { el.scrollTop = 0 }); await measure()
@@ -339,8 +348,8 @@ test('store moves rows, removes ids, replaces blocks and merges older pages with
 })
 
 test('destroy cancels timers, frames and late replies without mutating a new mount', async ({ page }) => {
-  await ready(page); await isolateScrollbar(page)
   await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') }); await page.clock.pauseAt(new Date('2030-01-02T00:00:00Z'))
+  await ready(page); await isolateScrollbar(page)
   expect(await page.evaluate(async () => {
     const { ctx, resetState } = await import('/build-home/state.js'), { resync, createBuildHomeHook } = await import('/build-home/hook.js')
     const { createLife } = await import('/build-home/life.js'); let resolve, calls = 0
