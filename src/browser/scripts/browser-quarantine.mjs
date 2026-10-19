@@ -44,3 +44,9 @@ export function quarantineArgs(entries, environment = process.env) {
   if (environment.AIUR_RUN_QUARANTINED === '1' || environment.AIUR_BROWSER_EXPECT_FAILURE === '1' || entries.length === 0) return []
   return ['--grep-invert', specPattern(entries), '--pass-with-no-tests']
 }
+
+// A run of only quarantined specs reports 0 tests and exits 0; say why, so nobody reads it as a pass.
+export function quarantineNotices(entries, environment = process.env) {
+  if (quarantineArgs(entries, environment).length === 0) return []
+  return entries.map(entry => `Skipped by quarantine (${entry.ticket}): ${runnableSpec(entry)}; set AIUR_RUN_QUARANTINED=1 to run it.`)
+}
