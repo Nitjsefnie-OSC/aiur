@@ -222,16 +222,7 @@ defmodule AiurWeb.Build.Index do
     generation = if changes, do: state.generation + 1, else: state.generation
     if changes, do: broadcast(state, Map.merge(changes, %{index_generation: generation, now: clock(state)}))
     now_failed? = match?({:error, _}, parts[:now])
-    settings_loading? = match?({:error, :settings_loading}, next)
-    failures = if now_failed? or settings_loading?, do: state.failures + 1, else: state.failures
-
-    retry_dirty =
-      cond do
-        now_failed? -> MapSet.put(state.dirty, :now)
-        settings_loading? -> MapSet.put(state.dirty, :settings)
-        true -> state.dirty
-      end
-
+    {failures, retry_dirty} = retry_after_finish(state, next, now_failed?)
     state = %{state | parts: parts, index: next, generation: generation, history_at: history_at, failures: failures, dirty: retry_dirty}
     :ets.insert(state.table, {:index, with({:ok, index} <- next, do: {:ok, Core.base(index)})})
     :ets.insert(state.table, {:generation, generation})
@@ -243,6 +234,14 @@ defmodule AiurWeb.Build.Index do
       MapSet.size(state.dirty) > 0 -> schedule(state)
       now_failed? -> schedule(state)
       true -> state
+    end
+  end
+
+  defp retry_after_finish(state, next, now_failed?) do
+    cond do
+      now_failed? -> {state.failures + 1, MapSet.put(state.dirty, :now)}
+      match?({:error, :settings_loading}, next) -> {state.failures + 1, MapSet.put(state.dirty, :settings)}
+      true -> {state.failures, state.dirty}
     end
   end
 
