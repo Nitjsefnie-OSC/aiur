@@ -6,11 +6,28 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
 
   setup do
     previous = Application.get_env(:aiur, :duration_cap_release_opts)
+    previous_store = Application.get_env(:aiur, :dispatch_budget_store_path)
+    previous_retry_store = Application.get_env(:aiur, :duration_cap_retry_store_path)
+    budget_path = Path.join(Aiur.TestSupport.tmp_root!("duration-cap-release"), "dispatch-budgets.json")
+    File.mkdir_p!(Path.dirname(budget_path))
+    Application.put_env(:aiur, :dispatch_budget_store_path, budget_path)
+    retry_path = Path.join(Path.dirname(budget_path), "duration-cap-retries.json")
+    Application.put_env(:aiur, :duration_cap_retry_store_path, retry_path)
 
     on_exit(fn ->
       if previous,
         do: Application.put_env(:aiur, :duration_cap_release_opts, previous),
         else: Application.delete_env(:aiur, :duration_cap_release_opts)
+
+      if previous_store,
+        do: Application.put_env(:aiur, :dispatch_budget_store_path, previous_store),
+        else: Application.delete_env(:aiur, :dispatch_budget_store_path)
+
+      if previous_retry_store,
+        do: Application.put_env(:aiur, :duration_cap_retry_store_path, previous_retry_store),
+        else: Application.delete_env(:aiur, :duration_cap_retry_store_path)
+
+      Aiur.TestCleanup.rm_rf!(Path.dirname(budget_path))
     end)
   end
 
@@ -18,9 +35,14 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
     state = %State{running: %{entry.issue.id => entry}}
 
-    dispatch = fn current, issue, _attempt, _host, _opts ->
-      send(self(), {:redispatch, issue.identifier})
-      %{current | running: Map.put(current.running, issue.id, %{control: %{status: :working}})}
+    dispatch = fn current, issue, attempt, _host, dispatch_opts ->
+      send(self(), {:redispatch, issue.identifier, attempt})
+
+      queued =
+        current
+        |> Map.put(:running, Map.put(current.running, issue.id, %{control: %{status: :working}}))
+
+      dispatch_opts[:dispatch_result_fun].(queued)
     end
 
     opts = [
@@ -28,15 +50,46 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
       progress_release_target_fun: fn _ -> {:ok, "rework"} end,
       dispatch_fun: dispatch,
       emit_alert_fun: fn topic, _ -> send(self(), {:alert, topic}) end,
-      max_retry_attempts: 3
+      max_retry_attempts: 3,
+      duration_cap_retry_count_fun: fn _ -> 0 end,
+      increment_duration_cap_retry_fun: fn id ->
+        send(self(), {:retry_recorded, id})
+        :ok
+      end
     ]
 
     Application.put_env(:aiur, :duration_cap_release_opts, opts)
     released = DurationCapRelease.maybe_release(state, entry, :paused, opts)
 
     assert Map.has_key?(released.running, entry.issue.id)
-    assert_received {:redispatch, "4849"}
+    assert_received {:redispatch, "4849", 1}
+    assert_received {:retry_recorded, "issue-4849"}
     assert_received {:alert, "ticket.4849.agent.attention.paused-max_agent_duration.resolved"}
+  end
+
+  test "a duration-capped run with an exhausted retry budget remains paused and escalates" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before") |> Map.put(:retry_attempt, 3)
+    state = %State{running: %{entry.issue.id => entry}}
+    opts = [workspace_probe: fn _, _ -> {:ok, "after"} end, max_retry_attempts: 3, duration_cap_retry_count_fun: fn _ -> 3 end, emit_alert_fun: fn _, a -> send(self(), {:reason, a[:reason]}) end]
+    Application.put_env(:aiur, :duration_cap_release_opts, opts)
+
+    paused = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert paused.running[entry.issue.id].control.status == :paused
+    assert_received {:reason, "retry budget is spent"}
+  end
+
+  test "an inactive ticket with progress remains paused and escalates" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
+    entry = %{entry | issue: %{entry.issue | state: "closed"}}
+    state = %State{running: %{entry.issue.id => entry}}
+    opts = [workspace_probe: fn _, _ -> {:ok, "after"} end, emit_alert_fun: fn _, a -> send(self(), {:reason, a[:reason]}) end]
+    Application.put_env(:aiur, :duration_cap_release_opts, opts)
+
+    paused = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert paused.running[entry.issue.id].control.status == :paused
+    assert_received {:reason, "ticket state is inactive"}
   end
 
   test "a duration-capped run without progress remains paused and escalates" do
@@ -55,7 +108,7 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     assert released.running[entry.issue.id].control.status == :paused
     assert Map.has_key?(released.running, entry.issue.id)
     assert_received {:alert, "ticket.4849.agent.attention.paused-max_agent_duration", reason}
-    assert reason =~ "no commits, workpad changes"
+    assert reason =~ "workpad-only changes do not count"
   end
 
   test "a release completing after an issue refresh still frees the runner" do
@@ -77,6 +130,27 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     kept = DurationCapRelease.apply_release(state, {:release, "rework", "reason"}, parked, emit_alert_fun: fn _, _ -> :ok end)
 
     assert kept.running["issue-4849"] == resumed
+  end
+
+  test "a ready PR with progress releases to human review" do
+    released =
+      DurationCapRelease.apply_release(
+        %State{running: %{"issue-4849" => parked_entry()}},
+        {:release, "human-review", "progress was detected"},
+        parked_entry(),
+        emit_alert_fun: fn _, _ -> :ok end
+      )
+
+    refute Map.has_key?(released.running, "issue-4849")
+  end
+
+  test "a failed progress release remains paused and reports the failure" do
+    entry = parked_entry()
+    state = %State{running: %{entry.issue.id => entry}}
+    result = DurationCapRelease.apply_release(state, {:error, :timeout}, entry, emit_alert_fun: fn _, opts -> send(self(), {:reason, opts[:reason]}) end)
+    assert result.running[entry.issue.id].control.status == :paused
+    assert_received {:reason, reason}
+    assert reason =~ ":timeout"
   end
 
   # Guard, passes on main too: other pause causes keep their runner.

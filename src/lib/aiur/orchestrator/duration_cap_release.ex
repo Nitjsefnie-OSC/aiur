@@ -14,7 +14,7 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   alias Aiur.Config
   alias Aiur.GitHub.Client
   alias Aiur.Orchestrator.{AgentTeardown, Dispatcher, DispatchPolicy, ReworkGate, State, TrackerTasks}
-  alias Aiur.Orchestrator.Dispatcher.Budgets
+  alias Aiur.Orchestrator.{Dispatcher.Budgets, DurationCapRetryStore}
   alias Aiur.Orchestrator.StartupClaimReconciler.Release
 
   @spec maybe_release(State.t(), map(), atom(), keyword()) :: State.t()
@@ -145,22 +145,13 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   def apply_release(state, {:redispatch, issue}, %{issue: %{id: issue_id}} = entry, opts) do
     if same_parked_runner?(Map.get(state.running, issue_id), entry) do
       state = AgentTeardown.terminate_running_issue(state, issue_id, false)
-      dispatch = Keyword.get(opts, :dispatch_fun, &Dispatcher.dispatch_issue/5)
-      next = dispatch.(state, issue, nil, Map.get(entry, :worker_host), prior_work: true)
-      injected_dispatch? = is_function(Keyword.get(opts, :dispatch_fun))
 
-      case {Map.get(next.running, issue_id), injected_dispatch?} do
-        {%{control: %{status: :working}}, _} ->
-          resolve_pause_alert(entry, "automatic redispatch after progress", opts)
-          next
+      case increment_duration_cap_retry(issue_id, opts) do
+        :ok ->
+          dispatch_after_budget(state, issue, entry, issue_id, opts)
 
-        {_other, true} ->
-          resolve_pause_alert(entry, "automatic redispatch after progress", opts)
-          next
-
-        _ ->
-          emit_pause_alert(entry, "Progress was detected, but automatic redispatch did not start; Executor action is required.", opts)
-          next
+        {:error, reason} ->
+          emit_pause_alert(entry, "Could not record automatic redispatch retry (#{inspect(reason)}); Executor action is required.", opts)
       end
     else
       state
@@ -168,10 +159,29 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   end
 
   # A failed or deferred write leaves the agent paused for the Executor, as before #4849.
-  def apply_release(state, result, entry, _opts) do
+  def apply_release(state, result, entry, opts) do
     Logger.warning("Duration-capped agent stays paused; release did not complete: #{inspect(result)} #{State.issue_context(entry.issue)}")
-    emit_pause_alert(entry, "Automatic redispatch was not available (#{inspect(result)}); Executor action is required.", [])
+    emit_pause_alert(entry, "Automatic redispatch was not available (#{inspect(result)}); Executor action is required.", opts)
     state
+  end
+
+  defp dispatch_after_budget(state, issue, entry, issue_id, opts) do
+    dispatch = Keyword.get(opts, :dispatch_fun, &Dispatcher.dispatch_issue/5)
+    attempt = Map.get(entry, :retry_attempt, 0) + 1
+    completion = fn next -> finish_redispatch(next, entry, issue_id, opts) end
+    dispatch.(state, issue, attempt, Map.get(entry, :worker_host), prior_work: true, dispatch_result_fun: completion)
+  end
+
+  defp finish_redispatch(state, entry, issue_id, opts) do
+    case Map.get(state.running, issue_id) do
+      %{control: %{status: :working}} ->
+        resolve_pause_alert(entry, "automatic redispatch after progress", opts)
+        state
+
+      _ ->
+        emit_pause_alert(entry, "Progress was detected, but automatic redispatch did not start; Executor action is required.", opts)
+        state
+    end
   end
 
   defp same_parked_runner?(%{paused_reason: :max_agent_duration} = current, entry),
@@ -222,15 +232,36 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
 
   defp retry_budget_available?(entry, opts) do
     budget? = Keyword.get(opts, :retry_budget_available_fun, fn _ -> true end)
+    count = duration_cap_retry_count(entry, opts)
 
-    budget?.(entry) and Map.get(entry, :retry_attempt, 0) < Keyword.get(opts, :max_retry_attempts, Config.max_retry_attempts()) and
+    budget?.(entry) and count < Keyword.get(opts, :max_retry_attempts, Config.max_retry_attempts()) and
       Map.get(entry, :dispatch_latch_status, :none) == :none
+  end
+
+  defp duration_cap_retry_count(entry, opts) do
+    case Keyword.get(opts, :duration_cap_retry_count_fun) do
+      fun when is_function(fun, 1) ->
+        fun.(entry)
+
+      _ ->
+        case DurationCapRetryStore.count(entry.issue.id) do
+          {:ok, count} -> count
+          {:error, _reason} -> Keyword.get(opts, :max_retry_attempts, Config.max_retry_attempts())
+        end
+    end
+  end
+
+  defp increment_duration_cap_retry(issue_id, opts) do
+    case Keyword.get(opts, :increment_duration_cap_retry_fun) do
+      fun when is_function(fun, 1) -> fun.(issue_id)
+      _ -> DurationCapRetryStore.increment(issue_id)
+    end
   end
 
   defp release_reason(progress, issue, entry, opts) do
     cond do
       not DispatchPolicy.active_issue_state?(issue.state, DispatchPolicy.active_state_set()) -> "ticket state is inactive"
-      not progress -> "no commits, workpad changes, or other workspace changes were found"
+      not progress -> "no commits or workspace changes were found (workpad-only changes do not count)"
       not retry_budget_available?(entry, opts) -> "retry budget is spent"
       true -> "progress was detected"
     end
