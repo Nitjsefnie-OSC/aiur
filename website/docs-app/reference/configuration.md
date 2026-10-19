@@ -219,11 +219,9 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 
 `poll_seconds: 0` disables periodic refreshes, not dispatch-time freshness checks.
 
-When a prewarm build or freshness probe holds fleet dispatch, an independent idle
-watchdog releases the gate for cold-clone fallback once the hold has been stalled
-for 10 minutes. Each base refresh has a total runtime bound from before clone/fetch,
-set by `prewarm.build_timeout_minutes` (60 minutes by default). At expiry Aiur
-terminates its process group and releases dispatch for cold-clone fallback.
+A base refresh is bounded from clone/fetch start by `prewarm.build_timeout_minutes` (default 60); on expiry,
+Aiur terminates its process group and releases dispatch for cold-clone fallback. The independent idle watchdog
+releases a stalled dispatch hold after 10 minutes.
 
 For the idle watchdog, "stalled" means the hold's worker is dead with no
 completion signal in flight. Timed-out builds are not retried automatically; restart Aiur to retry.
