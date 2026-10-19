@@ -320,7 +320,7 @@ test('B19 scrollbar geometry, track click, active timer and drag', async ({ page
   await page.locator('#bd-vp').dispatchEvent('scroll')
   await page.clock.runFor(699); await expect(page.locator('#bd-sb')).toHaveClass(/\bact\b/)
   await page.clock.runFor(2); await expect(page.locator('#bd-sb')).not.toHaveClass(/\bact\b/)
-  await page.locator('#bd-vp').evaluate(el => { el.scrollTop = 0 }); await measure()
+  await page.locator('#bd-vp').evaluate(el => { el.scrollTop = 0 }); await expect.poll(async () => (await measure()).y).toBe(0)
   const box = await page.locator('#bd-sb i').boundingBox()
   await page.mouse.move(box.x + box.width / 2, box.y + 3); await page.mouse.down(); await page.mouse.move(box.x + box.width / 2, box.y + 103)
   await expect(page.locator('#bd-sb')).toHaveClass(/\bdrag\b/)
