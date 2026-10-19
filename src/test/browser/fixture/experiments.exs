@@ -19,6 +19,7 @@ defmodule Aiur.BrowserHarness.ExperimentsFixture do
   def configure(conn, _params), do: send_resp(conn, 400, "Unknown experiments fixture scenario")
 
   def prepare(scenario) do
+    start_empty_command_store()
     Application.put_env(:aiur, :repo_base_root, Path.join(@root, "repo-state"))
     root = Path.join(@root, scenario)
     File.mkdir_p!(root)
@@ -38,6 +39,24 @@ defmodule Aiur.BrowserHarness.ExperimentsFixture do
     end
 
     Application.put_env(:aiur, :experiments_dir, root)
+  end
+
+  # Without a running store the shell banner reads "Command counts unavailable".
+  defp start_empty_command_store do
+    name = Aiur.Commands.default_store()
+
+    unless Process.whereis(name) do
+      dir = Path.join(@root, "command-store")
+      File.mkdir_p!(dir)
+
+      unless Process.whereis(Aiur.Events.IdGenerator) do
+        {:ok, generator} = Aiur.Events.IdGenerator.start_link(path: Path.join(dir, "event-id.json"))
+        Process.unlink(generator)
+      end
+
+      {:ok, pid} = Aiur.DecisionStore.start_link(name: name, state_dir: dir, filesystem_sync_fun: fn -> :ok end)
+      Process.unlink(pid)
+    end
   end
 
   defp write_report(root) do

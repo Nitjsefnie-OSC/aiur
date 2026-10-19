@@ -72,6 +72,15 @@ test('index links keep 44px targets and the index loses no experiment at 390', a
   await assertNoDocumentOverflow(page)
 })
 
+test('wide report tables scroll inside their wrapper at 390', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await openDetail(page)
+  const wrapper = page.locator('#exp-report .md-table-wrap').filter({ hasText: 'p (adj.)' }).first()
+  await expect(wrapper).toBeVisible()
+  expect(await wrapper.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true)
+  await assertNoDocumentOverflow(page)
+})
+
 test('200% text zoom at 390 keeps every fact inside the page section', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await openDetail(page)
@@ -89,6 +98,7 @@ test('200% text zoom at 390 keeps every fact inside the page section', async ({ 
 test('reduced motion removes experiment link transitions', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await openDetail(page, '/experiments')
+  await expect(page.locator('.exp-link').first()).toBeVisible()
   const durations = await page.locator('.exp-link').evaluateAll(links => links.map(link => getComputedStyle(link).transitionDuration))
   expect(durations.length).toBeGreaterThan(0)
   for (const value of durations) expect(value.split(',').every(part => parseFloat(part) === 0)).toBe(true)
