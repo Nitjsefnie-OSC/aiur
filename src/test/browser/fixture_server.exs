@@ -463,7 +463,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
       path,
       Jason.encode!(%{
         "event" => "turn",
-        "timestamp" => "2026-08-02T00:10:30Z",
+        "timestamp" => DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.to_iso8601(),
         "last_message" => "workspace transcript for ##{identifier}"
       }) <> "\n"
     )
