@@ -280,8 +280,12 @@ test('B8 removed root closes overlay and focuses the board', async ({ page }) =>
 
 test('B9 cards rendered by scrolling receive locked chain classes', async ({ page }) => {
   await open(page, { dataset: 'dense' })
-  const id = await page.evaluate(() => [...st.ctx.R.values()].find(el => !el.closest('.bd-now')).dataset.id)
-  await lock(page, id)
+  const id = await page.evaluate(() => [...st.ctx.R.values()].find(el => {
+    const r = el.getBoundingClientRect(), vp = st.ctx.vp.getBoundingClientRect()
+    return !el.closest('.bd-now') && r.top >= vp.top && r.bottom <= Math.min(vp.bottom, innerHeight) &&
+      document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2)?.closest('.bd-card') === el
+  }).dataset.id)
+  await lock(page, id, { visible: true })
   const before = await page.locator('.bd-card').evaluateAll(els => els.map(el => el.dataset.id))
   await page.locator('#bd-vp').evaluate(el => { el.scrollTop += 3000 })
   await expect.poll(() => page.locator('.bd-card').evaluateAll((els, before) => els.filter(el => !before.includes(el.dataset.id)).length, before)).toBeGreaterThan(0)
