@@ -31,7 +31,7 @@ test('required full CI gate rejects failures, cancellations and skipped browser 
   for (const browser of ['success', 'failure', 'cancelled', 'skipped']) {
     for (const css of ['success', 'failure', 'cancelled', 'skipped']) {
       const needs = Object.fromEntries(gate.needs.map(job => [job, { result: 'success' }]))
-      needs.changes.outputs = { full_ci: 'true', dialyzer: 'false', home_changed: 'false' }
+      needs.changes.outputs = { full_ci: 'true', dialyzer: 'false' }
       needs.browser.result = browser
       needs['home-css'].result = css
       const result = spawnSync('bash', ['-c', step.run], {
@@ -54,16 +54,14 @@ test('browser shards have bounded timeouts and home matrix keeps an independent 
   assert.equal(browser['timeout-minutes'], 22)
   assert.equal(browser.strategy['fail-fast'], false)
   assert.deepEqual(browser.strategy.matrix.shard, shardIds)
-  const expected = [{ shard: 1, verify_fixtures: true, upload_evidence: true },
-    { shard: 2, visual_regression: 'first' }, { shard: 5, visual_regression: 'second' }]
-  for (const [id, commands] of Object.entries(shards)) {
-    if (Number(id) === 1 || !commands.some(command =>
-      ['test:build-home-usage', 'test:build-home-edges-parity', 'test:build-home-chains'].includes(command))) continue
-    let entry = expected.find(item => item.shard === Number(id))
-    if (!entry) { entry = { shard: Number(id) }; expected.push(entry) }
-    entry.upload_evidence = true
-  }
-  assert.deepEqual(browser.strategy.matrix.include, expected)
+  assert.deepEqual(browser.strategy.matrix.include, [
+    { shard: 1, verify_fixtures: true, upload_evidence: true },
+    { shard: 2, visual_regression: 'first' },
+    { shard: 5, visual_regression: 'second' },
+    ...Object.entries(shards).filter(([id, commands]) => Number(id) !== 1 &&
+      commands.some(command => ['test:build-home-usage', 'test:build-home-edges-parity', 'test:build-home-gantt', 'test:build-home-chains'].includes(command)))
+      .map(([id]) => ({ shard: Number(id), upload_evidence: true })),
+  ])
   assert.equal(browser.steps[2].with.visual_regression, "${{ matrix.visual_regression || 'none' }}")
   assert.equal(browserAction.runs.using, 'composite')
   assert.equal(browserAction.runs.steps.find(step => step.name === 'Run browser smoke shard').run,
@@ -134,3 +132,4 @@ test('a new build-home spec file joins exactly one shard with no list edit', () 
   assert.deepEqual(suiteArgs('build-home-x'), ['tests/build-home-x.browser.spec.mjs'])
   assert.deepEqual(suiteArgs('build-home-x-parity'), ['tests/build-home-x-parity.browser.spec.mjs', '--config', 'playwright.design-parity.config.mjs'])
 })
+

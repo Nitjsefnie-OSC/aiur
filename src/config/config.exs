@@ -143,6 +143,9 @@ if config_env() == :test do
   # Webhook tests publish comments on the shared bus; the supervised orchestrator
   # must not turn them into tracker-less comment-rework attempts (#4845).
   config :aiur, :live_orchestrator_comment_topics?, false
+  # Every build index test supervises its own. The shared one rereads real providers on
+  # bus signals that tests publish and logs into an unrelated capture_log (#5164).
+  config :aiur, :build_index?, false
   # Tests run with a per-test mise data dir, where the host's Erlang looks missing.
   config :aiur, :toolchain_preflight_opts, mise: nil
   config :aiur, :github_quota_refresh?, false
@@ -272,6 +275,10 @@ if config_env() == :test do
   # per-VM isolation. Aiur.TestSupport gives each case its own root.
   config :aiur, :machine_state_dir, Path.join(test_log_root, "machine")
   config :aiur, :runtime_state_dir, Path.join(test_log_root, "runtime-state")
+  # Background Codex probes launch relay processes outside a test's lifecycle;
+  # tests that cover this behavior opt in explicitly to avoid writing into
+  # another case's runtime root.
+  config :aiur, :codex_usage_probe_async?, false
   config :aiur, :workspace_ownership_sync_fun, fn -> :ok end
 
   config :aiur, :server_host_override, "127.0.0.1"

@@ -15,6 +15,9 @@ export const recordedSeconds = {
   // Conservative placeholder until this PR's CI suite-duration record is available.
   'test:build-home-chains-parity': 176,
   'test:browser-suite -- build-home-chains-states': 48,
+  // Governed core commands (2026-10-18): 31 cases in 518s; 32 cases on 2ed995a67 in 445s.
+  // Keep the slower observed bound; wall timings include fixture startup and build-gate wait.
+  'test:build-home-gantt': 518,
   // CI run39148293958 (d9ee8e071), job117736821220: actual suite wall seconds.
   'test:build-home-now-band': 44.7,
   'test:browser-suite -- build-home-live-button-parity': 52.7,
