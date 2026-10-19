@@ -144,14 +144,14 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   @spec apply_release(State.t(), {:redispatch, Aiur.Issue.t()}, map(), keyword()) :: State.t()
   def apply_release(state, {:redispatch, issue}, %{issue: %{id: issue_id}} = entry, opts) do
     if same_parked_runner?(Map.get(state.running, issue_id), entry) do
-      state = AgentTeardown.terminate_running_issue(state, issue_id, false)
-
       case increment_duration_cap_retry(issue_id, opts) do
         :ok ->
+          state = AgentTeardown.terminate_running_issue(state, issue_id, false)
           dispatch_after_budget(state, issue, entry, issue_id, opts)
 
         {:error, reason} ->
           emit_pause_alert(entry, "Could not record automatic redispatch retry (#{inspect(reason)}); Executor action is required.", opts)
+          state
       end
     else
       state
@@ -173,14 +173,16 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   end
 
   defp finish_redispatch(state, entry, issue_id, opts) do
-    case Map.get(state.running, issue_id) do
-      %{control: %{status: :working}} ->
-        resolve_pause_alert(entry, "automatic redispatch after progress", opts)
-        state
+    started? =
+      match?(%{control: %{status: :working}}, Map.get(state.running, issue_id)) or
+        MapSet.member?(state.claimed, issue_id) or TrackerTasks.issue_pending?(state, issue_id)
 
-      _ ->
-        emit_pause_alert(entry, "Progress was detected, but automatic redispatch did not start; Executor action is required.", opts)
-        state
+    if started? do
+      resolve_pause_alert(entry, "automatic redispatch after progress", opts)
+      state
+    else
+      emit_pause_alert(entry, "Progress was detected, but automatic redispatch did not start; Executor action is required.", opts)
+      state
     end
   end
 

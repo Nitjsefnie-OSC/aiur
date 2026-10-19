@@ -2,7 +2,7 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
   use ExUnit.Case, async: false
 
   alias Aiur.Issue
-  alias Aiur.Orchestrator.{DurationCapRelease, PauseResume, State}
+  alias Aiur.Orchestrator.{DurationCapRelease, DurationCapRetryStore, PauseResume, State}
 
   setup do
     previous = Application.get_env(:aiur, :duration_cap_release_opts)
@@ -79,6 +79,103 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     assert_received {:reason, "retry budget is spent"}
   end
 
+  test "a duration-capped run stays parked when its retry counter cannot be written" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
+    state = %State{running: %{entry.issue.id => entry}}
+
+    opts = [
+      workspace_probe: fn _, _ -> {:ok, "after"} end,
+      progress_release_target_fun: fn _ -> {:ok, "rework"} end,
+      increment_duration_cap_retry_fun: fn _ -> {:error, :disk} end,
+      emit_alert_fun: fn _, alert ->
+        send(self(), {:reason, alert[:reason]})
+        :ok
+      end
+    ]
+
+    returned = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert returned == state
+    assert returned.running[entry.issue.id].control.status == :paused
+    assert_received {:reason, "Could not record automatic redispatch retry (:disk); Executor action is required."}
+  end
+
+  test "an asynchronous rework claim resolves the pause alert before the runner starts" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
+    state = %State{running: %{entry.issue.id => entry}}
+
+    dispatch = fn current, _issue, _attempt, _host, dispatch_opts ->
+      claimed = %{current | claimed: MapSet.put(current.claimed, entry.issue.id)}
+      dispatch_opts[:dispatch_result_fun].(claimed)
+    end
+
+    opts = [
+      workspace_probe: fn _, _ -> {:ok, "after"} end,
+      progress_release_target_fun: fn _ -> {:ok, "rework"} end,
+      duration_cap_retry_count_fun: fn _ -> 0 end,
+      increment_duration_cap_retry_fun: fn _ -> :ok end,
+      dispatch_fun: dispatch,
+      emit_alert_fun: fn topic, _ -> send(self(), {:alert, topic}) end
+    ]
+
+    result = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert result.claimed == MapSet.new([entry.issue.id])
+    assert_received {:alert, "ticket.4849.agent.attention.paused-max_agent_duration.resolved"}
+    refute_received {:alert, "ticket.4849.agent.attention.paused-max_agent_duration"}
+  end
+
+  test "a ready PR with progress is released to human review through classification" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
+    state = %State{running: %{entry.issue.id => entry}}
+
+    opts = [
+      workspace_probe: fn _, _ -> {:ok, "after"} end,
+      open_pr_fetcher: fn _ -> {:ok, %{"number" => 42}} end,
+      pr_fetcher: fn 42 -> {:ok, %{"number" => 42, "draft" => false, "mergeable" => true, "head" => %{"sha" => "head"}}} end,
+      unresolved_threads_fetcher: fn _ -> {:ok, []} end,
+      update_issue_state_fun: fn identifier, target, expected ->
+        send(self(), {:write, identifier, target, expected})
+        :ok
+      end,
+      create_comment_fun: fn _, _ -> :ok end,
+      emit_alert_fun: fn _, _ -> :ok end
+    ]
+
+    released = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert_received {:write, "4849", "human-review", "in-progress"}
+    refute Map.has_key?(released.running, entry.issue.id)
+  end
+
+  test "the persisted retry counter exhausts across successive duration-capped runs" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
+
+    opts = [
+      workspace_probe: fn _, _ -> {:ok, "after"} end,
+      max_retry_attempts: 2,
+      progress_release_target_fun: fn _ -> {:ok, "rework"} end,
+      dispatch_fun: fn current, issue, _attempt, _host, dispatch_opts ->
+        started = %{current | running: Map.put(current.running, issue.id, %{control: %{status: :working}})}
+        dispatch_opts[:dispatch_result_fun].(started)
+      end,
+      emit_alert_fun: fn _, alert ->
+        send(self(), {:reason, alert[:reason]})
+        :ok
+      end
+    ]
+
+    first = DurationCapRelease.maybe_release(%State{running: %{entry.issue.id => entry}}, entry, :paused, opts)
+    second = DurationCapRelease.maybe_release(%State{running: %{entry.issue.id => entry}}, entry, :paused, opts)
+    third = DurationCapRelease.maybe_release(%State{running: %{entry.issue.id => entry}}, entry, :paused, opts)
+
+    assert first.running[entry.issue.id].control.status == :working
+    assert second.running[entry.issue.id].control.status == :working
+    assert third.running[entry.issue.id].control.status == :paused
+    assert {:ok, 2} = DurationCapRetryStore.count(entry.issue.id)
+    assert_received {:reason, "retry budget is spent"}
+  end
+
   test "an inactive ticket with progress remains paused and escalates" do
     entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
     entry = %{entry | issue: %{entry.issue | state: "closed"}}
@@ -130,18 +227,6 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     kept = DurationCapRelease.apply_release(state, {:release, "rework", "reason"}, parked, emit_alert_fun: fn _, _ -> :ok end)
 
     assert kept.running["issue-4849"] == resumed
-  end
-
-  test "a ready PR with progress releases to human review" do
-    released =
-      DurationCapRelease.apply_release(
-        %State{running: %{"issue-4849" => parked_entry()}},
-        {:release, "human-review", "progress was detected"},
-        parked_entry(),
-        emit_alert_fun: fn _, _ -> :ok end
-      )
-
-    refute Map.has_key?(released.running, "issue-4849")
   end
 
   test "a failed progress release remains paused and reports the failure" do
