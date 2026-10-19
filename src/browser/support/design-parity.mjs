@@ -231,15 +231,28 @@ export async function compareParityPixels(pair, { name, region, fullPage = false
   finally { if (preserveAnimations) for (const page of [pair.design, pair.product]) if (!page.isClosed()) await page.evaluate(() => window.parityHeld?.forEach(a => a.play())) }
 }
 
+async function settleClippedPaint(page, region) {
+  await page.locator(region).evaluate(async root => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    // Resolve SVG layout and styles after foregrounding, before reading its pixels.
+    root.querySelectorAll('svg').forEach(svg => {
+      svg.getBoundingClientRect()
+      svg.querySelectorAll('path').forEach(path => getComputedStyle(path).strokeWidth)
+    })
+  })
+}
+
 async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, viewportClip, designMask, productMask }) {
   const design = region ? await one(pair.design, region, 'design') : pair.design
   const product = region ? await one(pair.product, region, 'product') : pair.product
   const opts = { animations: preserveAnimations ? 'allow' : 'disabled', caret: 'hide', scale: 'device', maskColor: '#ff00ff', ...(region ? {} : { fullPage }) }
   await pair.design.bringToFront()
   if (region) await settleRegionImages(pair.design, region)
+  if (viewportClip && region) await settleClippedPaint(pair.design, region)
   const png = await captureStable(design, { ...opts, mask: designMask }, (preserveAnimations || viewportClip) && region ? pair.design : undefined, viewportClip)
   await pair.product.bringToFront()
   if (region) await settleRegionImages(pair.product, region)
+  if (viewportClip && region) await settleClippedPaint(pair.product, region)
   checkPage(pair.design)
   checkPage(pair.product)
   const file = test.info().snapshotPath(`${name}.png`, { kind: 'screenshot' })

@@ -1,5 +1,4 @@
 import { test, expect } from '@playwright/test'
-import { primeBoardPaint } from '../support/build-home-band-canvas.mjs'
 import { readFile } from 'node:fs/promises'
 import { openParityPair, expectDesignParity, PARITY_VIEWPORTS } from '../support/design-parity.mjs'
 import { settleAnimations } from './support/browser-helpers.mjs'
@@ -83,7 +82,6 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
   const check = async (name, action) => { try { await test.step(name, action) } catch (error) { failures.push(error) } }
   const pixels = (pair, name, region) => check(name, async () => {
     await prepareChainParity(pair) // Fit replaces the band's ETA element.
-    if (name === 'P3-chain-fit') await primeBoardPaint(pair, '#bd-edges')
     await expectDesignParity(pair, { name, region, preserveAnimations: pair.cell.viewport.width === 390, viewportClip: true })
   })
   const pair = await openParityPair(browser, cell, { query: '?trees=1' })
