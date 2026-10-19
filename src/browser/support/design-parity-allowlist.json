@@ -349,7 +349,7 @@
     "kind": "copy",
     "selector": "#bd-tree",
     "cells": {},
-    "reason": "State unknown \u00b7 \u2014; Q?; W?; Merged \u00b7 date unknown; Not planned; Closed",
+    "reason": "State unknown · \u2014; Q?; W?; Merged · date unknown; Not planned; Closed",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -394,6 +394,22 @@
       "by": null,
       "date": null,
       "ref": "MP-E8-C9-T09 Pixel parity / DESIGN-E8 S-5"
+    }
+  },
+  {
+    "id": "chain-fit-lock-tab-x-1440",
+    "kind": "property",
+    "selector": ".bd-lt",
+    "property": "left",
+    "cells": {
+      "viewport": "1440x900"
+    },
+    "reason": "After Fit, position the product lock tab at the locked card right edge after columns settle. Only P3 screenshot x is normalized to the native reference; y and tab pixels remain compared, and the actual product right-edge position is asserted. Kevin decision 2026-10-19, #3152.",
+    "approval": {
+      "status": "approved",
+      "by": "Kevin",
+      "date": "2026-10-19",
+      "ref": "https://github.com/aiur-team/aiur/issues/3152"
     }
   }
 ]

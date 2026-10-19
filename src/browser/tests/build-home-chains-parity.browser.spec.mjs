@@ -105,7 +105,23 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     await check('P3 Fit URL', async () => expect(productFit.url).toEqual(designFit.url))
     await check('P3 zoom label', async () => { expect(productFit.zoom).toBeTruthy(); expect(productFit.zoom).toEqual(designFit.zoom) })
     await check('P3 scroll', async () => expect(Math.abs(productFit.scroll - designFit.scroll)).toBeLessThanOrEqual(1))
-    await pixels(pair, 'P3-chain-fit', '.bd-vpw')
+    // Kevin approved only the settled tab x at 1440 (#3152, 2026-10-19).
+    // Keep native design execution and compare every tab pixel at a common x.
+    let tabPosition
+    if (cell.viewport.width === 1440) {
+      const entry = pair.allowlist.find(entry => entry.id === 'chain-fit-lock-tab-x-1440')
+      expect(entry.approval.status).toBe('approved')
+      const positioned = await pair.product.evaluate(id => {
+        const card = document.querySelector(`.bd-card[data-id="${id}"]`).getBoundingClientRect()
+        const content = document.querySelector('#bd-content').getBoundingClientRect()
+        return { actual: parseFloat(document.querySelector('.bd-lt').style.left), expected: card.right - content.left - 1 }
+      }, root.id)
+      expect(positioned.actual).toBeCloseTo(positioned.expected, 1)
+      const left = await pair.design.locator('.bd-lt').evaluate(el => el.style.left)
+      tabPosition = await pair.product.addStyleTag({ content: `.bd-lt { left: ${left} !important; }` })
+    }
+    try { await pixels(pair, 'P3-chain-fit', '.bd-vpw') }
+    finally { await tabPosition?.evaluate(el => el.remove()) }
   } finally {
     if (!pair.design.isClosed()) await pair.design.evaluate(() => window.referenceFitRestore?.())
     await pair.close()
