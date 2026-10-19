@@ -102,18 +102,18 @@ test('clicking a logs event key positions the flattened transcript at that event
 test('key grid keeps the same left edge in grid, logs, and Commands modes', async ({ page }) => {
   await openStreamdeck(page)
 
-  const grid = page.locator('#sd-keys')
+  const grid = page.locator('#sd-keys .sd-key:not(.is-empty)').first()
   const gridX = (await grid.boundingBox()).x
-  await grid.locator('.sd-key:not(.is-empty)').first().click()
+  await grid.click()
 
   const command = (name) => page.locator(`[data-streamdeck-command="${name}"]`)
   const dialD = page.locator('.sd-knob').nth(3)
   await command('logs').click()
-  const logsX = (await page.locator('#sd-log-keys').boundingBox()).x
+  const logsX = (await page.locator('#sd-log-keys .sd-key').first().boundingBox()).x
   await expect(page.locator('[data-mode-view="logs-strip"] .sd-log-strip-entry').first()).toBeVisible()
   await page.locator('.sd-knob').first().click()
   await command('commands').click()
-  const commandsX = (await page.locator('#sd-command-keys').boundingBox()).x
+  const commandsX = (await page.locator('#sd-command-keys .sd-key').first().boundingBox()).x
 
   expect(logsX).toBeCloseTo(gridX, 0)
   expect(commandsX).toBeCloseTo(gridX, 0)
