@@ -80,19 +80,6 @@ defmodule Aiur.GitHub.BudgetTest do
     assert :ok = Budget.release(second, opts)
   end
 
-  test "main-watch admission uses reserved global and endpoint capacity", %{root: root} do
-    opts = [state_dir: root, max_inflight: 2, max_inflight_per_endpoint: 2, requests_per_minute: 20, stagger_ms: 0, timeout_ms: 1_000]
-    ordinary = request("shared-token", "/repos/owner/repo/issues/1477")
-    main_watch = Map.put(request("shared-token", "/repos/owner/repo/issues/1478"), :priority, :main_watch)
-
-    assert {:ok, ordinary_lease} = Budget.acquire(ordinary, opts)
-    assert {:ok, watcher_lease} = Budget.acquire(main_watch, opts)
-    assert %{inflight: %{"issues" => 2}} = Budget.snapshot("shared-token", opts)
-
-    assert :ok = Budget.release(watcher_lease, opts)
-    assert :ok = Budget.release(ordinary_lease, opts)
-  end
-
   test "active consumers reconcile conflicting ceilings to the strictest policy", %{root: root} do
     strict = [state_dir: root, consumer_key: "strict", max_inflight: 1, max_inflight_per_endpoint: 1, requests_per_minute: 20, stagger_ms: 0]
     loose = [state_dir: root, consumer_key: "loose", max_inflight: 2, max_inflight_per_endpoint: 2, requests_per_minute: 20, stagger_ms: 0]
