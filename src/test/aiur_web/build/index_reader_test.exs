@@ -1,6 +1,7 @@
 defmodule AiurWeb.Build.IndexReaderTest do
   use ExUnit.Case, async: true
   import Aiur.TestSupport.BuildHome.IndexParts
+  alias AiurWeb.Build.Freshness
   alias AiurWeb.Build.IndexReader
 
   defmodule SlowOpenServer do
@@ -43,7 +44,7 @@ defmodule AiurWeb.Build.IndexReaderTest do
       IndexReader.read(:all, parts(),
         repository_fun: fn -> {:ok, {"aiur-team", "aiur"}} end,
         orchestrator: server,
-        running_rows_fun: &AiurWeb.Build.Freshness.read_running_rows/1
+        running_rows_fun: &Freshness.read_running_rows/1
       )
 
     assert Map.has_key?(read.now.rows, "12")
