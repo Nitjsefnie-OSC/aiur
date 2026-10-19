@@ -494,7 +494,7 @@ test('B14 locked board and tree have no axe violations; dialog traps Tab', async
   await expect(tree(page).locator('.bd-tn').last()).toBeFocused()
   await page.keyboard.press('Tab')
   await expect(page.locator('#bd-tree-x')).toBeFocused()
+  await expect(tree(page)).toHaveCSS('opacity', '1') // axe must inspect the completed native fade.
   expect((await new AxeBuilder({ page }).include('#bd-tree').analyze()).violations).toEqual([])
 })
-
 test.afterEach(async ({ page }) => { await page.request.get('/build-control/earlier') })

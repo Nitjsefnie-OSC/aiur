@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
-import { open, reveal, tree, lock } from './support/build-home-chains.mjs'
+import { open, reveal, tree, lock, card } from './support/build-home-chains.mjs'
 import { installFitObserver } from './support/build-home-chains-parity.mjs'
 import { settleAnimations } from './support/browser-helpers.mjs'
 
@@ -60,4 +60,13 @@ test('Fit waits for deferred columns before resolving its positioned lock', asyn
   expect(final.actual).toEqual(final.expected)
   expect(final.lock).toBe('597')
   expect(final.x).toBeCloseTo(final.right, 1)
+})
+
+// Fixture positioning must supersede a native animator left by initial band snapping.
+test('reveal cancels a pending smooth scroll before positioning a card', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => st.fx.scrollVP(0, true))
+  await reveal(page, '3')
+  await expect.poll(() => page.evaluate(() => st.ctx.snapping || st.ctx.isScrolling())).toBe(false)
+  await expect(card(page, '3')).toBeVisible()
 })

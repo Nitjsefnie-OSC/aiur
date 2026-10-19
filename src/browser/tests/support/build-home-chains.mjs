@@ -50,7 +50,7 @@ export async function reveal(page, id) {
     const { ctx } = st
     for (const sx of ['hist', 'plan', 'nq']) {
       const it = ctx.L.secs[sx].items.find(it => it.t.id === id)
-      if (it) ctx.vp.scrollTop = ctx.secs[sx].el.offsetTop + it.y - 150
+      if (it) st.fx.scrollVP(ctx.secs[sx].el.offsetTop + it.y - 150, false)
     }
     st.fx.update()
   }, String(id))
