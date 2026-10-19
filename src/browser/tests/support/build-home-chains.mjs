@@ -1,5 +1,6 @@
 import { fileURLToPath } from 'node:url'
 import { expect } from '@playwright/test'
+import { settleAnimations } from './browser-helpers.mjs'
 
 export const card = (page, id) => page.locator(`.bd-card[data-id="${id}"]`).first()
 export const tree = page => page.locator('#bd-tree')
@@ -56,7 +57,8 @@ export async function reveal(page, id) {
   await expect(card(page, id)).toBeVisible()
   await expect.poll(() => page.evaluate(() =>
     st.ctx.snapping || st.ctx.content.classList.contains('scrolling'))).toBe(false)
-  await page.waitForTimeout(650) // Column transitions finish after scroll suppression.
+  await page.waitForTimeout(650) // Allow the deferred column update to start.
+  await settleAnimations(page, '.bd-content')
   await expect(card(page, id)).toBeVisible()
 }
 export async function lock(page, id) {

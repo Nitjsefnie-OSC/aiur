@@ -44,7 +44,9 @@ export function drawEdgesSoon(ms) {
   edgeUntil = performance.now() + (ms || 0);
   if (was) return;
   const loop = () => {
-    const done = performance.now() >= edgeUntil;
+    const moving = [...ctx.R.values()].some(el => el.getAnimations().some(a =>
+      ['left', 'width'].includes(a.transitionProperty) && a.playState === 'running'));
+    const done = performance.now() >= edgeUntil && !moving;
     if (done && (ctx.hoverId || ctx.treeId) && fx.reapply) fx.reapply();
     else drawEdges(true);
     if (!done) ctx.life.frame('edges', loop);

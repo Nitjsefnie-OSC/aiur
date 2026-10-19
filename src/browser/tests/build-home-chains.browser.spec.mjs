@@ -254,6 +254,7 @@ test('B6 Fit bounds empty density pages without an automatic paging bypass', asy
 
 test('B7 live dependencies refresh highlight, tab position and open overlay', async ({ page }) => {
   await open(page); await whole(page, '9012')
+  await page.addStyleTag({ content: '.bd-card { transition-duration: 1s !important; }' })
   await diff(page, 'chain-add-dep')
   await expect(tree(page).locator('.bd-tn[data-id="615"]')).toHaveCount(1)
   await page.keyboard.press('Escape')
