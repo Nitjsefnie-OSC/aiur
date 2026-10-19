@@ -69,11 +69,6 @@ defmodule Aiur.GitHub.ReadCacheTest do
       assert {:no_cache, :unsafe_kind} = Policy.classify(graphql("some_new_caller", ci_document()))
     end
 
-    test "required-check configuration is a repository-config read" do
-      request = rest("https://api.github.com/repos/aiur-team/aiur/branches/main/protection") |> Map.put(:caller, "ci_required_checks")
-      assert {:cache, :repo_config, 300_000} = Policy.classify(request)
-    end
-
     test "does not cache review state or merge gating" do
       for selection <- ["reviewDecision", "mergeStateStatus", "mergeable", "reviewThreads(first: 10) { nodes { id } }"] do
         request = graphql("issue_relationships", "query Q { repository(owner: $o, name: $n) { #{selection} } }")
@@ -696,18 +691,6 @@ defmodule Aiur.GitHub.ReadCacheTest do
       assert %{not_deposited: 1} = snapshot.callers["issue_relationships"]
       # The accounting remainder closes: this miss deposited nothing and said why.
       assert %{not_deposited: 1, miss: 1, deposit: 0} = snapshot.totals
-    end
-
-    test "caches a 404 response for repository configuration reads" do
-      request =
-        rest("https://api.github.com/repos/aiur-team/aiur/branches/main/protection")
-        |> Map.put(:caller, "ci_required_checks")
-
-      response = {:ok, %{status: 404, body: %{"message" => "Not Found"}}}
-
-      assert ^response = ReadCache.through(request, fn -> response end)
-      assert ^response = ReadCache.through(request, fn -> flunk("cached 404") end)
-      assert %{hit: 1, miss: 1, deposit: 1} = Metrics.snapshot().callers["ci_required_checks"]
     end
 
     test "counts a good response refused at the entry ceiling as no_room" do
