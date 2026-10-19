@@ -75,6 +75,29 @@ test('navigation keeps its labels reachable after collapse and expansion', async
   await expect(page.locator('.snav-label').first()).toBeVisible()
 })
 
+test('shell navigation reflows without horizontal overflow at 200% zoom width', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 720, height: 900 }, reducedMotion: 'reduce' })
+  const page = await context.newPage()
+
+  try {
+    await openFixture(page)
+    await page.goto('/')
+    await expect.poll(() => page.evaluate(() => window.liveSocket?.isConnected() === true)).toBe(true)
+    await assertNoDocumentOverflow(page)
+
+    const links = page.locator('aside.sidenav a.snav')
+    await expect(links).toHaveCount(6)
+    for (const link of await links.all()) {
+      await expect(link).toBeVisible()
+      const bounds = await link.boundingBox()
+      expect(bounds.x).toBeGreaterThanOrEqual(0)
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(720)
+    }
+  } finally {
+    await context.close()
+  }
+})
+
 test('active navigation follows the design corners on desktop and phone', async ({ page }) => {
   await openFixture(page)
   for (const width of [1440, 390]) {
