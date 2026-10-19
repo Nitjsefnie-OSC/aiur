@@ -20,6 +20,52 @@ const home = yaml.parse(read('.github/actions/verify-home-css/action.yml'))
 const browserAction = yaml.parse(read('.github/actions/browser-smoke/action.yml'))
 const scripts = JSON.parse(read('src/browser/package.json')).scripts
 
+test('experiment specs share one worker even when the global pool has two', () => {
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { defineConfig } from '@playwright/test'
+    import config from './playwright.config.mjs'
+    const effective = defineConfig(config, { workers: 2 })
+    const specs = ['experiments-visual.browser.spec.mjs', 'experiments-responsive.browser.spec.mjs']
+    console.log(JSON.stringify({
+      workers: effective.workers,
+      updateSnapshots: effective.updateSnapshots,
+      projects: effective.projects.map(project => ({
+        name: project.name,
+        workers: project.workers,
+        matches: specs.map(spec => project.testMatch?.test(spec) ?? true),
+        ignores: specs.map(spec => project.testIgnore?.test(spec) ?? false)
+      }))
+    }))
+  `], {
+    cwd: new URL('../', import.meta.url), encoding: 'utf8',
+    env: { ...process.env, AIUR_BROWSER_PORT: '43210' }
+  })
+  assert.equal(result.status, 0, result.stderr)
+  const config = JSON.parse(result.stdout)
+  assert.equal(config.workers, 2)
+  assert.equal(config.updateSnapshots, 'none')
+  assert.deepEqual(config.projects, [
+    { name: 'default', matches: [true, true], ignores: [true, true] },
+    { name: 'experiments', workers: 1, matches: [true, true], ignores: [false, false] }
+  ])
+})
+
+test('both CI visual runs compare experiment baselines in Docker and upload evidence', () => {
+  assert.match(scripts['test:visual'], /&& npm run test:visual:docker -- --grep experiments(?:\s|$)/)
+  assert.match(scripts['test:visual:docker'], /&& node support\/visual\.mjs --docker(?:\s|$)/)
+  assert.doesNotMatch(scripts['test:visual'] + scripts['test:visual:docker'], /--update-snapshots/)
+  const steps = browserAction.runs.steps
+  assert.equal(steps.find(step => step.name === 'Run first visual regression baseline').run, 'npm run test:visual')
+  assert.equal(steps.find(step => step.name === 'Run second visual regression baseline and verify failure evidence').run,
+    'npm run test:visual && npm run verify:failure-artifacts')
+  const upload = steps.find(step => step.name === 'Upload browser evidence')
+  assert.match(upload.if, /always\(\)/)
+  assert.match(upload.if, /inputs\.visual_regression != 'none'/)
+  assert.match(upload.uses, /^actions\/upload-artifact@/)
+  assert.equal(upload.with.path, 'src/browser/.artifacts-run-*/')
+  assert.equal(upload.with['include-hidden-files'], true)
+})
+
 test('required full CI gate rejects failures, cancellations and skipped browser jobs', () => {
   const gate = workflow.jobs['ci-gate']
   assert.ok(gate.needs.includes('browser'))

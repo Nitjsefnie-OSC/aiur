@@ -18,8 +18,7 @@ export const VISUAL_MASKS = [
   { selector: '.run-summary-badge', reason: 'Observation freshness' },
   { selector: '.an-source-age', reason: 'Analytics observation age' },
   { selector: '.ut-latest-meta:not(.ut-agent-context) > span:last-child', reason: 'Units runtime duration' },
-  { selector: '.bo-provider-health > .status-badge.mono', reason: 'Build order observation age' },
-  { selector: '#exp-report time', reason: 'Experiment report relative times' }
+  { selector: '.bo-provider-health > .status-badge.mono', reason: 'Build order observation age' }
 ]
 
 export function getMaskConfig(page) {
@@ -107,7 +106,7 @@ async function runVisualDocker(args) {
   try {
     const configPath = await dockerConfig(scratch, browserRoot, await browserEndpoint(server.child))
     console.log('Visual Chromium runtime: mcr.microsoft.com/playwright:v1.61.1-noble')
-    const result = await runBrowserTests(['tests/visual-shell.browser.spec.mjs', 'tests/experiments-visual.browser.spec.mjs', '--config', configPath, ...args])
+    const result = await runBrowserTests(['tests/visual-shell.browser.spec.mjs', 'tests/experiments-visual.browser.spec.mjs', 'tests/experiments-responsive.browser.spec.mjs', '--config', configPath, ...args])
     process.exitCode = result.code ?? 1
     if (process.exitCode !== 0) console.error(`Visual evidence: ${result.artifactRoot}`)
   } finally {

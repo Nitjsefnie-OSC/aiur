@@ -78,6 +78,36 @@ test('wide report tables scroll inside their wrapper at 390', async ({ page }) =
   const wrapper = page.locator('#exp-report .md-table-wrap').filter({ hasText: 'p (adj.)' }).first()
   await expect(wrapper).toBeVisible()
   expect(await wrapper.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true)
+  expect(await wrapper.evaluate(node => {
+    node.scrollLeft = 50
+    return node.scrollLeft
+  })).toBeGreaterThan(0)
+  await assertNoDocumentOverflow(page)
+})
+
+
+test('evidence and report tables preserve whole words at 1024', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 })
+  await openDetail(page)
+  const splitWords = await page.locator('.exp-table, #exp-report table').evaluateAll(tables => {
+    const split = []
+    for (const table of tables) {
+      const walker = document.createTreeWalker(table, NodeFilter.SHOW_TEXT)
+      while (walker.nextNode()) {
+        const node = walker.currentNode
+        for (const match of node.textContent.matchAll(/\b[a-z]{3,}\b/gi)) {
+          const range = document.createRange()
+          range.setStart(node, match.index)
+          range.setEnd(node, match.index + match[0].length)
+          if (range.getClientRects().length > 1) split.push(match[0])
+        }
+      }
+    }
+    return split
+  })
+  expect(splitWords).toEqual([])
+  const wrapper = page.getByRole('region', { name: 'Metric summary', exact: true })
+  expect(await wrapper.evaluate(node => { node.scrollLeft = 50; return node.scrollLeft })).toBeGreaterThan(0)
   await assertNoDocumentOverflow(page)
 })
 

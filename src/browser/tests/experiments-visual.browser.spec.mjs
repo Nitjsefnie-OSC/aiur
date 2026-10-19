@@ -2,8 +2,7 @@ import { test, expect } from '@playwright/test'
 import { getMaskConfig, openVisualRoute } from '../support/visual.mjs'
 
 test.use({ reducedMotion: 'reduce' })
-// /experiments-control/<scenario> sets global fixture state, so workers must not interleave.
-test.describe.configure({ mode: 'serial' })
+// The experiments project shares one worker across both scenario-changing files.
 
 // Real fixture ids: release-speed (line, evidence, guarded n, report) and
 // cohort-speed (A/B, no evidence or report yet). Scenario seeding is a
@@ -25,7 +24,7 @@ async function open(page, { theme, palette, scenario, path }) {
   await expect(page.locator('[data-phx-main].phx-connected')).toHaveCount(1)
   await page.evaluate(() => document.fonts.ready)
   // Element shots taller than the viewport scroll under the fixed shell chrome.
-  await page.addStyleTag({ content: '.ax-top, .sidenav { visibility: hidden !important }' })
+  await page.addStyleTag({ content: '.ax-top, .sidenav { visibility: hidden !important } .readonly-banner:has(b) { display: none !important } #exp-report time { visibility: hidden !important; display: inline-block; width: 5ch; white-space: nowrap }' })
 }
 
 for (const theme of ['light', 'dark']) {
