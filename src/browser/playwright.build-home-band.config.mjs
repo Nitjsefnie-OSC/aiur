@@ -5,6 +5,7 @@ import config from './playwright.design-parity.config.mjs'
 export default {
   ...config,
   fullyParallel: true,
-  workers: 2,
+  // Dataset selection is global to this invocation's fixture server.
+  workers: 1,
   grep: /band pixels and card geometry: (live|offline) 390 |mobile composed headers without masks: (live|offline) /
 }

@@ -9,8 +9,10 @@ export function fullBandCommands(part) {
     ['tests/build-home-now-band-parity.browser.spec.mjs'],
     ['tests/build-home-motion.browser.spec.mjs', '--grep', 'product interactions .*snap[.]|product inventory/grain live 1440 dark gruvbox no-preference.*(grain[.]static [.]bd-now|inventory [.]bd-now-h)']
   ]
+  // One server owns a process-wide dataset selector. Keep its tests sequential;
+  // the four CI partitions each start their own isolated fixture server.
   return suites.map(suite => ['scripts/run-browser-tests.mjs', ...suite,
-    '--config', 'playwright.design-parity.config.mjs', '--fully-parallel', '--workers=2', '--shard=' + part + '/4'])
+    '--config', 'playwright.design-parity.config.mjs', '--fully-parallel', '--workers=1', '--shard=' + part + '/4'])
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
