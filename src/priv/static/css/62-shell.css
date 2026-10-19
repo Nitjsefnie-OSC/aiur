@@ -134,9 +134,10 @@ html.nav-drag, html.nav-drag * { cursor: col-resize !important; user-select: non
 html.nav-collapsed .sidenav .snav { padding: .55rem 0; justify-content: center; border-radius: 9px; margin: 0 .35rem 0 .35rem; }
 }
 .snav-label { white-space: nowrap; overflow: hidden; transition: opacity .18s; }
-@media (min-width: 481px) and (max-width: 960px) {
-  .sidenav-nav, .snav { min-width: 0; }
-  .snav-label { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 960px) {
+  .sidenav-nav { min-width: 0; overflow-x: auto; }
+  .sidenav .snav { flex: 0 0 auto; width: auto; }
+  .ax-menu { left: auto; right: 0; }
 }
 .ax-drag { position: absolute; top: 0; bottom: 0; right: -5px; width: 10px; z-index: 5; cursor: col-resize; }
 .ax-drag::after { content: ""; position: absolute; top: 0; bottom: 0; left: 4px; width: 2px; background: var(--accent); opacity: 0; transition: opacity .15s; }
