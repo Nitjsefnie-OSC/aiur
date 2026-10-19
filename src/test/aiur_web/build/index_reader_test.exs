@@ -3,10 +3,6 @@ defmodule AiurWeb.Build.IndexReaderTest do
   import Aiur.TestSupport.BuildHome.IndexParts
   alias AiurWeb.Build.IndexReader
 
-  defmodule BrokenLoader do
-    def load(:cached), do: raise("Units cache failed")
-  end
-
   defmodule SlowOpenServer do
     use GenServer
 
@@ -22,14 +18,38 @@ defmodule AiurWeb.Build.IndexReaderTest do
     def handle_call(:snapshot, _from, parent), do: {:reply, %Aiur.OpenTicketSource.Snapshot{}, parent}
   end
 
-  test "failed now reader drops old rows and leaves other sources usable" do
-    previous = parts() |> put_in([:now, :rows], %{"12" => now_row(12)})
-    read = IndexReader.read(MapSet.new(~w(now planned not_queued)a), previous, payload_loader: BrokenLoader)
-    assert read.now == {:error, :read_failed}
+  test "first cold index read projects an adopted running agent from the orchestrator snapshot" do
+    {:ok, identity} =
+      Aiur.TrackerIdentity.from_github(%{"node_id" => "I_kwDOExample12", "number" => 12}, {"aiur-team", "aiur"}, {"aiur-team", "aiur"})
+
+    snapshot = %{
+      statuses: [
+        %{identifier: "12", tracker_identity: identity, work_state: :working, state: :running},
+        %{identifier: "13", tracker_identity: %{identity | identifier: "13", provider_id: "I_kwDOExample13"}, work_state: :working, state: :idle}
+      ]
+    }
+
+    read =
+      IndexReader.read(:all, parts(),
+        repository_fun: fn -> {:ok, {"aiur-team", "aiur"}} end,
+        running_rows_fun: fn _opts -> {:ok, snapshot.statuses} end
+      )
+
+    assert Map.has_key?(read.now.rows, "12")
+    refute Map.has_key?(read.now.rows, "13")
+    assert {:ok, index} = assemble(read)
+    assert index.sources.agents.state == "ok"
+    assert index.all["12"].sec == "now"
+    assert index.all["12"].agent.state == "active"
+  end
+
+  test "unavailable running snapshot is a typed unavailable source" do
+    read = IndexReader.read(:all, parts(), running_rows_fun: fn _opts -> {:error, :unavailable} end)
+
+    assert read.now == {:error, :running_snapshot_unavailable}
     assert {:ok, index} = assemble(read)
     assert index.sources.agents.state == "unavailable"
-    refute Map.has_key?(index.all, "12")
-    assert index.sources.history.state == "ok"
+    assert index.sources.agents.reason == "read_failed"
   end
 
   test "cached open and queue facts keep every open id with no duplicate history read" do
