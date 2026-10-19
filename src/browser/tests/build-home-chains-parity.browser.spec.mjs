@@ -49,6 +49,8 @@ async function installReferenceFit(page) {
       if (!callback.toString().includes('lockTree(id)')) return frame(callback)
       window.referenceFitObserved = true
       window.requestAnimationFrame = frame
+      // Render virtual cards through the real listener before waiting on their transitions.
+      viewport.dispatchEvent(new Event('scroll'))
       const settle = () => {
         const moving = document.querySelector('#bd-content').getAnimations({ subtree: true })
           .some(animation => ['left', 'width', 'top', 'height'].includes(animation.transitionProperty) && animation.playState === 'running')
