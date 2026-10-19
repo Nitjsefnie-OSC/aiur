@@ -66,7 +66,16 @@ async function installReferenceFit(page) {
           .some(animation => ['left', 'width', 'top', 'height'].includes(animation.transitionProperty) && animation.playState === 'running')
         if (!rendered || columns.size || (!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act, .bd-sec .bd-card.noanim, .bd-lane.leave') || moving) return frame(settle)
         viewport.removeEventListener('scroll', onScroll)
-        return frame(now => { callback(now); frame(() => { restore(); complete() }) })
+        return frame(now => {
+          const before = viewport.scrollTop
+          callback(now)
+          frame(now => {
+            // Clearing the old SVG height can clamp scrolling during its draw.
+            // Replay the original callback at the corrected coordinate origin.
+            if (viewport.scrollTop !== before) callback(now)
+            frame(() => { restore(); complete() })
+          })
+        })
       }
       return frame(() => frame(settle))
     }
