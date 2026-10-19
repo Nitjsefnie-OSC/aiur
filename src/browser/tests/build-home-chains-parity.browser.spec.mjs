@@ -37,18 +37,26 @@ async function installReferenceFit(page) {
   await page.evaluate(() => {
     const frame = window.requestAnimationFrame, viewport = document.querySelector('#bd-vp')
     const initialScroll = viewport.scrollTop
-    let scrolled = false, complete
+    let scrolled = false, rendered = false, captured = false, complete
+    const later = window.setTimeout, cancel = window.clearTimeout, columns = new Set()
+    window.setTimeout = (callback, delay, ...args) => {
+      if (typeof callback !== 'function' || !callback.toString().includes('applyCols(visibleCols())')) return later(callback, delay, ...args)
+      const id = later(() => { columns.delete(id); callback(...args) }, delay)
+      columns.add(id); return id
+    }
+    window.clearTimeout = id => { columns.delete(id); return cancel(id) }
     window.referenceFitDone = new Promise(resolve => { complete = resolve })
     const onScroll = () => { scrolled = true }
     viewport.addEventListener('scroll', onScroll, { passive: true })
-    const restore = () => { window.requestAnimationFrame = frame; viewport.removeEventListener('scroll', onScroll) }
+    const restore = () => { window.requestAnimationFrame = frame; window.setTimeout = later; window.clearTimeout = cancel; viewport.removeEventListener('scroll', onScroll) }
     window.referenceFitRestore = restore
     window.referenceFitObserved = false
     window.requestAnimationFrame = callback => {
       // This callback's source is pinned by the frozen design manifest.
-      if (!callback.toString().includes('lockTree(id)')) return frame(callback)
+      if (callback.toString().includes('raf = 0; update();')) return frame(now => { callback(now); rendered = true })
+      if (captured || !callback.toString().includes('lockTree(id)')) return frame(callback)
+      captured = true
       window.referenceFitObserved = true
-      window.requestAnimationFrame = frame
       // Render virtual cards through the real listener before waiting on their transitions.
       viewport.dispatchEvent(new Event('scroll'))
       const settle = () => {
@@ -56,9 +64,9 @@ async function installReferenceFit(page) {
         document.querySelectorAll('.bd-card').forEach(card => card.getBoundingClientRect())
         const moving = document.querySelector('#bd-content').getAnimations({ subtree: true })
           .some(animation => ['left', 'width', 'top', 'height'].includes(animation.transitionProperty) && animation.playState === 'running')
-        if ((!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act, .bd-sec .bd-card.noanim, .bd-lane.leave') || moving) return frame(settle)
+        if (!rendered || columns.size || (!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act, .bd-sec .bd-card.noanim, .bd-lane.leave') || moving) return frame(settle)
         viewport.removeEventListener('scroll', onScroll)
-        return frame(now => { callback(now); frame(() => { complete() }) })
+        return frame(now => { callback(now); frame(() => { restore(); complete() }) })
       }
       return frame(() => frame(settle))
     }
