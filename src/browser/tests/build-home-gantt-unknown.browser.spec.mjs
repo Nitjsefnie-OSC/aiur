@@ -1,6 +1,27 @@
 import { test, expect } from '@playwright/test'
 import { captureStable, openProduct, parityContextOptions, PARITY_VIEWPORTS, PARITY_THRESHOLD } from '../support/design-parity.mjs'
 
+// Advance only until the production column/scroll schedulers and CSS have
+// settled. A paused clock otherwise leaves .scrolling disabling card hit tests.
+async function waitForCard(page, target, exposed = false) {
+  await expect.poll(async () => {
+    await page.clock.runFor(16)
+    return target.evaluate(async (el, exposed) => {
+      const { ctx, fx } = await import('/build-home/state.js'), box = el.getBoundingClientRect()
+      return {
+        columns: ctx.cols.join('|') === fx.visibleCols().join('|'),
+        scrolling: ctx.isScrolling() || ctx.content.classList.contains('scrolling'),
+        transitions: el.getAnimations().filter(a => a.playState === 'running' || a.pending).length,
+        opacity: getComputedStyle(el).opacity,
+        exposed: !exposed || [0.25, 0.75].every(x => [0.25, 0.75].every(y =>
+          el.contains(document.elementFromPoint(box.left + box.width * x, box.top + box.height * y))))
+      }
+    }, exposed)
+  }, { intervals: [16], message: 'card columns, scroll settlement, transitions and exposure' }).toEqual({
+    columns: true, scrolling: false, transitions: 0, opacity: '1', exposed: true
+  })
+}
+
 for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`S-5 adopted unknown-value capture: ${width} ${theme}`, async ({ browser }, info) => {
   test.setTimeout(120000)
   const cell = { ...PARITY_VIEWPORTS.find(v => v.viewport.width === width), theme, palette: 'aiur', dataset: 'live' }
@@ -32,27 +53,30 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) test(`S-
         const sec = id.includes('start') ? 'hist' : 'plan', it = ctx.L.secs[sec].items.find(it => it.t.id === id)
         fx.scrollVP(Math.max(0, ctx.secs[sec].el.offsetTop + it.y - 100), false); fx.update()
       }, marker.id)
-      // Let the real column scheduler finish after the controlled scroll.
-      await page.clock.runFor(500)
       const target = page.locator(`.bd-card[data-id="${marker.id}"]`)
-      // The board can extend below the mobile fold. A full-page clip still
-      // includes fixed navigation, so expose the card in the outer document
-      // before capturing it; moving the board or hiding navigation would mask it.
+      await waitForCard(page, target)
+      // Scroll the outer document without moving the board or hiding navigation.
       const size = await target.evaluate(el => {
         const box = el.getBoundingClientRect()
-        window.scrollBy(0, Math.round(box.top + box.height / 2 - innerHeight / 2))
+        window.scrollBy({ top: Math.round(box.top + box.height / 2 - innerHeight / 2), behavior: 'instant' })
         return { width: box.width, height: box.height }
       })
-      await page.clock.runFor(40)
-      await expect.poll(() => target.evaluate((el, size) => {
-        const box = el.getBoundingClientRect()
-        return box.width === size.width && box.height === size.height &&
-          [0.25, 0.75].every(x => [0.25, 0.75].every(y =>
-            el.contains(document.elementFromPoint(box.left + box.width * x, box.top + box.height * y))))
-      }, size), { message: 'unknown-value card is fully exposed, with unchanged dimensions' }).toBe(true)
-      // A locator screenshot can deadlock scrolling with the paused JS clock.
-      // The shared page-clip path captures the same element without auto-scrolling.
-      const png = await captureStable(target, { animations: 'disabled', caret: 'hide', scale: 'device' }, page)
+      await waitForCard(page, target, true)
+      const box = await target.boundingBox()
+      expect({ width: box.width, height: box.height }).toEqual(size)
+      // Full-page capture can relocate fixed navigation after hit-testing. Keep
+      // the capture viewport unchanged, and check the measured clip each sample.
+      const capture = { screenshot: async opts => {
+        await waitForCard(page, target, true)
+        const current = await target.boundingBox()
+        expect(current, 'card geometry changed during capture').toEqual(box)
+        const viewport = page.viewportSize()
+        expect(current.x).toBeGreaterThanOrEqual(0); expect(current.y).toBeGreaterThanOrEqual(0)
+        expect(current.x + current.width).toBeLessThanOrEqual(viewport.width)
+        expect(current.y + current.height).toBeLessThanOrEqual(viewport.height)
+        return page.screenshot({ ...opts, fullPage: false, clip: current })
+      } }
+      const png = await captureStable(capture, { animations: 'disabled', caret: 'hide', scale: 'device' })
       await info.attach(`${marker.id}-${width}-${theme}`, { body: png, contentType: 'image/png' })
       expect(png).toMatchSnapshot(`${marker.id}-${width}-${theme}.png`, { threshold: PARITY_THRESHOLD, maxDiffPixels: 0 })
     }
