@@ -42,7 +42,8 @@ export function setHover(id, el) {
   ctx.L?.band.items.forEach(it => it.el?.classList.toggle('hl', !!set && set.has(it.t.id)));
   const lt = tab();
   if (lt) {
-    lt.classList.toggle('show', !!id && !!el);
+    if (id && el) lt.classList.add('show');
+    else if (!ctx.lockId) lt.classList.remove('show');
     if (id && el) {
       const r = el.getBoundingClientRect(), c = ctx.content.getBoundingClientRect();
       lt.style.left = r.right - c.left - 1 + 'px';
@@ -59,7 +60,7 @@ export function lockTree(id) {
   if (!ctx.D?.byId[id]) return;
   fitToken++; hoverGen++; ctx.lockId = id; ctx.hoverId = '~';
   setHover(id, cardOf(id));
-  tab()?.classList.add('locked');
+  tab()?.classList.add('locked', 'show');
   tab()?.querySelector('[data-lt="lock"]').setAttribute('aria-pressed', 'true');
 }
 export function unlock() {

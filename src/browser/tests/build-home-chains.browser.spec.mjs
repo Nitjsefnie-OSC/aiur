@@ -290,6 +290,7 @@ test('B9 cards rendered by scrolling receive locked chain classes', async ({ pag
   const classes = await page.locator('.bd-card').evaluateAll((els, id) => els.filter(el => el.dataset.id !== id).map(el => ({ id: el.dataset.id, marked: el.matches('.hl, .hdim') })), id)
   expect(classes.length).toBeGreaterThan(0)
   expect(classes.filter(c => !c.marked)).toEqual([])
+  await expect(card(page, id)).toHaveCount(0); await expect(tray(page)).toHaveClass(/show/)
 })
 
 test.describe('B10 phone touch', () => {
