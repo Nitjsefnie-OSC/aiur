@@ -24,6 +24,7 @@
     "test:build-queue": "node scripts/run-browser-tests.mjs tests/build-queue.browser.spec.mjs",
     "test:build-order": "node scripts/run-browser-tests.mjs tests/build-order-route.browser.spec.mjs tests/optimistic-analytics.browser.spec.mjs",
     "test:experiments": "node scripts/run-browser-tests.mjs tests/experiments.browser.spec.mjs",
+    "test:experiments-responsive": "node scripts/run-browser-tests.mjs tests/experiments-responsive.browser.spec.mjs",
     "test:interaction": "node scripts/run-browser-tests.mjs tests/build-order-interaction.browser.spec.mjs",
     "test:time-brush": "node scripts/run-browser-tests.mjs tests/time-brush.browser.spec.mjs",
     "test:performance": "node scripts/run-browser-tests.mjs tests/build-order-performance.browser.spec.mjs",
