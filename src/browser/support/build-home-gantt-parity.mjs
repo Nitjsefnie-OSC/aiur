@@ -48,6 +48,15 @@ export async function freezeGanttComposition(pair) {
   }, from)
   expect(loaded, 'matching history window before Gantt comparison').toBe(from)
   await alignBoard(pair)
+  // The reference toolbar can overflow the phone page and expand its layout
+  // viewport to 435px despite a 390px visual viewport. Clip the exterior page,
+  // preserving every board pixel, so both SVGs paint in the same viewport.
+  for (const page of [pair.design, pair.product]) {
+    const before = await page.locator('#bd-vp').boundingBox()
+    await page.evaluate(() => { document.documentElement.style.overflowX = 'clip'; document.body.style.overflowX = 'clip' })
+    expect(await page.locator('#bd-vp').boundingBox()).toEqual(before)
+    await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(page.viewportSize())
+  }
   for (const page of [pair.design, pair.product]) await page.locator('#bd-vp').evaluate(el => {
     document.body.style.minHeight = Math.ceil(el.getBoundingClientRect().bottom + scrollY) + 'px'
   })
@@ -92,18 +101,19 @@ export async function attachGanttRasterDiagnostics(pair, info) {
     const styles = el => {
       const cs = getComputedStyle(el)
       return { ...Object.fromEntries(['color', 'stroke', 'strokeWidth', 'fill', 'fillOpacity', 'strokeOpacity', 'filter', 'opacity', 'shapeRendering', 'transform'].map(key => [key, cs[key]])),
+        computed: Object.fromEntries([...cs].filter(key => !key.startsWith('--')).map(key => [key, cs.getPropertyValue(key)])),
         vars: Object.fromEntries(['--ec', '--h', '--fg', '--muted', '--faint'].map(key => [key, cs.getPropertyValue(key)])) }
     }
     const parents = el => {
       const list = []
       for (let node = el.parentElement; node; node = node.parentElement) {
-        list.push({ tag: node.tagName, cls: node.getAttribute('class'), id: node.id, styles: styles(node) })
+        list.push({ tag: node.tagName, cls: node.getAttribute('class'), id: node.id, box: rect(node), styles: styles(node) })
         if (node.id === 'build-root') break
       }
       return list
     }
     const card = [...document.querySelectorAll('.bd-card')].find(el => el.dataset.id.replace('AIUR-', '') === '604')
-    return { dpr: devicePixelRatio, fonts: document.fonts.status, scroll: { x: scrollX, y: scrollY, top: document.querySelector('#bd-vp').scrollTop },
+    return { dpr: devicePixelRatio, viewport: { width: innerWidth, height: innerHeight, scale: visualViewport.scale, visualWidth: visualViewport.width, visualHeight: visualViewport.height, documentWidth: document.documentElement.scrollWidth }, fonts: document.fonts.status, scroll: { x: scrollX, y: scrollY, top: document.querySelector('#bd-vp').scrollTop },
       boxes: Object.fromEntries(['#build-root', '#bd-vp', '#bd-content', '#bd-now'].map(selector => [selector, rect(document.querySelector(selector))])),
       card: card && { box: rect(card), styles: styles(card), parents: parents(card), icons: [...card.querySelectorAll('svg')].map(el => ({ box: rect(el), html: el.outerHTML, styles: styles(el), parents: parents(el), paths: [...el.querySelectorAll('path,rect,circle')].map(path => ({ tag: path.tagName, styles: styles(path) })) })) } }
   })
