@@ -55,6 +55,7 @@ export async function reveal(page, id) {
     st.fx.update()
   }, String(id))
   await expect(card(page, id)).toBeVisible()
+  await card(page, id).scrollIntoViewIfNeeded()
   await expect.poll(() => page.evaluate(() =>
     st.ctx.snapping || st.ctx.content.classList.contains('scrolling'))).toBe(false)
   await page.waitForTimeout(650) // Allow the deferred column update to start.
