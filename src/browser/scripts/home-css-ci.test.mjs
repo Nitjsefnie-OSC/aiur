@@ -50,10 +50,10 @@ test('experiment specs share one worker even when the global pool has two', () =
   ])
 })
 
-test('both CI visual runs compare experiment baselines in Docker and upload evidence', () => {
-  assert.match(scripts['test:visual'], /&& npm run test:visual:docker -- --grep experiments(?:\s|$)/)
-  assert.match(scripts['test:visual:docker'], /&& node support\/visual\.mjs --docker(?:\s|$)/)
-  assert.doesNotMatch(scripts['test:visual'] + scripts['test:visual:docker'], /--update-snapshots/)
+test('both CI visual runs compare experiment baselines in pinned Chromium and upload evidence', () => {
+  assert.equal(workflow.jobs.browser.container.image, 'mcr.microsoft.com/playwright:v1.61.1-noble')
+  assert.equal(scripts['test:visual'], 'npm run fixture:preflight && AIUR_BROWSER_KEEP_ARTIFACTS=1 node scripts/run-browser-tests.mjs tests/visual-shell.browser.spec.mjs tests/experiments-visual.browser.spec.mjs tests/experiments-responsive.browser.spec.mjs')
+  assert.doesNotMatch(scripts['test:visual'], /--update-snapshots/)
   const steps = browserAction.runs.steps
   assert.equal(steps.find(step => step.name === 'Run first visual regression baseline').run, 'npm run test:visual')
   assert.equal(steps.find(step => step.name === 'Run second visual regression baseline and verify failure evidence').run,
