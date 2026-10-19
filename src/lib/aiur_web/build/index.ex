@@ -119,7 +119,8 @@ defmodule AiurWeb.Build.Index do
     Process.cancel_timer(state.task.deadline)
     dirty = dirty_set(state.task.dirty)
     parts = clear_read_staleness(parts, dirty)
-    failures = if match?({:error, _}, parts[:now]), do: state.failures, else: 0
+    settings_loading? = match?({:error, :workflow_not_loaded}, parts[:settings])
+    failures = if match?({:error, _}, parts[:now]) or settings_loading?, do: state.failures, else: 0
     {:noreply, finish(%{state | task: nil, failures: failures}, parts, dirty)}
   end
 
@@ -238,11 +239,11 @@ defmodule AiurWeb.Build.Index do
   end
 
   defp retry_after_finish(state, next, now_failed?) do
-    cond do
-      now_failed? -> {state.failures + 1, MapSet.put(state.dirty, :now)}
-      match?({:error, :settings_loading}, next) -> {state.failures + 1, MapSet.put(state.dirty, :settings)}
-      true -> {state.failures, state.dirty}
-    end
+    settings_loading? = match?({:error, :settings_loading}, next)
+    failures = if now_failed? or settings_loading?, do: state.failures + 1, else: state.failures
+    retry_dirty = if now_failed?, do: MapSet.put(state.dirty, :now), else: state.dirty
+    retry_dirty = if settings_loading?, do: MapSet.put(retry_dirty, :settings), else: retry_dirty
+    {failures, retry_dirty}
   end
 
   defp changes({:ok, old}, {:ok, new}) do

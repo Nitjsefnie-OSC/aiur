@@ -81,6 +81,22 @@ defmodule AiurWeb.OperatorControlCenter.UnitsRetainedPayloadTest do
     refute Map.has_key?(payload.units, :retained_age_seconds)
   end
 
+  test "an unpublished snapshot marks the loaded Units catalog as starting" do
+    :ok = SnapshotStore.forget(@orchestrator)
+    {:ok, orchestrator} = Agent.start_link(fn -> :starting end, name: @orchestrator)
+
+    on_exit(fn ->
+      if Process.alive?(orchestrator), do: Agent.stop(orchestrator)
+      SnapshotStore.forget(@orchestrator)
+    end)
+
+    start_endpoint(orchestrator: @orchestrator)
+    payload = PayloadLoader.load(:fresh)
+
+    assert payload.units.status == :loading
+    assert UnitsPresenter.project(payload.units, nil).count_status == :unavailable
+  end
+
   test "a failed load demotes the retained Units catalog to stale with its age" do
     {:ok, fail?} = Agent.start_link(fn -> false end)
 

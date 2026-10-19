@@ -38,6 +38,16 @@ defmodule AiurWeb.Build.IndexSettingsStartupTest do
     send(pid, :flush)
     receive_barrier({:settings_retry, worker, dirty})
     assert dirty == MapSet.new([:settings])
+    send(worker, {:return, loading})
+    assert_receive {:settings_timer, ^pid, :flush, 1_000}, 1_000
+    send(pid, :flush)
+    receive_barrier({:settings_retry, worker, dirty})
+    assert dirty == MapSet.new([:settings])
+    send(worker, {:return, %{loading | now: {:error, :read_failed}}})
+    assert_receive {:settings_timer, ^pid, :flush, 2_000}, 1_000
+    send(pid, :flush)
+    receive_barrier({:settings_retry, worker, dirty})
+    assert dirty == MapSet.new([:now, :settings])
     send(worker, {:return, parts()})
     assert await_ready(pid, 100)
     refute_received {:settings_timer, ^pid, :flush, _delay}

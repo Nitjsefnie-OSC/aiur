@@ -9,6 +9,7 @@ defmodule Aiur.WorkflowStoreTest do
     state = %Aiur.WorkflowStore.State{workflow: nil}
 
     assert {:reply, {:error, :workflow_not_loaded}, ^state} = Aiur.WorkflowStore.handle_call(:current, self(), state)
+    assert {:reply, {:error, :workflow_not_loaded}, ^state} = Aiur.WorkflowStore.handle_call(:current_with_generation, self(), state)
   end
 
   # A write that lands in the instant after the store reads the config must not
