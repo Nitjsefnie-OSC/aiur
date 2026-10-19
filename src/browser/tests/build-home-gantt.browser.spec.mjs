@@ -5,6 +5,7 @@ import { dashboardCredentials } from './support/layout-worker.mjs'
 import { openParityPair, expectDesignParity, waitParityReady, PARITY_VIEWPORTS, FIXTURE_META } from '../support/design-parity.mjs'
 import { freezeGanttComposition, scrollGanttComposition, attachGanttRasterDiagnostics, attachGanttGeometryDiagnostics, compareRenderedGanttEdges } from '../support/build-home-gantt-parity.mjs'
 import { runOn, compareRecords } from '../support/build-home-motion.mjs'
+import { primeBoardPaint } from '../support/build-home-band-canvas.mjs'
 import { loadGanttRegionHistory, markGanttRegion, markFixedGanttRegion } from '../support/build-home-gantt-regions.mjs'
 
 const root = new URL('../../test/fixtures/build_home/', import.meta.url)
@@ -406,6 +407,9 @@ for (const cell of compositionCells) {
       for (const [position, top] of Object.entries(positions)) {
         await scrollGanttComposition(pair, top)
         if (cell.dataset === 'live') await compareRenderedGanttEdges(pair)
+        // Hold ambient loops as capture would, then repaint: pausing them inside the capture left a stale Now-band raster (390 span30 flaked).
+        for (const page of [pair.design, pair.product]) await page.evaluate(() => document.getAnimations().filter(a => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).forEach(a => { a.pause(); a.currentTime = 0 }))
+        await primeBoardPaint(pair)
         try {
           await expectDesignParity(pair, { name: `gantt-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}-span${cell.span}-${position}`, region: '#bd-vp', preserveAnimations: true })
         } catch (error) {
