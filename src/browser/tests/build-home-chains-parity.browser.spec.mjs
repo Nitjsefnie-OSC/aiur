@@ -53,6 +53,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
       } else await waitForFit(page)
       await expect(page.locator('.bd-lt.locked.show'), `P3 ${page === pair.design ? 'design' : 'product'} Fit retains its locked tab`).toHaveCount(1)
     }
+    await prepareChainParity(pair) // Observe Fit geometry after both native scroll sequences settle.
     await expect(pair.design.locator('.bd-lt.locked.show')).toHaveCount(1)
     const [designFit, productFit] = await Promise.all([fitState(pair.design), fitState(pair.product)])
     await check('P3 Fit URL', async () => expect(productFit.url).toEqual(designFit.url))
