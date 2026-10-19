@@ -38,11 +38,11 @@ export async function hoverRoot(page, root, product) {
   })
   await page.waitForTimeout(800)
   await expect(page.locator('.bd-content')).not.toHaveClass(/\bscrolling\b/)
-  // Foreground changes recompute native hover at the actual pointer position.
-  await card.hover()
-  await expect(page.locator('.bd-content')).not.toHaveClass(/\bscrolling\b/)
   await card.dispatchEvent(product ? 'pointerover' : 'mouseover', { pointerType: 'mouse' })
   await expect(page.locator('.bd-lt.show')).toHaveCount(1)
+  // Cards can sit behind the sticky band. The visible tab explicitly preserves hover.
+  const control = await page.locator('.bd-lt.show [data-lt="lock"]').boundingBox()
+  await page.mouse.move(control.x + control.width / 2, control.y + control.height / 2)
   await page.waitForTimeout(250)
 }
 
