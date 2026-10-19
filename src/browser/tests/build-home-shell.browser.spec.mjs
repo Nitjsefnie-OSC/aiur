@@ -303,12 +303,14 @@ test('B19 scrollbar geometry, track click, active timer and drag', async ({ page
     shell()
   })
   const measure = () => page.evaluate(async () => {
-    const { ctx } = await import('/build-home/state.js'); (await import('/build-home/shell.js')).syncSB()
+    const { ctx } = await import('/build-home/state.js')
     const sb = document.querySelector('#bd-sb'), th = sb.querySelector('i')
     return { range: ctx.vp.scrollHeight - ctx.vp.clientHeight, ch: ctx.vp.clientHeight, sh: ctx.vp.scrollHeight,
       track: sb.clientHeight, height: parseFloat(th.style.height), y: parseFloat(th.style.transform.slice(11)), off: sb.classList.contains('off') }
   })
+  const sync = () => page.evaluate(async () => (await import('/build-home/shell.js')).syncSB())
   await page.locator('#bd-vp').evaluate(el => el.append(Object.assign(document.createElement('div'), { id: 'spacer', style: 'height:20000px' })))
+  await sync()
   let m = await measure(); expect(m.off).toBe(false); expect(m.height).toBeCloseTo(Math.max(28, m.track * m.ch / m.sh))
   await page.locator('#bd-vp').evaluate(el => new Promise(resolve => {
     el.addEventListener('scroll', resolve, { once: true }); el.scrollTop = (el.scrollHeight - el.clientHeight) / 2
@@ -326,7 +328,7 @@ test('B19 scrollbar geometry, track click, active timer and drag', async ({ page
   await page.mouse.up(); await expect(page.locator('#bd-sb')).not.toHaveClass(/\bdrag\b/)
   await page.locator('#bd-sb').evaluate(el => { const r = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent('pointerdown', { clientY: r.top + r.height * .75 })) })
   expect(Math.abs(await page.locator('#bd-vp').evaluate(el => el.scrollTop) - .75 * m.range)).toBeLessThan(2)
-  await page.locator('#spacer').evaluate(el => el.remove()); expect((await measure()).off).toBe(true)
+  await page.locator('#spacer').evaluate(el => el.remove()); await sync(); expect((await measure()).off).toBe(true)
 })
 
 test('store moves rows, removes ids, replaces blocks and merges older pages without overwriting diffs', async ({ page }) => {
