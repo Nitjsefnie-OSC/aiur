@@ -54,8 +54,8 @@ async function installReferenceFit(page) {
     window.requestAnimationFrame = callback => {
       // This callback's source is pinned by the frozen design manifest.
       if (callback.toString().includes('raf = 0; update();')) return frame(now => { callback(now); rendered = true })
-      if (captured || !callback.toString().includes('lockTree(id)')) return frame(callback)
-      captured = true
+      if (captured || !callback.toString().includes('lockTree(id)') || callback.toString().includes('requestAnimationFrame')) return frame(callback)
+      captured = true; rendered = false
       window.referenceFitObserved = true
       // Render virtual cards through the real listener before waiting on their transitions.
       viewport.dispatchEvent(new Event('scroll'))
@@ -116,7 +116,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
       await page.bringToFront()
       await page.locator('[data-lt="fit"]').click()
       if (page === pair.design) {
-        expect(await page.evaluate(() => window.referenceFitObserved), 'observe the original reference Fit callback').toBe(true)
+        await expect.poll(() => page.evaluate(() => window.referenceFitObserved), 'observe the original reference Fit callback').toBe(true)
         await page.evaluate(() => window.referenceFitDone)
         await expect(page).toHaveURL(/[?&]span=/)
         await expect(page.locator('.bd-lt.locked.show'), 'reference Fit completes after history relayouts').toHaveCount(1, { timeout: 30_000 })
