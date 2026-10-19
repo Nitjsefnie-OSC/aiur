@@ -61,8 +61,12 @@ export async function reveal(page, id) {
   await settleAnimations(page, '.bd-content')
   await expect(card(page, id)).toBeVisible()
 }
-export async function lock(page, id, { visible = false } = {}) {
-  if (!visible) await reveal(page, id)
+export async function lock(page, id) {
+  await reveal(page, id)
+  await card(page, id).hover({ trial: true })
+  await expect.poll(() => page.evaluate(() => st.ctx.snapping || st.ctx.content.classList.contains('scrolling'))).toBe(false)
+  await expect.poll(() => page.evaluate(() => st.ctx.cols.join('|') === st.fx.visibleCols().join('|'))).toBe(true)
+  await settleAnimations(page, '.bd-content')
   await card(page, id).hover()
   await expect(tray(page)).toHaveClass(/show/)
   await expect.poll(() => page.evaluate(() => st.ctx.hoverId)).toBe(String(id))
