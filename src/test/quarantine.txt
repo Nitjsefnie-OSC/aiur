@@ -17,3 +17,4 @@ Aiur.Workspace.RefreshTest	run/3 reconstruction restores the governed GitHub wra
 Aiur.WorkspaceMaterializeTest	copies the warm base onto the generated ticket branch	#4754
 Aiur.Events.TraceTest	default sink preserves identical global and per-identifier debug entries	#4762
 Aiur.OrchestratorRemoteControlTest	ensure_remote_control_trust/2 (direct-dispatch trust seeding) seeds hasTrustDialogAccepted for the workspace	#4765
+Aiur.BuildOrder.Features.LabelProjectionReadsTest	cached projection defers the initial full walk until History recovers	#5274
