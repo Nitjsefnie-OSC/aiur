@@ -44,8 +44,8 @@ export function drawEdgesSoon(ms) {
   edgeUntil = performance.now() + (ms || 0);
   if (was) return;
   const loop = () => {
-    const moving = [...ctx.R.values()].some(el => el.getAnimations().some(a =>
-      ['left', 'width'].includes(a.transitionProperty) && a.playState === 'running'));
+    const moving = ctx.content.getAnimations({ subtree: true }).some(a =>
+      ['left', 'width'].includes(a.transitionProperty) && a.playState === 'running' && a.effect.target.matches('.bd-card'));
     const done = performance.now() >= edgeUntil && !moving;
     if (done && (ctx.hoverId || ctx.treeId) && fx.reapply) fx.reapply();
     else drawEdges(true);
