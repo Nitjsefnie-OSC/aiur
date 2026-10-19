@@ -52,13 +52,15 @@ async function installReferenceFit(page) {
       // Render virtual cards through the real listener before waiting on their transitions.
       viewport.dispatchEvent(new Event('scroll'))
       const settle = () => {
+        // Flush pending placement styles before inspecting CSS transition state.
+        viewport.getBoundingClientRect()
         const moving = document.querySelector('#bd-content').getAnimations({ subtree: true })
           .some(animation => ['left', 'width', 'top', 'height'].includes(animation.transitionProperty) && animation.playState === 'running')
         if ((!scrolled && viewport.scrollTop !== initialScroll) || document.querySelector('#bd-sb.act') || moving) return frame(settle)
         viewport.removeEventListener('scroll', onScroll)
         return frame(now => { callback(now); frame(() => { complete() }) })
       }
-      return frame(settle)
+      return frame(() => frame(settle))
     }
   })
 }
