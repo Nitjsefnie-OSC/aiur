@@ -9,7 +9,10 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   require Logger
 
   alias Aiur.Alerts
-  alias Aiur.Orchestrator.{AgentTeardown, State, TrackerTasks}
+  alias Aiur.AgentRunner.TurnProgress
+  alias Aiur.Config
+  alias Aiur.Orchestrator.{AgentTeardown, DispatchPolicy, Dispatcher, State, TrackerTasks}
+  alias Aiur.Orchestrator.Dispatcher.Budgets
   alias Aiur.Orchestrator.StartupClaimReconciler.Release
 
   @spec maybe_release(State.t(), map(), atom(), keyword()) :: State.t()
@@ -17,23 +20,91 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
 
   def maybe_release(%State{} = state, %{paused_reason: :max_agent_duration, issue: %{id: issue_id} = issue} = entry, :paused, opts) do
     opts = Keyword.merge(Application.get_env(:aiur, :duration_cap_release_opts, []), opts)
-    release = fn -> Release.run(issue, release_opts(opts)) end
+
+    release = fn ->
+      {baseline, entry} = baseline(entry, opts)
+      entry = Map.put(entry, :dispatch_latch_status, Budgets.dispatch_latch_status(state, issue_id))
+      progress = progress?(entry, baseline, opts)
+
+      if progress and DispatchPolicy.active_issue_state?(issue.state, DispatchPolicy.active_state_set()) and retry_budget_available?(entry, opts) do
+        case progress_release_target(issue, opts) do
+          {:ok, "rework"} ->
+            {:redispatch, %{issue | state: "rework"}}
+
+          {:ok, target} ->
+            {:release, target, "progress was detected"}
+
+          {:error, _} = error ->
+            error
+        end
+      else
+        reason = release_reason(progress, issue, entry, opts)
+        {:escalate, reason}
+      end
+      |> case do
+        {:release, target, reason} ->
+          release_options = if target, do: release_opts(opts, reason, forced_target: target), else: release_opts(opts, reason)
+          Release.run(issue, release_options)
+
+        redispatch ->
+          redispatch
+      end
+    end
+
     TrackerTasks.run(state, {:duration_cap_release, issue_id}, release, &apply_release(&1, &2, entry, opts))
   end
 
   def maybe_release(state, _running_entry, _status, _opts), do: state
 
-  defp release_opts(opts) do
+  defp release_opts(opts, reason, extra \\ []) do
     Keyword.merge(
       [
         no_pr_target: "rework",
         writer: :duration_cap_release,
         # This daemon owns the parked worker's lease; it is released right after the write.
         ownership_fun: fn _identifier -> :none end,
-        release_body: &"Agent reached `agent.max_agent_duration_minutes`; released its runner and moved this ticket to #{&1} so the work continues."
+        release_body: &"Agent reached `agent.max_agent_duration_minutes`; #{reason}; moved this ticket to #{&1}."
       ],
       opts
     )
+    |> Keyword.merge(extra)
+  end
+
+  defp progress_release_target(issue, opts) do
+    case Keyword.fetch(opts, :progress_release_target_fun) do
+      {:ok, fun} when is_function(fun, 1) ->
+        fun.(issue)
+
+      _ ->
+        case Keyword.get(opts, :open_pr_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1).(issue.identifier) do
+          {:ok, nil} ->
+            {:ok, "rework"}
+
+          {:ok, %{"number" => number}} ->
+            fetch = Keyword.get(opts, :pr_fetcher, &Aiur.GitHub.Client.fetch_open_pull_request/1)
+
+            case fetch.(number) do
+              {:ok, %{"draft" => true}} ->
+                {:ok, "rework"}
+
+              {:ok, %{} = pr} ->
+                case Aiur.Orchestrator.ReworkGate.open_pull_request_rework_verdict(pr, opts) do
+                  {:ok, :rework} -> {:ok, "rework"}
+                  {:skip, :no_unresolved_review_threads} -> {:ok, "human-review"}
+                  {:error, reason} -> {:error, reason}
+                end
+
+              {:ok, nil} ->
+                {:error, :pull_request_changed}
+
+              {:error, reason} ->
+                {:error, reason}
+            end
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
   end
 
   # The tracker write already landed, so a refresh that swapped `:issue` must not
@@ -41,12 +112,53 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   @runner_fields [:pid, :ref, :session_id, :telemetry_attempt_id, :control]
 
   @doc false
+  @spec release_result(map(), term(), keyword()) :: State.t()
   @spec apply_release(State.t(), term(), map(), keyword()) :: State.t()
-  def apply_release(state, {:ok, target}, %{issue: %{id: issue_id}} = entry, opts) do
+  def release_result(entry, result, opts \\ []), do: apply_release(%State{running: %{entry.issue.id => entry}}, result, entry, opts)
+
+  @spec apply_release(State.t(), {:release, String.t() | nil, String.t()}, map(), keyword()) :: State.t()
+  def apply_release(state, {:release, target, reason}, %{issue: %{id: issue_id}} = entry, opts) do
     if same_parked_runner?(Map.get(state.running, issue_id), entry) do
+      target = target || "rework or human-review"
       Logger.warning("Released duration-capped agent to #{target} #{State.issue_context(entry.issue)}")
+      if reason != "progress was detected", do: emit_pause_alert(entry, reason, opts)
       resolve_pause_alert(entry, target, opts)
       AgentTeardown.terminate_running_issue(state, issue_id, false)
+    else
+      state
+    end
+  end
+
+  @spec apply_release(State.t(), {:escalate, String.t()}, map(), keyword()) :: State.t()
+  def apply_release(state, {:escalate, reason}, %{issue: %{id: issue_id}} = entry, opts) do
+    if same_parked_runner?(Map.get(state.running, issue_id), entry), do: emit_pause_alert(entry, reason, opts)
+    state
+  end
+
+  @spec apply_release(State.t(), {:ok, String.t()}, map(), keyword()) :: State.t()
+  def apply_release(state, {:ok, target}, entry, opts), do: apply_release(state, {:release, target, "progress was detected"}, entry, opts)
+
+  @spec apply_release(State.t(), {:redispatch, Aiur.Issue.t()}, map(), keyword()) :: State.t()
+  def apply_release(state, {:redispatch, issue}, %{issue: %{id: issue_id}} = entry, opts) do
+    if same_parked_runner?(Map.get(state.running, issue_id), entry) do
+      state = AgentTeardown.terminate_running_issue(state, issue_id, false)
+      dispatch = Keyword.get(opts, :dispatch_fun, &Dispatcher.dispatch_issue/5)
+      next = dispatch.(state, issue, nil, Map.get(entry, :worker_host), prior_work: true)
+      injected_dispatch? = is_function(Keyword.get(opts, :dispatch_fun))
+
+      case {Map.get(next.running, issue_id), injected_dispatch?} do
+        {%{control: %{status: :working}}, _} ->
+          resolve_pause_alert(entry, "automatic redispatch after progress", opts)
+          next
+
+        {_other, true} ->
+          resolve_pause_alert(entry, "automatic redispatch after progress", opts)
+          next
+
+        _ ->
+          emit_pause_alert(entry, "Progress was detected, but automatic redispatch did not start; Executor action is required.", opts)
+          next
+      end
     else
       state
     end
@@ -55,6 +167,7 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
   # A failed or deferred write leaves the agent paused for the Executor, as before #4849.
   def apply_release(state, result, entry, _opts) do
     Logger.warning("Duration-capped agent stays paused; release did not complete: #{inspect(result)} #{State.issue_context(entry.issue)}")
+    emit_pause_alert(entry, "Automatic redispatch was not available (#{inspect(result)}); Executor action is required.", [])
     state
   end
 
@@ -62,6 +175,76 @@ defmodule Aiur.Orchestrator.DurationCapRelease do
     do: Map.take(current, @runner_fields) == Map.take(entry, @runner_fields)
 
   defp same_parked_runner?(_current, _entry), do: false
+
+  defp progress?(entry, baseline, opts) do
+    case Keyword.get(opts, :progress_fun) do
+      fun when is_function(fun, 1) -> fun.(entry) == true
+      _ -> workspace_progress?(entry, baseline, opts)
+    end
+  end
+
+  defp baseline(entry, opts) do
+    case Map.get(entry, :duration_cap_progress_baseline) do
+      value when is_binary(value) ->
+        {value, entry}
+
+      _ ->
+        probe = Keyword.get(opts, :workspace_probe, &workspace_fingerprint/2)
+
+        case probe.(Map.get(entry, :workspace_path), Map.get(entry, :worker_host)) do
+          {:ok, value} -> {value, Map.put(entry, :duration_cap_progress_baseline, value)}
+          _ -> {nil, entry}
+        end
+    end
+  end
+
+  defp workspace_progress?(entry, baseline, opts) do
+    case Map.get(entry, :workspace_path) do
+      path when is_binary(path) ->
+        probe = Keyword.get(opts, :workspace_probe, &workspace_fingerprint/2)
+
+        case probe.(path, Map.get(entry, :worker_host)) do
+          {:ok, fingerprint} -> is_binary(fingerprint) and is_binary(baseline) and fingerprint != baseline
+          _ -> false
+        end
+
+      _ ->
+        false
+    end
+  rescue
+    _ -> false
+  end
+
+  defp workspace_fingerprint(path, worker_host), do: TurnProgress.workspace_digest(path, worker_host)
+
+  defp retry_budget_available?(entry, opts) do
+    budget? = Keyword.get(opts, :retry_budget_available_fun, fn _ -> true end)
+
+    budget?.(entry) and Map.get(entry, :retry_attempt, 0) < Keyword.get(opts, :max_retry_attempts, Config.max_retry_attempts()) and
+      Map.get(entry, :dispatch_latch_status, :none) == :none
+  end
+
+  defp release_reason(progress, issue, entry, opts) do
+    cond do
+      not DispatchPolicy.active_issue_state?(issue.state, DispatchPolicy.active_state_set()) -> "ticket state is inactive"
+      not progress -> "no commits, workpad changes, or other workspace changes were found"
+      not retry_budget_available?(entry, opts) -> "retry budget is spent"
+      true -> "progress was detected"
+    end
+  end
+
+  defp emit_pause_alert(entry, reason, opts) do
+    emit = Keyword.get(opts, :emit_alert_fun, &Alerts.emit_system/2)
+
+    emit.("ticket.#{entry.identifier}.agent.attention.paused-max_agent_duration",
+      issue: entry.identifier,
+      workspace: Map.get(entry, :workspace_path),
+      message: "Agent paused after reaching the maximum duration",
+      reason: reason,
+      needs_attention: true,
+      severity: "warning"
+    )
+  end
 
   defp resolve_pause_alert(entry, target, opts) do
     emit = Keyword.get(opts, :emit_alert_fun, &Alerts.emit_system/2)

@@ -234,7 +234,8 @@ defmodule Aiur.AgentRunner.MessageHandler do
       {:worker_runtime_info, issue_id,
        %{
          worker_host: worker_host,
-         workspace_path: workspace
+         workspace_path: workspace,
+         duration_cap_progress_baseline: workspace_fingerprint(workspace, worker_host)
        }}
     )
 
@@ -242,6 +243,10 @@ defmodule Aiur.AgentRunner.MessageHandler do
   end
 
   def send_worker_runtime_info(_recipient, _issue, _worker_host, _workspace), do: :ok
+
+  defp workspace_fingerprint(workspace, worker_host) do
+    Aiur.AgentRunner.TurnProgress.workspace_digest(workspace, worker_host)
+  end
 
   @doc false
   # Signals the orchestrator that this dispatch attempt has survived

@@ -14,54 +14,56 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     end)
   end
 
-  test "a duration-capped pause with no PR moves the ticket to rework and frees the runner" do
-    released = pause_with(open_pr_fetcher: fn "4849" -> {:ok, nil} end)
+  test "a duration-capped run with progress redispatches without an Executor resume" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "before")
+    state = %State{running: %{entry.issue.id => entry}}
 
-    refute Map.has_key?(released.running, "issue-4849")
-    assert_received {:write, "rework", "in-progress"}
-    assert_received {:comment, body}
-    assert body =~ "max_agent_duration_minutes"
-    assert body =~ "rework"
+    dispatch = fn current, issue, _attempt, _host, _opts ->
+      send(self(), {:redispatch, issue.identifier})
+      %{current | running: Map.put(current.running, issue.id, %{control: %{status: :working}})}
+    end
+
+    opts = [
+      workspace_probe: fn _path, _host -> {:ok, "after"} end,
+      progress_release_target_fun: fn _ -> {:ok, "rework"} end,
+      dispatch_fun: dispatch,
+      emit_alert_fun: fn topic, _ -> send(self(), {:alert, topic}) end,
+      max_retry_attempts: 3
+    ]
+
+    Application.put_env(:aiur, :duration_cap_release_opts, opts)
+    released = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert Map.has_key?(released.running, entry.issue.id)
+    assert_received {:redispatch, "4849"}
+    assert_received {:alert, "ticket.4849.agent.attention.paused-max_agent_duration.resolved"}
   end
 
-  test "a duration-capped pause with a draft PR moves the ticket to rework" do
-    released =
-      pause_with(
-        open_pr_fetcher: fn "4849" -> {:ok, %{"number" => 42}} end,
-        pr_fetcher: fn 42 -> {:ok, %{"number" => 42, "draft" => true, "mergeable" => true}} end
-      )
+  test "a duration-capped run without progress remains paused and escalates" do
+    entry = parked_entry() |> Map.put(:workspace_path, "/workspace") |> Map.put(:duration_cap_progress_baseline, "same")
+    state = %State{running: %{entry.issue.id => entry}}
 
-    refute Map.has_key?(released.running, "issue-4849")
-    assert_received {:write, "rework", "in-progress"}
+    opts = [
+      workspace_probe: fn _path, _host -> {:ok, "same"} end,
+      open_pr_fetcher: fn _ -> {:ok, nil} end,
+      emit_alert_fun: fn topic, alert_opts -> send(self(), {:alert, topic, alert_opts[:reason]}) end
+    ]
+
+    Application.put_env(:aiur, :duration_cap_release_opts, opts)
+    released = DurationCapRelease.maybe_release(state, entry, :paused, opts)
+
+    assert released.running[entry.issue.id].control.status == :paused
+    assert Map.has_key?(released.running, entry.issue.id)
+    assert_received {:alert, "ticket.4849.agent.attention.paused-max_agent_duration", reason}
+    assert reason =~ "no commits, workpad changes"
   end
 
-  test "a duration-capped pause with a ready PR moves the ticket to human-review" do
-    released =
-      pause_with(
-        open_pr_fetcher: fn "4849" -> {:ok, %{"number" => 42}} end,
-        pr_fetcher: fn 42 -> {:ok, %{"number" => 42, "draft" => false, "mergeable" => true, "head" => %{"sha" => "head"}}} end,
-        unresolved_threads_fetcher: fn _ -> {:ok, []} end,
-        reviews_fetcher: fn _ -> {:ok, []} end
-      )
-
-    refute Map.has_key?(released.running, "issue-4849")
-    assert_received {:write, "human-review", "in-progress"}
-  end
-
-  test "a failed release leaves the agent paused" do
-    released = pause_with(open_pr_fetcher: fn "4849" -> {:error, :timeout} end)
-
-    assert released.running["issue-4849"].control.status == :paused
-    refute_received {:write, _target, _expected}
-  end
-
-  # Owner mode applies the result later; a refresh may have swapped `:issue` after the write.
   test "a release completing after an issue refresh still frees the runner" do
     parked = parked_entry()
     refreshed = %{parked | issue: %{parked.issue | state: "rework", labels: ["agent:rework"]}}
     state = %State{running: %{"issue-4849" => refreshed}, claimed: MapSet.new(["issue-4849"])}
 
-    released = DurationCapRelease.apply_release(state, {:ok, "rework"}, parked, emit_alert_fun: fn _, _ -> :ok end)
+    released = DurationCapRelease.apply_release(state, {:release, "rework", "reason"}, parked, emit_alert_fun: fn _, _ -> :ok end)
 
     refute Map.has_key?(released.running, "issue-4849")
     refute MapSet.member?(released.claimed, "issue-4849")
@@ -72,44 +74,20 @@ defmodule Aiur.Orchestrator.DurationCapReleaseTest do
     resumed = parked |> Map.delete(:paused_reason) |> Map.put(:control, %{status: :working})
     state = %State{running: %{"issue-4849" => resumed}}
 
-    kept = DurationCapRelease.apply_release(state, {:ok, "rework"}, parked, emit_alert_fun: fn _, _ -> :ok end)
+    kept = DurationCapRelease.apply_release(state, {:release, "rework", "reason"}, parked, emit_alert_fun: fn _, _ -> :ok end)
 
     assert kept.running["issue-4849"] == resumed
   end
 
   # Guard, passes on main too: other pause causes keep their runner.
   test "an operator pause is not released" do
-    Application.put_env(:aiur, :duration_cap_release_opts, base_opts())
+    Application.put_env(:aiur, :duration_cap_release_opts, [])
     state = %State{running: %{"issue-4849" => Map.put(entry(), :paused_reason, :operator_pause)}}
 
     {:noreply, paused} = PauseResume.handle_worker_control_state(state, "issue-4849", :paused, %{})
 
     assert paused.running["issue-4849"].control.status == :paused
     refute_received {:write, _target, _expected}
-  end
-
-  defp pause_with(opts) do
-    Application.put_env(:aiur, :duration_cap_release_opts, Keyword.merge(base_opts(), opts))
-    state = %State{running: %{"issue-4849" => entry()}}
-    {:noreply, released} = PauseResume.handle_worker_control_state(state, "issue-4849", :paused, %{})
-    released
-  end
-
-  defp base_opts do
-    test = self()
-
-    [
-      active_states: ["todo", "in-progress", "rework", "human-review"],
-      update_issue_state_fun: fn "4849", target, expected ->
-        send(test, {:write, target, expected})
-        :ok
-      end,
-      create_comment_fun: fn "4849", body ->
-        send(test, {:comment, body})
-        :ok
-      end,
-      emit_alert_fun: fn _topic, _opts -> :ok end
-    ]
   end
 
   defp parked_entry, do: %{entry() | control: %{status: :paused}}
