@@ -448,6 +448,13 @@ defmodule Aiur.LandingWatch do
           _ -> {:error, :ticket_rework_transition_unconfirmed}
         end
 
+      {:ok, issue, "rework"} ->
+        if Keyword.get(opts, :conflict_rework_claim) == :new do
+          :conflict_already_rework
+        else
+          Keyword.get(opts, :after_rework, fn _issue -> :ok end).(issue)
+        end
+
       {:ok, _issue, _state} ->
         not_routed(opts)
 
