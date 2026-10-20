@@ -104,8 +104,9 @@ test('loaded opens never wait for replies; stale fetches cannot replace a newer 
   await expect(page.locator('#bm-title')).toHaveText('#' + t.num + t.title)
   expect(await calls(page)).toEqual([{ event: 'open-ticket', payload: { id: t.id, loaded: true } }])
   await page.evaluate(async () => { void (await import('/build-home/modal/frame.js')).openById('99999') })
+  await page.evaluate(() => { window.lateTicketReply = window.replyTicket })
   await display(page, t)
-  await page.evaluate(() => window.replyTicket({ kind: 'error', reason: 'not_found' }))
+  await page.evaluate(() => window.lateTicketReply({ kind: 'error', reason: 'not_found' }))
   await expect(page.locator('#bm-title')).toHaveText('#' + t.num + t.title)
 })
 
