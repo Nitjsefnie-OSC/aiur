@@ -20,6 +20,14 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     end)
   end
 
+  @spec after_reconcile(:ok | {:error, term()}, :ok | {:error, term()}, [map()], keyword()) :: :ok | {:error, term()}
+  def after_reconcile({:error, _} = error, _reconcile, _observations, _opts), do: error
+  def after_reconcile(:ok, {:error, _} = error, _observations, _opts), do: error
+
+  def after_reconcile(:ok, :ok, observations, opts) do
+    Keyword.get(opts, :merge_queue_watchdog_fun, &__MODULE__.reconcile/2).(observations, opts)
+  end
+
   defp reconcile_one(%{number: number, head: head, mergeable: "MERGEABLE", merge_state_status: "CLEAN", merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}} = observation, now, opts)
        when is_integer(number) and is_binary(head) and is_binary(entry) do
     key = "#{number}:#{head}"
