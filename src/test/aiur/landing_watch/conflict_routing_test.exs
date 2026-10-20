@@ -140,6 +140,7 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
         :ok
       end,
       pause_label: "agent:paused",
+      journal_path: journal_path(),
       alert_emitter: fn _, _ -> :ok end
     ]
   end
@@ -159,5 +160,11 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
       rest: %{"head" => %{"ref" => "aiur/17-work"}},
       raw: %{"reviewDecision" => "APPROVED", "headRefOid" => "head-sha", "isDraft" => false, "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-sha"}}]}}
     }
+  end
+
+  defp journal_path do
+    path = Path.join(System.tmp_dir!(), "landing-watch-conflict-#{System.unique_integer([:positive])}.json")
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(path) end)
+    path
   end
 end
