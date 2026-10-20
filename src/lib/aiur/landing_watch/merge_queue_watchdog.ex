@@ -255,7 +255,6 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     else
       {:error, _} = error -> error
       false -> {:skip, :queue_recovery_precondition_changed}
-      _ -> {:error, :invalid_queue_recovery_revalidation}
     end
   end
 
