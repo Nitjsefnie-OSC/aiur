@@ -59,6 +59,13 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def verify_suite! do
     if leak = leak(), do: record_leak(:persistent_term.get(@last_finished_key, nil), leak)
 
+    runtime_child_leaks = missing_runtime_children()
+
+    if runtime_child_leaks != [] do
+      last = :persistent_term.get(@last_finished_key, nil)
+      Enum.each(runtime_child_leaks, &record_runtime_child_leak(last, &1))
+    end
+
     case suite_errors() do
       [] -> :ok
       errors -> raise Enum.join(errors, "\n")
@@ -66,7 +73,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   end
 
   defp suite_errors do
-    suite_state_errors() ++ suite_orchestrator_errors() ++ suite_runtime_child_errors() ++ pubsub_errors()
+    suite_state_errors() ++ suite_orchestrator_errors() ++ suite_runtime_child_errors()
   end
 
   defp suite_state_errors do
@@ -97,15 +104,6 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     case :persistent_term.get(@runtime_child_leaks_key, []) do
       [] -> []
       leaks -> ["plain ExUnit tests left shared runtime children down: #{Enum.join(leaks, ", ")}"]
-    end
-  end
-
-  defp pubsub_errors do
-    if Process.whereis(Aiur.PubSub) do
-      []
-    else
-      last = :persistent_term.get(@last_finished_key, nil) || "unknown"
-      ["test suite found Aiur.PubSub unregistered after #{last} (upper bound only; plain-test culprit is unknown)"]
     end
   end
 
