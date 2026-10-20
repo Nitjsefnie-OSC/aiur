@@ -181,6 +181,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     []
     |> maybe_missing(Process.whereis(Aiur.Supervisor), "Aiur.Supervisor")
     |> maybe_missing(Process.whereis(Aiur.PubSub), "Aiur.PubSub")
+    |> maybe_missing(Process.whereis(Aiur.DecisionStore), "Aiur.DecisionStore")
   end
 
   defp maybe_missing(missing, nil, child), do: ["#{child} unregistered" | missing]
