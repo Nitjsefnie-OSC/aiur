@@ -12,5 +12,3 @@ Aiur.Orchestrator.QueueSetsDispatchTest	CLI reorders three persisted sets and re
 Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads open decisions without calling the per-ticket store	#4463
 Aiur.OrchestratorRemoteControlTest	ensure_remote_control_trust/2 (direct-dispatch trust seeding) seeds hasTrustDialogAccepted for the workspace	#4765
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
-Aiur.Workspace.RefreshTest	run/3 reconstruction restores the governed GitHub wrapper and private config before dispatch	#4754
-Aiur.WorkspaceMaterializeTest	copies the warm base onto the generated ticket branch	#4754
