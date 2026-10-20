@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "test:build-modal": "npm run test:browser-suite -- build-home-modal",
     "test:build-home-protocol": "TZ=America/Los_Angeles node --test scripts/build-home-protocol.test.mjs",
     "test:build-home-now-state": "node --test scripts/build-home-now-state.test.mjs",
     "test:build-home-edges-unit": "TZ=America/Los_Angeles node --test scripts/build-home-edges.test.mjs",

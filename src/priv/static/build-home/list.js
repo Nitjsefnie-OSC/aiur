@@ -110,7 +110,7 @@ export function renderList() {
 function bindOnce(vp) {
   if (ctx.listVp === vp) return;
   ctx.listVp = vp;
-  const open = id => { const t = ctx.D.byId[id]; if (t) fx.openModal(t); };
+  const open = id => { const t = ctx.D.byId[id]; if (t) fx.openModal(t, { origin: $('.lr[data-id="' + id + '"]', ctx.root) }); };
   ctx.life.on(vp, 'click', e => {
     if (S.view !== 'list') return;
     const btn = e.target.closest('#lr-more');

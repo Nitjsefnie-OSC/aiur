@@ -40,7 +40,7 @@ export function viewport() {
       if (eh) { e.stopPropagation(); fx.lockTree(eh.dataset.e); return; }
       const b = e.target.closest("[data-lt]");
       if (b) { e.stopPropagation(); if (b.dataset.lt === "lock") { if (ctx.lockId) fx.unlock(); else if (ctx.hoverId) { ctx.lockId = ctx.hoverId; ctx.lt.classList.add("locked"); } } else if (ctx.lockId) { if (b.dataset.lt === "fit") fx.fitTree(ctx.lockId); else fx.openTree(ctx.lockId); } return; }
-      const sd = e.target.closest("[data-sid]"); if (sd) { fx.openModal(ctx.D.byId[sd.dataset.sid]); return; }
+      const sd = e.target.closest("[data-sid]"); if (sd) { fx.openModal(ctx.D.byId[sd.dataset.sid], { origin: sd }); return; }
       if (fx.onBandClick?.(e)) return;
       const c = e.target.closest(".bd-card");
       if (ctx.lockId) { if (c && fx.chainOf(ctx.lockId).has(c.dataset.id)) fx.openModal(ctx.D.byId[c.dataset.id], { origin: c }); return; }
