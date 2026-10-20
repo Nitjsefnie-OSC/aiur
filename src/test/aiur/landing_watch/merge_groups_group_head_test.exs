@@ -40,8 +40,8 @@ defmodule Aiur.LandingWatch.MergeGroupsGroupHeadTest do
     assert_received {:cancel, 52, "landing_watch_stale_merge_group_cancel"}
     refute_received {:cancel, 53, _}
     refute_received {:cancel, 54, _}
-    assert log =~ "cancelled stale merge-group run 51 head=group-3-old"
-    assert log =~ "cancelled stale merge-group run 52 head=group-4-old"
+    assert log =~ "cancelled merge-group run id=51 head=group-3-old reason=group_head_not_live"
+    assert log =~ "cancelled merge-group run id=52 head=group-4-old reason=group_head_not_live"
   end
 
   test "a failed cancel is logged and the remaining stale runs are still cancelled" do
@@ -59,7 +59,7 @@ defmodule Aiur.LandingWatch.MergeGroupsGroupHeadTest do
     log = capture_log(fn -> assert :ok = cancel_stale("group-head-failure", [run(61, "dead-a", 3), run(62, "dead-b", 4)], cancel) end)
 
     assert_received {:cancel, 62}
-    assert log =~ "could not cancel stale merge-group run 61: :boom"
+    assert log =~ "could not cancel merge-group run id=61 head=dead-a reason=group_head_not_live: :boom"
   end
 
   test "with no observed group heads no run is cancelled" do
@@ -82,8 +82,8 @@ defmodule Aiur.LandingWatch.MergeGroupsGroupHeadTest do
         {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
 
       %{body: %{"query" => query}} ->
-        assert query =~ "mergeQueueEntry { id headCommit { oid }"
-        entry = %{"id" => "entry-5", "headCommit" => %{"oid" => "group-5-new"}, "pullRequest" => %{"id" => "PR_5", "headRefOid" => "head-5"}}
+        assert query =~ "mergeQueueEntry { id state headCommit { oid }"
+        entry = %{"id" => "entry-5", "state" => "MERGEABLE", "headCommit" => %{"oid" => "group-5-new"}, "pullRequest" => %{"id" => "PR_5", "headRefOid" => "head-5"}}
         {:ok, %{status: 200, body: %{"data" => %{"repository" => %{"pr_0" => %{"id" => "PR_5", "headRefOid" => "head-5", "baseRefName" => base, "mergeQueueEntry" => entry}}}}}}
     end
 

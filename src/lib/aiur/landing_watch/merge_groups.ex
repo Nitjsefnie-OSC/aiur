@@ -1,5 +1,5 @@
 defmodule Aiur.LandingWatch.MergeGroups do
-  @moduledoc "Cancels active merge-group runs that no longer belong to the live queue."
+  @moduledoc "Reconciles live merge-queue entries and cancels runs for groups that no longer exist."
 
   require Logger
 
@@ -31,7 +31,17 @@ defmodule Aiur.LandingWatch.MergeGroups do
           )
 
         group_heads = live |> Map.values() |> Enum.map(& &1.group_head) |> Enum.filter(&is_binary/1) |> MapSet.new()
-        cancel_runs(Enum.filter(runs, &(stale?(&1, base, live) or stale_group_head?(&1, group_heads))), opts)
+
+        stale =
+          Enum.flat_map(runs, fn run ->
+            cond do
+              stale?(run, base, live) -> [{run, "queue_entry_not_live"}]
+              not belongs_to_live_entry?(run, base, live) and stale_group_head?(run, group_heads) -> [{run, "group_head_not_live"}]
+              true -> []
+            end
+          end)
+
+        cancel_runs(stale, opts)
       end
     end
   end
@@ -82,6 +92,21 @@ defmodule Aiur.LandingWatch.MergeGroups do
 
   defp stale?(_run, _base, _live), do: false
 
+  defp belongs_to_live_entry?(%{"event" => "merge_group", "head_branch" => branch} = run, base, live) when is_binary(branch) do
+    prefix = "gh-readonly-queue/#{base}/pr-"
+
+    if String.starts_with?(branch, prefix) do
+      branch
+      |> then(&Regex.scan(~r/pr-(\d+)-/, &1, capture: :all_but_first))
+      |> List.flatten()
+      |> Enum.any?(fn number -> current_entry?(Map.get(live, String.to_integer(number)), run) end)
+    else
+      false
+    end
+  end
+
+  defp belongs_to_live_entry?(_run, _base, _live), do: false
+
   # A queue rebuild keeps each PR queued but gives it a new group head, so a run
   # whose head SHA no live entry carries holds a runner for a dead group (#4864).
   # With no group heads observed there is nothing to compare, so cancel nothing.
@@ -115,16 +140,19 @@ defmodule Aiur.LandingWatch.MergeGroups do
   # A failed cancel is logged and skipped so one bad run cannot block the rest or fail the poll.
   defp cancel_runs(runs, opts) do
     opts = Keyword.put(opts, :caller, "landing_watch_stale_merge_group_cancel")
-    Enum.each(runs, &cancel_run(&1, opts))
+
+    Enum.each(runs, fn {run, reason} ->
+      cancel_run(run, reason, opts)
+    end)
   end
 
-  defp cancel_run(run, opts) do
+  defp cancel_run(run, reason, opts) do
     case Keyword.get(opts, :cancel_fun, &CIRecovery.cancel/2).(run["id"], opts) do
       :ok ->
-        Logger.info("landing watcher cancelled stale merge-group run #{run["id"]} head=#{run["head_sha"]} branch=#{run["head_branch"]}")
+        Logger.info("landing watcher cancelled merge-group run id=#{run["id"]} head=#{run["head_sha"]} reason=#{reason}")
 
-      {:error, reason} ->
-        Logger.warning("landing watcher could not cancel stale merge-group run #{run["id"]}: #{inspect(reason)}")
+      {:error, failure} ->
+        Logger.warning("landing watcher could not cancel merge-group run id=#{run["id"]} head=#{run["head_sha"]} reason=#{reason}: #{inspect(failure)}")
     end
   end
 end
