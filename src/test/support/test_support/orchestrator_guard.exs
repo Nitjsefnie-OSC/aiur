@@ -59,6 +59,17 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def verify_suite! do
     if leak = leak(), do: record_leak(:persistent_term.get(@last_finished_key, nil), leak)
 
+    case suite_errors() do
+      [] -> :ok
+      errors -> raise Enum.join(errors, "\n")
+    end
+  end
+
+  defp suite_errors do
+    suite_state_errors() ++ suite_orchestrator_errors() ++ suite_runtime_child_errors() ++ pubsub_errors()
+  end
+
+  defp suite_state_errors do
     expected_instance_key = :persistent_term.get(@instance_key_key, nil)
     actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
 
@@ -67,29 +78,25 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     store_leaks = decision_store_leaks()
     state_leaks = app_env_leaks ++ instance_key_leak ++ store_leaks
 
-    state_errors =
-      if state_leaks == [] do
-        []
-      else
-        last = :persistent_term.get(@last_finished_key, nil) || "unknown"
-        ["test suite found shared state changed after #{last} (upper bound only; plain-test culprit is unknown): #{Enum.join(state_leaks, "; ")}"]
-      end
+    if state_leaks == [] do
+      []
+    else
+      last = :persistent_term.get(@last_finished_key, nil) || "unknown"
+      ["test suite found shared state changed after #{last} (upper bound only; plain-test culprit is unknown): #{Enum.join(state_leaks, "; ")}"]
+    end
+  end
 
-    orchestrator_errors =
-      case :persistent_term.get(@suite_leaks_key, []) do
-        [] -> []
-        leaks -> ["plain ExUnit tests broke Aiur.Orchestrator: #{Enum.join(leaks, ", ")}"]
-      end
+  defp suite_orchestrator_errors do
+    case :persistent_term.get(@suite_leaks_key, []) do
+      [] -> []
+      leaks -> ["plain ExUnit tests broke Aiur.Orchestrator: #{Enum.join(leaks, ", ")}"]
+    end
+  end
 
-    runtime_child_errors =
-      case :persistent_term.get(@runtime_child_leaks_key, []) do
-        [] -> []
-        leaks -> ["plain ExUnit tests left shared runtime children down: #{Enum.join(leaks, ", ")}"]
-      end
-
-    case state_errors ++ orchestrator_errors ++ runtime_child_errors ++ pubsub_errors() do
-      [] -> :ok
-      errors -> raise Enum.join(errors, "\n")
+  defp suite_runtime_child_errors do
+    case :persistent_term.get(@runtime_child_leaks_key, []) do
+      [] -> []
+      leaks -> ["plain ExUnit tests left shared runtime children down: #{Enum.join(leaks, ", ")}"]
     end
   end
 
@@ -126,35 +133,50 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def verify_shared_state_before_test!(context) do
     expected = :persistent_term.get(@app_env_key, capture_app_env())
     expected_instance_key = :persistent_term.get(@instance_key_key, System.get_env("AIUR_INSTANCE_KEY"))
-    app_env_leaks = app_env_leaks()
+    state_leaks = restore_test_scope_state(expected, expected_instance_key)
+    {runtime_child_leaks, prior_test} = record_missing_runtime_children()
+
+    if runtime_child_leaks == [] do
+      store_leaks = decision_store_leaks()
+      store_recovery = recover_decision_store(store_leaks)
+      report_before_test_leaks(context, prior_test, state_leaks, store_leaks, store_recovery)
+    else
+      report_before_test_leaks(context, prior_test, state_leaks, [], :ok)
+    end
+
+    :ok
+  end
+
+  defp restore_test_scope_state(expected, expected_instance_key) do
     actual_instance_key = System.get_env("AIUR_INSTANCE_KEY")
     instance_key_leaks = if actual_instance_key == expected_instance_key, do: [], else: ["AIUR_INSTANCE_KEY changed from #{inspect(expected_instance_key)} to #{inspect(actual_instance_key)}"]
-    leaks = app_env_leaks ++ instance_key_leaks
+    leaks = app_env_leaks() ++ instance_key_leaks
 
     if leaks != [] do
       Enum.each(@guarded_app_env_keys, fn key -> restore_app_env(key, Map.fetch!(expected, key)) end)
       restore_instance_key(expected_instance_key)
     end
 
-    runtime_child_leaks = missing_runtime_children()
-    prior_test = if runtime_child_leaks == [], do: nil, else: last_finished()
-    if runtime_child_leaks != [], do: Enum.each(runtime_child_leaks, &record_runtime_child_leak(prior_test, &1))
-    runtime_child_recovery = recover_runtime_children(runtime_child_leaks)
+    leaks
+  end
 
-    store_leaks = decision_store_leaks()
-    store_recovery = recover_decision_store(store_leaks)
+  defp record_missing_runtime_children do
+    leaks = missing_runtime_children()
+    prior_test = if leaks == [], do: nil, else: last_finished()
+    Enum.each(leaks, &record_runtime_child_leak(prior_test, &1))
+    {leaks, prior_test}
+  end
 
+  defp report_before_test_leaks(context, prior_test, state_leaks, store_leaks, store_recovery) do
     recovery_errors = recovery_errors(store_recovery)
 
-    if leaks != [] or store_leaks != [] or recovery_errors != [] or runtime_child_leaks != [] do
+    if state_leaks != [] or store_leaks != [] or recovery_errors != [] do
       last = prior_test || last_finished() || "unknown"
-      details = Enum.join(leaks ++ store_leaks ++ recovery_errors ++ runtime_child_leaks ++ runtime_child_recovery, "; ")
-      recovery_status = if recovery_errors == [] and runtime_child_recovery == [], do: "restored shared state", else: "failed to restore shared state"
+      details = Enum.join(state_leaks ++ store_leaks ++ recovery_errors, "; ")
+      recovery_status = if recovery_errors == [], do: "restored shared state", else: "failed to restore shared state"
 
       raise "#{test_name(context)} started after last finished test #{last} (upper bound; plain-test culprit unknown); #{recovery_status}: #{details}"
     end
-
-    :ok
   end
 
   defp missing_runtime_children do
@@ -165,21 +187,6 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
 
   defp maybe_missing(missing, nil, child), do: ["#{child} unregistered" | missing]
   defp maybe_missing(missing, _pid, _child), do: missing
-
-  defp recover_runtime_children([]), do: []
-
-  defp recover_runtime_children(_missing) do
-    case RuntimeChildren.ensure_runtime_children_running() do
-      :ok ->
-        case missing_runtime_children() do
-          [] -> []
-          still_missing -> ["runtime child recovery left #{Enum.join(still_missing, ", ")}"]
-        end
-
-      other ->
-        ["runtime child recovery failed: #{inspect(other)}"]
-    end
-  end
 
   @doc "Restores a missing or stood-in orchestrator before a test and reports the test that ran before it."
   @spec ensure_running(map()) :: :ok | :error

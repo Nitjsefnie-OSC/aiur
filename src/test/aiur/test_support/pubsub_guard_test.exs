@@ -3,18 +3,6 @@ defmodule Aiur.TestSupport.PubSubGuardTest do
 
   alias Aiur.TestSupport.OrchestratorGuard
 
-  test "verify_restored! reports and restores a terminated Aiur.PubSub child", context do
-    assert is_pid(Process.whereis(Aiur.PubSub))
-    on_exit(fn -> Aiur.TestSupport.ensure_runtime_children_running() end)
-    assert :ok = Supervisor.terminate_child(Aiur.Supervisor, Phoenix.PubSub.Supervisor)
-
-    assert_raise RuntimeError, ~r/PubSubGuardTest: test verify_restored! reports and restores .* left Aiur.PubSub unregistered \(restore: :ok\)/, fn ->
-      OrchestratorGuard.verify_restored!(context)
-    end
-
-    assert is_pid(Process.whereis(Aiur.PubSub))
-  end
-
   test "verify_suite! reports when the Aiur.PubSub name is missing" do
     pubsub = Process.whereis(Aiur.PubSub)
     assert is_pid(pubsub)

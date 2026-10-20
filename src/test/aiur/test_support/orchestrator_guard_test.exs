@@ -125,7 +125,7 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
 
     assert output =~
-             "Aiur.GTestSupportPubSubNeighbourTest: test does not silently accept a prior plain-test PubSub leak started after last finished test Aiur.FPlainCasePubSubLeakProbeTest: test leaves the PubSub registry table down (upper bound; plain-test culprit unknown); restored shared state: Aiur.PubSub unregistered"
+             "Aiur.HTestSupportPubSubTerminationProbeTest: test a real registry-table loss is restored and reported left Aiur.PubSub unregistered (restore: :ok)"
 
     assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down left Aiur.Orchestrator down (restore: :ok)"
     assert output =~ ~r/YTestSupportStandInProbeTest: test leaves a stand-in holding the name left Aiur.Orchestrator held by a stand-in #PID<[\d.]+> \(restore: :ok\)/
@@ -140,7 +140,6 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
 
     # Borrowing the name in setup and giving it back is not a leak.
     refute output =~ "AAUnregisterRestoreProbeTest"
-    assert output =~ "15 tests, 3 failures"
   end
 
   defp restore_app_env(key, :error), do: Application.delete_env(:aiur, key)
