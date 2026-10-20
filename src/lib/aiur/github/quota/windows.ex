@@ -88,17 +88,17 @@ defmodule Aiur.GitHub.Quota.Windows do
   end
 
   defp put_credential_window(state, request, resource, values, now) do
-    case credential_key(request) do
-      nil ->
+    case {Map.get(request, :credential_id, "primary"), credential_key(request)} do
+      {"primary", nil} ->
         put_window_from_values(state, resource, values, now)
 
-      key when is_binary(key) and key != "" ->
+      {credential_id, key} when is_binary(key) and key != "" ->
         window = parse_window(resource, values, now)
 
         if window do
           windows = Map.put(state.credential_windows, {key, resource}, window)
 
-          if Map.get(request, :credential_id, "primary") == "primary" do
+          if credential_id == "primary" do
             state
             |> Map.put(:credential_windows, windows)
             |> put_window_from_values(resource, values, now)
@@ -108,15 +108,26 @@ defmodule Aiur.GitHub.Quota.Windows do
         else
           state
         end
+
+      {_unregistered_credential, nil} ->
+        state
     end
   end
 
   defp credential_key(request) do
-    Map.get(request, :credential_key) ||
-      case Map.get(request, :token) do
-        token when is_binary(token) and token != "" -> Aiur.GitHub.Budget.token_key(token)
-        _missing -> nil
-      end
+    case Map.get(request, :credential_key) do
+      key when is_binary(key) and key != "" ->
+        key
+
+      _missing when is_map_key(request, :credential_id) ->
+        nil
+
+      _missing ->
+        case Map.get(request, :token) do
+          token when is_binary(token) and token != "" -> Aiur.GitHub.Budget.token_key(token)
+          _missing_token -> nil
+        end
+    end
   end
 
   defp put_window_from_values(state, resource, values, now) do

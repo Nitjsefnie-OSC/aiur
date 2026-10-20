@@ -34,6 +34,8 @@ defmodule Aiur.GitHub.Quota do
   use GenServer
 
   alias Aiur.GitHub.Config, as: GitHubConfig
+  alias Aiur.GitHub.Credential
+  alias Aiur.GitHub.CredentialRegistry
   alias Aiur.GitHub.{HoldSweep, RequestLog, RequestOrigin, Transport}
 
   alias Aiur.GitHub.Quota.{Attribution, Coverage, ShellObservations, SnapshotCache, Windows}
@@ -352,11 +354,16 @@ defmodule Aiur.GitHub.Quota do
 
   defp refresh_from_github do
     with token when is_binary(token) and token != "" <- GitHubConfig.token() do
+      credential = CredentialRegistry.credentials() |> Enum.find(&(&1.primary? and Credential.token(&1) == token))
+      credential_key = if credential, do: Credential.identity_key(credential), else: Aiur.GitHub.Budget.token_key(token)
+
       Transport.default_request_fun(%{
         method: :get,
         url: "https://api.github.com/rate_limit",
         token: token,
         credential_id: "primary",
+        credential_pinned?: true,
+        credential_key: credential_key,
         timeout_ms: 10_000
       })
     end

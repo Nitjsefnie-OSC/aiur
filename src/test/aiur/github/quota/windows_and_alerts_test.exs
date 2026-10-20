@@ -45,15 +45,25 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
     agent_key = Aiur.GitHub.Budget.token_key("secret")
     operator_key = Aiur.GitHub.Budget.token_key("operator-secret")
 
-    Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 4159))
-    Quota.observe(quota, %{request(:get, "/repos/owner/repo/issues") | token: "operator-secret", credential_id: "ci_readiness", credential_key: operator_key}, response("core", 5000, 4900))
+    Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 400))
+
+    operator_request =
+      request(:get, "/repos/owner/repo/issues")
+      |> Map.put(:token, "operator-secret")
+      |> Map.put(:credential_id, "ci_readiness")
+      |> Map.put(:credential_key, operator_key)
+
+    Quota.observe(quota, operator_request, response("core", 5000, 4900))
+    unkeyed_operator_request = request(:get, "/repos/owner/repo/issues") |> Map.put(:credential_id, "ci_readiness")
+    Quota.observe(quota, unkeyed_operator_request, response("core", 5000, 4800))
 
     snapshot = Quota.snapshot(quota)
 
-    assert snapshot.windows["core"].remaining == 4159
-    assert snapshot.credential_windows[agent_key]["core"].remaining == 4159
+    assert snapshot.windows["core"].remaining == 400
+    assert snapshot.credential_windows[agent_key]["core"].remaining == 400
     assert snapshot.credential_windows[operator_key]["core"].remaining == 4900
-    assert {:hold, %{remaining: 4159}} = Quota.dispatch_status(quota)
+    refute Map.has_key?(snapshot.windows, "core:ci_readiness")
+    assert {:hold, %{remaining: 400}} = Quota.dispatch_status(quota)
   end
 
   # Every instrumented GraphQL response already carries the endpoint's own
