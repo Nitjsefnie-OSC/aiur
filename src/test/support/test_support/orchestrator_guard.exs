@@ -79,9 +79,18 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
         leaks -> ["plain ExUnit tests broke Aiur.Orchestrator: #{Enum.join(leaks, ", ")}"]
       end
 
-    case state_errors ++ orchestrator_errors do
+    case state_errors ++ orchestrator_errors ++ pubsub_errors() do
       [] -> :ok
       errors -> raise Enum.join(errors, "\n")
+    end
+  end
+
+  defp pubsub_errors do
+    if Process.whereis(Aiur.PubSub) do
+      []
+    else
+      last = :persistent_term.get(@last_finished_key, nil) || "unknown"
+      ["test suite found Aiur.PubSub unregistered after #{last} (upper bound only; plain-test culprit is unknown)"]
     end
   end
 
@@ -162,8 +171,10 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     # A call on the supervisor processes any child exit already in its mailbox.
     RuntimeChildren.supervisor_accepting_calls?(Process.whereis(Aiur.Supervisor), 1_000)
 
+    pubsub_leak = is_nil(Process.whereis(Aiur.PubSub))
     orchestrator_leak = leak()
     orchestrator_restore = if orchestrator_leak, do: restore(orchestrator_leak)
+    pubsub_restore = if pubsub_leak, do: RuntimeChildren.ensure_pubsub_running()
     shared_leaks = verify_shared_state_restored!(context)
     store_leaks = decision_store_leaks()
     store_recovery = recover_decision_store(store_leaks)
@@ -177,6 +188,13 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
         []
       end
 
+    pubsub_errors =
+      if pubsub_leak do
+        ["#{test_name(context)} left Aiur.PubSub unregistered (restore: #{inspect(pubsub_restore)}). Restore it in on_exit with Aiur.TestSupport.ensure_pubsub_running/0."]
+      else
+        []
+      end
+
     recovery_errors = recovery_errors(store_recovery)
 
     shared_state_errors =
@@ -186,7 +204,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
           "#{test_name(context)} left shared test state changed (#{if(recovery_errors == [], do: "restored", else: "restore failed")}): #{Enum.join(shared_leaks ++ store_leaks ++ recovery_errors, "; ")}"
         ]
 
-    errors = orchestrator_errors ++ shared_state_errors
+    errors = orchestrator_errors ++ pubsub_errors ++ shared_state_errors
 
     if errors != [], do: raise(Enum.join(errors, "\n"))
 
