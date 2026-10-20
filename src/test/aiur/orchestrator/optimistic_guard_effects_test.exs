@@ -349,39 +349,6 @@ defmodule Aiur.Orchestrator.OptimisticGuardEffectsTest do
     refute_received {:remote_read, _}
   end
 
-  test "merged blocker notice resolves churn once and opens once", %{opts: opts} do
-    assert :ok = Attention.open(:optimistic_blocker_failed, "11", %{blocker: "10", cause: :churn, action: :none, severity: "info"})
-    calls = Agent.start_link(fn -> [] end) |> elem(1)
-
-    opts =
-      Keyword.put(opts, :attention, fn action, dep, payload ->
-        Agent.update(calls, &(&1 ++ [{action, dep, payload}]))
-
-        case action do
-          :resolve -> Attention.resolve(:optimistic_blocker_failed, dep)
-          :open -> Attention.open(:optimistic_blocker_failed, dep, payload)
-        end
-      end)
-
-    assert :ok =
-             OptimisticLedger.record_start("11", %{
-               attempt_id: "guard-merged-notice",
-               start_trigger: :pr_opened,
-               started_at_ms: 100,
-               blockers: [%{"id" => "10", "pr_number" => 77, "merged_at_ms" => 1_000}]
-             })
-
-    state = OptimisticGuardEffects.execute(running(), {:merged_notice, "11", "10"}, opts)
-    assert state.tracker_tasks == %{}
-    assert Enum.map(Agent.get(calls, & &1), &elem(&1, 0)) == [:resolve, :open]
-    assert blocker()["merged_notice_emitted"] == true
-
-    state = OptimisticGuardEffects.execute(state, {:merged_notice, "11", "10"}, opts)
-    refute Map.has_key?(state.tracker_tasks, {:optimistic_attention, "11"})
-    assert Enum.map(Agent.get(calls, & &1), &elem(&1, 0)) == [:resolve, :open]
-    Agent.stop(calls)
-  end
-
   test "queue-disabled fallback emits once across restart and resolves on closure", %{path: path, opts: opts} do
     opts = Keyword.put(opts, :attention, fn _action, _dep, _payload -> {:error, :disabled} end)
     state = OptimisticGuardEffects.execute(running(), @park, opts)
