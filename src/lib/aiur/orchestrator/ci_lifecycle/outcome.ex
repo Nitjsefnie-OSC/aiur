@@ -94,7 +94,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
       target = to_string(issue.identifier || issue.id)
 
       body =
-        "PR ##{result[:pr_number]} head `#{result[:head_sha]}` is conflicting with #{base_branch}. " <>
+        "GitHub reports PR ##{result[:pr_number]} head `#{result[:head_sha]}` as `mergeable: CONFLICTING` with #{base_branch}. " <>
           "This ticket moved to rework; merge #{base_branch} into the PR branch, resolve the conflicts, and push the result."
 
       case create.(target, body) do

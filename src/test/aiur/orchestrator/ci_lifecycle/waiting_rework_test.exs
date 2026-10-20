@@ -21,7 +21,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.WaitingReworkTest do
 
       assert_received {:tracker_update, ^identifier, "rework", [expected_state: unquote(label)]}
       assert_received {:tracker_comment, ^identifier, body}
-      assert body =~ "conflicting with main"
+      assert body =~ "mergeable: CONFLICTING"
       assert body =~ "merge main"
       assert State.rework_attempt_count(next, identifier, "conflicting-head") == 1
     end
