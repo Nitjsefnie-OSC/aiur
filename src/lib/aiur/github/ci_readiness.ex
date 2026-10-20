@@ -13,6 +13,7 @@ defmodule Aiur.GitHub.CiReadiness do
   defdelegate retryable_error?(reason), to: Aiur.GitHub.Errors, as: :retryable_github_error?
 
   alias Aiur.{Config, Workflow}
+  alias Aiur.GitHub.Budget
   alias Aiur.GitHub.CiReadiness.{Assessment, RepositoryReads, WorkflowRules}
   alias Aiur.GitHub.Transport
 
@@ -107,7 +108,7 @@ defmodule Aiur.GitHub.CiReadiness do
   defp tag_request_credential(request_fun, _credential_id), do: request_fun
 
   defp put_operator_credential_key(%{token: token} = request) when is_binary(token) and token != "" do
-    Map.put_new(request, :credential_key, Aiur.GitHub.Budget.token_key(token))
+    Map.put_new(request, :credential_key, Budget.token_key(token))
   end
 
   defp put_operator_credential_key(request), do: request

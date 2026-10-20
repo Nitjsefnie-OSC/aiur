@@ -3,7 +3,7 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
 
   import Aiur.GitHub.QuotaTestSupport
 
-  alias Aiur.GitHub.Quota
+  alias Aiur.GitHub.{Budget, Quota}
 
   @now ~U[2026-08-09 21:00:00Z]
   @reset ~U[2026-08-09 22:00:00Z]
@@ -42,8 +42,8 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
 
   test "interleaved credentials retain separate windows while the primary meter stays pinned" do
     quota = start_quota()
-    agent_key = Aiur.GitHub.Budget.token_key("secret")
-    operator_key = Aiur.GitHub.Budget.token_key("operator-secret")
+    agent_key = Budget.token_key("secret")
+    operator_key = Budget.token_key("operator-secret")
 
     Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 22))
 
@@ -97,7 +97,7 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
 
   test "untagged credential responses cannot replace the primary window" do
     quota = start_quota()
-    operator_key = Aiur.GitHub.Budget.token_key("operator-secret")
+    operator_key = Budget.token_key("operator-secret")
     Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 3248))
 
     unregistered_request = %{
@@ -127,9 +127,9 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
 
     snapshot = Quota.snapshot(quota)
     assert snapshot.windows["core"].remaining == 2766
-    assert snapshot.credential_windows[Aiur.GitHub.Budget.token_key("secret")]["core"].remaining == 2766
-    assert snapshot.credential_windows[Aiur.GitHub.Budget.token_key("secret")]["core:issue_dependencies"].remaining == 4514
-    assert snapshot.credential_windows[Aiur.GitHub.Budget.token_key("secret")]["core:sub_issues"].remaining == 4498
+    assert snapshot.credential_windows[Budget.token_key("secret")]["core"].remaining == 2766
+    assert snapshot.credential_windows[Budget.token_key("secret")]["core:issue_dependencies"].remaining == 4514
+    assert snapshot.credential_windows[Budget.token_key("secret")]["core:sub_issues"].remaining == 4498
     refute Map.has_key?(snapshot.windows, "core:issue_dependencies")
     refute Map.has_key?(snapshot.windows, "core:sub_issues")
     assert Quota.dispatch_status(quota) == :available
@@ -137,12 +137,12 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
 
   test "expired credential windows are pruned before another observation is stored" do
     quota = start_quota()
-    key = Aiur.GitHub.Budget.token_key("old-operator-token")
+    key = Budget.token_key("old-operator-token")
     old_request = request(:get, "/repos/owner/repo/issues") |> Map.put(:credential_id, "ci_readiness") |> Map.put(:credential_key, key)
     Quota.observe(quota, old_request, response("core", 5000, 4900, DateTime.add(@now, -1, :second)))
     Quota.snapshot(quota)
 
-    new_request = %{old_request | credential_key: Aiur.GitHub.Budget.token_key("new-operator-token")}
+    new_request = %{old_request | credential_key: Budget.token_key("new-operator-token")}
     Quota.observe(quota, new_request, response("core", 5000, 4800))
 
     snapshot = Quota.snapshot(quota)
@@ -169,7 +169,7 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
     end)
 
     snapshot = Quota.snapshot(quota)
-    key = Aiur.GitHub.Budget.identity_key("github-credential:github_app")
+    key = Budget.identity_key("github-credential:github_app")
     assert map_size(snapshot.credential_windows) == 1
     assert snapshot.credential_windows[key]["core"].remaining == 4800
     refute Map.has_key?(snapshot.windows, "core")
