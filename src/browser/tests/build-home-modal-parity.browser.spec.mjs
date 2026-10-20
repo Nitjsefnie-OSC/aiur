@@ -3,6 +3,7 @@ import { PARITY_VIEWPORTS, openParityPair } from '../support/design-parity.mjs'
 import { compareRegion } from '../support/build-home-region-parity.mjs'
 
 test.setTimeout(180_000)
+// Each matrix cell exercises seven state headers against the frozen design.
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) {
   test(`modal headers and frame ${viewport.viewport.width} ${theme} ${palette}`, async ({ browser }) => {
     const pair = await openParityPair(browser, { ...viewport, theme, palette, dataset: 'live' }, { productPending: true })

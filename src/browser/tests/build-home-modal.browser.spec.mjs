@@ -1,8 +1,16 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, height: 1000 } })
-test.beforeEach(({ page }) => { page.on('pageerror', error => { throw error }) })
+// Cohesive end-to-end modal flows share the same mounted hook and fixture helpers.
+test.beforeEach(async ({ page }, info) => {
+  page.on('pageerror', error => { throw error })
+  const root = info.project.metadata.agentAssets
+  if (root) await page.route('**/build-home/modal/frame.js', async route => route.fulfill({
+    body: await readFile(root + '/modal/frame.js', 'utf8'), contentType: 'text/javascript',
+  }))
+})
 async function open(page, dataset = 'live', query = '') {
   await page.goto('/build-fixture/' + dataset + query)
   await expect(page.locator('#bd-content')).toHaveCount(1)
