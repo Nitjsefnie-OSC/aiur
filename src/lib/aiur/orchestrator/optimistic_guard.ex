@@ -49,7 +49,8 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
         _ -> observation[:edge_present?]
       end
 
-    observation = Map.put(observation, :edge_present?, edge_present)
+    recovered_blocker? = observation[:state_reason] in [:completed, "completed"] or observation[:pr_merged] == true or observation[:pr_state] in [:merged, "merged"]
+    observation = Map.put(observation, :edge_present?, if(recovered_blocker?, do: true, else: edge_present))
     classification = classify(observation)
     observation_actions(dep, blocker, observation, classification, now, opts)
   end
@@ -104,11 +105,16 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
     end
   end
 
-  defp pr_facts(%{any_open_pr?: true} = observation) do
-    %{pr_number: observation[:pr_number], pr_state: "open", last_head_sha: observation[:pr_head_sha], last_head_ref: observation[:pr_head_ref]}
-  end
+  defp pr_facts(observation) do
+    facts = %{
+      pr_number: observation[:pr_number],
+      pr_state: observation[:pr_state] || if(observation[:any_open_pr?], do: "open", else: nil),
+      last_head_sha: observation[:pr_head_sha],
+      last_head_ref: observation[:pr_head_ref]
+    }
 
-  defp pr_facts(_observation), do: %{}
+    if is_integer(observation[:pr_approval_checked_conflicts]), do: Map.put(facts, :approval_checked_conflicts, observation[:pr_approval_checked_conflicts]), else: facts
+  end
 
   defp outcome({:terminal, cause}, id, _since, _now, _opts), do: {:failed, id, cause}
 
@@ -189,14 +195,17 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
     if reports == [] and length(record["blockers"]) == 1, do: get_in(record, ["counters", "integrations_conflict"]) || 0, else: length(reports)
   end
 
-  defp approval_checkpoint(blocker, %{pr_approved?: true, pr_mergeable?: true, pr_head_sha: head}) when is_binary(head) do
-    if blocker["approval_head_sha"] == head do
-      %{}
+  defp approval_checkpoint(blocker, %{pr_approved?: true, pr_head_sha: head} = observation) when is_binary(head) do
+    checked = observation[:pr_approval_checked_conflicts]
+
+    if blocker["approval_head_sha"] == head and blocker["approval_active"] != false do
+      if is_integer(checked), do: %{approval_checked_conflicts: checked}, else: %{}
     else
-      %{approval_head_sha: head, conflicts_at_approval: blocker["conflicts_seen"] || 0}
+      %{approval_head_sha: head, approval_active: true, conflicts_at_approval: blocker["conflicts_seen"] || 0, approval_checked_conflicts: checked}
     end
   end
 
+  defp approval_checkpoint(_blocker, %{pr_approved?: false, pr_approval_checked_conflicts: checked}) when is_integer(checked), do: %{approval_active: false, approval_checked_conflicts: checked}
   defp approval_checkpoint(_blocker, _observation), do: %{}
 
   defp apply_updates(record, updates) do

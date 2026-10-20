@@ -43,6 +43,40 @@ defmodule Aiur.GitHub.OptimisticFailureTest do
     end
   end
 
+  test "conditional approval lookup keeps its GitHub caller through optimistic blocker reads" do
+    request_fun = fn
+      %{method: :get, caller: "optimistic_guard_read", url: url} ->
+        {:ok,
+         %{
+           status: 200,
+           body:
+             if(String.ends_with?(url, "/pulls/77"),
+               do: %{"number" => 77, "state" => "open", "merged" => false},
+               else: [%{"number" => 77, "state" => "open", "head" => %{"ref" => "aiur/42", "sha" => "head"}}]
+             )
+         }}
+
+      %{method: :post, url: "https://api.github.com/graphql", caller: "optimistic_guard_approval", body: %{"query" => query}} ->
+        send(self(), {:approval_request, query})
+
+        {:ok,
+         %{
+           status: 200,
+           body: %{
+             "data" => %{
+               "repository" => %{"pullRequest" => %{"headRefOid" => "head", "mergeable" => "MERGEABLE", "reviewDecision" => "APPROVED", "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head"}}]}}}
+             }
+           }
+         }}
+    end
+
+    assert {:ok, pr} = OptimisticFailure.optimistic_blocker("42", 77, approval_check?: true, approval_conflicts_count: 4, request_fun: request_fun)
+    assert pr["approval"].approved?
+    assert pr["approval"].checked_conflicts == 4
+    assert_received {:approval_request, query}
+    assert String.contains?(query, "AiurPullRequestApprovalAtHead")
+  end
+
   test "draft conversion sends the PR node id and verifies the returned draft state" do
     test_pid = self()
 
