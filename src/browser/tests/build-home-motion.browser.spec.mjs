@@ -1,6 +1,7 @@
 import { alignBoard, alignEtaMask, primeBoardPaint } from '../support/build-home-band-canvas.mjs'
 import { installScrollPaint, flushScrollPaint } from '../support/build-home-scroll-paint.mjs'
 import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
+import { captureStaticGrain } from '../support/build-home-grain-capture.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
 import { openVisualRoute } from '../support/visual.mjs'
 import { test, expect } from '@playwright/test'
@@ -8,6 +9,24 @@ import { openDesign, openProduct, selectProductDataset, guardNetwork, parityCont
 
 // Per-action DOM traces dominate the frame sampler; failures retain numeric diffs and screenshots.
 test.use({ trace: 'off' })
+
+test('grain capture pauses ambient animations while taking screenshots, then resumes them', async ({ page }) => {
+  await page.setContent('<style>@keyframes bleed { 50% { background: white } } #grain { position: absolute; top: 20px; left: 20px; width: 120px; height: 46px } #grain::after { content: ""; position: absolute; inset: 0; background: black; animation: bleed 1s steps(2, end) infinite }</style><div id="grain"></div>')
+  const target = page.locator('#grain')
+  const screenshot = page.screenshot.bind(page)
+  const captureStates = []
+  page.screenshot = async (...args) => {
+    captureStates.push(await page.evaluate(() => document.getAnimations()[0].playState))
+    return screenshot(...args)
+  }
+  try {
+    const png = await captureStaticGrain(page, target, { animations: 'allow', style: '#grain::after { visibility: visible !important }' })
+    expect(png.length).toBeGreaterThan(100)
+    expect(captureStates.length).toBeGreaterThan(1)
+    expect(captureStates).toEqual(captureStates.map(() => 'paused'))
+    expect(await page.evaluate(() => document.getAnimations()[0].playState)).toBe('running')
+  } finally { await page.close() }
+})
 
 const cell = { viewport: { width: 1440, height: 900 }, theme: 'dark', palette: 'gruvbox', dataset: 'live' }
 

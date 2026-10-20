@@ -1,26 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { openFixture } from './support/browser-helpers.mjs'
-import { captureStaticGrain } from '../support/build-home-grain-capture.mjs'
-
-test('static grain capture holds ambient animations and resumes them', async ({ page }) => {
-  await page.setContent('<style>@keyframes bleed { 50% { background: white } } #grain { position: absolute; top: 20px; left: 20px; width: 120px; height: 46px } #grain::after { content: ""; position: absolute; inset: 0; background: black; animation: bleed 1s steps(2, end) infinite }</style><div id="grain"></div>')
-  const target = page.locator('#grain')
-  const screenshot = page.screenshot.bind(page)
-  const captureStates = []
-  page.screenshot = async (...args) => {
-    captureStates.push(await page.evaluate(() => document.getAnimations()[0].playState))
-    return screenshot(...args)
-  }
-  try {
-    const png = await captureStaticGrain(page, target, { animations: 'allow', style: '#grain::after { visibility: visible !important }' })
-    expect(png.length).toBeGreaterThan(100)
-    expect(captureStates.length).toBeGreaterThan(1)
-    expect(captureStates).toEqual(captureStates.map(() => 'paused'))
-    expect(await page.evaluate(() => document.getAnimations()[0].playState)).toBe('running')
-  } finally { await page.close() }
-})
-
 const callbacks = ['mounted', 'beforeUpdate', 'updated', 'destroyed', 'disconnected', 'reconnected']
 const spyModule = `export function createBuildHomeHook() {
   window.created = true;
