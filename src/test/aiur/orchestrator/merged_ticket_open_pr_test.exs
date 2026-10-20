@@ -9,6 +9,34 @@ defmodule Aiur.Orchestrator.MergedTicketOpenPRTest do
   @merged_at ~U[2026-08-10 00:00:00Z]
   @now ~U[2026-08-10 01:00:00Z]
 
+  test "the reconciler preserves an operator park added before the human-review write" do
+    issue = %Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}
+    {:ok, labels} = Agent.start_link(fn -> ["agent:in-progress"] end)
+
+    {_state, [^issue]} =
+      MergedTicketReconciler.reconcile(%State{}, [issue],
+        recent_merges_fun: fn -> [merged_pr("Closes #1570")] end,
+        now_fun: fn -> @now end,
+        update_issue_state_fun: fn "1570", "human-review", "in-progress" ->
+          Agent.update(labels, fn _ -> ["needs-triage"] end)
+          current = Agent.get(labels, & &1)
+
+          if "needs-triage" in current do
+            {:error, {:operator_hold, "needs-triage"}}
+          else
+            Agent.update(labels, fn _ -> ["agent:human-review"] end)
+            :ok
+          end
+        end,
+        open_pull_requests_fun: fn _ ->
+          {:ok, [%{"number" => 1571, "head" => %{"ref" => "aiur/1570-other"}}]}
+        end,
+        unresolved_threads_fetcher: fn _ -> {:ok, []} end
+      )
+
+    assert Agent.get(labels, & &1) == ["needs-triage"]
+  end
+
   test "a merged PR routes a ticket to rework when its remaining open PR has unresolved review threads" do
     # The acceptance regression: ticket #2307 had two open PRs; the first merged
     # and the reconciler stamped `done`, abandoning the second PR's

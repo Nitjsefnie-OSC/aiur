@@ -813,6 +813,41 @@ defmodule Aiur.Orchestrator.CommentWakeTest do
   end
 
   describe "mark_pr_merged_issue_done/2" do
+    test "the Part-of handoff leaves a park added before its write intact" do
+      {:ok, labels} = Agent.start_link(fn -> ["agent:in-progress"] end)
+
+      CommentWake.mark_pr_merged_issue_done(base_state(), "42",
+        target_state: "human-review",
+        update_issue_state_fun: fn _identifier, "human-review" ->
+          Agent.update(labels, fn _ -> ["needs-triage"] end)
+          current = Agent.get(labels, & &1)
+
+          if "needs-triage" in current do
+            {:error, {:operator_hold, "needs-triage"}}
+          else
+            Agent.update(labels, fn _ -> ["agent:human-review"] end)
+            :ok
+          end
+        end
+      )
+
+      assert Agent.get(labels, & &1) == ["needs-triage"]
+    end
+
+    test "the Part-of handoff still writes human-review when no hold appears" do
+      {:ok, labels} = Agent.start_link(fn -> ["agent:in-progress"] end)
+
+      CommentWake.mark_pr_merged_issue_done(base_state(), "42",
+        target_state: "human-review",
+        update_issue_state_fun: fn _identifier, "human-review" ->
+          Agent.update(labels, fn _ -> ["agent:human-review"] end)
+          :ok
+        end
+      )
+
+      assert Agent.get(labels, & &1) == ["agent:human-review"]
+    end
+
     test "returns state unchanged when no matching running entry exists" do
       state = base_state()
 
