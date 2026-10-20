@@ -1,10 +1,10 @@
 defmodule Aiur.Orchestrator.MergeStateWriter do
   @moduledoc false
 
-  alias Aiur.{Issue, Tracker}
+  alias Aiur.GitHub.Config
+  alias Aiur.Issue
   alias Aiur.Orchestrator.TicketTransition
-
-  @operator_hold_labels ["needs-triage", "human:todo", "agent:paused", "agent:parked"]
+  alias Aiur.Tracker
 
   @spec write_if_current(String.t(), String.t()) :: :ok | {:error, term()}
   def write_if_current(identifier, target) do
@@ -13,7 +13,7 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
         TicketTransition.write_state(identifier, target,
           writer: :comment_wake,
           expected_state: state,
-          refuse_labels: @operator_hold_labels
+          refuse_labels: operator_hold_labels()
         )
 
       {:ok, _} ->
@@ -22,5 +22,12 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @doc false
+  @spec operator_hold_labels() :: [String.t()]
+  def operator_hold_labels do
+    prefix = Config.label_prefix()
+    ["needs-triage", "human:todo", "#{prefix}:paused", "#{prefix}:parked"]
   end
 end

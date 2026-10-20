@@ -121,7 +121,7 @@ defmodule Aiur.GitHub.IssueState.ExpectedStateTest do
       assert {:error, {:operator_hold, "needs-triage"}} =
                IssueState.update_issue_state("42", "human-review",
                  expected_state: "in-progress",
-                 refuse_labels: ["needs-triage", "human:todo", "agent:paused", "agent:parked"],
+                 refuse_labels: ["needs-triage", "human:todo", "sym:paused", "sym:parked"],
                  request_fun: request_fun
                )
 

@@ -32,6 +32,7 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
 
   alias Aiur.Orchestrator.{
     Lifecycle,
+    MergeStateWriter,
     OptimisticLedger,
     PushRouting,
     Reconciler,
@@ -280,7 +281,7 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
     do: OpenPullRequestTarget.merged_ticket_target(identifier, opts)
 
   defp operator_hold_labels do
-    ["needs-triage", "human:todo", "agent:paused", "agent:parked"]
+    MergeStateWriter.operator_hold_labels()
   end
 
   # The ticket was already transitioned above, so the terminalisation pass only
