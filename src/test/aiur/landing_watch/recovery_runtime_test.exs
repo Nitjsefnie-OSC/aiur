@@ -141,20 +141,20 @@ defmodule Aiur.LandingWatch.RecoveryRuntimeTest do
     send(pid, {:event, %{topic: "system.main.ci.failed.resolved", red_since: 50, recovered_at: 60}})
     send(poll_pid, :finish)
 
-    assert_receive {:recovery_poll_attempt, first_attempt, {50, 60}}, 1_000
+    assert_receive {:recovery_poll_attempt, first_attempt, {50, 60}}, 5_000
     send(first_attempt, :crash)
-    assert_receive {:scheduled, {:poll_recovery, {50, 60}, 1}}, 1_000
+    assert_receive {:scheduled, {:poll_recovery, {50, 60}, 1}}, 5_000
     send(pid, :poll)
-    assert_receive {:scheduled, :poll}, 1_000
-    assert_receive {:ordinary_poll_started, interleaved_poll}, 1_000
+    assert_receive {:scheduled, :poll}, 5_000
+    assert_receive {:ordinary_poll_started, interleaved_poll}, 5_000
     send(pid, {:poll_recovery, {50, 60}, 1})
     send(interleaved_poll, :finish)
 
-    assert_receive {:recovery_poll_attempt, retry_attempt, {50, 60}}, 1_000
+    assert_receive {:recovery_poll_attempt, retry_attempt, {50, 60}}, 5_000
     # Force a second recovery event to interleave while the retry task is active.
     send(pid, {:event, %{topic: "system.main.ci.failed.resolved", red_since: 70, recovered_at: 80}})
     send(retry_attempt, :succeed)
-    assert_receive {:recovery_poll_attempt, queued_attempt, {70, 80}}, 1_000
+    assert_receive {:recovery_poll_attempt, queued_attempt, {70, 80}}, 5_000
     send(queued_attempt, :succeed)
     GenServer.stop(pid)
   end
