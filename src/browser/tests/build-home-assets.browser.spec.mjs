@@ -1,20 +1,16 @@
 import { test, expect } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { openFixture } from './support/browser-helpers.mjs'
-import { openDesign, parityContextOptions } from '../support/design-parity.mjs'
+import { captureStaticGrain } from '../support/build-home-grain-capture.mjs'
 
-test('Build Home design grain noise has a fixed seed', async ({ browser }) => {
-  const cell = { dataset: 'live', viewport: { width: 1440, height: 1000 }, theme: 'dark', palette: 'gruvbox', reducedMotion: 'no-preference' }
-  const context = await browser.newContext(parityContextOptions(cell))
+test('static grain capture holds ambient animations and resumes them', async ({ page }) => {
+  await page.setContent('<style>@keyframes bleed { 50% { background: white } } #grain { position: absolute; top: 20px; left: 20px; width: 120px; height: 46px } #grain::after { content: ""; position: absolute; inset: 0; background: black; animation: bleed 1s steps(2, end) infinite }</style><div id="grain"></div>')
+  const target = page.locator('#grain')
   try {
-    const page = await context.newPage()
-    await openDesign(page, cell)
-    for (const selector of ['.bd-now', '.ax-uc', '.bd-lanes']) {
-      const images = await page.locator(selector).evaluateAll(els => els.map(el => getComputedStyle(el, '::after').backgroundImage))
-      expect(images.length, `${selector} grain`).toBeGreaterThan(0)
-      for (const image of images) expect(image, `${selector} grain seed`).toContain("feTurbulence seed='1'")
-    }
-  } finally { await context.close() }
+    const png = await captureStaticGrain(page, target, { animations: 'allow', style: '#grain::after { visibility: visible !important }' })
+    expect(png.length).toBeGreaterThan(100)
+    expect(await page.evaluate(() => document.getAnimations()[0].playState)).toBe('running')
+  } finally { await page.close() }
 })
 
 const callbacks = ['mounted', 'beforeUpdate', 'updated', 'destroyed', 'disconnected', 'reconnected']
