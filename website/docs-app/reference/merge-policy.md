@@ -102,4 +102,4 @@ A failed required check beside cancelled runs counts as failed; cancelled runs a
 
 The landing watcher does not queue a PR whose ticket is in `agent:rework`, `agent:in-progress` or `agent:todo` (these win over a review label it still carries), so an Executor dequeue holds until the ticket returns to review.
 
-When an approved PR conflicts with its base, the landing watcher takes it out of the merge queue, moves its ticket to `agent:rework`, and comments "rebase only" on the ticket. It clears `agent:paused` only when pause provenance identifies the approval-pause automation; otherwise it preserves the hold and raises an attention alert. The approval stays in place so re-review can compare the contribution diff.
+When an approved PR conflicts with its base, the watcher dequeues it, routes the ticket to `agent:rework`, and comments rebase-only. It removes `agent:paused` only when provenance identifies the approval-pause writer; otherwise it preserves the hold and raises attention. Approval remains for diff review.
