@@ -135,7 +135,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
       Keyword.get(opts, :update_issue_state_fun, fn identifier, target, expected ->
         TicketTransition.write_state(identifier, target,
           writer: :merged_ticket_reconciler,
-          expected_state: expected
+          expected_state: expected,
+          refuse_labels: operator_hold_labels()
         )
       end)
 
@@ -203,7 +204,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
       Keyword.get(opts, :update_issue_state_fun, fn identifier, state_name, expected_state ->
         TicketTransition.write_state(identifier, state_name,
           writer: :merged_ticket_reconciler,
-          expected_state: expected_state
+          expected_state: expected_state,
+          refuse_labels: operator_hold_labels()
         )
       end)
 
@@ -254,7 +256,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
       Keyword.get(opts, :update_issue_state_fun, fn identifier, state_name, expected_state ->
         TicketTransition.write_state(identifier, state_name,
           writer: :merged_ticket_reconciler,
-          expected_state: expected_state
+          expected_state: expected_state,
+          refuse_labels: operator_hold_labels()
         )
       end)
 
@@ -275,6 +278,10 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
           {:ok, String.t()} | {:error, term()}
   def merged_ticket_target(identifier, opts),
     do: OpenPullRequestTarget.merged_ticket_target(identifier, opts)
+
+  defp operator_hold_labels do
+    ["needs-triage", "human:todo", "agent:paused", "agent:parked"]
+  end
 
   # The ticket was already transitioned above, so the terminalisation pass only
   # has to tear the agent down and resume dependents.

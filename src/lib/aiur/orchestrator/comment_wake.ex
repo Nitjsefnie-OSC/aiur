@@ -68,7 +68,9 @@ defmodule Aiur.Orchestrator.CommentWake do
     OptimisticLedger.close(to_string(identifier), :merged, System.system_time(:millisecond))
 
     update_issue_state_fun =
-      Keyword.get(opts, :update_issue_state_fun, &TicketTransition.write_state(&1, &2, writer: :comment_wake))
+      Keyword.get(opts, :update_issue_state_fun, fn identifier, target ->
+        write_merged_state_if_current(identifier, target)
+      end)
 
     clear_session_handle_fun =
       Keyword.get(opts, :clear_session_handle_fun, &WorkspaceCleanup.clear_session_handle/1)
@@ -118,6 +120,23 @@ defmodule Aiur.Orchestrator.CommentWake do
         )
       end
     )
+  end
+
+  defp write_merged_state_if_current(identifier, target) do
+    case Tracker.fetch_issue_states_by_ids([to_string(identifier)]) do
+      {:ok, [%Issue{state: state}]} when is_binary(state) ->
+        TicketTransition.write_state(identifier, target,
+          writer: :comment_wake,
+          expected_state: state,
+          refuse_labels: ["needs-triage", "human:todo", "agent:paused", "agent:parked"]
+        )
+
+      {:ok, _} ->
+        {:error, :merge_issue_state_unavailable}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   # A PR can close more tickets than the one its branch names. GitHub closes
