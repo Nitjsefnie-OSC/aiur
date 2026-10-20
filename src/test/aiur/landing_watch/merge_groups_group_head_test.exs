@@ -131,7 +131,7 @@ defmodule Aiur.LandingWatch.MergeGroupsGroupHeadTest do
     ]
 
     assert :ok = cancel_stale(base, runs, cancel, headless)
-    assert :ok = cancel_stale(base, runs, cancel, [])
+    assert :ok = cancel_stale(base, runs, cancel, headless)
   end
 
   test "a missing group head in a partial snapshot does not cancel that PR's run" do

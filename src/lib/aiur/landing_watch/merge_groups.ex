@@ -58,8 +58,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
               stale?(run, base, live) ->
                 [{run, "queue_entry_not_live"}]
 
-              complete_run_snapshot?(run, base, live) and
-                  stale_group_head?(run, base, live, group_heads) ->
+              stale_group_head?(run, base, live, group_heads) ->
                 [{run, "group_head_not_live"}]
 
               true ->
@@ -109,7 +108,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
     if String.starts_with?(branch, prefix) do
       numbers = run_pr_numbers(branch, prefix)
 
-      numbers != [] and Enum.all?(numbers, &Map.has_key?(live, &1)) and
+      numbers != [] and
         Enum.any?(numbers, &(not current_entry?(Map.get(live, &1), run)))
     else
       false
@@ -117,35 +116,6 @@ defmodule Aiur.LandingWatch.MergeGroups do
   end
 
   defp stale?(_run, _base, _live), do: false
-
-  defp complete_run_snapshot?(
-         %{"event" => "merge_group", "head_branch" => branch} = run,
-         base,
-         live
-       )
-       when is_binary(branch) do
-    prefix = "gh-readonly-queue/#{base}/pr-"
-
-    if String.starts_with?(branch, prefix) do
-      numbers = run_pr_numbers(branch, prefix)
-
-      numbers != [] and Enum.all?(numbers, &known_current_entry?(&1, run, live))
-    else
-      false
-    end
-  end
-
-  defp complete_run_snapshot?(_run, _base, _live), do: false
-
-  defp known_current_entry?(number, run, live) do
-    case Map.get(live, number) do
-      %{group_head: group_head} when is_binary(group_head) ->
-        current_entry?(Map.get(live, number), run)
-
-      _ ->
-        false
-    end
-  end
 
   defp run_pr_numbers(branch, prefix) do
     branch
@@ -183,7 +153,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
     numbers = run_pr_numbers(run["head_branch"], prefix)
 
     is_binary(created_at) and numbers != [] and
-      Enum.all?(numbers, fn number ->
+      Enum.any?(numbers, fn number ->
         case Map.get(live, number) do
           %{group_head_committed_at: group_created_at} when is_binary(group_created_at) ->
             timestamp_before?(created_at, group_created_at)

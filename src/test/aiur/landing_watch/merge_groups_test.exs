@@ -4,7 +4,7 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
   alias Aiur.GitHub.ResourceStore
   alias Aiur.LandingWatch.MergeGroups
 
-  test "an incomplete live queue snapshot does not cancel runs for unobserved entries" do
+  test "a run for a PR no longer in the refreshed live queue is cancelled" do
     parent = self()
 
     runs = [
@@ -53,9 +53,9 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
                live_observations_fun: fn _, _ -> {:ok, observations} end
              )
 
-    refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/32/cancel"}
+    assert_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/32/cancel"}
 
-    refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/34/cancel"}
+    assert_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/34/cancel"}
 
     refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/31/cancel"}
   end

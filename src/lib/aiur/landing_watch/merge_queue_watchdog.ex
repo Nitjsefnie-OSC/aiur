@@ -237,25 +237,32 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
 
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts),
-         {:ok, %{"data" => %{"repository" => %{"pullRequest" => pr}}}} <-
+         {:ok, response} <-
            Transport.github_graphql(
              Keyword.get(opts, :request_fun, &Transport.default_request_fun/1),
              token,
              query,
              %{owner: owner, repo: repo, number: number},
              caller: "landing_watch_unmergeable_revalidate"
-           ),
-         true <-
-           pr["headRefOid"] == expected_head and pr["isDraft"] == false and
-             pr["mergeable"] == "MERGEABLE" and
-             pr["mergeStateStatus"] == "CLEAN" and is_nil(pr["mergeQueueEntry"]) and
-             is_nil(pr["autoMergeRequest"]) and
-             Classifier.approved_at_head?(pr) do
-      :ok
-    else
-      {:error, _} = error -> error
-      false -> {:skip, :queue_recovery_precondition_changed}
+           ) do
+      case response do
+        %{"data" => %{"repository" => %{"pullRequest" => pr}}} ->
+          validate_live_pr(pr, expected_head)
+
+        _ ->
+          {:error, :invalid_queue_recovery_revalidation}
+      end
     end
+  end
+
+  defp validate_live_pr(pr, expected_head) do
+    eligible? =
+      pr["headRefOid"] == expected_head and pr["isDraft"] == false and
+        pr["mergeable"] == "MERGEABLE" and pr["mergeStateStatus"] == "CLEAN" and
+        is_nil(pr["mergeQueueEntry"]) and is_nil(pr["autoMergeRequest"]) and
+        Classifier.approved_at_head?(pr)
+
+    if eligible?, do: :ok, else: {:skip, :queue_recovery_precondition_changed}
   end
 
   defp revalidate_queue_entry(observation, opts) do
