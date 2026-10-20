@@ -99,6 +99,10 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
     snapshot = Quota.snapshot(quota)
     refute Map.has_key?(snapshot.credential_windows, key)
     assert map_size(snapshot.credential_windows) == 1
+
+    quota_state = :sys.get_state(quota)
+    refute Map.has_key?(quota_state.credential_windows, {key, "core"})
+    assert map_size(quota_state.credential_windows) == 1
   end
 
   test "rotating tokens with one credential id reuse one quota window" do
