@@ -34,6 +34,7 @@ for (const viewport of PARITY_VIEWPORTS) test(`modal tkin samples and instant cl
     for (const side of ['design', 'product']) {
       await pair[side].locator('#bd-tk-close').click()
       await expect(pair[side].locator('#tk-backdrop')).not.toHaveClass(/\bshow\b/)
+      await expect(pair[side]).not.toHaveURL(/ticket=/)
       expect(await pair[side].evaluate(() => ({ overflow: document.body.style.overflow,
         ticket: new URLSearchParams(location.search).has('ticket'), animations: document.querySelector('#tk-modal').getAnimations().length })))
         .toEqual({ overflow: '', ticket: false, animations: 0 })

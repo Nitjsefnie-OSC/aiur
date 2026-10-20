@@ -22,14 +22,27 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
         await pair.product.evaluate(async id => (await import('/build-home/modal/frame.js')).openById(id), t.id)
         // Only the frame/header belongs to this ticket; body ports have their own successors.
         for (const side of ['design', 'product']) await pair[side].locator('#tk-body').evaluate(el => { el.style.visibility = 'hidden' })
-        await compareRegion(pair, { name: `modal.head.offline.${t.id}.${viewport.viewport.width}.${theme}.${palette}`, region: '#tk-head' })
+        for (const side of ['design', 'product']) await pair[side].locator('#tk-modal').evaluate(el => el.getAnimations().forEach(a => a.finish()))
         const geometry = []
         for (const side of ['design', 'product']) geometry.push(await pair[side].locator('#tk-modal').evaluate(el => {
           const b = el.getBoundingClientRect(), css = getComputedStyle(el)
           return { width: b.width, height: b.height, border: css.border, radius: css.borderRadius, shadow: css.boxShadow }
         }))
         expect(geometry[1]).toEqual(geometry[0])
+        // Capture the real headers together so every state shares one stable pixel comparison.
+        for (const side of ['design', 'product']) await pair[side].locator('#tk-head').evaluate(el => {
+          let matrix = document.querySelector('#modal-header-matrix')
+          if (!matrix) {
+            matrix = document.createElement('div'); matrix.id = 'modal-header-matrix'; matrix.className = 'tk-modal bdm'
+            matrix.style.cssText = 'position:absolute;top:0;height:auto;max-height:none;border:0;border-radius:0;box-shadow:none;animation:none;overflow:visible'
+            matrix.style.width = el.parentElement.getBoundingClientRect().width + 'px'; document.body.append(matrix)
+          }
+          const copy = el.cloneNode(true)
+          for (const node of [copy, ...copy.querySelectorAll('[id]')]) node.removeAttribute('id')
+          matrix.append(copy)
+        })
       }
+      await compareRegion(pair, { name: `modal.head.offline.${viewport.viewport.width}.${theme}.${palette}`, region: '#modal-header-matrix' })
     } finally { await pair.close() }
   })
 }
