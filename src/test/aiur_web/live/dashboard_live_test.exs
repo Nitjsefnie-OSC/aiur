@@ -1351,6 +1351,9 @@ defmodule AiurWeb.DashboardLiveTest do
         # the next mount sees no valid financial access and renders locked.
         System.put_env("AIUR_DASHBOARD_PASSWORD", "rotated-boundary-secret")
 
+        refreshed_payload = PayloadLoader.load(:fresh)
+        refute Map.has_key?(refreshed_payload, :units_status_snapshot)
+
         {:ok, redirected, redirected_html} = live_redirect(view, to: "/commands")
         send(test_process, {:revoked_financial, redirected})
         assert redirected_html =~ "Commands"
@@ -1362,6 +1365,7 @@ defmodule AiurWeb.DashboardLiveTest do
     assert socket.assigns.financial_data_capability.state == :locked
     assert socket.assigns.payload.fleet.agent_totals == %{seconds_running: 41}
     refute Map.has_key?(socket.assigns.payload.fleet, :rate_limits)
+    refute Map.has_key?(socket.assigns.payload, :units_status_snapshot)
     refute inspect(socket) =~ sentinel
     refute render(redirected) =~ sentinel
     refute log =~ sentinel

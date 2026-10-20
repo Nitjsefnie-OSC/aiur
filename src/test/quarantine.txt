@@ -17,4 +17,3 @@ Aiur.Workspace.RefreshTest	run/3 reconstruction restores the governed GitHub wra
 Aiur.WorkspaceMaterializeTest	copies the warm base onto the generated ticket branch	#4754
 Aiur.Events.TraceTest	default sink preserves identical global and per-identifier debug entries	#4762
 Aiur.OrchestratorRemoteControlTest	ensure_remote_control_trust/2 (direct-dispatch trust seeding) seeds hasTrustDialogAccepted for the workspace	#4765
-AiurWeb.DashboardLiveTest	a revoked financial session renders a locked capability without leaking financial sentinels	#5337
