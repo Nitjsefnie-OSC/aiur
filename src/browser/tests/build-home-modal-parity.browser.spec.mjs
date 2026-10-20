@@ -20,7 +20,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
         await pair.design.evaluate(id => window.AiurBuild.open('AIUR-' + id), t.id)
         await pair.product.evaluate(async id => (await import('/build-home/modal/frame.js')).openById(id), t.id)
         // Only the frame/header belongs to this ticket; body ports have their own successors.
-        for (const side of ['design', 'product']) await pair[side].locator('#tk-body').evaluate(el => el.replaceChildren())
+        for (const side of ['design', 'product']) await pair[side].locator('#tk-body').evaluate(el => { el.style.visibility = 'hidden' })
         await compareRegion(pair, { name: `modal.head.offline.${t.id}.${viewport.viewport.width}.${theme}.${palette}`, region: '#tk-head' })
         const geometry = []
         for (const side of ['design', 'product']) geometry.push(await pair[side].locator('#tk-modal').evaluate(el => {
