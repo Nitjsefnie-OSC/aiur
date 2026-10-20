@@ -174,7 +174,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     pubsub_leak = is_nil(Process.whereis(Aiur.PubSub))
     orchestrator_leak = leak()
     orchestrator_restore = if orchestrator_leak, do: restore(orchestrator_leak)
-    pubsub_restore = if pubsub_leak, do: RuntimeChildren.ensure_pubsub_running()
+    pubsub_errors = restore_and_report_pubsub(pubsub_leak, context)
     shared_leaks = verify_shared_state_restored!(context)
     store_leaks = decision_store_leaks()
     store_recovery = recover_decision_store(store_leaks)
@@ -184,13 +184,6 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
         [
           "#{test_name(context)} left Aiur.Orchestrator #{orchestrator_leak} (restore: #{inspect(orchestrator_restore)}). Restore it in on_exit with Aiur.TestSupport.ensure_orchestrator_running/0 or await_supervised_restart/3."
         ]
-      else
-        []
-      end
-
-    pubsub_errors =
-      if pubsub_leak do
-        ["#{test_name(context)} left Aiur.PubSub unregistered (restore: #{inspect(pubsub_restore)}). Restore it in on_exit with Aiur.TestSupport.ensure_pubsub_running/0."]
       else
         []
       end
@@ -209,6 +202,13 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     if errors != [], do: raise(Enum.join(errors, "\n"))
 
     :ok
+  end
+
+  defp restore_and_report_pubsub(false, _context), do: []
+
+  defp restore_and_report_pubsub(true, context) do
+    restore = RuntimeChildren.ensure_pubsub_running()
+    ["#{test_name(context)} left Aiur.PubSub unregistered (restore: #{inspect(restore)}). Restore it in on_exit with Aiur.TestSupport.ensure_pubsub_running/0."]
   end
 
   defp capture_app_env do
