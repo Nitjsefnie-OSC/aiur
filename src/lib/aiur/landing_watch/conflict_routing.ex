@@ -42,7 +42,9 @@ defmodule Aiur.LandingWatch.ConflictRouting do
       [@failure],
       opts
       |> Keyword.put(:conflict_rework_claim, claim)
-      |> Keyword.put(:after_rework, fn issue -> complete_follow_up(observation, issue, opts) end)
+      |> Keyword.put(:after_rework, fn issue, paused? ->
+        complete_follow_up(observation, issue, Keyword.put(opts, :conflict_ticket_paused?, paused?))
+      end)
     )
   end
 
@@ -99,7 +101,62 @@ defmodule Aiur.LandingWatch.ConflictRouting do
     write_marker = Keyword.get(opts, :write_marker_fun, &TicketTransition.write_marker/4)
 
     with :ok <- comment.(issue, comment_body(observation)) do
-      write_marker.(issue, :remove, Keyword.get_lazy(opts, :pause_label, &pause_label/0), writer: :landing_watch)
+      maybe_lift_approval_pause(observation, issue, opts, write_marker)
+    end
+  end
+
+  defp maybe_lift_approval_pause(observation, issue, opts, write_marker) do
+    cond do
+      not Keyword.get(opts, :conflict_ticket_paused?, false) ->
+        :ok
+
+      approval_pause_owned?(issue, opts) ->
+        write_marker.(issue, :remove, Keyword.get_lazy(opts, :pause_label, &pause_label/0), writer: :landing_watch)
+
+      true ->
+        emit_held_conflict_attention(observation, issue, opts)
+    end
+  end
+
+  defp approval_pause_owned?(issue, opts) do
+    case Keyword.get(opts, :approval_pause_provenance_fun) do
+      fun when is_function(fun, 1) -> fun.(issue) == true
+      _ -> Journal.pause_writer(issue, opts) == {:ok, "approval_pause"}
+    end
+  end
+
+  defp emit_held_conflict_attention(observation, issue, opts) do
+    message = "Conflicting approved PR ##{observation.number} is held by #{pause_label()} on ticket #{issue}."
+    marker = "conflict-held-pause"
+
+    case Journal.claim_alert(observation.number, observation.head, marker, opts) do
+      {:ok, :already_claimed} ->
+        :ok
+
+      {:ok, :new} ->
+        emitter = Keyword.get(opts, :alert_emitter, &Aiur.Alerts.emit_system/2)
+
+        case emitter.("ticket.#{issue}.agent.attention.conflicting_held_pr",
+               central: true,
+               durable: true,
+               needs_attention: true,
+               message: message,
+               reason: message
+             ) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            _ = Journal.release_alert(observation.number, observation.head, marker, opts)
+            {:error, {:held_conflict_attention, reason}}
+
+          other ->
+            _ = Journal.release_alert(observation.number, observation.head, marker, opts)
+            {:error, {:held_conflict_attention, {:unconfirmed, other}}}
+        end
+
+      {:error, reason} ->
+        {:error, {:held_conflict_attention, reason}}
     end
   end
 

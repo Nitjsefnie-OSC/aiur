@@ -357,8 +357,8 @@ defmodule Aiur.LandingWatch do
   # A ticket back in rework or with a running agent owns its PR; an Executor dequeue must stick (#4772).
   defp land_unless_ticket_active(observation, opts) do
     case TicketLookup.fetch(observation, opts) do
-      {:ok, _issue, state} when state in ["rework", "in-progress", "todo"] -> :ok
-      {:ok, _issue, _state} -> revalidate_attribution_and_enqueue(observation, opts)
+      {:ok, _issue, state, _paused?} when state in ["rework", "in-progress", "todo"] -> :ok
+      {:ok, _issue, _state, _paused?} -> revalidate_attribution_and_enqueue(observation, opts)
       {:error, :pull_request_not_linked_to_ticket_branch} -> revalidate_attribution_and_enqueue(observation, opts)
       {:error, _} = error -> error
     end
@@ -440,23 +440,29 @@ defmodule Aiur.LandingWatch do
 
   defp transition_rework(observation, failures, opts) do
     case TicketLookup.fetch(observation, opts) do
-      {:ok, issue, state} when state in ["human-review", "ci-wait", "merging"] ->
+      {:ok, issue, state, paused?} when state in ["human-review", "ci-wait", "merging"] ->
         transition = Keyword.get(opts, :transition_fun, fn identifier, target, options -> TicketTransition.write_state(identifier, target, options) end)
 
         case transition.(issue, "rework", writer: :landing_watch, expected_state: state) do
-          :ok -> emit_rework_alert(observation, failures, issue, opts)
-          {:error, reason} -> {:error, reason}
-          _ -> {:error, :ticket_rework_transition_unconfirmed}
+          :ok ->
+            opts = Keyword.put(opts, :conflict_ticket_paused?, paused?)
+            emit_rework_alert(observation, failures, issue, opts)
+
+          {:error, reason} ->
+            {:error, reason}
+
+          _ ->
+            {:error, :ticket_rework_transition_unconfirmed}
         end
 
-      {:ok, issue, "rework"} ->
+      {:ok, issue, "rework", paused?} ->
         if Keyword.get(opts, :conflict_rework_claim) == :new do
           :conflict_already_rework
         else
-          Keyword.get(opts, :after_rework, fn _issue -> :ok end).(issue)
+          Keyword.get(opts, :after_rework, fn _issue, _paused? -> :ok end).(issue, paused?)
         end
 
-      {:ok, _issue, _state} ->
+      {:ok, _issue, _state, _paused?} ->
         not_routed(opts)
 
       {:error, reason} ->
@@ -474,7 +480,7 @@ defmodule Aiur.LandingWatch do
     message = "Approved PR ##{observation.number} moved ticket ##{issue} to rework: " <> evidence
     emitter = Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2)
     emitter.("system.pr.landing.rework", central: true, needs_attention: false, message: message, reason: message)
-    Keyword.get(opts, :after_rework, fn _issue -> :ok end).(issue)
+    Keyword.get(opts, :after_rework, fn _issue, _paused? -> :ok end).(issue, Keyword.get(opts, :conflict_ticket_paused?, false))
   end
 
   defp default_attribution(observation, opts), do: Attribution.pull_request_clean?(observation.number, opts)

@@ -2,6 +2,7 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
   use ExUnit.Case, async: true
 
   alias Aiur.LandingWatch
+  alias Aiur.LandingWatch.Journal
 
   @green %{"id" => 60, "name" => "ci gate", "status" => "completed", "conclusion" => "success", "check_suite" => %{"id" => 101}}
 
@@ -32,6 +33,25 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
     assert body =~ "Rebase only"
   end
 
+  test "an operator-held conflicting ticket stays paused and raises attention" do
+    parent = self()
+
+    opts =
+      cycle_opts(parent, conflicting(nil), "human-review")
+      |> Keyword.put(:ticket_state_fun, fn "17", _ -> {:ok, %{state: "human-review", paused?: true}} end)
+      |> Keyword.put(:alert_emitter, fn topic, alert_opts ->
+        send(parent, {:attention, topic, alert_opts})
+        :ok
+      end)
+
+    assert :ok = Journal.record_pause_writer("17", :pause_resume, journal_path: Keyword.fetch!(opts, :journal_path))
+    assert :ok = LandingWatch.poll(opts)
+    refute_received {:remove_label, "17", "agent:paused"}
+    assert_received {:attention, "ticket.17.agent.attention.conflicting_held_pr", alert_opts}
+    assert alert_opts[:needs_attention]
+    assert alert_opts[:reason] =~ "Conflicting approved PR #17"
+  end
+
   test "a failed dequeue leaves the ticket alone so the next cycle retries" do
     parent = self()
     opts = Keyword.put(cycle_opts(parent, conflicting(%{"id" => "MQE_1"}), "merging"), :withdraw_fun, fn _ -> {:error, :boom, []} end)
@@ -53,10 +73,9 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
 
   test "a failed follow-up is retried when the ticket is already in rework" do
     parent = self()
-    path = journal_path()
     Process.put(:conflict_comment_attempt, 0)
 
-    opts = cycle_opts(parent, conflicting(nil), "human-review") |> Keyword.put(:journal_path, path)
+    opts = cycle_opts(parent, conflicting(nil), "human-review")
 
     failing_comment = fn id, body ->
       attempt = Process.get(:conflict_comment_attempt) + 1
@@ -70,7 +89,11 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
     assert_received {:comment_attempt, "17", _}
     refute_received {:remove_label, _, _}
 
-    assert :ok = LandingWatch.poll(Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "rework"} end) |> Keyword.put(:comment_fun, failing_comment))
+    assert :ok =
+             LandingWatch.poll(
+               Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, %{state: "rework", paused?: true}} end)
+               |> Keyword.put(:comment_fun, failing_comment)
+             )
 
     assert_received {:comment_attempt, "17", _}
     assert_received {:remove_label, "17", "agent:paused"}
@@ -121,7 +144,7 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
         send(parent, {:enqueued, pr.head})
         {:ok, "entry-1"}
       end,
-      ticket_state_fun: fn "17", _ -> {:ok, ticket_state} end,
+      ticket_state_fun: fn "17", _ -> {:ok, %{state: ticket_state, paused?: true}} end,
       withdraw_fun: fn number ->
         send(parent, {:withdraw, number})
         {:ok, [:dequeued]}
@@ -143,6 +166,10 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
       journal_path: journal_path(),
       alert_emitter: fn _, _ -> :ok end
     ]
+    |> then(fn opts ->
+      :ok = Journal.record_pause_writer("17", :approval_pause, journal_path: Keyword.fetch!(opts, :journal_path))
+      opts
+    end)
   end
 
   defp conflicting(entry) do

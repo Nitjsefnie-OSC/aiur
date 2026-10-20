@@ -7,7 +7,7 @@ defmodule Aiur.LandingWatch.TicketLookup do
 
   @ticket_states ["rework", "in-progress", "todo", "human-review", "ci-wait", "merging"]
 
-  @spec fetch(map(), keyword()) :: {:ok, String.t(), String.t()} | {:error, term()}
+  @spec fetch(map(), keyword()) :: {:ok, String.t(), String.t(), boolean()} | {:error, term()}
   def fetch(observation, opts) do
     case TicketBranch.ticket_id(get_in(observation.rest || %{}, ["head", "ref"])) do
       nil ->
@@ -15,7 +15,8 @@ defmodule Aiur.LandingWatch.TicketLookup do
 
       issue ->
         case LocalRead.run(Keyword.get(opts, :ticket_state_fun, &fetch_state/2), [issue, opts], opts) do
-          {:ok, state} -> {:ok, issue, state}
+          {:ok, %{state: state, paused?: paused?}} -> {:ok, issue, state, paused?}
+          {:ok, state} -> {:ok, issue, state, false}
           {:error, _} = error -> error
           _ -> {:error, :ticket_state_unavailable}
         end
@@ -26,7 +27,13 @@ defmodule Aiur.LandingWatch.TicketLookup do
     with {:ok, raw, _freshness} <- Client.fetch_issue_raw_conditional(issue, Keyword.put(opts, :revalidate, true)) do
       names = Enum.map(Map.get(raw, "labels", []), &Map.get(&1, "name"))
       # Gating states win while label edits add before removing the old state.
-      {:ok, Enum.find(@ticket_states, "other", &("agent:#{&1}" in names))}
+      {:ok,
+       %{
+         state: Enum.find(@ticket_states, "other", &("agent:#{&1}" in names)),
+         paused?: "#{prefix()}:paused" in names
+       }}
     end
   end
+
+  defp prefix, do: Aiur.Config.settings!().tracker.github.label_prefix
 end
