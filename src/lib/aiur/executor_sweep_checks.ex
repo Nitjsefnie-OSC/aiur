@@ -104,6 +104,8 @@ defmodule Aiur.ExecutorSweep.Checks do
   end
 
   defp conflicting_waiting_prs(snapshot) do
+    base_branch = Aiur.Config.base_branch()
+
     waiting =
       snapshot
       |> Map.get(:tickets, [])
@@ -124,8 +126,8 @@ defmodule Aiur.ExecutorSweep.Checks do
             "conflicting_waiting_pr",
             2,
             0,
-            "Merge main into the PR branch and resolve the conflicts.",
-            "Ticket ##{issue_number} is waiting while PR ##{value(pr, :number, "?")} is conflicting with main.",
+            "Merge #{base_branch} into the PR branch and resolve the conflicts.",
+            "Ticket ##{issue_number} is waiting while PR ##{value(pr, :number, "?")} is conflicting with #{base_branch}.",
             pull_request: value(pr, :number, nil),
             ticket: issue_number
           )

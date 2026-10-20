@@ -87,14 +87,15 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
   @spec route_conflicting_pr(State.t(), Issue.t(), map(), keyword()) :: State.t()
   def route_conflicting_pr(state, issue, result, opts) do
     issue_key = issue.id || issue.identifier
+    base_branch = Aiur.Config.base_branch()
 
     Transition.transition_ci_ticket(state, issue, "rework", fn transitioned ->
       create = Keyword.get(opts, :ci_failure_commenter, &Aiur.Tracker.create_comment/2)
       target = to_string(issue.identifier || issue.id)
 
       body =
-        "PR ##{result[:pr_number]} head `#{result[:head_sha]}` is conflicting with main. " <>
-          "This ticket moved to rework; merge main into the PR branch, resolve the conflicts, and push the result."
+        "PR ##{result[:pr_number]} head `#{result[:head_sha]}` is conflicting with #{base_branch}. " <>
+          "This ticket moved to rework; merge #{base_branch} into the PR branch, resolve the conflicts, and push the result."
 
       case create.(target, body) do
         :ok -> :ok
