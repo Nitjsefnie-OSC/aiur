@@ -9,7 +9,7 @@ defmodule Aiur.GitHub.ViewStateSweepTest do
 
   alias Aiur.GitHub.{ResourceStore, ViewStateSweep}
 
-  alias Aiur.ViewStateSweepTestSupport.{SourceA, SourceB, SourceAbsent, ReseedableSource, RecoveringSource}
+  alias Aiur.ViewStateSweepTestSupport.{RecoveringSource, ReseedableSource, SourceA, SourceAbsent, SourceB}
 
   describe "the sweep is the only view-state cadence" do
     # The behavioural half: a source that still has a cadence has to keep the

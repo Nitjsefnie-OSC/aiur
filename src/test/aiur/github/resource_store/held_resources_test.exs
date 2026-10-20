@@ -2,8 +2,8 @@ defmodule Aiur.GitHub.ResourceStore.HeldResourcesTest do
   use Aiur.TestSupport
   use Aiur.ResourceStoreTestSupport
 
-  alias Aiur.GitHub.ResourceStore
   alias Aiur.GitHub.ResourceFetch
+  alias Aiur.GitHub.ResourceStore
 
   describe "held resources" do
     test "a body written by one reader serves the next with no upstream call" do

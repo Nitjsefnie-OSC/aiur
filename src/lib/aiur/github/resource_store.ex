@@ -43,7 +43,7 @@ defmodule Aiur.GitHub.ResourceStore do
   use GenServer
 
   alias Aiur.GitHub.ResourceEvents
-  alias Aiur.GitHub.ResourceStore.{Collections, Deposit, Docs, Marks, Persistence, Reads, Retention, Storage, Types, Validators}
+  alias Aiur.GitHub.ResourceStore.{Checkpoint, Collections, Deposit, Docs, Marks, Persistence, Reads, Retention, Storage, Types, Validators}
 
   @table __MODULE__.Table
   @sweep_interval_ms 5 * 60 * 1000
@@ -168,7 +168,7 @@ defmodule Aiur.GitHub.ResourceStore do
 
   @doc Docs.reset()
   @spec reset() :: :ok
-  def reset(), do: Collections.reset(@table)
+  def reset, do: Collections.reset(@table)
 
   @doc false
   @spec forget(key() | nil) :: :ok
@@ -226,7 +226,7 @@ defmodule Aiur.GitHub.ResourceStore do
   def init(opts) do
     Process.flag(:trap_exit, true)
     table = :ets.new(@table, [:named_table, :public, :set, read_concurrency: true, write_concurrency: true])
-    Aiur.GitHub.ResourceStore.Checkpoint.init()
+    Checkpoint.init()
 
     path = Persistence.resolve_path(opts)
     loaded = Persistence.load(path)
