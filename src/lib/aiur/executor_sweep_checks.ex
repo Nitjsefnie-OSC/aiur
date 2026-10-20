@@ -23,6 +23,7 @@ defmodule Aiur.ExecutorSweep.Checks do
       {"unreviewed_prs", [:pull_requests, :tickets], fn -> unreviewed_prs(snapshot, now, unreviewed_minutes) end},
       {"old_decisions", [:decisions], fn -> old_decisions(snapshot, now) end},
       {"approved_prs", [:pull_requests], fn -> approved_prs(snapshot) end},
+      {"conflicting_waiting_prs", [:pull_requests, :tickets], fn -> conflicting_waiting_prs(snapshot) end},
       {"landing_rerun_backlog", [:landing_rerun_backlog], fn -> landing_rerun_backlog(snapshot, now) end},
       {"unmergeable_queue_entries", [:merge_queue], fn -> unmergeable_queue_entries(snapshot) end},
       {"stale_merge_groups", [:merge_groups], fn -> stale_merge_groups(snapshot, now, stale_minutes) end},
@@ -100,6 +101,39 @@ defmodule Aiur.ExecutorSweep.Checks do
     snapshot
     |> Map.get(:pull_requests, [])
     |> Enum.flat_map(&approved_pr_findings(&1, Map.get(snapshot, :base_checks, [])))
+  end
+
+  defp conflicting_waiting_prs(snapshot) do
+    waiting =
+      snapshot
+      |> Map.get(:tickets, [])
+      |> Enum.filter(fn ticket ->
+        labels = value(ticket, :labels, [])
+        "agent:ci-wait" in labels or "agent:human-review" in labels
+      end)
+      |> MapSet.new(&value(&1, :number, nil))
+
+    snapshot
+    |> Map.get(:pull_requests, [])
+    |> Enum.flat_map(fn pr ->
+      issue_number = value(pr, :issue_number, nil)
+
+      if issue_number in waiting and value(pr, :state, "") == "open" and value(pr, :mergeable, nil) == "CONFLICTING" do
+        [
+          finding(
+            "conflicting_waiting_pr",
+            2,
+            0,
+            "Merge main into the PR branch and resolve the conflicts.",
+            "Ticket ##{issue_number} is waiting while PR ##{value(pr, :number, "?")} is conflicting with main.",
+            pull_request: value(pr, :number, nil),
+            ticket: issue_number
+          )
+        ]
+      else
+        []
+      end
+    end)
   end
 
   defp approved_pr_findings(pr, base_checks) do
