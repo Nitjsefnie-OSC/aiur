@@ -64,6 +64,20 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
   defp evidence_blockers(_issue, _state, _workspace, _opts), do: :allow
 
   defp evidence_error(body, head, workspace) do
+    case LocalTestEvidence.parse(body) do
+      {:ok, %{tested_head: tested_head}} ->
+        if String.downcase(tested_head) != String.downcase(head) do
+          {:error, "Tested head #{tested_head} does not match PR head #{head}; update the evidence only after rerunning the touched tests at the PR head"}
+        else
+          lint_evidence_error(body, head, workspace)
+        end
+
+      _ ->
+        lint_evidence_error(body, head, workspace)
+    end
+  end
+
+  defp lint_evidence_error(body, head, workspace) do
     case pr_template(workspace) do
       {:ok, template} ->
         case PrBodyLint.errors(template, body, head: head) do

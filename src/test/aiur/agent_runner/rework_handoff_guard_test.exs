@@ -175,7 +175,10 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
 
     stale = handoff.("#### Summary\n\n- Fix.\n\n" <> evidence.(String.duplicate("a", 40)))
     refute stale["success"]
-    assert Jason.decode!(stale["output"])["error"]["message"] =~ "Tested head does not match PR head"
+    message = Jason.decode!(stale["output"])["error"]["message"]
+    assert message =~ "Tested head #{String.duplicate("a", 40)}"
+    assert message =~ "PR head #{head}"
+    assert message =~ "rerunning the touched tests"
     refute_received {:state_write, _, _}
 
     assert handoff.("#### Summary\n\n- Fix.\n\n" <> evidence.(head))["success"]
