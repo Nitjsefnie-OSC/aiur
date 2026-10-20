@@ -99,6 +99,7 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionReadsTest do
     assert {:ok, _} = F.observe(ctx, 20, ["bug"])
     assert {:ok, _} = F.observe(ctx, 21, ["bug"])
     send(pid, {:build_order_history_changed, %{changed: [20]}})
+    send(pid, {:build_order_history_changed, %{changed: [21]}})
     assert :ok = :sys.resume(pid)
     F.sync(pid)
     assert reads() == [[20, 21]]
