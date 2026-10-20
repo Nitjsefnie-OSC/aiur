@@ -26,17 +26,38 @@ defmodule Aiur.Orchestrator.StartupClaimReconcilerTest do
       end)
 
     assert_receive {:transition, "2076", "todo", "in-progress"}, 1000
-    assert_receive {:alert, "ticket.2076.agent.attention.startup_orphan_claim_released", alert_opts}, 1000
-    refute alert_opts[:needs_attention]
-    assert alert_opts[:message] =~ "released"
-    assert alert_opts[:reason] =~ "no live runtime"
-    assert alert_opts[:reason] =~ "guarded update"
-    assert alert_opts[:severity] == "warning"
+    refute_receive {:alert, "ticket.2076.agent.attention.startup_orphan_claim_released", _alert_opts}, 100
 
     assert_receive {:result, {state, [%Issue{state: "todo"}]}}, 1000
     assert state.startup_claim_reconciliation_complete?
     assert log =~ "Released orphaned startup claim to todo"
     assert log =~ "issue_id=issue-2076 issue_identifier=2076"
+  end
+
+  test "a rework claim waiting at fleet capacity is not observed or released across polls" do
+    issue = issue("5330", "rework")
+    parent = self()
+
+    state = %State{
+      max_concurrent_agents: 1,
+      effective_concurrent_agents: 1,
+      running: %{"active" => %{issue: issue("active", "in-progress"), identifier: "active", control: %{status: :working}}}
+    }
+
+    state =
+      Enum.reduce(1..4, state, fn _, current ->
+        {next, [^issue]} =
+          reconcile(current, [issue],
+            update_issue_state_fun: fn _, _, _ -> flunk("a rework ticket waiting for capacity is not an orphan") end,
+            emit_alert_fun: fn topic, opts -> send(parent, {:alert, topic, opts}) end
+          )
+
+        assert next.orphaned_claim_since == %{}
+        next
+      end)
+
+    assert state.startup_claim_reconciliation_complete?
+    refute_receive {:alert, "ticket.5330.agent.attention.startup_orphan_claim_released", _opts}, 100
   end
 
   test "startup release to human-review publishes one handoff wake per head" do
@@ -421,7 +442,7 @@ defmodule Aiur.Orchestrator.StartupClaimReconcilerTest do
     assert recovered_state.startup_claim_reconciliation_complete?
     assert recovered_state.startup_claim_reconciliation_failures == %{}
 
-    assert_receive {:alert, "ticket.2076.agent.attention.startup_orphan_claim_released", _opts}, 1000
+    refute_receive {:alert, "ticket.2076.agent.attention.startup_orphan_claim_released", _opts}, 100
 
     assert_receive {:alert, "ticket.2076.agent.attention.startup_claim_reconciliation_failed.resolved", resolved_opts}, 1000
     refute resolved_opts[:needs_attention]
