@@ -7,8 +7,8 @@ test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, heigh
 test.beforeEach(async ({ page }, info) => {
   page.on('pageerror', error => { throw error })
   const root = info.project.metadata.agentAssets
-  if (root) await page.route('**/build-home/modal/frame.js', async route => route.fulfill({
-    body: await readFile(root + '/modal/frame.js', 'utf8'), contentType: 'text/javascript',
+  if (root) for (const name of ['frame', 'header', 'focus']) await page.route('**/build-home/modal/' + name + '.js', async route => route.fulfill({
+    body: await readFile(root + '/modal/' + name + '.js', 'utf8'), contentType: 'text/javascript',
   }))
 })
 async function open(page, dataset = 'live', query = '') {
@@ -122,9 +122,12 @@ test('unavailable, disconnected, lost replies and unknown causes never say not f
   }
   await page.evaluate(async () => {
     const { ctx } = await import('/build-home/state.js'); ctx.socket = 'down'
+    const push = ctx.push; window.offlineTicketReads = 0
+    ctx.push = (e, p) => { if (e === 'open-ticket') window.offlineTicketReads++; return push(e, p) }
     await (await import('/build-home/modal/frame.js')).openById('88888')
   })
   await expect(page.locator('#tk-head .bm-meta')).toHaveText('connection lost')
+  expect(await page.evaluate(() => window.offlineTicketReads)).toBe(0)
   await page.clock.install()
   await page.evaluate(async () => {
     const { ctx } = await import('/build-home/state.js'); ctx.socket = 'up'; const push = ctx.push
@@ -151,6 +154,7 @@ test('goto and server URL pushes replace without replaying tkin; body seams clea
   await page.getByRole('button', { name: 'Next', exact: true }).click()
   await expect(page.locator('#bm-title')).toHaveText('#' + next.num + next.title)
   expect(await page.locator('#tk-modal').evaluate(el => el.getAnimations().length)).toBe(0)
+  expect(await page.evaluate(() => window.bodyCalls.map(c => c.slice(0, 2)))).toEqual([['conversation', t.id], ['conversation', next.id]])
   await page.evaluate(async id => {
     const state = { ...(await import('/build-home/state.js')).S, ticket: id }
     window.dispatchEvent(new CustomEvent('phx:build:url', { detail: { state } }))
@@ -159,6 +163,9 @@ test('goto and server URL pushes replace without replaying tkin; body seams clea
   await page.evaluate(() => window.dispatchEvent(new CustomEvent('phx:build:url', { detail: { state: {} } })))
   await expect(page.locator('#tk-backdrop')).not.toHaveClass(/\bshow\b/)
   expect(await page.evaluate(() => window.cleanups)).toBeGreaterThanOrEqual(3)
+  await page.evaluate(async t => (await import('/build-home/modal/frame.js')).openModal({ ...t, agent: null }, { note: 'handoff' }), t)
+  await expect(page.locator('#tk-body')).toHaveText('doc body')
+  expect(await page.evaluate(() => window.bodyCalls.at(-1))).toEqual(['doc', t.id, 'handoff'])
 })
 
 test('unknown header values, real links, PR absence, pack safety and hostile text', async ({ page }) => {

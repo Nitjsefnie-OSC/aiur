@@ -2,11 +2,12 @@ import { test, expect } from '@playwright/test'
 import { PARITY_VIEWPORTS, openParityPair } from '../support/design-parity.mjs'
 import { compareRegion } from '../support/build-home-region-parity.mjs'
 
+// Offline reuses the live rows but prevents the design's mock conversation timer changing progress.
 test.setTimeout(180_000)
 // Each matrix cell exercises seven state headers against the frozen design.
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) {
   test(`modal headers and frame ${viewport.viewport.width} ${theme} ${palette}`, async ({ browser }) => {
-    const pair = await openParityPair(browser, { ...viewport, theme, palette, dataset: 'live' }, { productPending: true })
+    const pair = await openParityPair(browser, { ...viewport, theme, palette, dataset: 'offline' }, { productPending: true })
     try {
       await expect(pair.product.locator("#build-root")).toHaveAttribute("data-build-generation", /\d+/)
       const rows = await pair.product.evaluate(async () => {
@@ -20,7 +21,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
         await pair.product.evaluate(async id => (await import('/build-home/modal/frame.js')).openById(id), t.id)
         // Only the frame/header belongs to this ticket; body ports have their own successors.
         for (const side of ['design', 'product']) await pair[side].locator('#tk-body').evaluate(el => el.replaceChildren())
-        await compareRegion(pair, { name: `modal.head.live.${t.id}.${viewport.viewport.width}.${theme}.${palette}`, region: '#tk-head' })
+        await compareRegion(pair, { name: `modal.head.offline.${t.id}.${viewport.viewport.width}.${theme}.${palette}`, region: '#tk-head' })
         const geometry = []
         for (const side of ['design', 'product']) geometry.push(await pair[side].locator('#tk-modal').evaluate(el => {
           const b = el.getBoundingClientRect(), css = getComputedStyle(el)
