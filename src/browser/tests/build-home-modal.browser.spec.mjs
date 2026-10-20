@@ -7,6 +7,9 @@ test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, heigh
 test.beforeEach(async ({ page }, info) => {
   page.on('pageerror', error => { throw error })
   const root = info.project.metadata.agentAssets
+  if (root) await page.route('**/build-home/home.css', async route => route.fulfill({
+    body: await readFile(root + '/home.css', 'utf8'), contentType: 'text/css',
+  }))
   if (root) for (const name of ['frame', 'header', 'focus']) await page.route('**/build-home/modal/' + name + '.js', async route => route.fulfill({
     body: await readFile(root + '/modal/' + name + '.js', 'utf8'), contentType: 'text/javascript',
   }))
@@ -184,6 +187,9 @@ test('unknown header values, real links, PR absence, pack safety and hostile tex
   await display(page, cases[0][0]); await expect(page.locator('#bm-pct')).toHaveText('?%')
   await expect(page.locator('[data-unknown="pts"]')).toHaveText('? pts')
   await expect(page.locator('.bm-agent .ax-mono')).toHaveText('A')
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.locator('.bm-agent .ax-mono')).toBeVisible()
+  await page.setViewportSize({ width: 1440, height: 1000 })
   await expect(page.locator('.bm-agent')).not.toHaveAttribute('title', /null/)
   const hostile = { ...base, title: '<img src=x onerror="window.__xss=1">', epic: 'missing', feature: '<script>bad</script>', pr: { num: 233, state: 'merged' } }
   await page.evaluate(async () => { (await import('/build-home/state.js')).ctx.D.repo = { url: 'https://github.com/acme/widgets/' } })
