@@ -253,47 +253,6 @@ defmodule Aiur.TestSupport do
   end
 
   @doc false
-  @spec teardown_test_scope!(Path.t(), MapSet.t(pid()), map(), [{atom(), {:ok, term()} | :error}], map(), map()) :: :ok
-  def teardown_test_scope!(workflow_root, runner_tasks_before, expected_test_scope_state, previous_app_env, previous_test_scope_state, context) do
-    scope_state_violation = Aiur.TestScopeGuard.violation(expected_test_scope_state)
-
-    quiesce_live_orchestrator()
-    stop_runner_tasks_started_since(runner_tasks_before)
-    restore_app_env(previous_app_env)
-    Application.delete_env(:aiur, :server_port_override)
-    Application.delete_env(:aiur, :memory_tracker_issues)
-    Application.delete_env(:aiur, :memory_tracker_recipient)
-    EventsPublisher.set_tracked_fn(fn _ -> true end)
-    EventsSubscriptionStore.set_enqueue_fn(nil)
-    Aiur.TestCleanup.rm_rf!(workflow_root)
-    Aiur.TestScopeGuard.restore(previous_test_scope_state)
-    OrchestratorGuard.restore_codeowners_baseline!()
-
-    # Reload the store onto the restored baseline so the next test never
-    # observes the now-deleted `workflow_root` config, and recover the app if
-    # a sibling test's child terminate/restart toppled it while config was
-    # transiently bad (the #589 cascade safety net).
-    if Process.whereis(Aiur.WorkflowStore) do
-      try do
-        Aiur.WorkflowStore.force_reload()
-      catch
-        :exit, _ -> :ok
-      end
-    end
-
-    unless Process.whereis(Aiur.Supervisor), do: Application.ensure_all_started(:aiur)
-
-    verify_restored_shared_state!(
-      previous_app_env,
-      Map.fetch!(previous_test_scope_state.env, "AIUR_INSTANCE_KEY"),
-      context
-    )
-
-    if scope_state_violation, do: raise(scope_state_violation)
-    :ok
-  end
-
-  @doc false
   defmacro __using__(_opts) do
     quote do
       use ExUnit.Case
@@ -311,6 +270,7 @@ defmodule Aiur.TestSupport do
       alias Aiur.Events.SubscriptionStore, as: EventsSubscriptionStore
       alias Aiur.GitHub.ResourceStore, as: GitHubResourceStore
       alias Aiur.Linear.Config, as: LinearConfig
+      alias Aiur.TestSupport.{LifecycleLeakGuard, LifecycleTeardown}
 
       import Aiur.TestSupport,
         only: [
@@ -327,6 +287,7 @@ defmodule Aiur.TestSupport do
         ]
 
       setup context do
+        lifecycle_test_pid = LifecycleLeakGuard.track(context)
         workflow_base = Application.fetch_env!(:aiur, :test_run_root)
         previous_test_scope_state = Aiur.TestScopeGuard.capture()
 
@@ -334,11 +295,7 @@ defmodule Aiur.TestSupport do
         # two `mix test` runs on one host pick the same `workflow-<integer>` name
         # routinely and then write each other's `.aiur/config`, so a case reads a
         # sibling VM's tracker settings. See `Aiur.TestSupport.tmp_root!/1`.
-        workflow_root =
-          Path.join(
-            workflow_base,
-            "workflow-#{System.pid()}-#{System.unique_integer([:positive])}"
-          )
+        workflow_root = Path.join(workflow_base, "workflow-#{System.pid()}-#{System.unique_integer([:positive])}")
 
         test_state_dir = Path.join(workflow_root, "test-state")
 
@@ -419,9 +376,10 @@ defmodule Aiur.TestSupport do
         OrchestratorGuard.capture_codeowners_baseline!()
 
         on_exit(fn ->
-          Aiur.TestSupport.teardown_test_scope!(
+          LifecycleTeardown.teardown_test_scope!(
             workflow_root,
             runner_tasks_before,
+            lifecycle_test_pid,
             expected_test_scope_state,
             previous_app_env,
             previous_test_scope_state,
@@ -439,6 +397,7 @@ defmodule Aiur.TestSupport do
   defdelegate pgrep_skip_reason(), to: Aiur.TestSupport.Processes
   defdelegate stop_default_http_server(), to: Aiur.TestSupport.Processes
   defdelegate safe_stop(server), to: Aiur.TestSupport.Processes
+  defdelegate stop_test_runners(test_pid), to: Aiur.TestSupport.LifecycleLeakGuard, as: :stop_owned_runners
   defdelegate capture_runner_tasks(), to: Aiur.TestSupport.RunnerTasks, as: :capture
   defdelegate stop_runner_tasks_started_since(before), to: Aiur.TestSupport.RunnerTasks, as: :stop_started_since
   defdelegate rm_workflow_root!(root, runner_tasks_before), to: Aiur.TestSupport.RunnerTasks, as: :stop_started_since_and_rm_rf!
