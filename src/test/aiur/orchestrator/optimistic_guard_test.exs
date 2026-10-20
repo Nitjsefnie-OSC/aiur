@@ -92,11 +92,24 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
 
   test "churn informs at threshold without parking, zero disables" do
     row = put_in(record(), ["counters", "integrations_conflict"], 3)
-    actions = decide(row, healthy())
+    actions = OptimisticGuard.decide([row], %{"10" => healthy()}, @now, grace_ms: 0)
     assert {:attention, :optimistic_blocker_failed, "11", %{blocker: "10", cause: :churn, action: :none, severity: "info"}} in actions
     refute park?(actions)
     refute attention?(decide(row, healthy(), churn_threshold: 0))
     refute attention?(decide(row, healthy(), churn_threshold: 4))
+  end
+
+  test "resolved conflicts do not emit churn after the blocker recovers" do
+    row = put_in(record(%{"merged_at_ms" => @now}), ["counters", "integrations_conflict"], 3)
+    actions = decide(row, Map.put(healthy(), :pr_state, :merged))
+    refute Enum.any?(actions, &match?({:attention, :optimistic_blocker_failed, _, _}, &1))
+    assert {:resolve, :optimistic_blocker_failed, "11"} in actions
+  end
+
+  test "approved open PR does not erase unresolved conflict churn" do
+    row = put_in(record(), ["counters", "integrations_conflict"], 3)
+    actions = OptimisticGuard.decide([row], %{"10" => healthy()}, @now, grace_ms: 0)
+    assert Enum.any?(actions, &match?({:attention, :optimistic_blocker_failed, "11", %{blocker: "10", cause: :churn}}, &1))
   end
 
   test "edge membership is dependent-specific and an unknown edge cannot park" do

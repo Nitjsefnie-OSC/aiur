@@ -15,7 +15,7 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
     results = Enum.map(record["blockers"], &inspect_blocker(record["ticket"], &1, observations[&1["id"]], now, opts))
     updates = Enum.flat_map(results, &elem(&1, 0))
     outcomes = Enum.map(results, &elem(&1, 1))
-    updates ++ record_actions(record, outcomes, opts)
+    updates ++ record_actions(record, outcomes, now, opts)
   end
 
   defp inspect_blocker(dep, blocker, observation, now, opts) do
@@ -119,7 +119,7 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
 
   defp outcome(classification, _id, _since, _now, _opts), do: classification
 
-  defp record_actions(%{"status" => "parked"} = record, outcomes, _opts) do
+  defp record_actions(%{"status" => "parked"} = record, outcomes, _now, _opts) do
     case Enum.find(outcomes, &match?({:failed, _, _}, &1)) do
       {:failed, blocker, cause} ->
         if Enum.any?(record["blockers"], &(&1["id"] == blocker and &1["park_complete"] == true)), do: [], else: [{:park, record["ticket"], blocker, cause}]
@@ -129,19 +129,31 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
     end
   end
 
-  defp record_actions(record, outcomes, opts) do
+  defp record_actions(record, outcomes, now, opts) do
     failure = Enum.find(outcomes, &match?({:failed, _, _}, &1))
     trouble = Enum.find(outcomes, &match?({:trouble, _, _}, &1))
-    threshold = Keyword.get(opts, :churn_threshold, 3)
-    churn? = record["blockers"] != [] and threshold > 0 and (get_in(record, ["counters", "integrations_conflict"]) || 0) >= threshold
+    recovered = merged_blockers(record, now)
 
     cond do
       failure -> failure_actions(record, failure, opts)
       trouble -> info_attention(record["ticket"], trouble)
-      churn? -> info_attention(record["ticket"], {:trouble, hd(record["blockers"])["id"], :churn})
+      churn?(record, recovered, opts) -> info_attention(record["ticket"], {:trouble, hd(record["blockers"])["id"], :churn})
+      recovered != [] -> [{:resolve, @cause, record["ticket"]}]
       Enum.all?(outcomes, &(&1 == :healthy)) -> [{:resolve, @cause, record["ticket"]}]
       true -> []
     end
+  end
+
+  defp churn?(record, [], opts) do
+    threshold = Keyword.get(opts, :churn_threshold, 3)
+    record["blockers"] != [] and threshold > 0 and (get_in(record, ["counters", "integrations_conflict"]) || 0) >= threshold
+  end
+
+  defp churn?(_record, _recovered, _opts), do: false
+
+  defp merged_blockers(record, now) do
+    record["blockers"]
+    |> Enum.filter(&(is_integer(&1["merged_at_ms"]) and &1["merged_at_ms"] <= now))
   end
 
   defp failure_actions(record, {:failed, blocker, cause}, opts) do
