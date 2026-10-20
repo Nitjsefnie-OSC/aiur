@@ -364,7 +364,7 @@ for (const selectedCell of colourCells) test.describe(`product inventory/grain $
     if (absent) missingPorts.add(`${name} ${selector}: ${owner}`)
     test.fixme(absent, `awaiting ${owner}`)
     const phase = selector === '.bd-skel i' ? 'loading' : 'board'
-    if (name === 'grain.static' && selector === '.bd-lanes') await assertStaticGrainCapture(browser)
+    if (name === 'grain.static' && selector === '.bd-content .bd-lanes') await assertStaticGrainCapture(browser)
     await openDesign(pair.design, selectedCell, { motion: true, phase })
     await openProduct(pair.product, selectedCell, { motion: true, phase })
     const reduce = selectedCell.reducedMotion === 'reduce'
