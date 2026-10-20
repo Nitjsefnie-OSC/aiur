@@ -3,26 +3,23 @@ defmodule Aiur.TestSupport.PubSubGuardTest do
 
   alias Aiur.TestSupport.OrchestratorGuard
 
-  test "verify_restored! names and restores a missing Aiur.PubSub", context do
-    pubsub = Process.whereis(Aiur.PubSub)
-    assert is_pid(pubsub)
-    assert Process.unregister(Aiur.PubSub)
+  test "verify_restored! reports and restores a terminated Aiur.PubSub child", context do
+    assert is_pid(Process.whereis(Aiur.PubSub))
+    on_exit(fn -> Aiur.TestSupport.ensure_runtime_children_running() end)
+    assert :ok = Supervisor.terminate_child(Aiur.Supervisor, Phoenix.PubSub.Supervisor)
 
-    on_exit(fn -> Process.register(pubsub, Aiur.PubSub) end)
-
-    assert_raise RuntimeError, ~r/PubSubGuardTest: test verify_restored! names and restores .* left Aiur.PubSub unregistered/, fn ->
+    assert_raise RuntimeError, ~r/PubSubGuardTest: test verify_restored! reports and restores .* left Aiur.PubSub unregistered \(restore: :ok\)/, fn ->
       OrchestratorGuard.verify_restored!(context)
     end
 
-    assert is_nil(Process.whereis(Aiur.PubSub))
+    assert is_pid(Process.whereis(Aiur.PubSub))
   end
 
-  test "verify_suite! names the last test when Aiur.PubSub is unregistered" do
+  test "verify_suite! reports when the Aiur.PubSub name is missing" do
     pubsub = Process.whereis(Aiur.PubSub)
     assert is_pid(pubsub)
-    assert Process.unregister(Aiur.PubSub)
-
     on_exit(fn -> Process.register(pubsub, Aiur.PubSub) end)
+    assert Process.unregister(Aiur.PubSub)
 
     assert_raise RuntimeError, ~r/test suite found Aiur.PubSub unregistered after .*upper bound only/, fn ->
       OrchestratorGuard.verify_suite!()

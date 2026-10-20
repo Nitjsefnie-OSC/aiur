@@ -71,6 +71,26 @@ defmodule Aiur.ETestSupportReregisterNeighbourTest do
   end
 end
 
+defmodule Aiur.FPlainCasePubSubLeakProbeTest do
+  use ExUnit.Case, async: false
+
+  @moduletag :orchestrator_guard_probe
+
+  test "leaves the PubSub registry table down" do
+    assert :ok = Supervisor.terminate_child(Aiur.Supervisor, Phoenix.PubSub.Supervisor)
+  end
+end
+
+defmodule Aiur.GTestSupportPubSubNeighbourTest do
+  use Aiur.TestSupport, async: false
+
+  @moduletag :orchestrator_guard_probe
+
+  test "does not silently accept a prior plain-test PubSub leak" do
+    assert is_pid(Process.whereis(Aiur.PubSub))
+  end
+end
+
 defmodule Aiur.YTestSupportStandInProbeTest do
   use Aiur.TestSupport, async: false
 

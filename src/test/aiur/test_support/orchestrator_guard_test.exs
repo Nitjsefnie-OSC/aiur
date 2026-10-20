@@ -123,6 +123,10 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert output =~ "Aiur.Orchestrator was down before Aiur.BTestSupportWiringNeighbourTest"
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
+
+    assert output =~
+             "Aiur.GTestSupportPubSubNeighbourTest: test does not silently accept a prior plain-test PubSub leak started after last finished test Aiur.FPlainCasePubSubLeakProbeTest: test leaves the PubSub registry table down (upper bound; plain-test culprit unknown); restored shared state: Aiur.PubSub unregistered"
+
     assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down left Aiur.Orchestrator down (restore: :ok)"
     assert output =~ ~r/YTestSupportStandInProbeTest: test leaves a stand-in holding the name left Aiur.Orchestrator held by a stand-in #PID<[\d.]+> \(restore: :ok\)/
     # Each plain leak is caught by the next sync setup, the last one by the after_suite check.
@@ -131,9 +135,12 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
                "Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down), " <>
                "Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)\n"
 
+    assert output =~
+             "plain ExUnit tests left shared runtime children down: Aiur.FPlainCasePubSubLeakProbeTest: test leaves the PubSub registry table down"
+
     # Borrowing the name in setup and giving it back is not a leak.
     refute output =~ "AAUnregisterRestoreProbeTest"
-    assert output =~ "13 tests, 2 failures"
+    assert output =~ "15 tests, 3 failures"
   end
 
   defp restore_app_env(key, :error), do: Application.delete_env(:aiur, key)
