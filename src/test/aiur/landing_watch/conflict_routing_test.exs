@@ -134,7 +134,8 @@ defmodule Aiur.LandingWatch.ConflictRoutingTest do
         send(parent, {:comment, id, body})
         :ok
       end,
-      remove_label_fun: fn id, label ->
+      write_marker_fun: fn id, :remove, label, writer_opts ->
+        assert writer_opts[:writer] == :landing_watch
         send(parent, {:remove_label, id, label})
         :ok
       end,

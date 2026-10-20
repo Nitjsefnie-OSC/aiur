@@ -11,6 +11,7 @@ defmodule Aiur.LandingWatch.ConflictRouting do
 
   alias Aiur.{CodeHost, Config, Tracker}
   alias Aiur.LandingWatch.Journal
+  alias Aiur.Orchestrator.TicketTransition
 
   @failure %{name: "Merge conflict with base"}
 
@@ -95,10 +96,10 @@ defmodule Aiur.LandingWatch.ConflictRouting do
 
   defp follow_up(observation, issue, opts) do
     comment = Keyword.get(opts, :comment_fun, &Tracker.create_comment/2)
-    unpause = Keyword.get(opts, :remove_label_fun, &Tracker.remove_label/2)
+    write_marker = Keyword.get(opts, :write_marker_fun, &TicketTransition.write_marker/4)
 
     with :ok <- comment.(issue, comment_body(observation)) do
-      unpause.(issue, Keyword.get_lazy(opts, :pause_label, &pause_label/0))
+      write_marker.(issue, :remove, Keyword.get_lazy(opts, :pause_label, &pause_label/0), writer: :landing_watch)
     end
   end
 
