@@ -35,6 +35,10 @@ export function viewport() {
     ctx.lt = document.createElement("div"); ctx.lt.className = "bd-lt";
     ctx.lt.innerHTML = '<button type="button" data-lt="lock" title="Lock this dependency tree">' + I.lock + '</button><button type="button" data-lt="fit" title="Zoom out to fit this tree">' + I.fit + '</button><button type="button" data-lt="tree" title="View the whole tree">' + I.eye + "</button>";
     ctx.content.appendChild(ctx.lt);
+    ctx.life.on(ctx.content, 'keydown', e => {
+      if (!['Enter', ' '].includes(e.key) || !e.target.matches('.bd-card')) return;
+      e.preventDefault(); e.target.click();
+    });
     ctx.life.on(ctx.content, "click", (e) => {
       const eh = e.target.closest(".bd-eh");
       if (eh) { e.stopPropagation(); fx.lockTree(eh.dataset.e); return; }

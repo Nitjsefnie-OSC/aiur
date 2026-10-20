@@ -68,6 +68,24 @@ test('card open, header identity, notices, focus trap and all close paths', asyn
   ]).flat())
 })
 
+test('focused cards open once with Enter and Space through the mounted hook', async ({ page }) => {
+  await open(page); await installSpy(page)
+  const t = await row(page), card = page.locator('.bd-card[data-id="' + t.id + '"]').first()
+  for (const key of ['Enter', 'Space']) {
+    await card.focus(); await page.keyboard.press(key)
+    await expect(page.locator('#bm-title')).toHaveText('#' + t.num + t.title)
+    await expect(page.locator('#bm-title')).toBeFocused()
+    await expect(page).toHaveURL(new RegExp('ticket=' + t.id))
+    await page.keyboard.press('Escape')
+    await expect(page.locator('#tk-backdrop')).not.toHaveClass(/\bshow\b/)
+    await expect(page).not.toHaveURL(/ticket=/)
+    await expect(card).toBeFocused()
+  }
+  expect(await calls(page)).toEqual(Array.from({ length: 2 }, () => [
+    { event: 'open-ticket', payload: { id: t.id, loaded: true } }, { event: 'close-ticket', payload: {} },
+  ]).flat())
+})
+
 test('deep links open loaded and older history rows; unknown and malformed links stay distinct', async ({ page }) => {
   await open(page)
   const t = await row(page)
