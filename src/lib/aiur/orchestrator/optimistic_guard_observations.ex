@@ -118,11 +118,14 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
     %{
       pr_state: pr["state"],
       pr_merged: pr["merged"],
+      pr_merged_at_ms: timestamp(pr["merged_at"]),
       any_open_pr?: pr["state"] == "open",
       pr_number: pr["number"],
       pr_head_ref: get_in(pr, ["head", "ref"]),
       pr_head_sha: get_in(pr, ["head", "sha"]),
-      pr_closed_at_ms: timestamp(pr["closed_at"])
+      pr_closed_at_ms: timestamp(pr["closed_at"]),
+      pr_approved?: get_in(pr, ["approval", :approved?]) == true or get_in(pr, ["approval", "approved?"]) == true,
+      pr_mergeable?: get_in(pr, ["approval", :mergeable?]) == true or get_in(pr, ["approval", "mergeable?"]) == true
     }
   end
 
@@ -135,7 +138,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardObservations do
 
   defp timestamp(_), do: nil
 
-  @keys ~w(confirmed? observed_at_ms issue_open? state_reason labels pr_state pr_merged any_open_pr? pr_number pr_head_ref pr_head_sha pr_closed_at_ms edge_cache)a
+  @keys ~w(confirmed? observed_at_ms issue_open? state_reason labels pr_state pr_merged pr_merged_at_ms any_open_pr? pr_number pr_head_ref pr_head_sha pr_closed_at_ms pr_approved? pr_mergeable? edge_cache)a
   defp decode(map) when is_map(map), do: Map.new(@keys, &{&1, map[to_string(&1)]})
   defp decode(_), do: %{}
   defp fresh?(%{confirmed?: true, observed_at_ms: at}, now, max_age) when is_integer(at), do: at <= now and now - at < max_age

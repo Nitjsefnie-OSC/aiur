@@ -55,7 +55,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
   test "merged confirmation and sparse closures cannot park" do
     actions = decide(record(), Map.put(closed(), :pr_merged, true))
     refute park?(actions)
-    assert {:resolve, :optimistic_blocker_failed, "11"} in actions
+    assert {:merged_notice, "11", "10"} in actions
     actions = decide(record(), Map.put(closed(), :pr_merged, nil))
     refute park?(actions)
     refute Enum.any?(actions, &match?({:resolve, _, _}, &1))
@@ -103,12 +103,27 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
     row = put_in(record(%{"merged_at_ms" => @now}), ["counters", "integrations_conflict"], 3)
     actions = decide(row, Map.put(healthy(), :pr_state, :merged))
     refute Enum.any?(actions, &match?({:attention, :optimistic_blocker_failed, _, _}, &1))
-    assert {:resolve, :optimistic_blocker_failed, "11"} in actions
+    assert {:merged_notice, "11", "10"} in actions
   end
 
-  test "approved open PR does not erase unresolved conflict churn" do
-    row = put_in(record(), ["counters", "integrations_conflict"], 3)
-    actions = OptimisticGuard.decide([row], %{"10" => healthy()}, @now, grace_ms: 0)
+  test "approval on a mergeable head clears conflicts already resolved" do
+    row = Map.put(record(), "integration_reports", conflict_reports(3))
+    observation = Map.merge(healthy(), %{pr_approved?: true, pr_mergeable?: true, pr_head_sha: "approved-head"})
+
+    actions = OptimisticGuard.decide([row], %{"10" => observation}, @now, grace_ms: 0)
+
+    assert {:update_blocker, "11", "10", facts} = hd(actions)
+    assert facts.approval_head_sha == "approved-head"
+    assert facts.conflicts_at_approval == 3
+  end
+
+  test "conflicts after approval on the same head still raise churn" do
+    row = record(%{"approval_head_sha" => "approved-head", "conflicts_at_approval" => 3})
+    row = Map.put(row, "integration_reports", conflict_reports(6))
+    observation = Map.merge(healthy(), %{pr_approved?: true, pr_mergeable?: false, pr_head_sha: "approved-head"})
+
+    actions = OptimisticGuard.decide([row], %{"10" => observation}, @now, grace_ms: 0)
+
     assert Enum.any?(actions, &match?({:attention, :optimistic_blocker_failed, "11", %{blocker: "10", cause: :churn}}, &1))
   end
 
@@ -151,6 +166,7 @@ defmodule Aiur.Orchestrator.OptimisticGuardTest do
   end
 
   defp park?(actions), do: Enum.any?(actions, &match?({:park, _, _, _}, &1))
+  defp conflict_reports(count), do: for(n <- 1..count, do: %{"blocker" => "10", "conflict" => true, "sha" => String.pad_leading(Integer.to_string(n), 40, "0")})
   defp attention?(actions), do: Enum.any?(actions, &match?({:attention, _, _, _}, &1))
   defp decide(row, observation, opts \\ []), do: OptimisticGuard.decide([row], %{"10" => observation}, @now, opts)
   defp record(facts \\ %{}), do: %{"ticket" => "11", "status" => "running", "blockers" => [Map.merge(%{"id" => "10"}, facts)], "counters" => %{"integrations_conflict" => 0}}

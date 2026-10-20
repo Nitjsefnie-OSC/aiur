@@ -1,7 +1,7 @@
 defmodule Aiur.GitHub.OptimisticFailure do
   @moduledoc "Fresh blocker evidence and idempotent parking writes for optimistic dependents."
 
-  alias Aiur.GitHub.{AgentMarker, Comments, Errors, Transport}
+  alias Aiur.GitHub.{AgentMarker, Comments, Errors, HumanReviewGate, Transport}
   alias Aiur.GitHub.PullRequests.OpenPullRequests
 
   @spec optimistic_blocker(String.t() | integer(), integer() | nil, keyword()) :: {:ok, map() | nil} | {:error, term()}
@@ -11,7 +11,7 @@ defmodule Aiur.GitHub.OptimisticFailure do
     with {:ok, recorded} <- recorded_pull_request(pr_number, opts),
          {:ok, replacement} <- OpenPullRequests.fetch_open_pull_request_for_branch(issue_id, opts),
          :ok <- validate_open_pull_request(replacement) do
-      {:ok, replacement || recorded}
+      {:ok, attach_approval(replacement || recorded, opts)}
     end
   end
 
@@ -51,6 +51,18 @@ defmodule Aiur.GitHub.OptimisticFailure do
   defp validate_open_pull_request(nil), do: :ok
   defp validate_open_pull_request(%{"number" => number, "state" => "open"}) when is_integer(number) and number > 0, do: :ok
   defp validate_open_pull_request(_pr), do: {:error, :optimistic_blocker_pr_unreadable}
+
+  defp attach_approval(%{"state" => "open", "number" => number} = pr, opts) when is_integer(number) do
+    approval =
+      case HumanReviewGate.optimistic_approval_status(number, Keyword.put(opts, :caller, "optimistic_guard_approval")) do
+        {:ok, status} -> status
+        {:error, _reason} -> %{approved?: false, mergeable?: false}
+      end
+
+    Map.put(pr, "approval", approval)
+  end
+
+  defp attach_approval(pr, _opts), do: pr
 
   defp recorded_pull_request(nil, _opts), do: {:ok, nil}
 

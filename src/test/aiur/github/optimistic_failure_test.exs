@@ -26,7 +26,8 @@ defmodule Aiur.GitHub.OptimisticFailureTest do
       {:ok, %{status: 200, body: if(String.ends_with?(url, "/pulls/77"), do: %{"state" => "closed", "merged" => false}, else: [replacement])}}
     end
 
-    assert {:ok, ^replacement} = OptimisticFailure.optimistic_blocker("42", 77, request_fun: replacement_fun)
+    assert {:ok, pr} = OptimisticFailure.optimistic_blocker("42", 77, request_fun: replacement_fun)
+    assert Map.take(pr, ["head", "number", "state"]) == replacement
     assert {:error, :optimistic_blocker_pr_unreadable} = OptimisticFailure.optimistic_blocker("42", 77, request_fun: fn _ -> {:ok, %{status: 200, body: %{}}} end)
   end
 

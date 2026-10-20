@@ -12,10 +12,11 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
   end
 
   defp decide_record(record, observations, now, opts) do
-    results = Enum.map(record["blockers"], &inspect_blocker(record["ticket"], &1, observations[&1["id"]], now, opts))
+    blockers = Enum.map(record["blockers"], &Map.put(&1, "conflicts_seen", conflict_reports(record, &1["id"])))
+    results = Enum.map(blockers, &inspect_blocker(record["ticket"], &1, observations[&1["id"]], now, opts))
     updates = Enum.flat_map(results, &elem(&1, 0))
     outcomes = Enum.map(results, &elem(&1, 1))
-    updates ++ record_actions(record, outcomes, now, opts)
+    updates ++ record_actions(apply_updates(record, updates), outcomes, now, opts)
   end
 
   defp inspect_blocker(dep, blocker, observation, now, opts) do
@@ -60,6 +61,8 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
     since = suspect_since(blocker, observation, cause, now)
     facts = %{observed_at_ms: observation.observed_at_ms, suspect_since_ms: since, suspect_cause: cause}
     facts = Map.merge(facts, pr_facts(observation))
+    facts = if observation[:pr_merged] == true or observation[:pr_state] in [:merged, "merged"], do: Map.put(facts, :merged_at_ms, observation[:pr_merged_at_ms] || now), else: facts
+    facts = Map.merge(facts, approval_checkpoint(blocker, observation))
     facts = if classification == :healthy and blocker["failure_acknowledged"] == true, do: Map.put(facts, :failure_acknowledged, false), else: facts
     update = {:update_blocker, dep, blocker["id"], facts}
     outcome = if blocker["failure_acknowledged"] == true and classification != :healthy, do: :acknowledged, else: outcome(classification, blocker["id"], since, now, opts)
@@ -119,37 +122,96 @@ defmodule Aiur.Orchestrator.OptimisticGuard do
 
   defp outcome(classification, _id, _since, _now, _opts), do: classification
 
-  defp record_actions(%{"status" => "parked"} = record, outcomes, _now, _opts) do
-    case Enum.find(outcomes, &match?({:failed, _, _}, &1)) do
+  defp record_actions(%{"status" => "parked"} = record, outcomes, now, _opts) do
+    recovered = merged_blockers(record, now)
+    recovered_ids = MapSet.new(recovered, & &1["id"])
+    remaining = Enum.zip(record["blockers"], outcomes) |> Enum.reject(fn {blocker, _} -> MapSet.member?(recovered_ids, blocker["id"]) end)
+    notices = Enum.map(recovered, &{:merged_notice, record["ticket"], &1["id"]})
+
+    case first_failed(remaining) do
       {:failed, blocker, cause} ->
-        if Enum.any?(record["blockers"], &(&1["id"] == blocker and &1["park_complete"] == true)), do: [], else: [{:park, record["ticket"], blocker, cause}]
+        notices ++ park_unfinished(record, blocker, cause)
 
       _ ->
-        []
+        notices
     end
   end
 
   defp record_actions(record, outcomes, now, opts) do
-    failure = Enum.find(outcomes, &match?({:failed, _, _}, &1))
-    trouble = Enum.find(outcomes, &match?({:trouble, _, _}, &1))
     recovered = merged_blockers(record, now)
+    recovered_ids = MapSet.new(recovered, & &1["id"])
+    active = Enum.zip(record["blockers"], outcomes) |> Enum.reject(fn {blocker, _outcome} -> MapSet.member?(recovered_ids, blocker["id"]) end)
+    failure = Enum.find_value(active, fn {_blocker, outcome} -> if match?({:failed, _, _}, outcome), do: outcome end)
+    trouble = Enum.find_value(active, fn {_blocker, outcome} -> if match?({:trouble, _, _}, outcome), do: outcome end)
+    notices = Enum.map(recovered, &{:merged_notice, record["ticket"], &1["id"]})
 
+    notices ++ action_for(record, outcomes, active, recovered, failure, trouble, opts)
+  end
+
+  defp first_failed(blockers), do: Enum.find_value(blockers, fn {_blocker, outcome} -> if match?({:failed, _, _}, outcome), do: outcome end)
+
+  defp park_unfinished(record, blocker, cause) do
+    if Enum.any?(record["blockers"], &(&1["id"] == blocker and &1["park_complete"] == true)),
+      do: [],
+      else: [{:park, record["ticket"], blocker, cause}]
+  end
+
+  defp action_for(record, outcomes, active, recovered, failure, trouble, opts) do
     cond do
       failure -> failure_actions(record, failure, opts)
       trouble -> info_attention(record["ticket"], trouble)
-      churn?(record, recovered, opts) -> info_attention(record["ticket"], {:trouble, hd(record["blockers"])["id"], :churn})
-      recovered != [] -> [{:resolve, @cause, record["ticket"]}]
-      Enum.all?(outcomes, &(&1 == :healthy)) -> [{:resolve, @cause, record["ticket"]}]
+      churn?(record, active, opts) -> churn_attention(record["ticket"], active)
+      recovered == [] and Enum.all?(outcomes, &(&1 == :healthy)) -> [{:resolve, @cause, record["ticket"]}]
       true -> []
     end
   end
 
-  defp churn?(record, [], opts) do
-    threshold = Keyword.get(opts, :churn_threshold, 3)
-    record["blockers"] != [] and threshold > 0 and (get_in(record, ["counters", "integrations_conflict"]) || 0) >= threshold
+  defp churn_attention(ticket, active) do
+    blocker = active |> hd() |> elem(0)
+    info_attention(ticket, {:trouble, blocker["id"], :churn})
   end
 
-  defp churn?(_record, _recovered, _opts), do: false
+  defp churn?(record, active, opts) do
+    threshold = Keyword.get(opts, :churn_threshold, 3)
+    active != [] and threshold > 0 and conflicts_since_approval(record, active) >= threshold
+  end
+
+  defp conflicts_since_approval(record, active) do
+    Enum.reduce(active, 0, fn {blocker, _outcome}, total ->
+      current = conflict_reports(record, blocker["id"])
+      baseline = blocker["conflicts_at_approval"] || 0
+      total + max(current - baseline, 0)
+    end)
+  end
+
+  defp conflict_reports(record, blocker) do
+    reports = Enum.filter(record["integration_reports"] || [], &(&1["blocker"] == blocker and &1["conflict"] == true))
+    if reports == [] and length(record["blockers"]) == 1, do: get_in(record, ["counters", "integrations_conflict"]) || 0, else: length(reports)
+  end
+
+  defp approval_checkpoint(blocker, %{pr_approved?: true, pr_mergeable?: true, pr_head_sha: head}) when is_binary(head) do
+    if blocker["approval_head_sha"] == head do
+      %{}
+    else
+      %{approval_head_sha: head, conflicts_at_approval: blocker["conflicts_seen"] || 0}
+    end
+  end
+
+  defp approval_checkpoint(_blocker, _observation), do: %{}
+
+  defp apply_updates(record, updates) do
+    Enum.reduce(updates, record, fn
+      {:update_blocker, _dep, id, facts}, current ->
+        facts = Map.new(facts, fn {key, value} -> {to_string(key), value} end)
+        Map.update!(current, "blockers", &Enum.map(&1, fn blocker -> merge_blocker_facts(blocker, id, facts) end))
+
+      _action, current ->
+        current
+    end)
+  end
+
+  defp merge_blocker_facts(%{"id" => id} = blocker, id, facts), do: Map.merge(blocker, facts)
+  defp merge_blocker_facts(blocker, _id, _facts), do: blocker
 
   defp merged_blockers(record, now) do
     record["blockers"]
