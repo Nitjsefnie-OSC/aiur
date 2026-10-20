@@ -30,7 +30,7 @@ defmodule Aiur.AgentRunner.AdoptedConcurrencyTest do
     %{tmux: tmux}
   end
 
-  # A keep-agents restart adopted 8 working agents and analytics read 0 (#4740).
+  # Regression guard for #4840 adopted-root attribution; it passes with this ticket's three lib changes reverted.
   test "agents adopted at restart count in the concurrency sample", %{tmux: tmux} do
     @tickets |> Enum.with_index(100) |> Enum.each(fn {ticket, pid} -> adopt!(tmux, ticket, pid) end)
 
