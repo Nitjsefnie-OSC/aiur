@@ -1,6 +1,7 @@
 defmodule Aiur.GitHub.Quota.Windows do
   @moduledoc false
 
+  alias Aiur.GitHub.Budget
   alias Aiur.GitHub.Config, as: GitHubConfig
   alias Aiur.GitHub.{EndpointPolicy, GraphQLCost, GraphQLErrors, Transport}
   alias Aiur.RepoBase
@@ -88,47 +89,55 @@ defmodule Aiur.GitHub.Quota.Windows do
   end
 
   defp put_credential_window(state, request, resource, values, now) do
-    case {Map.get(request, :credential_id, "primary"), credential_key(request)} do
-      {"primary", nil} ->
+    state = prune_credential_windows(state, now)
+    credential_id = Map.get(request, :credential_id, "primary")
+    key = credential_key(request)
+
+    case {credential_id, key, parse_window(resource, values, now)} do
+      {"primary", nil, _window} ->
         put_window_from_values(state, resource, values, now)
 
-      {credential_id, key} when is_binary(key) and key != "" ->
-        window = parse_window(resource, values, now)
+      {"primary", key, %{} = window} when is_binary(key) ->
+        put_primary_credential_window(state, resource, key, window, values, now)
 
-        if window do
-          windows = Map.put(state.credential_windows, {key, resource}, window)
+      {credential_id, key, %{} = window} when is_binary(credential_id) and is_binary(key) ->
+        put_secondary_credential_window(state, resource, key, window)
 
-          if credential_id == "primary" do
-            state
-            |> Map.put(:credential_windows, windows)
-            |> put_window_from_values(resource, values, now)
-          else
-            %{state | credential_windows: windows}
-          end
-        else
-          state
-        end
-
-      {_unregistered_credential, nil} ->
+      {_credential_id, _key, _window} ->
         state
     end
   end
 
-  defp credential_key(request) do
-    case Map.get(request, :credential_key) do
-      key when is_binary(key) and key != "" ->
-        key
-
-      _missing when is_map_key(request, :credential_id) ->
-        nil
-
-      _missing ->
-        case Map.get(request, :token) do
-          token when is_binary(token) and token != "" -> Aiur.GitHub.Budget.token_key(token)
-          _missing_token -> nil
-        end
-    end
+  defp put_primary_credential_window(state, resource, key, window, values, now) do
+    state
+    |> put_secondary_credential_window(resource, key, window)
+    |> put_window_from_values(resource, values, now)
   end
+
+  defp put_secondary_credential_window(state, resource, key, window) do
+    windows = Map.put(state.credential_windows, {key, resource}, window)
+    %{state | credential_windows: windows}
+  end
+
+  defp prune_credential_windows(state, now) do
+    windows =
+      state.credential_windows
+      |> Enum.reject(fn {_key, window} -> DateTime.compare(window.reset_at, now) != :gt end)
+      |> Map.new()
+
+    %{state | credential_windows: windows}
+  end
+
+  defp credential_key(%{credential_key: key}) when is_binary(key) and key != "", do: key
+
+  defp credential_key(%{credential_id: credential_id}) when is_binary(credential_id) and credential_id != "" do
+    Budget.identity_key("github-credential:" <> credential_id)
+  end
+
+  defp credential_key(%{credential_id: _credential_id}), do: nil
+
+  defp credential_key(%{token: token}) when is_binary(token) and token != "", do: Budget.token_key(token)
+  defp credential_key(_request), do: nil
 
   defp put_window_from_values(state, resource, values, now) do
     case parse_window(resource, values, now) do

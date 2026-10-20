@@ -45,7 +45,7 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
     agent_key = Aiur.GitHub.Budget.token_key("secret")
     operator_key = Aiur.GitHub.Budget.token_key("operator-secret")
 
-    Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 400))
+    Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 22))
 
     operator_request =
       request(:get, "/repos/owner/repo/issues")
@@ -59,11 +59,66 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
 
     snapshot = Quota.snapshot(quota)
 
-    assert snapshot.windows["core"].remaining == 400
-    assert snapshot.credential_windows[agent_key]["core"].remaining == 400
+    assert snapshot.windows["core"].remaining == 22
+    assert snapshot.credential_windows[agent_key]["core"].remaining == 22
     assert snapshot.credential_windows[operator_key]["core"].remaining == 4900
     refute Map.has_key?(snapshot.windows, "core:ci_readiness")
-    assert {:hold, %{remaining: 400}} = Quota.dispatch_status(quota)
+    assert {:hold, %{remaining: 22}} = Quota.dispatch_status(quota)
+
+    healthy_agent_quota =
+      start_supervised!(
+        {Quota, name: nil, clock: fn -> @now end, hold_dir: nil, request_log_path: nil},
+        id: :healthy_agent_quota
+      )
+
+    Quota.observe(healthy_agent_quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 4159))
+    Quota.observe(healthy_agent_quota, operator_request, response("core", 5000, 22))
+    assert Quota.dispatch_status(healthy_agent_quota) == :available
+  end
+
+  test "unkeyed non-primary observations do not replace the primary window" do
+    quota = start_quota()
+    Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 4159))
+
+    request = request(:get, "/repos/owner/repo/issues") |> Map.put(:credential_id, "ci_readiness")
+    Quota.observe(quota, request, response("core", 5000, 4900))
+
+    assert Quota.snapshot(quota).windows["core"].remaining == 4159
+  end
+
+  test "expired credential windows are pruned before another observation is stored" do
+    quota = start_quota()
+    key = Aiur.GitHub.Budget.token_key("old-operator-token")
+    old_request = request(:get, "/repos/owner/repo/issues") |> Map.put(:credential_id, "ci_readiness") |> Map.put(:credential_key, key)
+    Quota.observe(quota, old_request, response("core", 5000, 4900, DateTime.add(@now, -1, :second)))
+    Quota.snapshot(quota)
+
+    new_request = %{old_request | credential_key: Aiur.GitHub.Budget.token_key("new-operator-token")}
+    Quota.observe(quota, new_request, response("core", 5000, 4800))
+
+    snapshot = Quota.snapshot(quota)
+    refute Map.has_key?(snapshot.credential_windows, key)
+    assert map_size(snapshot.credential_windows) == 1
+  end
+
+  test "rotating tokens with one credential id reuse one quota window" do
+    quota = start_quota()
+    reset = DateTime.add(@now, 3600, :second)
+
+    Enum.each(1..200, fn number ->
+      request =
+        request(:get, "/repos/owner/repo/issues")
+        |> Map.put(:token, "rotating-jwt-#{number}")
+        |> Map.put(:credential_id, "github_app")
+
+      Quota.observe(quota, request, response("core", 5000, 5000 - number, reset))
+    end)
+
+    snapshot = Quota.snapshot(quota)
+    key = Aiur.GitHub.Budget.identity_key("github-credential:github_app")
+    assert map_size(snapshot.credential_windows) == 1
+    assert snapshot.credential_windows[key]["core"].remaining == 4800
+    refute Map.has_key?(snapshot.windows, "core")
   end
 
   # Every instrumented GraphQL response already carries the endpoint's own
