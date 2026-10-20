@@ -140,16 +140,24 @@ defmodule Aiur.ExecutorSweep.Checks do
 
   defp approved_pr_findings(pr, base_checks) do
     failures = Enum.filter(value(pr, :required_checks, []), &red_check?/1)
-    approved = approved_current_head?(pr)
-    landing = value(pr, :in_merge_queue, false) or value(pr, :auto_merge, false)
-    landing_known = value(pr, :landing_state_known?, Map.has_key?(pr, :in_merge_queue) and Map.has_key?(pr, :auto_merge))
 
     # A cached row can keep "open" after the merge; merged_at is the landing proof (#5119).
-    if value(pr, :state, "open") == "open" and is_nil(value(pr, :merged_at, nil)) and approved and (failures != [] or (landing_known and not landing)) do
+    if approved_pr_current_and_open?(pr) and (failures != [] or approved_pr_not_landing?(pr)) do
       [approved_pr_finding(pr, failures, base_checks)]
     else
       []
     end
+  end
+
+  defp approved_pr_current_and_open?(pr) do
+    value(pr, :state, "open") == "open" and is_nil(value(pr, :merged_at, nil)) and approved_current_head?(pr)
+  end
+
+  defp approved_pr_not_landing?(pr) do
+    landing = value(pr, :in_merge_queue, false) or value(pr, :auto_merge, false)
+    landing_known = value(pr, :landing_state_known?, Map.has_key?(pr, :in_merge_queue) and Map.has_key?(pr, :auto_merge))
+
+    landing_known and not landing and value(pr, :mergeable, nil) != "CONFLICTING"
   end
 
   defp red_check?(check), do: value(check, :conclusion, nil) in ["failure", "cancelled", "timed_out", "startup_failure"]

@@ -332,7 +332,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Poll do
     previous = Map.get(cache, target, %{})
 
     cond do
-      is_nil(issue) or not is_binary(target) ->
+      Map.get(result, :delivered) == true or is_nil(issue) or not is_binary(target) ->
         acc
 
       Map.get(result, :mergeable) == "CONFLICTING" ->
@@ -344,7 +344,8 @@ defmodule Aiur.Orchestrator.CiLifecycle.Poll do
         %{acc | ci_lifecycle: Map.put(acc.ci_lifecycle, :poll_cache, cache)}
 
       true ->
-        cache = Map.put(cache, target, Map.drop(previous, [:conflicting_head_sha, :conflicting_polls]))
+        updated = Map.drop(previous, [:conflicting_head_sha, :conflicting_polls])
+        cache = if updated == %{}, do: Map.delete(cache, target), else: Map.put(cache, target, updated)
         %{acc | ci_lifecycle: Map.put(acc.ci_lifecycle, :poll_cache, cache)}
     end
   end

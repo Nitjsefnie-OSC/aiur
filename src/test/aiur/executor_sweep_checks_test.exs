@@ -64,16 +64,29 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     snapshot = %{
       tickets: [%{number: 5267, labels: ["agent:ci-wait"]}, %{number: 5268, labels: ["agent:human-review"]}],
       pull_requests: [
-        %{number: 5172, issue_number: 5267, state: "open", mergeable: "CONFLICTING"},
-        %{number: 5173, issue_number: 5268, state: "open", mergeable: "MERGEABLE"}
+        %{
+          number: 5172,
+          issue_number: 5267,
+          state: "open",
+          mergeable: "CONFLICTING",
+          review_decision: "APPROVED",
+          head_sha: "head",
+          approved_head_sha: "head",
+          in_merge_queue: false,
+          auto_merge: false,
+          required_checks: []
+        },
+        %{number: 5173, issue_number: 5268, state: "open", mergeable: "CONFLICTING"}
       ]
     }
 
-    assert [%{kind: "conflicting_waiting_pr", ticket: 5267, pull_request: 5172, message: message, action: action}] =
-             Checks.all(snapshot, ~U[2026-10-19 12:00:00Z]) |> Enum.filter(&(&1.kind == "conflicting_waiting_pr"))
+    findings = Checks.all(snapshot, ~U[2026-10-19 12:00:00Z])
+
+    assert [%{kind: "conflicting_waiting_pr", ticket: 5267, pull_request: 5172, message: message, action: action}, %{kind: "conflicting_waiting_pr", ticket: 5268, pull_request: 5173}] = findings
 
     assert message =~ "conflicting"
     assert action =~ "Merge main"
+    refute Enum.any?(findings, &(&1.kind == "approved_pr_not_landing"))
   end
 
   test "does not treat an old-head approval as current approval" do

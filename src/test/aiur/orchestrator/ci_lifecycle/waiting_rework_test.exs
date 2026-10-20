@@ -26,6 +26,21 @@ defmodule Aiur.Orchestrator.CiLifecycle.WaitingReworkTest do
       assert State.rework_attempt_count(next, identifier, "conflicting-head") == 1
     end
 
+    test "a delivered conflicting read does not count toward the streak for #{label}" do
+      identifier = unique_identifier("delivered-conflict-inert")
+      RecordingGitHubClient.record_to(self())
+      ticket = issue(identifier, unquote(label))
+      delivered = poll_ci(%State{}, ticket, %{delivered: true, decision: :pending, head_sha: "head", pr_number: 4389, mergeable: "CONFLICTING"})
+      first_live = poll_ci(delivered, ticket, %{decision: :pending, head_sha: "head", pr_number: 4389, mergeable: "CONFLICTING"})
+
+      refute_received {:tracker_update, ^identifier, "rework", _opts}
+      assert first_live.ci_lifecycle.poll_cache[identifier].conflicting_polls == 1
+
+      _next = poll_ci(first_live, ticket, %{decision: :pending, head_sha: "head", pr_number: 4389, mergeable: "CONFLICTING"})
+
+      assert_received {:tracker_update, ^identifier, "rework", [expected_state: unquote(label)]}
+    end
+
     test "an UNKNOWN poll breaks the consecutive conflict streak for #{label}" do
       identifier = unique_identifier("unknown-conflict-reset")
       RecordingGitHubClient.record_to(self())
