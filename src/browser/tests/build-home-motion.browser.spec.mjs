@@ -52,6 +52,19 @@ test('clock probe: design scroll advances one frame', async ({ browser }) => {
   } finally { await context.close() }
 })
 
+test('harness self-check: design grain noise has a fixed seed', async ({ browser }) => {
+  const context = await browser.newContext(parityContextOptions(cell))
+  try {
+    const page = await context.newPage()
+    await openDesign(page, cell)
+    for (const selector of ['.bd-now', '.ax-uc', '.bd-lanes']) {
+      const images = await page.locator(selector).evaluateAll(els => els.map(el => getComputedStyle(el, '::after').backgroundImage))
+      expect(images.length, `${selector} grain`).toBeGreaterThan(0)
+      for (const image of images) expect(image, `${selector} grain seed`).toContain("feTurbulence seed='1'")
+    }
+  } finally { await context.close() }
+})
+
 // Independent checks remain runnable while #3116 supplies the product fixture route.
 import { motionPathMatches, compareRecords, domState, pausedAnimations, scrollFrames, waitMinimapScroll } from '../support/build-home-motion.mjs'
 
