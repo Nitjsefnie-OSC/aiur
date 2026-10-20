@@ -127,9 +127,7 @@ Code.require_file("support/test_support/runtime_children.exs", __DIR__)
 Code.require_file("support/test_support/orchestrator_guard.exs", __DIR__)
 ExUnit.configure(formatters: ExUnit.configuration()[:formatters] ++ [Aiur.TestSupport.OrchestratorGuard])
 
-if not run_orchestrator_guard_probes do
-  ExUnit.after_suite(fn _result -> Aiur.TestSupport.OrchestratorGuard.verify_suite!() end)
-end
+ExUnit.after_suite(fn _result -> Aiur.TestSupport.OrchestratorGuard.verify_suite!() end)
 
 Code.require_file("support/test_support/endpoint_stubs.exs", __DIR__)
 Code.require_file("support/test_support/processes.exs", __DIR__)

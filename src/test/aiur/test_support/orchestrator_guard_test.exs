@@ -126,10 +126,11 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
 
-    assert output =~
-             "Aiur.HTestSupportPubSubTerminationProbeTest: test a real registry-table loss is restored and reported left Aiur.PubSub unregistered (restore: :ok)"
-
     assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down left Aiur.Orchestrator down (restore: :ok)"
+
+    assert output =~
+             "plain ExUnit tests broke Aiur.Orchestrator: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down (down), Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down), Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)\nplain ExUnit tests left shared runtime children down: Aiur.FPlainCasePubSubLeakProbeTest: test leaves the PubSub registry table down (Aiur.PubSub unregistered)\n"
+
     assert output =~ ~r/YTestSupportStandInProbeTest: test leaves a stand-in holding the name left Aiur.Orchestrator held by a stand-in #PID<[\d.]+> \(restore: :ok\)/
     # Borrowing the name in setup and giving it back is not a leak.
     refute output =~ "AAUnregisterRestoreProbeTest"
