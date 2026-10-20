@@ -64,7 +64,7 @@ defmodule Aiur.BuildQueue.ServerTest do
 
   test "read model timeout returns an unavailable model without killing the caller" do
     pid = start_supervised!({SlowRead, self()})
-    assert %{status: :read_timeout} = Aiur.BuildQueue.show(pid)
+    assert %{status: :store_unavailable} = Aiur.BuildQueue.show(pid)
     assert_received :read_started
     send(pid, :release)
   end

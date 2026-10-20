@@ -20,7 +20,7 @@ defmodule Aiur.BuildQueue do
     GenServer.call(server, :read_model, 1_000)
   catch
     :exit, {:noproc, _} -> ReadModel.unavailable(absent_status())
-    :exit, {:timeout, _} -> ReadModel.unavailable(:read_timeout)
+    :exit, {:timeout, _} -> ReadModel.unavailable(:store_unavailable)
   end
 
   @spec reconcile_now() :: :ok | {:error, status()}
