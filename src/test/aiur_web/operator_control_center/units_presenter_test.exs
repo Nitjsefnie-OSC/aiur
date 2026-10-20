@@ -171,6 +171,22 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenterTest do
     assert catalog.message == "Fleet data is unavailable."
   end
 
+  test "an unpublished daemon view becomes unavailable after the startup deadline" do
+    catalog = UnitsPresenter.load(%{daemon_starting?: true, startup_elapsed_ms: 600_000})
+    view = UnitsPresenter.project(catalog, UnitsURL.default_selection())
+
+    assert catalog.status == :unavailable
+    assert view.count_status == :unavailable
+    assert is_nil(view.total_count)
+    assert catalog.message == "Fleet data is unavailable."
+  end
+
+  test "a fleet catalog with no successful view is marked loading during startup" do
+    payload = %{units: %{status: :stale, message: "Fleet data is unavailable.", snapshot: %{rows: []}}}
+
+    assert %{units: %{status: :loading, message: "The daemon is starting."}} = UnitsPresenter.starting_catalog(payload)
+  end
+
   test "truncated membership qualifies every catalog count as a lower bound" do
     identities = Enum.map(1..1_001, &identity("NODE-#{&1}", Integer.to_string(&1)))
     retained = identities |> Enum.take(1_000) |> Enum.map(&member/1)

@@ -101,8 +101,28 @@ defmodule AiurWeb.DashboardShellPauseStateTest do
     end
   end
 
-  test "stale snapshots render unknown and keep the pause action disabled" do
-    assert_unknown_pause_state(Aiur.Orchestrator, stale?: true)
+  test "stale snapshots refresh pause state from the live orchestrator" do
+    previous = SnapshotCache.get(Aiur.Orchestrator)
+    on_exit(fn -> restore_snapshot(Aiur.Orchestrator, previous) end)
+    :ok = SnapshotStore.publish(Aiur.Orchestrator, %{globally_paused: true})
+    cached = SnapshotCache.get(Aiur.Orchestrator)
+    SnapshotCache.put(Aiur.Orchestrator, %{cached | observed_at_ms: System.monotonic_time(:millisecond) - SnapshotStore.stale_age_ceiling_ms()})
+
+    assert PauseState.pause_state(Aiur.Orchestrator) == false
+  end
+
+  test "an unpublished live orchestrator stops loading after the startup deadline" do
+    {:ok, pid} = StartingOrchestrator.start_link()
+    on_exit(fn -> if Process.alive?(pid), do: GenServer.stop(pid) end)
+
+    assert PauseState.pause_state(pid, 0) == :loading
+    assert PauseState.pause_state(pid, 600_000) == nil
+  end
+
+  test "the pause loading surface leaves loading at its deadline" do
+    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, globally_paused: :loading}}
+
+    assert {:noreply, %{assigns: %{globally_paused: nil}}} = PauseState.handle_info(:pause_startup_deadline, socket)
   end
 
   test "unavailable snapshots render unknown and keep the pause action disabled" do
@@ -124,7 +144,7 @@ defmodule AiurWeb.DashboardShellPauseStateTest do
         pause_state: %{globally_paused: :loading, writable: true, global_pause_error: nil}
       )
 
-    assert html =~ "Loading daemon status"
+    assert html =~ "Loading status"
     refute html =~ "Pause state unknown"
     assert html =~ "disabled"
   end
@@ -139,20 +159,8 @@ defmodule AiurWeb.DashboardShellPauseStateTest do
     assert {:ok, %{globally_paused: false}} = GlobalPause.global_pause_status()
   end
 
-  defp assert_unknown_pause_state(orchestrator, opts \\ []) do
-    if Keyword.get(opts, :stale?, false) do
-      previous = SnapshotCache.get(orchestrator)
-      on_exit(fn -> restore_snapshot(orchestrator, previous) end)
-      :ok = SnapshotStore.publish(orchestrator, %{globally_paused: true})
-      cached = SnapshotCache.get(orchestrator)
-
-      SnapshotCache.put(orchestrator, %{
-        cached
-        | observed_at_ms: System.monotonic_time(:millisecond) - SnapshotStore.stale_age_ceiling_ms()
-      })
-    end
-
-    state = PauseState.pause_state(orchestrator)
+  defp assert_unknown_pause_state(orchestrator) do
+    state = PauseState.pause_state(orchestrator, 600_000)
     assert is_nil(state)
 
     html =

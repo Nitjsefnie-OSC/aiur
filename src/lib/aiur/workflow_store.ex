@@ -234,13 +234,11 @@ defmodule Aiur.WorkflowStore do
   # a read is what turned this mailbox into a system-wide queue (#1731).
   @impl true
   def handle_call(:current, _from, %State{} = state) do
-    reply = if is_map(state.workflow), do: {:ok, state.workflow}, else: {:error, :workflow_not_loaded}
-    {:reply, reply, state}
+    {:reply, {:ok, state.workflow}, state}
   end
 
   def handle_call(:current_with_generation, _from, %State{} = state) do
-    reply = if is_map(state.workflow), do: {:ok, state.workflow, state.generation}, else: {:error, :workflow_not_loaded}
-    {:reply, reply, state}
+    {:reply, {:ok, state.workflow, state.generation}, state}
   end
 
   def handle_call(:force_reload, _from, %State{} = state) do

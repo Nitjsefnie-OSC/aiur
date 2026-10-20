@@ -259,7 +259,7 @@ defmodule AiurWeb.OperatorControlCenter.DashboardShell do
     Phoenix.HTML.raw(~s(<svg #{@nav_svg_attrs}><circle cx="12" cy="12" r="9"/></svg>))
   end
 
-  defp pause_label(:loading), do: "Loading daemon status…"
+  defp pause_label(:loading), do: "Loading status…"
   defp pause_label(nil), do: "Pause state unknown"
   defp pause_label(true), do: "Resume new starts"
   defp pause_label(false), do: "Pause new starts"

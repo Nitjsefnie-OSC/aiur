@@ -13,6 +13,8 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenter do
   alias Aiur.Projections.UnitsRow.Sources
   alias AiurWeb.OperatorControlCenter.RowToken
 
+  @startup_loading_timeout_ms 600_000
+
   @type catalog_status :: :ready | :empty | :stale | :unavailable | :loading
 
   @spec load(map(), keyword()) :: map()
@@ -46,7 +48,14 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenter do
         issue_facts: issue_source(status)
       })
 
-    status = if Map.get(payload, :daemon_starting?) == true, do: :loading, else: catalog_status(snapshot)
+    startup_elapsed_ms = Map.get(payload, :startup_elapsed_ms, Aiur.Boot.elapsed_ms())
+
+    status =
+      cond do
+        Map.get(payload, :daemon_starting?) == true and startup_elapsed_ms < @startup_loading_timeout_ms -> :loading
+        Map.get(payload, :daemon_starting?) == true -> :unavailable
+        true -> catalog_status(snapshot)
+      end
 
     %{
       status: status,
@@ -57,6 +66,20 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresenter do
   end
 
   def load(_payload, _opts), do: load(%{})
+
+  @doc false
+  @spec starting_catalog() :: map()
+  def starting_catalog do
+    %{status: :loading, message: "The daemon is starting.", truncated?: false, snapshot: %{rows: [], truncated?: false}}
+  end
+
+  @doc false
+  @spec starting_catalog(map()) :: map()
+  def starting_catalog(%{units: %{} = units} = payload) do
+    Map.put(payload, :units, Map.merge(units, %{status: :loading, message: "The daemon is starting."}))
+  end
+
+  def starting_catalog(payload) when is_map(payload), do: Map.put(payload, :units, starting_catalog())
 
   @spec project(map(), UnitsPolicy.selection() | term()) :: map()
   def project(%{snapshot: %{rows: rows}} = catalog, selection) when is_list(rows) do
