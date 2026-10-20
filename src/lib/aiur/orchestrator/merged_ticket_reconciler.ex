@@ -28,7 +28,7 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
   block `done`: an abandoned draft must not pin its ticket out of its terminal
   state. A failed open-PR lookup never closes the ticket.
   """
-  alias Aiur.{Alerts, Issue, RecentMerge, RecentMergeStore}
+  alias Aiur.{Alerts, Issue, RecentMerge, RecentMergeStore, Tracker}
 
   alias Aiur.Orchestrator.{
     Lifecycle,
@@ -91,7 +91,12 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
   defp repair_closed_issue(state, issue, merge, opts) do
     update =
       Keyword.get(opts, :update_issue_state_fun, fn identifier, target, expected ->
-        TicketTransition.write_state(identifier, target, writer: :merged_ticket_reconciler, expected_state: expected)
+        TicketTransition.write_state(identifier, target,
+          writer: :merged_ticket_reconciler,
+          expected_state: expected,
+          refuse_labels: operator_hold_labels(),
+          tracker: Keyword.get(opts, :tracker, Tracker)
+        )
       end)
 
     case update.(issue.identifier, "done", :none) do
@@ -137,7 +142,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
         TicketTransition.write_state(identifier, target,
           writer: :merged_ticket_reconciler,
           expected_state: expected,
-          refuse_labels: operator_hold_labels()
+          refuse_labels: operator_hold_labels(),
+          tracker: Keyword.get(opts, :tracker, Tracker)
         )
       end)
 
@@ -206,7 +212,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
         TicketTransition.write_state(identifier, state_name,
           writer: :merged_ticket_reconciler,
           expected_state: expected_state,
-          refuse_labels: operator_hold_labels()
+          refuse_labels: operator_hold_labels(),
+          tracker: Keyword.get(opts, :tracker, Tracker)
         )
       end)
 
@@ -258,7 +265,8 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler do
         TicketTransition.write_state(identifier, state_name,
           writer: :merged_ticket_reconciler,
           expected_state: expected_state,
-          refuse_labels: operator_hold_labels()
+          refuse_labels: operator_hold_labels(),
+          tracker: Keyword.get(opts, :tracker, Tracker)
         )
       end)
 

@@ -7,13 +7,18 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
   alias Aiur.Tracker
 
   @spec write_if_current(String.t(), String.t()) :: :ok | {:error, term()}
-  def write_if_current(identifier, target) do
-    case Tracker.fetch_issue_states_by_ids([to_string(identifier)]) do
+  @spec write_if_current(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
+  def write_if_current(identifier, target, opts \\ []) do
+    fetch_issue_states_fun = Keyword.get(opts, :fetch_issue_states_fun, &Tracker.fetch_issue_states_by_ids/1)
+    tracker = Keyword.get(opts, :tracker, Tracker)
+
+    case fetch_issue_states_fun.([to_string(identifier)]) do
       {:ok, [%Issue{state: state}]} when is_binary(state) ->
         TicketTransition.write_state(identifier, target,
           writer: :comment_wake,
           expected_state: state,
-          refuse_labels: operator_hold_labels()
+          refuse_labels: operator_hold_labels(),
+          tracker: tracker
         )
 
       {:ok, _} ->
