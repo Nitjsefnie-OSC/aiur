@@ -7,6 +7,7 @@ defmodule Aiur.GitHub.Quota.Windows do
   alias Aiur.RepoBase
 
   @primary_resources ~w(core graphql)
+  @rate_limit_body_resources ~w(core)
   # Anonymous reads bill the 60/hr unauthenticated IP allowance, not the
   # authenticated core budget. They get their own window so an exhausted
   # anonymous allowance stays visible without gating fleet dispatch, and so a
@@ -30,7 +31,7 @@ defmodule Aiur.GitHub.Quota.Windows do
 
   @spec observe_response(map(), map(), term(), DateTime.t()) :: map()
   def observe_response(state, request, {:ok, %{body: %{"resources" => resources}}}, now) when is_map(resources) do
-    Enum.reduce(@primary_resources, state, fn resource, acc ->
+    Enum.reduce(@rate_limit_body_resources, state, fn resource, acc ->
       case Map.get(resources, resource) do
         %{} = values -> put_credential_window(acc, request, resource, values, now)
         _missing -> acc

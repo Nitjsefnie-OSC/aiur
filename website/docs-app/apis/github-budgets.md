@@ -43,6 +43,10 @@ GitHub can return a separate `core` window on issue dependency and sub-issue
 endpoints. Aiur retains those headers under route-specific resource names so
 they cannot replace the primary Core window used by Units and dispatch.
 
+The REST `/rate_limit` refresh updates Core from its `resources.core` value.
+The GraphQL window comes from GraphQL response headers or `rateLimit` data; the
+REST response's `resources.graphql` value does not update it.
+
 ### Where the budget went
 
 The meters above say how much is left.

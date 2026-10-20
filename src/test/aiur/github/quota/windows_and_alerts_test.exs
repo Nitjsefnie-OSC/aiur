@@ -191,6 +191,25 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
     assert snapshot.windows["graphql"].reset_at == @reset
   end
 
+  test "REST rate_limit body does not replace the GraphQL window" do
+    quota = start_quota()
+
+    Quota.observe(quota, graphql_request("query A { viewer { login } }", %{}), reported_graphql_response(4603))
+
+    rate_limit_body = %{
+      "resources" => %{
+        "core" => %{"limit" => 5000, "remaining" => 2766, "reset" => DateTime.to_unix(@reset)},
+        "graphql" => %{"limit" => 5000, "remaining" => 4952, "reset" => DateTime.to_unix(@reset)}
+      }
+    }
+
+    Quota.observe(quota, request(:get, "/rate_limit"), {:ok, %{status: 200, headers: [], body: rate_limit_body}})
+
+    snapshot = Quota.snapshot(quota)
+    assert snapshot.windows["core"].remaining == 2766
+    assert snapshot.windows["graphql"].remaining == 4603
+  end
+
   test "the reported block wins over the headers, being the endpoint's own answer" do
     quota = start_quota()
 
