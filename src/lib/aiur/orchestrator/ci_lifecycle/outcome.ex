@@ -16,6 +16,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
   alias Aiur.Orchestrator.HumanReview
   alias Aiur.Orchestrator.LifecycleFence
   alias Aiur.Orchestrator.Reconciler
+  alias Aiur.Orchestrator.ReworkGate
   alias Aiur.Orchestrator.State
   alias Aiur.Orchestrator.TicketTransition
   alias Aiur.StartTrigger.ProgressStore
@@ -89,6 +90,16 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
     issue_key = issue.id || issue.identifier
     base_branch = Aiur.Config.base_branch()
 
+    case ReworkGate.verify_rework_attempt(state, to_string(issue_key), result[:head_sha]) do
+      {:ok, state} ->
+        transition_conflicting_pr(state, issue, result, opts, issue_key, base_branch)
+
+      {:skip, _reason, state} ->
+        state
+    end
+  end
+
+  defp transition_conflicting_pr(state, issue, result, opts, issue_key, base_branch) do
     Transition.transition_ci_ticket(state, issue, "rework", fn transitioned ->
       create = Keyword.get(opts, :ci_failure_commenter, &Aiur.Tracker.create_comment/2)
       target = to_string(issue.identifier || issue.id)

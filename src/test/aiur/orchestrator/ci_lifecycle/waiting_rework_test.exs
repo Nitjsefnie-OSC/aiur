@@ -54,8 +54,10 @@ defmodule Aiur.Orchestrator.CiLifecycle.WaitingReworkTest do
       RecordingGitHubClient.record_to(self())
       limit = State.rework_attempt_limit()
       state = %State{rework_attempts: %{{identifier, "stuck-head"} => limit}}
+      ticket = issue(identifier, unquote(label))
+      first = poll_ci(state, ticket, %{decision: :pending, head_sha: "stuck-head", pr_number: 4392, mergeable: "CONFLICTING"})
 
-      _next = poll_ci(state, issue(identifier, unquote(label)), %{decision: :pending, head_sha: "stuck-head", pr_number: 4392, mergeable: "CONFLICTING"})
+      _next = poll_ci(first, ticket, %{decision: :pending, head_sha: "stuck-head", pr_number: 4392, mergeable: "CONFLICTING"})
 
       refute_received {:tracker_update, ^identifier, "rework", _opts}
     end
