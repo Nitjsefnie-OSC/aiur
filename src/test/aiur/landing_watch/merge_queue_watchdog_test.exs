@@ -135,6 +135,60 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     refute_received :dequeued
   end
 
+  test "does not dequeue when the real fresh read shows the entry became mergeable" do
+    path = temp_journal()
+    parent = self()
+    observation = observation(54)
+
+    opts =
+      [journal_path: path, token: "test-gh-token"] ++
+        check_opts(parent, 54,
+          request_fun: fn
+            %{method: :post, body: %{"query" => query}} = call ->
+              cond do
+                query =~ "mergeQueueEntry{id state}" ->
+                  send(parent, :fresh_queue_read)
+
+                  {:ok,
+                   %{
+                     status: 200,
+                     body: %{
+                       "data" => %{
+                         "repository" => %{
+                           "pullRequest" => %{
+                             "id" => "PR_54",
+                             "headRefOid" => "head-54",
+                             "isDraft" => false,
+                             "reviewDecision" => "APPROVED",
+                             "mergeable" => "MERGEABLE",
+                             "mergeStateStatus" => "CLEAN",
+                             "autoMergeRequest" => nil,
+                             "mergeQueueEntry" => %{"id" => "entry-54", "state" => "MERGEABLE"},
+                             "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-54"}}]}
+                           }
+                         }
+                       }
+                     }
+                   }}
+
+                query =~ "dequeuePullRequest" ->
+                  flunk("a changed queue entry must prevent dequeue")
+
+                true ->
+                  flunk("unexpected GraphQL request: #{inspect(call)}")
+              end
+          end
+        )
+
+    opts = opts |> Keyword.delete(:revalidate_queue_fun) |> Keyword.delete(:queue_recovery_revalidate_fun)
+
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_000))
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 301_000))
+
+    assert_received :fresh_queue_read
+    refute_received :dequeued
+  end
+
   test "malformed live PR revalidation returns an error instead of crashing the poll" do
     path = temp_journal()
     parent = self()
