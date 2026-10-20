@@ -14,10 +14,9 @@ defmodule Aiur.GitHub.Quota.Windows do
   @metered_resources [@anonymous_resource | @primary_resources]
   @low_water_percent 10.0
 
-  # This snapshot's single `core`/`graphql` window is the daemon-primary meter
-  # used by Units, Build and dispatch. Other configured credentials have their
-  # own `CredentialHeadroom` windows, and an unregistered operator token must
-  # never replace the primary reading here.
+  # Top-level `core`/`graphql` windows remain the primary credential meter used
+  # by existing surfaces and dispatch. Every credential also gets a keyed
+  # window under `credential_windows` for diagnostics and separate display.
 
   # GitHub does not always say how long a secondary limit lasts. Its own
   # guidance is to wait at least a minute, and the ceiling keeps a hostile or
@@ -26,13 +25,10 @@ defmodule Aiur.GitHub.Quota.Windows do
   @max_secondary_backoff_seconds 60 * 60
 
   @spec observe_response(map(), map(), term(), DateTime.t()) :: map()
-  def observe_response(state, %{credential_id: credential_id}, _result, _now) when credential_id != "primary",
-    do: state
-
-  def observe_response(state, _request, {:ok, %{body: %{"resources" => resources}}}, now) when is_map(resources) do
+  def observe_response(state, request, {:ok, %{body: %{"resources" => resources}}}, now) when is_map(resources) do
     Enum.reduce(@primary_resources, state, fn resource, acc ->
       case Map.get(resources, resource) do
-        %{} = values -> put_window_from_values(acc, resource, values, now)
+        %{} = values -> put_credential_window(acc, request, resource, values, now)
         _missing -> acc
       end
     end)
@@ -47,7 +43,7 @@ defmodule Aiur.GitHub.Quota.Windows do
       state
     else
       case graphql_rate_limit_values(request, response) do
-        %{} = values -> put_window_from_values(state, "graphql", values, now)
+        %{} = values -> put_credential_window(state, request, "graphql", values, now)
         nil -> observe_response_headers(state, request, response, now)
       end
     end
@@ -85,34 +81,66 @@ defmodule Aiur.GitHub.Quota.Windows do
         "reset" => Transport.header(headers, "x-ratelimit-reset")
       }
 
-      put_window_from_values(state, resource, values, now)
+      put_credential_window(state, request, resource, values, now)
     else
       state
     end
   end
 
+  defp put_credential_window(state, request, resource, values, now) do
+    case credential_key(request) do
+      nil ->
+        put_window_from_values(state, resource, values, now)
+
+      key when is_binary(key) and key != "" ->
+        window = parse_window(resource, values, now)
+
+        if window do
+          windows = Map.put(state.credential_windows, {key, resource}, window)
+
+          if Map.get(request, :credential_id, "primary") == "primary" do
+            state
+            |> Map.put(:credential_windows, windows)
+            |> put_window_from_values(resource, values, now)
+          else
+            %{state | credential_windows: windows}
+          end
+        else
+          state
+        end
+    end
+  end
+
+  defp credential_key(request) do
+    Map.get(request, :credential_key) ||
+      case Map.get(request, :token) do
+        token when is_binary(token) and token != "" -> Aiur.GitHub.Budget.token_key(token)
+        _missing -> nil
+      end
+  end
+
   defp put_window_from_values(state, resource, values, now) do
+    case parse_window(resource, values, now) do
+      %{} = window ->
+        state
+        |> Map.put(:windows, Map.put(state.windows, resource, window))
+        |> reconcile_resource_alerts(resource, window)
+        |> sync_hold_file(resource, window)
+
+      nil ->
+        state
+    end
+  end
+
+  defp parse_window(resource, values, now) do
     with {:ok, limit} <- integer_value(Map.get(values, "limit")),
          true <- limit > 0,
          {:ok, remaining} <- integer_value(Map.get(values, "remaining")),
          {:ok, reset_unix} <- integer_value(Map.get(values, "reset")),
          {:ok, reset_at} <- DateTime.from_unix(reset_unix) do
-      remaining = remaining |> max(0) |> min(limit)
-
-      window = %{
-        resource: resource,
-        limit: limit,
-        remaining: remaining,
-        reset_at: reset_at,
-        observed_at: now
-      }
-
-      state
-      |> Map.put(:windows, Map.put(state.windows, resource, window))
-      |> reconcile_resource_alerts(resource, window)
-      |> sync_hold_file(resource, window)
+      %{resource: resource, limit: limit, remaining: remaining |> max(0) |> min(limit), reset_at: reset_at, observed_at: now}
     else
-      _invalid -> state
+      _invalid -> nil
     end
   end
 

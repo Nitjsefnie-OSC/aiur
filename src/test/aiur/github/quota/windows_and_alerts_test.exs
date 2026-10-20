@@ -40,6 +40,22 @@ defmodule Aiur.GitHub.Quota.WindowsAndAlertsTest do
     assert snapshot.windows["graphql"].used_percent == 12.0
   end
 
+  test "interleaved credentials retain separate windows while the primary meter stays pinned" do
+    quota = start_quota()
+    agent_key = Aiur.GitHub.Budget.token_key("secret")
+    operator_key = Aiur.GitHub.Budget.token_key("operator-secret")
+
+    Quota.observe(quota, request(:get, "/repos/owner/repo/issues"), response("core", 5000, 4159))
+    Quota.observe(quota, %{request(:get, "/repos/owner/repo/issues") | token: "operator-secret", credential_id: "ci_readiness", credential_key: operator_key}, response("core", 5000, 4900))
+
+    snapshot = Quota.snapshot(quota)
+
+    assert snapshot.windows["core"].remaining == 4159
+    assert snapshot.credential_windows[agent_key]["core"].remaining == 4159
+    assert snapshot.credential_windows[operator_key]["core"].remaining == 4900
+    assert {:hold, %{remaining: 4159}} = Quota.dispatch_status(quota)
+  end
+
   # Every instrumented GraphQL response already carries the endpoint's own
   # answer for the points budget. Reading it is what lets the daemon learn its
   # real remaining budget from the calls it is already making, rather than
