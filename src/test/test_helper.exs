@@ -76,6 +76,11 @@ quarantine_filters =
     else: Aiur.TestQuarantine.filters(quarantine_entries)
 
 ExUnit.start(
+  formatters:
+    if(System.get_env("AIUR_TEST_PROGRESS") == "1",
+      do: [ExUnit.CLIFormatter, Aiur.TestSupport.ProgressFormatter],
+      else: [ExUnit.CLIFormatter]
+    ),
   exclude:
     [:external, :perf_regression, :quarantine, :orchestrator_guard_probe] ++
       real_proc_exclude ++
@@ -117,15 +122,16 @@ Code.require_file("support/test_support/workflow_yaml.exs", __DIR__)
 Code.require_file("support/test_support/orchestrator_child.exs", __DIR__)
 Code.require_file("support/test_support/runtime_children.exs", __DIR__)
 Code.require_file("support/test_support/orchestrator_guard.exs", __DIR__)
+Code.require_file("support/test_cleanup.ex", __DIR__)
+Code.require_file("support/test_support/runner_tasks.exs", __DIR__)
 ExUnit.configure(formatters: ExUnit.configuration()[:formatters] ++ [Aiur.TestSupport.OrchestratorGuard])
+ExUnit.after_suite(fn _result -> Aiur.TestSupport.RunnerTasks.verify_suite!() end)
 ExUnit.after_suite(fn _result -> Aiur.TestSupport.OrchestratorGuard.verify_suite!() end)
 Code.require_file("support/test_support/endpoint_stubs.exs", __DIR__)
 Code.require_file("support/test_support/processes.exs", __DIR__)
-Code.require_file("support/test_support/runner_tasks.exs", __DIR__)
 Code.require_file("support/test_support/workflow_files.exs", __DIR__)
 Code.require_file("support/test_scope_guard.exs", __DIR__)
 Code.require_file("support/test_support.exs", __DIR__)
-Code.require_file("support/test_cleanup.ex", __DIR__)
 Code.require_file("support/test_reset_support.ex", __DIR__)
 Code.require_file("support/orchestrator_status_support.ex", __DIR__)
 Code.require_file("support/agent_control_cli_todo.ex", __DIR__)
