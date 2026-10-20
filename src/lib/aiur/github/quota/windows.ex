@@ -12,7 +12,10 @@ defmodule Aiur.GitHub.Quota.Windows do
   # anonymous allowance stays visible without gating fleet dispatch, and so a
   # `limit: 60` response can never overwrite the authenticated `core` window.
   @anonymous_resource "core:anonymous"
-  @metered_resources [@anonymous_resource | @primary_resources]
+  @route_core_resources ~w(core:issue_dependencies core:sub_issues)
+  @metered_resources [@anonymous_resource | @primary_resources ++ @route_core_resources]
+  @issue_dependencies_path ~r{/issues/\d+/dependencies/blocked_by/?$}
+  @sub_issues_path ~r{/issues/\d+/sub_issues/?$}
   @low_water_percent 10.0
 
   # Top-level `core`/`graphql` windows remain the primary credential meter used
@@ -75,6 +78,8 @@ defmodule Aiur.GitHub.Quota.Windows do
         _authenticated -> Transport.header(headers, "x-ratelimit-resource")
       end
 
+    resource = route_specific_resource(resource, request)
+
     if resource in @metered_resources do
       values = %{
         "limit" => Transport.header(headers, "x-ratelimit-limit"),
@@ -88,30 +93,49 @@ defmodule Aiur.GitHub.Quota.Windows do
     end
   end
 
+  defp route_specific_resource("core", %{url: url}) when is_binary(url) do
+    path = URI.parse(url).path || ""
+
+    cond do
+      Regex.match?(@issue_dependencies_path, path) -> "core:issue_dependencies"
+      Regex.match?(@sub_issues_path, path) -> "core:sub_issues"
+      true -> "core"
+    end
+  end
+
+  defp route_specific_resource(resource, _request), do: resource
+
   defp put_credential_window(state, request, resource, values, now) do
     state = prune_credential_windows(state, now)
-    credential_id = Map.get(request, :credential_id, "primary")
+    credential_id = Map.get(request, :credential_id, "unregistered")
     key = credential_key(request)
 
-    case {credential_id, key, parse_window(resource, values, now)} do
-      {"primary", nil, _window} ->
+    case {request_resource(request), credential_id, key, parse_window(resource, values, now)} do
+      {@anonymous_resource, _credential_id, _key, _window} ->
         put_window_from_values(state, resource, values, now)
 
-      {"primary", key, %{} = window} when is_binary(key) ->
+      {_request_resource, "primary", nil, _window} ->
+        put_window_from_values(state, resource, values, now)
+
+      {_request_resource, "primary", key, %{} = window} when is_binary(key) ->
         put_primary_credential_window(state, resource, key, window, values, now)
 
-      {credential_id, key, %{} = window} when is_binary(credential_id) and is_binary(key) ->
+      {_request_resource, credential_id, key, %{} = window} when is_binary(credential_id) and is_binary(key) ->
         put_secondary_credential_window(state, resource, key, window)
 
-      {_credential_id, _key, _window} ->
+      {_request_resource, _credential_id, _key, _window} ->
         state
     end
   end
 
   defp put_primary_credential_window(state, resource, key, window, values, now) do
-    state
-    |> put_secondary_credential_window(resource, key, window)
-    |> put_window_from_values(resource, values, now)
+    state = put_secondary_credential_window(state, resource, key, window)
+
+    if resource in @primary_resources do
+      put_window_from_values(state, resource, values, now)
+    else
+      state
+    end
   end
 
   defp put_secondary_credential_window(state, resource, key, window) do
