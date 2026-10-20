@@ -61,7 +61,7 @@ defmodule Aiur.LandingWatch.MergeGroupRunCensusTest do
     assert Enum.any?(urls, &String.contains?(&1, "status=requested"))
     assert Enum.any?(urls, &String.contains?(&1, "status=completed"))
 
-    assert_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/900/cancel"}
+    refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/900/cancel"}
 
     refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/501/cancel"}
   end
@@ -95,7 +95,7 @@ defmodule Aiur.LandingWatch.MergeGroupRunCensusTest do
                live_observations_fun: fn _, _ -> {:ok, []} end
              )
 
-    assert_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/77/cancel"}
+    refute_received {:cancel, "https://api.github.com/repos/test-org/test-repo/actions/runs/77/cancel"}
     for _ <- 1..5, do: assert_received(:completed_page)
     refute_received :completed_page
   end
