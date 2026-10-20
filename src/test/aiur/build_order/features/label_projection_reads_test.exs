@@ -124,8 +124,10 @@ defmodule Aiur.BuildOrder.Features.LabelProjectionReadsTest do
   end
 
   test "registering an observed unknown slug rechecks that ticket", ctx do
-    F.observe(ctx, 30, ["feature:new"])
     pid = F.start(ctx, ctx.options)
+    assert {:ok, _} = F.observe(ctx, 30, ["feature:new"])
+    # Tick is a synchronous barrier for the queued History notification.
+    F.tick(pid)
     assert {30, "new"} in F.sync(pid).unregistered
     reads()
     assert {:ok, _} = F.create(ctx, "new")
