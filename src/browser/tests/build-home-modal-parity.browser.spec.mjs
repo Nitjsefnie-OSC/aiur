@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { PARITY_VIEWPORTS, openParityPair } from '../support/design-parity.mjs'
+import { PARITY_VIEWPORTS } from '../support/design-parity.mjs'
+import { openModalPair } from '../support/build-home-modal-pair.mjs'
 import { compareRegion } from '../support/build-home-region-parity.mjs'
 
 // Offline reuses the live rows but prevents the design's mock conversation timer changing progress.
@@ -7,7 +8,7 @@ test.setTimeout(180_000)
 // Each matrix cell exercises seven state headers against the frozen design.
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) {
   test(`modal headers and frame ${viewport.viewport.width} ${theme} ${palette}`, async ({ browser }) => {
-    const pair = await openParityPair(browser, { ...viewport, theme, palette, dataset: 'offline' }, { productPending: true })
+    const pair = await openModalPair(browser, { ...viewport, theme, palette, dataset: 'offline' }, { productPending: true })
     try {
       await expect(pair.product.locator("#build-root")).toHaveAttribute("data-build-generation", /\d+/)
       const rows = await pair.product.evaluate(async () => {

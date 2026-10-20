@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test'
-import { PARITY_VIEWPORTS, openParityPair } from '../support/design-parity.mjs'
+import { PARITY_VIEWPORTS } from '../support/design-parity.mjs'
+import { openModalPair } from '../support/build-home-modal-pair.mjs'
 
 test.setTimeout(90_000)
 for (const viewport of PARITY_VIEWPORTS) test(`modal tkin samples and instant close ${viewport.viewport.width}`, async ({ browser }) => {
-  const pair = await openParityPair(browser, { ...viewport, theme: 'dark', palette: 'aiur', dataset: 'offline' }, { productPending: true })
+  const pair = await openModalPair(browser, { ...viewport, theme: 'dark', palette: 'aiur', dataset: 'offline' }, { productPending: true })
   try {
     await expect(pair.product.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
     const id = await pair.product.evaluate(async () => (await import('/build-home/state.js')).ctx.D.now[0].id)
@@ -24,7 +25,7 @@ for (const viewport of PARITY_VIEWPORTS) test(`modal tkin samples and instant cl
           const style = getComputedStyle(document.querySelector('#tk-modal'))
           return { at, transform: style.transform, opacity: style.opacity }
         })
-        return { duration: timing.duration, easing: timing.easing, frames }
+        return { duration: timing.duration, easing: a.effect.getKeyframes()[0].easing, frames }
       }))
     }
     expect(samples[1]).toEqual(samples[0])
@@ -41,7 +42,7 @@ for (const viewport of PARITY_VIEWPORTS) test(`modal tkin samples and instant cl
 })
 
 test('reduced motion keeps the product modal static under the recorded S-18 default', async ({ browser }) => {
-  const pair = await openParityPair(browser, { ...PARITY_VIEWPORTS[0], theme: 'dark', palette: 'aiur', dataset: 'offline', reducedMotion: 'reduce' }, { productPending: true })
+  const pair = await openModalPair(browser, { ...PARITY_VIEWPORTS[0], theme: 'dark', palette: 'aiur', dataset: 'offline', reducedMotion: 'reduce' }, { productPending: true })
   try {
     await expect(pair.product.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
     await pair.product.evaluate(async () => {
