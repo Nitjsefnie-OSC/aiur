@@ -229,3 +229,11 @@ test('stale body with no observation renders unknown age and retains content', a
   await expect(page.locator('.bm-body')).toContainText('Retained description')
   await expect(page.locator('.bm-cue')).toContainText('unknown time (age unknown)')
 })
+
+test('board updates preserve focused body links', async ({ page }) => {
+  const t = await display(page)
+  await pushDoc(page, t.id, { state: 'available', body_html: '<p><a href="https://example.com">Body link</a></p>' })
+  await page.locator('.bm-body a').focus()
+  await page.evaluate(async () => (await import('/build-home/state.js')).fx.modalSync({ upsert: [], remove: [], set: {} }))
+  await expect(page.locator('.bm-body a')).toBeFocused()
+})
