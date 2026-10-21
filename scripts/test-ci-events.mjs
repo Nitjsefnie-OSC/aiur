@@ -23,7 +23,7 @@ function selected(event, full, dialyzer = false, payload = { pull_request: {} })
     needs: { changes, 'pre-handoff': { result: changes.result } },
   });
   const changesRuns = run(condition(jobs.get('changes')), {});
-  const changes = changesRuns ? { result: 'success', outputs: { full_ci: String(full), dialyzer: String(dialyzer) } } : { result: 'skipped', outputs: {} };
+  const changes = changesRuns ? { result: 'success', outputs: { full_ci: String(full), dialyzer: String(dialyzer), browser_smoke: String(event === 'merge_group') } } : { result: 'skipped', outputs: {} };
   // Every other job needs changes, so a skipped changes skips it unless a status function overrides that.
   return [...jobs].filter(([id, body]) => id === 'changes' ? changesRuns
     : (changesRuns || /always\(\)|cancelled\(\)/.test(condition(body) ?? '')) && run(condition(body), changes)).map(([id]) => id);
@@ -71,6 +71,7 @@ assert.ok(jobs.get('ci-gate').includes("github.event_name != 'schedule'"), 'sche
 assert.ok(jobs.get('affected-tests').includes("github.event_name == 'merge_group'"), 'merge queue also runs the time-bomb guard');
 assert.ok(jobs.get('changes').includes('affected_paths_b64: "${{ steps.classify.outputs.affected_paths_b64 }}"'));
 assert.ok(jobs.get('changes').includes('dialyzer: "${{ steps.classify.outputs.dialyzer }}"'));
+assert.ok(jobs.get('changes').includes('browser_smoke: "${{ steps.classify.outputs.browser_smoke }}"'));
 assert.ok(jobs.get('affected-tests').includes('AIUR_CI_CHANGED_PATHS_B64: ${{ needs.changes.outputs.affected_paths_b64 }}'));
 for (const job of [...fullJobs.filter((job) => job !== 'quarantine'), ...fastJobs.filter((job) => job !== 'ci-gate')]) {
   assert.ok(jobs.get('ci-gate').includes(job), `gate needs ${job}`);
@@ -78,7 +79,7 @@ for (const job of [...fullJobs.filter((job) => job !== 'quarantine'), ...fastJob
 function gate(event, full, dialyzer, failedJob, result = 'failure', dialyzerOutput = String(dialyzer)) {
   const needs = Object.fromEntries([...jobs.keys()].map((job) => [job, { result: 'skipped' }]));
   for (const job of selected(event, full, dialyzer)) needs[job].result = 'success';
-  needs.changes.outputs = { full_ci: String(full), dialyzer: dialyzerOutput };
+  needs.changes.outputs = { full_ci: String(full), dialyzer: dialyzerOutput, browser_smoke: String(event === 'merge_group') };
   if (failedJob) needs[failedJob].result = result;
   return spawnSync('python3', ['scripts/check-ci-gate.py'], {
     encoding: 'utf8', env: { ...process.env, EVENT_NAME: event, NEEDS_JSON: JSON.stringify(needs) },
@@ -87,7 +88,7 @@ function gate(event, full, dialyzer, failedJob, result = 'failure', dialyzerOutp
 for (const [event, full, required] of [
   ['pull_request', false, fastJobs.filter((job) => job !== 'ci-gate')],
   ['merge_group', true, ['changes', 'workflow-security', 'lint', 'affected-tests', ...fullJobs]],
-  ['pull_request', true, ['changes', 'workflow-security', 'lint', 'soak', ...fullJobs]],
+  ['pull_request', true, ['changes', 'workflow-security', 'lint', 'soak', ...fullJobs.filter((job) => job !== 'browser')]],
 ]) {
   assert.equal(gate(event, full, false).status, 0, `${event} passes with selected set successful`);
   for (const job of required) {
@@ -164,7 +165,7 @@ assert.deepEqual([...new Set(shardCommands)].sort(), [...new Set(coreCommands)].
 const browserJob = jobs.get('browser');
 assert.ok(browserJob.includes('./.github/actions/browser-smoke'), 'browser uses the shared browser action');
 assert.ok(browserJob.includes('actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd'), 'browser checks out before the local action');
-assert.ok(browserJob.includes('timeout-minutes: 22'), 'browser has headroom beyond the 9-minute shard target');
+assert.ok(browserJob.includes('timeout-minutes: 23'), 'browser has 2-minute headroom beyond the 21-minute shard runner target');
 assert.ok(browserJob.includes(`shard: [${Object.keys(shards).join(', ')}]`), 'browser matrix selects every shard in the shard map');
 const browserAction = readFileSync(new URL('../.github/actions/browser-smoke/action.yml', import.meta.url), 'utf8');
 assert.ok(browserAction.includes('using: composite'), 'shared browser setup is an allowed local composite action');
