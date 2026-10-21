@@ -26,8 +26,7 @@ reply delivery. A longer OS or disk stall can exceed this finite margin.
 Sustained broker timeouts raise one
 `system.github.budget_broker_unavailable` attention with the elapsed duration;
 `system.github.budget_broker_unavailable.resolved` clears it when the timeout
-rate recovers. Broker command summaries include mailbox, Python queue, SQLite
-open, lock-wait and transaction latency so the slow stage can be identified.
+rate recovers.
 
 | Budget | Unit | Where to read it |
 | --- | --- | --- |
@@ -36,6 +35,9 @@ open, lock-wait and transaction latency so the slow stage can be identified.
 | Anonymous core | REST requests made without a token | A `core:anonymous` row, present only once an anonymous read has been observed. |
 | Secondary limit | Temporary abuse-control backoff | A separate Units row while the backoff is active. |
 | Issue dependencies / sub-issues | Route-specific REST windows | Separate `core:issue_dependencies` and `core:sub_issues` observations in the quota snapshot; excluded from primary Core and dispatch. |
+
+Broker command summaries include mailbox, Python queue, SQLite open, lock-wait
+and transaction latency so the slow stage can be identified.
 
 Anonymous reads — a public `CODEOWNERS` fetch when no token is configured, for
 instance — bill GitHub's 60/hour unauthenticated per-IP allowance rather than

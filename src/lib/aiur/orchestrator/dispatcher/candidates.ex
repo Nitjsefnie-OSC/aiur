@@ -3,6 +3,10 @@ defmodule Aiur.Orchestrator.Dispatcher.Candidates do
   Candidate fetch, per-issue dispatch validation and the blocked-by dependency gate.
   """
 
+  # Cohesion: This module owns the candidate-to-dispatch validation path because it has both
+  # the current candidate snapshot and dispatch state; cache fallback must use that same issue
+  # and dependency gate rather than creating a second, inconsistent dispatch decision.
+
   require Logger
 
   alias Aiur.Alerts
