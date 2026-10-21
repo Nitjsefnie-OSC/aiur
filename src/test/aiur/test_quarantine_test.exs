@@ -37,8 +37,7 @@ defmodule Aiur.TestQuarantineTest do
                :test
              )
 
-    assert {:excluded, "due to module filter"} =
-             ExUnit.Filters.eval([], TestQuarantine.filters(entries), %{module: :"Aiur.Core.AgentRunnerCheckpointQueueTest"}, :test)
+    refute {"Aiur.Core.AgentRunnerCheckpointQueueTest", "*"} in identities
   end
 
   test "a listed describe-block test is excluded by the name ExUnit gives it" do
