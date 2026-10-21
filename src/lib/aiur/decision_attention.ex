@@ -12,6 +12,7 @@ defmodule Aiur.DecisionAttention do
   require Logger
 
   alias Aiur.{AlertFeed, DecisionStore, Issue, Signal}
+  alias Aiur.DecisionAttention.Correlation
   alias Aiur.DecisionAttention.LegacyImport
   alias Aiur.DecisionAttentionResolution
   alias Aiur.Events.SubscriptionStore
@@ -23,7 +24,6 @@ defmodule Aiur.DecisionAttention do
   @open_timeout 65_000
 
   @type attention :: %{
-          optional(:decision_id) => String.t() | nil,
           issue: Issue.t(),
           workspace: Path.t() | nil,
           worker_host: String.t() | nil,
@@ -157,14 +157,13 @@ defmodule Aiur.DecisionAttention do
       worker_host: worker_host,
       slug: slug,
       question: question,
-      decision_id: nil,
       opened_at: state.now_fun.(),
       timer_ref: nil
     }
 
     case project_attention(state.decision_projector, attention, opts) do
       {:ok, result} ->
-        attention = %{attention | decision_id: decision_id(result)}
+        attention = Map.put(attention, :decision_id, Correlation.decision_id(result))
 
         next_state =
           if actionable_decision?(result) do
@@ -462,20 +461,11 @@ defmodule Aiur.DecisionAttention do
       issue: attention.issue,
       workspace: attention.workspace,
       worker_host: attention.worker_host,
-      reason: decision_alert_reason(attention),
+      reason: Correlation.alert_reason(attention),
       needs_attention: true,
       severity: "warning"
     )
   end
-
-  defp decision_id(%{decision: %{decision_id: id}}) when is_binary(id), do: id
-  defp decision_id(%{decision: %{"decision_id" => id}}) when is_binary(id), do: id
-  defp decision_id(_result), do: nil
-
-  defp decision_alert_reason(%{decision_id: id, question: question}) when is_binary(id),
-    do: "Executor decision required (Decision #{id}): #{question}"
-
-  defp decision_alert_reason(%{question: question}), do: "Decision attention: #{question}"
 
   defp emit_resolution_alert(attention) do
     Signal.agent_alert(resolution_topic(attention), "Executor decision updated",
