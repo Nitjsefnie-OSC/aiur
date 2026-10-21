@@ -5,14 +5,19 @@ defmodule Aiur.TestQuarantineTest do
   alias Aiur.TestQuarantine.Detector
 
   test "parses comments, exact test names, and ticket provenance" do
-    source = "# test, name, ticket\nAiur.ExampleTest\tkeeps the exact name\t#42\n"
+    source = "# test, name, ticket, expiry\nAiur.ExampleTest\tkeeps the exact name\t#42\t2026-12-31\n"
 
-    assert {:ok, [%{module: "Aiur.ExampleTest", name: "keeps the exact name", ticket: "#42"}]} =
+    assert {:ok, [%{module: "Aiur.ExampleTest", name: "keeps the exact name", ticket: "#42", expires: ~D[2026-12-31]}]} =
              TestQuarantine.parse(source)
   end
 
   test "rejects malformed entries with their source line" do
     assert {:error, {:invalid_quarantine_entry, 2}} = TestQuarantine.parse("# valid comment\nnot a valid row\n")
+  end
+
+  test "rejects malformed expiry dates with a clear source line" do
+    assert {:error, {:invalid_quarantine_entry, 1, "expected module, name, ticket, and YYYY-MM-DD expiry"}} =
+             TestQuarantine.parse("Aiur.ExampleTest\tkeeps the exact name\t#42\t2026-13-40\n")
   end
 
   test "the checked-in quarantine list parses and excludes its exact entries" do
@@ -24,6 +29,8 @@ defmodule Aiur.TestQuarantineTest do
     assert identities == Enum.sort(identities)
     assert length(identities) == length(Enum.uniq(identities))
     assert Enum.all?(entries, &(&1.ticket =~ ~r/^#?[1-9][0-9]*$/))
+    assert length(Enum.map(entries, & &1.ticket) |> Enum.uniq()) == length(entries)
+    assert Enum.all?(entries, &match?(%Date{}, &1.expires))
 
     test_modules = test_root |> Path.join("**/*_test.exs") |> Path.wildcard() |> test_module_names()
 

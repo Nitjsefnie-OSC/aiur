@@ -5,8 +5,9 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
   alias Aiur.Config.TrackerSettings
   alias Aiur.Events
-  alias Aiur.GitHub.{Errors, Transport}
+  alias Aiur.GitHub.{CIRecovery, Errors, Transport}
   alias Aiur.LandingWatch.Journal
+  alias Aiur.TestQuarantine
 
   @list_paths ["src/test/quarantine.txt", "src/browser/quarantine.txt"]
   # A ticket closed without a merged fix PR never sees `pr.merged`, so its entries are swept.
@@ -34,7 +35,152 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   @spec lift_closed(keyword()) :: :ok | {:error, term()}
   def lift_closed(opts \\ []) do
     with {:ok, tickets} <- quarantined_tickets(opts) do
+      case lift_expired(opts) do
+        :ok -> :ok
+        {:error, reason} -> Logger.warning("expired quarantine sweep failed reason=#{inspect(reason)}")
+      end
+
       Enum.each(tickets, &lift_if_closed(&1, opts))
+      :ok
+    end
+  end
+
+  @doc "Applies the nightly quarantine result to entries past their expiry date."
+  @spec lift_expired(keyword()) :: :ok | {:error, term()}
+  def lift_expired(opts \\ []) do
+    path = Keyword.get_lazy(opts, :test_quarantine_path, &test_quarantine_path/0)
+    today = Keyword.get(opts, :today, Date.utc_today())
+
+    with {:ok, entries} <- TestQuarantine.read(path),
+         {:ok, runs} <- nightly_results(opts) do
+      entries
+      |> Enum.filter(&(Date.compare(&1.expires, today) != :gt))
+      |> Enum.reduce_while(:ok, &expire_entry_result(&1, &2, runs, opts))
+    end
+  end
+
+  defp expire_entry_result(entry, :ok, runs, opts) do
+    case expire_entry(entry, runs, opts) do
+      :ok -> {:cont, :ok}
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp test_quarantine_path do
+    root_path = Path.join(File.cwd!(), "src/test/quarantine.txt")
+    if File.exists?(root_path), do: root_path, else: Path.join(File.cwd!(), "test/quarantine.txt")
+  end
+
+  defp expire_entry(entry, runs, opts) do
+    recent = Enum.take(runs, Keyword.get(opts, :green_runs_required, 3))
+
+    cond do
+      length(recent) >= Keyword.get(opts, :green_runs_required, 3) and Enum.all?(recent, &(&1 == :success)) ->
+        ticket = String.to_integer(String.trim_leading(entry.ticket, "#"))
+        Keyword.get(opts, :quarantine_lift_fun, &lift/2).(ticket, Keyword.put(opts, :lift_reason, "after #{length(recent)} green nightly quarantine runs")) |> normalize_lift_result()
+
+      Enum.any?(recent, &(&1 == :failure)) ->
+        escalate_once(entry, opts)
+
+      true ->
+        :ok
+    end
+  end
+
+  defp normalize_lift_result(:ok), do: :ok
+  defp normalize_lift_result({:ok, :already_claimed}), do: :ok
+  defp normalize_lift_result({:error, _} = error), do: error
+
+  defp escalate_once(entry, opts) do
+    claim = "quarantine-expiry-escalation :: #{entry.ticket}"
+
+    case Journal.claim_flake(claim, opts) do
+      {:ok, :already_claimed} -> :ok
+      {:ok, :new} -> release_failed_escalation(claim, escalate(entry, opts), opts)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp release_failed_escalation(_claim, :ok, _opts), do: :ok
+
+  defp release_failed_escalation(claim, {:error, _} = error, opts) do
+    case Journal.release_flake(claim, opts) do
+      :ok -> error
+      {:error, reason} -> {:error, {:quarantine_escalation_claim_release_failed, reason, error}}
+    end
+  end
+
+  defp nightly_results(opts) do
+    case Keyword.get(opts, :nightly_quarantine_results_fun) do
+      fun when is_function(fun, 1) -> fun.(opts)
+      _ -> fetch_nightly_results(opts)
+    end
+  end
+
+  defp fetch_nightly_results(opts) do
+    case CIRecovery.read("/actions/runs?event=schedule&status=completed&per_page=20", opts) do
+      {:ok, %{"workflow_runs" => runs}} when is_list(runs) ->
+        runs
+        |> Enum.filter(&(&1["name"] == "ci" and &1["head_branch"] == "main" and is_integer(&1["id"])))
+        |> Enum.reduce_while({:ok, []}, &append_nightly_result(&1, &2, opts))
+
+      {:error, _} = error ->
+        error
+
+      _ ->
+        {:error, :invalid_quarantine_nightly_runs}
+    end
+  end
+
+  defp append_nightly_result(run, {:ok, acc}, opts) do
+    case CIRecovery.jobs(run["id"], opts) do
+      {:ok, jobs} -> {:cont, {:ok, acc ++ [Enum.find_value(jobs, :unknown, &quarantine_job_status/1)]}}
+      {:error, _} = error -> {:halt, error}
+    end
+  end
+
+  defp quarantine_job_status(%{"name" => "quarantined tests (non-blocking)"} = job) do
+    failed_step? = Enum.any?(job["steps"] || [], &(&1["name"] == "Run quarantined tests" and (&1["outcome"] == "failure" or &1["conclusion"] == "failure")))
+
+    cond do
+      failed_step? -> :failure
+      job["conclusion"] == "success" -> :success
+      job["conclusion"] in ["failure", "timed_out", "cancelled"] -> :failure
+      true -> :unknown
+    end
+  end
+
+  defp quarantine_job_status(_job), do: nil
+
+  defp escalate(entry, opts) do
+    with {:ok, context} <- context(hd(@list_paths), opts) do
+      escalate_ticket(context, String.trim_leading(entry.ticket, "#"), opts)
+    end
+  end
+
+  defp escalate_ticket(context, number, opts) do
+    with :ok <- add_priority_label(context, number, opts) do
+      change_label(context, number, :delete, "priority:2", opts)
+    end
+  end
+
+  defp add_priority_label(context, number, opts) do
+    url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/issues/#{number}/labels"
+
+    case request(opts).(%{method: :post, url: url, token: context.token, caller: "quarantine_expiry_priority", body: %{"labels" => ["priority:1"]}}) do
+      {:ok, %{status: status}} when status in [200, 201] -> :ok
+      {:ok, response} -> {:error, Errors.github_status_error(response)}
+      {:error, _} = error -> error
+    end
+  end
+
+  defp change_label(context, number, method, label, opts) do
+    url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/issues/#{number}/labels/#{URI.encode(label)}"
+
+    case request(opts).(%{method: method, url: url, token: context.token, caller: "quarantine_expiry_priority"}) do
+      {:ok, %{status: status}} when status in [200, 201, 204] -> :ok
+      {:ok, response} -> {:error, Errors.github_status_error(response)}
+      {:error, _} = error -> error
     end
   end
 
@@ -59,7 +205,11 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   end
 
   defp list_tickets(contents) do
-    for line <- String.split(contents, "\n"), [_module, _name, "#" <> number] <- [String.split(line, "\t")], {ticket, ""} <- [Integer.parse(number)], do: ticket
+    for line <- String.split(contents, "\n"),
+        fields when length(fields) in [3, 4] <- [String.split(line, "\t")],
+        "#" <> number <- [Enum.at(fields, 2)],
+        {ticket, ""} <- [Integer.parse(number)],
+        do: ticket
   end
 
   defp issue_state(ticket, opts) do
@@ -187,6 +337,7 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   defp ticket_entry?(line, target) do
     case String.split(line, "\t") do
       [_module, _name, ^target] -> true
+      [_module, _name, ^target, _expires] -> true
       _ -> false
     end
   end

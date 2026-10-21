@@ -2,9 +2,8 @@ defmodule Aiur.LandingWatch.QuarantineEvidence do
   @moduledoc """
   Decides which failures may count toward quarantine.
 
-  A test is a flake only with evidence that it also passes: a base-branch failure counts
-  once a rerun of the failing commit passed it, and never when the failing change touched
-  the test or the lib file it mirrors. A test that fails in the newest base-branch run is a
+  A base-branch failure is quarantinable on its first observation when its commit did not
+  touch the test or the lib file it mirrors. A test that fails in the newest base-branch run is a
   regression for the main-watch fixer; merge-group failures recorded meanwhile never count.
   """
 

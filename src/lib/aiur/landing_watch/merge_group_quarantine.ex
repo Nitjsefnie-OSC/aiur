@@ -1,7 +1,7 @@
 defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   @moduledoc """
   Quarantines a flaky test: one that failed in two merge groups whose PRs did not touch it,
-  or in base-branch CI and then passed there (`QuarantineEvidence`), within 24 hours.
+  or failed once in base-branch CI without a related change (`QuarantineEvidence`), within 24 hours.
 
   Failures are recorded in the landing journal first; quarantine decisions are then made
   from the journal alone, so a GitHub error on one poll is retried on a later one, with
@@ -321,7 +321,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   defp candidates(rows, history, now) do
     recent = Enum.filter(rows, &recent?(&1["at_ms"], now))
     recent = Enum.reject(recent, &(&1["red_on_main"] == true))
-    main = recent |> Enum.filter(&(&1["source"] == "base" and &1["touched"] != true and QuarantineEvidence.passed_on_rerun?(history, &1))) |> Enum.map(& &1["identity"])
+    main = recent |> Enum.filter(&(&1["source"] == "base" and &1["touched"] != true)) |> Enum.map(& &1["identity"])
 
     repeated =
       case Detector.repeated(Enum.map(recent, &observation/1), now, fn _pr -> {:ok, []} end) do
@@ -330,7 +330,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
       end
 
     red = QuarantineEvidence.red_on_main(history)
-    qualifying = Enum.reject(main ++ repeated, &(&1 in red))
+    qualifying = main ++ Enum.reject(repeated, &(&1 in red))
 
     recent
     |> Enum.filter(&(&1["identity"] in qualifying and &1["touched"] != true))
