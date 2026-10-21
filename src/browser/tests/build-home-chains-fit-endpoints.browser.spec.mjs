@@ -21,10 +21,12 @@ for (const width of [1440, 1024]) test(`Fit redraws dependency arrows on settled
       const m = svg.getScreenCTM()
       return [m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f]
     }
-    const edgeDistance = (p, r) => Math.min(
-      Math.abs(p[0] - r.left), Math.abs(p[0] - r.right),
-      Math.abs(p[1] - r.top), Math.abs(p[1] - r.bottom),
-    )
+    const edgeDistance = (p, r) => {
+      const dx = Math.max(r.left - p[0], 0, p[0] - r.right)
+      const dy = Math.max(r.top - p[1], 0, p[1] - r.bottom)
+      if (dx || dy) return Math.hypot(dx, dy)
+      return Math.min(p[0] - r.left, r.right - p[0], p[1] - r.top, r.bottom - p[1])
+    }
     const edgeIndex = new Map()
     return [...svg.querySelectorAll('.bd-eh')].map(hit => {
       const line = hit.nextElementSibling
