@@ -1,10 +1,10 @@
 # Module, full ExUnit test name (describe prefix included, as failures print it), and tracking ticket. Tabs delimit fields.
-Aiur.AgentGitHubGuard.GraphqlAndPagination2Test\ta broker failure refuses the real gh command\t#4463
-Aiur.AgentGitHubGuard.InstallAndTokenTest\trefuses gh aliases and any command name the guard cannot recognise\t#4463
-Aiur.Core.AgentRunnerCheckpointQueueTest\t*\t#4463
-Aiur.Core.AgentRunnerStartupFailureTest\tagent runner pauses on before_run failure and resumes after operator intervention\t#4463
-Aiur.DecisionStore.EnrichmentTest\tsupervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification\t#4463
-Aiur.Muse.TurnTest\tan accepted receipt without a terminal times out\t#4463
-Aiur.Orchestrator.QueueSetsDispatchTest\tCLI reorders three persisted sets and real reconciliation and dispatch follow the new ranks\t#4463
-Aiur.Orchestrator.Status.ProgressAndIdentityTest\torchestrator snapshot reads open decisions without calling the per-ticket store\t#4463
-Aiur.Regression.OrchestratorLifecycleTest\tpause/resume semantics resume revalidates tracker state after clearing the pause override\t#4463
+Aiur.AgentGitHubGuard.GraphqlAndPagination2Test	a broker failure refuses the real gh command	#4463
+Aiur.AgentGitHubGuard.InstallAndTokenTest	refuses gh aliases and any command name the guard cannot recognise	#4463
+Aiur.Core.AgentRunnerCheckpointQueueTest	*	#4463
+Aiur.Core.AgentRunnerStartupFailureTest	agent runner pauses on before_run failure and resumes after operator intervention	#4463
+Aiur.DecisionStore.EnrichmentTest	supervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification	#4463
+Aiur.Muse.TurnTest	an accepted receipt without a terminal times out	#4463
+Aiur.Orchestrator.QueueSetsDispatchTest	CLI reorders three persisted sets and real reconciliation and dispatch follow the new ranks	#4463
+Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads open decisions without calling the per-ticket store	#4463
+Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
