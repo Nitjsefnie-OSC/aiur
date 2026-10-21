@@ -43,8 +43,13 @@ defmodule Aiur.LandingWatch.MergeGroupBlameTest do
       journal_path: path,
       live_observations_fun: fn _, _ -> {:ok, prs} end,
       jobs_fun: fn _, _ -> {:ok, [%{"id" => 910, "name" => "test", "conclusion" => "failure"}]} end,
-      job_log_fun: fn _, _ -> {:ok, "mix test src/test/aiur/changed_test.exs:12 failed"} end,
-      changed_paths_fun: fn number, _ -> {:ok, if(number == 18, do: ["src/test/aiur/changed_test.exs"], else: [])} end,
+      job_log_fun: fn _, _ ->
+        {:ok, "mix test src/test/aiur/changed_test.exs:12 failed\nmix test src/test/aiur/second_changed_test.exs:8 failed"}
+      end,
+      changed_paths_fun: fn number, _ ->
+        paths = ["src/test/aiur/changed_test.exs", "src/test/aiur/second_changed_test.exs"]
+        {:ok, if(number == 18, do: paths, else: [])}
+      end,
       recent_main_failure_paths_fun: fn _, _ -> {:ok, []} end,
       known_failure_patterns: [],
       rework_fun: fn observation, _, _ ->

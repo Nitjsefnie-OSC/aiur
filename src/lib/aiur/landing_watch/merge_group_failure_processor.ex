@@ -135,10 +135,18 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
   defp route_classification(classification, failure, run, observations, prs, blame_opts, opts)
        when classification in [:known_non_pr, :pr_caused] do
     case blamed_pr(failure, prs, blame_opts) do
-      {:one, number} -> route_failed_prs([number], observations, failure, run, opts)
+      {:culprits, numbers} -> route_blame_result(numbers, prs, observations, failure, run, opts)
+      {:mixed, numbers} -> route_blame_result(numbers, prs, observations, failure, run, opts)
       :none -> route_innocent(prs, observations, run, failure, "untouched failing test", opts)
       _ -> route_unresolved(classification, failure, run, observations, prs, opts)
     end
+  end
+
+  defp route_blame_result(culprits, prs, observations, failure, run, opts) do
+    innocent = prs -- culprits
+
+    with :ok <- MergeGroupRequeue.requeue_group_prs(innocent, observations, run, "group contained a PR-caused failure", opts),
+         do: route_failed_prs(culprits, observations, failure, run, opts)
   end
 
   defp route_unresolved(:known_non_pr, _failure, run, observations, prs, opts) do
@@ -194,8 +202,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
 
   defp blamed_pr(%{log: log}, prs, opts) when is_binary(log) do
     with false <- Keyword.has_key?(opts, :blame_evidence_error),
-         [test_path] <- failure_path(log) do
-      path_blame(test_path, log, prs, opts)
+         paths when paths != [] <- failure_paths(log) do
+      paths_blame(paths, log, prs, opts)
     else
       _ -> :unknown
     end
@@ -203,9 +211,28 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
 
   defp blamed_pr(_, _, _), do: :unknown
 
+  defp paths_blame(paths, log, prs, opts) do
+    results = Enum.map(paths, &path_blame(&1, log, prs, opts))
+
+    culprits =
+      results
+      |> Enum.flat_map(fn
+        {:culprits, numbers} -> numbers
+        _ -> []
+      end)
+      |> Enum.uniq()
+
+    cond do
+      Enum.any?(results, &(&1 == :unknown)) -> :unknown
+      culprits == [] -> :none
+      Enum.any?(results, &(&1 == :none)) -> {:mixed, culprits}
+      true -> {:culprits, culprits}
+    end
+  end
+
   defp path_blame(path, log, prs, opts) do
     case touched_prs(path, prs, opts) do
-      [number] -> {:one, number}
+      [number] -> {:culprits, [number]}
       [] -> if known_failure?(path, log, opts), do: :none, else: :unknown
       _ -> :unknown
     end
@@ -225,7 +252,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
       Enum.any?(Keyword.get(opts, :known_failure_patterns, []), &String.contains?(String.downcase(log), String.downcase(&1)))
   end
 
-  defp failure_path(log), do: Regex.run(~r{(?:^|\s)([\w./-]+_test\.exs)(?::\d+)?}m, log, capture: :all_but_first)
+  defp failure_paths(log), do: Regex.scan(~r{(?:^|\s)([\w./-]+_test\.exs)(?::\d+)?}m, log, capture: :all_but_first) |> List.flatten() |> Enum.uniq()
 
   defp route_innocent(prs, observations, run, failure, reason, opts) do
     {repeat, first} = split_repeated_heads(prs, observations, opts)
@@ -277,7 +304,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
         "group_prs" => prs,
         "decision" => to_string(decision),
         "at_ms" => Keyword.get(opts, :now_ms, System.system_time(:millisecond)),
-        "path" => if(is_map(failure), do: failure |> Map.get(:log, "") |> then(&Regex.run(~r{(?:^|\s)([\w./-]+_test\.exs)(?::\d+)?}m, &1, capture: :all_but_first)) |> List.first())
+        "path" => if(is_map(failure), do: failure |> Map.get(:log, "") |> failure_paths() |> List.first())
       },
       opts
     )
