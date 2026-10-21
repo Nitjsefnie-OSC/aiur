@@ -32,7 +32,7 @@ defmodule Aiur.LandingWatch.MergeGroupJournal do
   @doc "Takes up to the available number of shared slots for individual automatic reruns."
   @spec take_requeue_slots(map(), integer(), non_neg_integer()) :: {:ok, map(), non_neg_integer()} | {:error, :merge_group_requeue_limit_reached}
   def take_requeue_slots(state, now, requested) do
-    slots = max(0, 3 - length(recent_requeues(state, now)))
+    slots = max(0, 4 - length(recent_requeues(state, now)))
     reserved = min(requested, slots)
 
     if reserved == 0 do

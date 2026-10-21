@@ -3,9 +3,9 @@ defmodule Aiur.LandingWatch.PrRerun do
   Reruns an approved, not-landing PR's failed CI when the failure has a non-PR
   cause, and routes PR-caused failures to rework.
 
-  Each head action spends the per-head budget, and each workflow rerun spends
-  one shared automatic-requeue slot in the journal. A head deferred by the
-  shared cap stays in the journal's rerun backlog until a later poll reruns it.
+  Each head action spends the per-head budget, and each automatic requeue or
+  refresh spends one of four shared 15-minute slots in the journal. A head
+  deferred by the shared cap stays in the journal's rerun backlog until a later poll retries it.
   A head whose failure needs a fresh merge ref is never rerun; it gets GitHub's
   update-branch under the same budget and cap (#4930), unless the base changed
   the PR's own files; then it routes to rework so the worker retests the new
@@ -300,12 +300,18 @@ defmodule Aiur.LandingWatch.PrRerun do
   defp failed_checks(runs), do: for(run <- runs, run["conclusion"] in @rerun_conclusions, uniq: true, do: run["name"])
 
   defp apply_remedy(:refresh, observation, _failed, opts) do
-    case Keyword.get(opts, :update_branch_fun, &CIRecovery.update_branch/3).(observation.number, observation.head, opts) do
-      {:ok, _} -> :ok
+    with true <- approved_at_head?(observation),
+         {:ok, _response} <- Keyword.get(opts, :update_branch_fun, &CIRecovery.update_branch/3).(observation.number, observation.head, opts) do
+      :ok
+    else
+      false -> {:error, :approval_not_on_observed_head}
       {:error, _} = error -> error
       _ -> {:error, :update_branch_unconfirmed}
     end
   end
+
+  defp approved_at_head?(%{review_decision: "APPROVED", head: head, reviews: [%{"commit" => %{"oid" => head}} | _]}) when is_binary(head), do: true
+  defp approved_at_head?(_), do: false
 
   defp rerun_all(runs, opts) do
     Enum.reduce_while(runs, :ok, fn run, :ok ->

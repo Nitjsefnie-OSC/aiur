@@ -13,7 +13,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
     armed = %{observation() | auto_merge_request: %{"enabledAt" => "2026-10-14T09:00:00Z"}}
     in_window = failed_gate() |> Map.put("started_at", @started)
     outside = failed_gate() |> Map.put("run_id", 100) |> Map.put("id", 51) |> Map.put("started_at", "2026-10-14T09:58:00Z")
-    for _ <- 1..3, do: assert(:ok = Journal.reserve_merge_group_requeue(@started_ms + 3_600_000, journal_path: path))
+    for _ <- 1..4, do: assert(:ok = Journal.reserve_merge_group_requeue(@started_ms + 3_600_000, journal_path: path))
     checks = [in_window, outside]
 
     assert :ok =
@@ -45,7 +45,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
     path = journal_path()
     armed = %{observation() | auto_merge_request: %{"enabledAt" => "2026-10-14T09:00:00Z"}}
     runs = for id <- 99..101, do: failed_gate() |> Map.put("run_id", id) |> Map.put("id", id - 49) |> Map.put("started_at", @started)
-    assert :ok = Journal.reserve_merge_group_requeue(@started_ms + 3_600_000, journal_path: path)
+    for _ <- 1..2, do: assert(:ok = Journal.reserve_merge_group_requeue(@started_ms + 3_600_000, journal_path: path))
 
     assert :ok =
              LandingWatch.process(
@@ -59,10 +59,10 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
 
     assert_received {:rerun, 99}
     assert_received {:rerun, 100}
-    refute_received {:rerun, 101}
-    assert {:ok, [%{"run_ids" => [101]}]} = Journal.rerun_backlog(journal_path: path)
+    assert_received {:rerun, 101}
+    assert {:ok, []} = Journal.rerun_backlog(journal_path: path)
     assert {:ok, state} = Journal.state(journal_path: path)
-    assert length(state["merge_group_requeues"]) == 3
+    assert length(state["merge_group_requeues"]) == 4
   end
 
   test "recovery backlog drains across cap windows without spending another per-head attempt" do
@@ -76,17 +76,16 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
     assert_received {:rerun, 99}
     assert_received {:rerun, 100}
     assert_received {:rerun, 101}
+    refute_received {:rerun, 102}
 
     later = shared ++ [now_ms: @started_ms + 3_600_000 + 15 * 60_000]
     assert :ok = LandingWatch.process(armed, opts(path, later))
-    assert_received {:rerun, 102}
     assert_received {:rerun, 103}
     assert_received {:rerun, 104}
-    assert {:ok, [%{"run_ids" => [105, 106], "per_head_reserved" => true}]} = Journal.rerun_backlog(journal_path: path)
+    assert {:ok, [%{"run_ids" => [106], "per_head_reserved" => true}]} = Journal.rerun_backlog(journal_path: path)
 
     latest = shared ++ [now_ms: @started_ms + 3_600_000 + 30 * 60_000]
     assert :ok = LandingWatch.process(armed, opts(path, latest))
-    assert_received {:rerun, 105}
     assert_received {:rerun, 106}
     assert {:ok, []} = Journal.rerun_backlog(journal_path: path)
   end
@@ -117,6 +116,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
           send(parent, {:update_branch, number, head})
           {:ok, %{}}
         end,
+        approval_carry_classifier: fn _, _, _, _ -> :identical end,
         comment_fun: fn number, body, _ ->
           send(parent, {:comment, number, body})
           {:ok, %{}}

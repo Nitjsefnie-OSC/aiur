@@ -156,10 +156,9 @@ defmodule Aiur.LandingWatch.PrRerunTest do
     assert_refresh(path, "CI change merged in #4604")
   end
 
-  test "the shared 3-per-15-minute cap spans merge-group requeues and PR reruns across watcher restarts" do
+  test "the shared 4-per-15-minute cap spans merge-group requeues and PR reruns across watcher restarts" do
     path = journal_path()
-    assert :ok = Journal.reserve_merge_group_requeue(@started_ms, journal_path: path)
-    assert :ok = Journal.reserve_merge_group_requeue(@started_ms, journal_path: path)
+    for _ <- 1..3, do: assert(:ok = Journal.reserve_merge_group_requeue(@started_ms, journal_path: path))
 
     first = run_watcher(observation(), path, @started_ms)
     assert_receive {:rerun, 99}, 2_000
@@ -464,7 +463,8 @@ defmodule Aiur.LandingWatch.PrRerunTest do
       merge_queue_entry: nil,
       auto_merge_request: nil,
       rest: %{"head" => %{"ref" => "aiur/17-work"}},
-      raw: %{"reviewDecision" => "APPROVED", "headRefOid" => "head-sha", "isDraft" => false, "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-sha"}}]}}
+      raw: %{"reviewDecision" => "APPROVED", "headRefOid" => "head-sha", "isDraft" => false, "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-sha"}}]}},
+      reviews: [%{"commit" => %{"oid" => "head-sha"}}]
     }
   end
 
