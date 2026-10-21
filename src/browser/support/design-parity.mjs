@@ -154,10 +154,16 @@ export async function openParityPair(browser, cell, opts = {}) {
 
 export async function captureStable(target, opts, page, viewportClip = false) {
   let previous
+  const screenshotOptions = {
+    ...opts,
+    // Keep the native track and its layout width, but remove the thumb's
+    // scroll-position-dependent paint from sequential reference captures.
+    style: `${opts.style ?? ''}\n* { scrollbar-color: transparent transparent !important; }\n*::-webkit-scrollbar-thumb { background: transparent !important; }`
+  }
   for (let attempt = 0; attempt < 10; attempt++) {
     // Locator screenshots scroll into view, disturbing motion under measurement.
     const shoot = async () => {
-      if (!page) return target.screenshot(opts)
+      if (!page) return target.screenshot(screenshotOptions)
       const box = await target.boundingBox()
       if (!box) throw new Error('unreachable screenshot region')
       const offset = await page.evaluate(() => ({ x: scrollX, y: scrollY }))
@@ -165,7 +171,7 @@ export async function captureStable(target, opts, page, viewportClip = false) {
       // Expanding an already-visible clip fires responsive relayouts and clears locks.
       const visible = viewport && !offset.x && !offset.y && box.x >= 0 && box.y >= 0
         && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height
-      return page.screenshot({ ...opts, fullPage: viewportClip ? !visible : true, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
+      return page.screenshot({ ...screenshotOptions, fullPage: viewportClip ? !visible : true, clip: { ...box, x: box.x + offset.x, y: box.y + offset.y } })
     }
     let png
     try { png = await shoot() }
