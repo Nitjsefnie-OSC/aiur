@@ -58,8 +58,8 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
              )
 
     assert_received {:rerun, 99}
-    assert_received {:rerun, 100}
-    assert {:ok, []} = Journal.rerun_backlog(journal_path: path)
+    refute_received {:rerun, 100}
+    assert {:ok, [%{"run_ids" => [100, 101]}]} = Journal.rerun_backlog(journal_path: path)
     assert {:ok, state} = Journal.state(journal_path: path)
     assert length(state["merge_group_requeues"]) == 4
   end
@@ -75,16 +75,13 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
     assert_received {:rerun, 99}
     assert_received {:rerun, 100}
     assert_received {:rerun, 101}
-    refute_received {:rerun, 102}
+    assert_received {:rerun, 102}
 
     later = shared ++ [now_ms: @started_ms + 3_600_000 + 15 * 60_000]
     assert :ok = LandingWatch.process(armed, opts(path, later))
     assert_received {:rerun, 103}
     assert_received {:rerun, 104}
-    assert {:ok, [%{"run_ids" => [106], "per_head_reserved" => true}]} = Journal.rerun_backlog(journal_path: path)
-
-    latest = shared ++ [now_ms: @started_ms + 3_600_000 + 30 * 60_000]
-    assert :ok = LandingWatch.process(armed, opts(path, latest))
+    assert_received {:rerun, 105}
     assert_received {:rerun, 106}
     assert {:ok, []} = Journal.rerun_backlog(journal_path: path)
   end
@@ -115,6 +112,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
           send(parent, {:update_branch, number, head})
           {:ok, %{}}
         end,
+        observe_refresh_fun: fn _, _ -> {:ok, %{"headRefOid" => "refreshed-sha"}} end,
         approval_carry_classifier: fn _, _, _, _ -> :identical end,
         comment_fun: fn number, body, _ ->
           send(parent, {:comment, number, body})
@@ -149,6 +147,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
       head: "head-sha",
       draft?: false,
       review_decision: "APPROVED",
+      reviews: [%{"commit" => %{"oid" => "head-sha"}}],
       merge_queue_entry: nil,
       auto_merge_request: nil,
       rest: %{"head" => %{"ref" => "aiur/17-work"}},

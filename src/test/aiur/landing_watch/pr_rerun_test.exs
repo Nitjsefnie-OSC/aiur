@@ -427,6 +427,8 @@ defmodule Aiur.LandingWatch.PrRerunTest do
           send(parent, {:update_branch, number, head})
           {:ok, %{}}
         end,
+        observe_refresh_fun: fn _, _ -> {:ok, %{"headRefOid" => "refreshed-sha"}} end,
+        approval_carry_classifier: fn _, _, _, _ -> :identical end,
         comment_fun: fn number, body, _ ->
           send(parent, {:comment, number, body})
           {:ok, %{}}

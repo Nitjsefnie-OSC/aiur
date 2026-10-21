@@ -14,6 +14,7 @@ defmodule Aiur.LandingWatch.PrRerun do
   """
 
   alias Aiur.GitHub.{CIRecovery, Client}
+  alias Aiur.Events.GithubCIPoller
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.{Journal, MergeGroupJournal, MergeGroupRunFetcher, PrRerunClassifier}
   alias Aiur.TicketBranch
@@ -301,10 +302,13 @@ defmodule Aiur.LandingWatch.PrRerun do
 
   defp apply_remedy(:refresh, observation, _failed, opts) do
     with true <- approved_at_head?(observation),
-         {:ok, _response} <- Keyword.get(opts, :update_branch_fun, &CIRecovery.update_branch/3).(observation.number, observation.head, opts) do
+         {:ok, _response} <- Keyword.get(opts, :update_branch_fun, &CIRecovery.update_branch/3).(observation.number, observation.head, opts),
+         {:ok, refreshed} <- Keyword.get(opts, :observe_refresh_fun, &CIRecovery.observe/2).(observation.number, opts),
+         {:ok, :identical} <- classify_refreshed_contribution(observation, refreshed, opts) do
       :ok
     else
       false -> {:error, :approval_not_on_observed_head}
+      {:ok, {:changed, evidence}} -> {:error, {:approval_not_carried, evidence}}
       {:error, _} = error -> error
       _ -> {:error, :update_branch_unconfirmed}
     end
@@ -312,6 +316,13 @@ defmodule Aiur.LandingWatch.PrRerun do
 
   defp approved_at_head?(%{review_decision: "APPROVED", head: head, reviews: [%{"commit" => %{"oid" => head}} | _]}) when is_binary(head), do: true
   defp approved_at_head?(_), do: false
+
+  defp classify_refreshed_contribution(observation, %{"headRefOid" => head}, opts) when is_binary(head) and head != "" do
+    classifier = Keyword.get(opts, :approval_carry_classifier, &GithubCIPoller.classify_contribution/4)
+    {:ok, classifier.(observation.head, head, observation.number, opts)}
+  end
+
+  defp classify_refreshed_contribution(_observation, _refreshed, _opts), do: {:error, :refreshed_head_unconfirmed}
 
   defp rerun_all(runs, opts) do
     Enum.reduce_while(runs, :ok, fn run, :ok ->
