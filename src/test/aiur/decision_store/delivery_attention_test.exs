@@ -164,7 +164,7 @@ defmodule Aiur.DecisionStore.DeliveryAttentionTest do
 
       # A listener restart retains the pending answer and does not retry it.
       GenServer.stop(pid)
-      _pid2 = start_store!(dir, dispatcher: fn _decision, _opts -> {:error, :no_running_agent} end)
+      pid2 = start_store!(dir, dispatcher: fn _decision, _opts -> {:error, :no_running_agent} end)
       restored = wait_for_decision(pid2, decision.decision_id, & &1.pending_for_session?)
       assert restored.dispatch_attempts == []
       assert case_attention_alerts(log_root, topic) == []
@@ -281,7 +281,7 @@ defmodule Aiur.DecisionStore.DeliveryAttentionTest do
 
       GenServer.stop(pid)
 
-      pid2 = start_store!(dir, dispatcher: fn _decision, _opts -> {:error, :no_running_agent} end)
+      _pid2 = start_store!(dir, dispatcher: fn _decision, _opts -> {:error, :no_running_agent} end)
       wait_for_feed_empty(log_root, topic)
       assert case_attention_alerts(log_root, topic) == []
     end
