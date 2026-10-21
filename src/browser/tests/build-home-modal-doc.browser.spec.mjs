@@ -177,3 +177,55 @@ test('read-only add reply removes the control and settled duplicates name their 
   await page.evaluate(() => window['queue-addReply']({ v: 1, kind: 'error', reason: 'read_only' }))
   await expect(page.getByRole('button', { name: 'Add to queue' })).toHaveCount(0)
 })
+
+async function upsert(page, rows) {
+  await page.evaluate(async rows => {
+    const { ctx } = await import('/build-home/state.js')
+    ;(await import('/build-home/hook.js')).receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now: ctx.snap.now, upsert: rows, remove: [], set: {} })
+  }, rows)
+}
+
+for (const settleBeforeDiff of [true, false]) {
+  test(`authoritative queue transition permits re-adding after ${settleBeforeDiff ? 'success' : 'pending with late success'}`, async ({ page }) => {
+    const t = await display(page, { sec: 'nq' })
+    const button = page.getByRole('button', { name: 'Add to queue' })
+    await button.click(); await expect(button).toBeDisabled()
+    if (settleBeforeDiff) await result(page, t.id, { ok: true })
+    await upsert(page, [{ ...t, sec: 'plan', qpos: 1, wave: 1 }])
+    await expect(button).toHaveCount(0)
+    if (!settleBeforeDiff) await result(page, t.id, { ok: true })
+    await upsert(page, [{ ...t, sec: 'nq', qpos: null, wave: null }])
+    await expect(button).toBeEnabled()
+    await button.click(); await expect(button).toHaveAttribute('aria-busy', 'true')
+    expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'queue-add').length)).toBe(2)
+  })
+}
+
+test('board diffs preserve dependency and queue focus without taking focus from the header', async ({ page }) => {
+  const t = await display(page, { sec: 'nq', deps: ['999'] })
+  const dep = page.locator('.bm-dep[data-goto="999"]')
+  const button = page.getByRole('button', { name: 'Add to queue' })
+  await dep.focus()
+  const unrelated = await page.evaluate(async () => (await import('/build-home/state.js')).ctx.D.plan[0])
+  await upsert(page, [{ ...unrelated, title: unrelated.title + ' unrelated update' }])
+  await expect(dep).toBeFocused()
+  await upsert(page, [{ ...t, title: t.title + ' updated' }])
+  await expect(dep).toBeFocused()
+  await page.keyboard.press('Tab'); await expect(button).toBeFocused()
+  await upsert(page, [{ ...t, title: t.title + ' updated again' }])
+  await expect(button).toBeFocused()
+  await page.keyboard.press('Enter'); await expect(button).toHaveAttribute('aria-busy', 'true')
+  await result(page, t.id, { ok: false, reason: 'closed' })
+  await page.locator('[data-a="link"]').focus()
+  await upsert(page, [{ ...t, title: t.title + ' header update' }])
+  await expect(page.locator('[data-a="link"]')).toBeFocused()
+  expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'queue-add').length)).toBe(1)
+})
+
+// Unknown observations must never acquire a plausible freshness age.
+test('stale body with no observation renders unknown age and retains content', async ({ page }) => {
+  const t = await display(page)
+  await pushDoc(page, t.id, { state: 'stale', reason: 'not_fresh', observed_at: null, body_html: '<p>Retained description</p>' })
+  await expect(page.locator('.bm-body')).toContainText('Retained description')
+  await expect(page.locator('.bm-cue')).toContainText('unknown time (age unknown)')
+})

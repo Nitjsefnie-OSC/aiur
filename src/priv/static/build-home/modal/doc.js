@@ -73,6 +73,9 @@ function addHTML(t, D) {
 }
 export function renderDoc(body, t, D, doc, opts = {}) {
   const scroll = body.querySelector('.bm-doc')?.scrollTop || 0;
+  const active = document.activeElement;
+  const focused = body.contains(active) ? active.closest('[data-goto], [data-a]') : null;
+  const focus = focused ? { goto: focused.dataset.goto, action: focused.dataset.a } : null;
   const created = doc?.created ?? t.created;
   const source = I.github + '#' + esc(t.num ?? t.id) + (created == null ? '' : ' · opened ' + esc(fmtDate(created)) + (doc?.author ? ' by @' + esc(doc.author) : ''));
   const fact = (name, value) => '<div><small>' + name + '</small><b>' + esc(value) + '</b></div>';
@@ -86,6 +89,11 @@ export function renderDoc(body, t, D, doc, opts = {}) {
   if (first?.tagName === 'P' && !first.classList.contains('bm-cue')) { first.classList.add('bm-sum'); first.insertAdjacentHTML('afterend', cues(t)); }
   else content.insertAdjacentHTML('afterbegin', cues(t));
   content.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
+  if (focus) {
+    const replacement = Array.from(body.querySelectorAll('[data-goto], [data-a]')).find(el =>
+      focus.goto != null ? el.dataset.goto === focus.goto : el.dataset.a === focus.action);
+    if (replacement && !replacement.disabled) replacement.focus({ preventScroll: true });
+  }
   body.querySelector('.bm-doc').scrollTop = scroll;
   body.querySelector('[data-a="queue-add"]')?.addEventListener('click', () => add(t.id));
 }
@@ -105,22 +113,31 @@ export function requestDoc(t) {
 }
 async function add(id) {
   if (adds.get(id)?.pending || adds.get(id)?.ok) return;
-  adds.set(id, { pending: true }); repaint();
+  const pending = { pending: true };
+  adds.set(id, pending); repaint();
   const life = ctx.life;
   let reply;
   try { reply = await ctx.push('queue-add', { id }); }
   catch { reply = { v: 1, kind: 'queue-add-result', id, ok: false, reason: 'outcome_unknown' }; }
-  if (ctx.life !== life || life.disposed) return;
+  if (ctx.life !== life || life.disposed || adds.get(id) !== pending) return;
   if (reply?.kind === 'error') {
     if (reply.reason === 'read_only') ctx.snap.writable = false;
     adds.set(id, { ok: false, reason: 'refused' }); repaint();
   } else if (reply?.kind === 'queue-add-result') applyQueueAdd(reply);
 }
 export function applyQueueAdd(msg) {
-  if (msg?.v !== 1 || msg.kind !== 'queue-add-result') return;
-  adds.set(msg.id, msg); repaint();
+  if (msg?.v !== 1 || msg.kind !== 'queue-add-result' || !adds.has(msg.id)) return;
+  // Once a board row leaves nq, a late add result cannot re-lock a later re-add.
+  const row = ctx.D?.byId[msg.id] || (MS.t?.id === msg.id ? MS.t : null);
+  if (row && row.sec !== 'nq') adds.delete(msg.id);
+  else adds.set(msg.id, msg);
+  repaint();
 }
-export function syncDoc() { repaint(); }
+export function syncDoc(msg) {
+  for (const row of msg.upsert || []) if (row.sec !== 'nq') adds.delete(row.id);
+  for (const id of msg.remove || []) adds.delete(id);
+  repaint();
+}
 export function reconnectDoc() {
   for (const [id, state] of adds) if (state.pending) adds.set(id, { ok: false, reason: 'outcome_unknown' });
   repaint(); if (view && MS.t?.id === view.id) requestDoc(MS.t);
