@@ -17,12 +17,13 @@ const reasons = {
 };
 const reasonText = reason => Object.hasOwn(reasons, reason) ? reasons[reason] : 'unknown';
 const fmtDate = ms => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtTime = ms => { const d = new Date(ms); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 function staleText(doc) {
   const now = nowMs(), observed = doc.observed_at;
   if (!Number.isFinite(observed) || now === null) return 'Issue body as of unknown time (age unknown) · ' + reasonText(doc.reason);
   const age = Math.max(0, now - observed), minutes = Math.floor(age / 60_000);
   const ago = minutes < 1 ? Math.floor(age / 1000) + 's' : minutes < 60 ? minutes + 'm' : minutes < 1440 ? Math.floor(minutes / 60) + 'h' : Math.floor(minutes / 1440) + 'd';
-  return 'Issue body as of ' + new Date(observed).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }) + ' (' + ago + ' ago) · ' + reasonText(doc.reason);
+  return 'Issue body as of ' + fmtTime(observed) + ' (' + ago + ' ago) · ' + reasonText(doc.reason);
 }
 function bodyHTML(doc) {
   switch (doc?.state) {
