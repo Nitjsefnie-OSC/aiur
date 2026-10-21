@@ -20,7 +20,7 @@ defmodule Aiur.AgentRunner.TurnPrompt do
         :cold -> PromptBuilder.build_prompt(issue, prompt_opts)
       end
 
-    prompt <> conflict_guidance(workspace)
+    prompt <> PromptBuilder.answered_decisions_prompt(Keyword.get(prompt_opts, :answered_decisions, [])) <> conflict_guidance(workspace)
   end
 
   def build_turn_prompt(issue, opts, turn_number, max_turns) do

@@ -258,7 +258,8 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
       worker_host: worker_host,
       worker_generation: worker_generation,
       lifecycle_attempt_id: lifecycle_attempt_id,
-      rework_head_sha: rework_head_sha
+      rework_head_sha: rework_head_sha,
+      answered_decisions: pending_answered_decisions(issue, Keyword.get(opts, :decision_store, Commands.default_store()))
     }
 
     case start_runner_task(issue, runner, recipient, runner_context, opts) do
@@ -267,6 +268,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
         ref = Process.monitor(pid)
         Logger.info("Dispatching issue to agent: #{State.issue_context(issue)} pid=#{inspect(pid)} attempt=#{inspect(attempt)} worker_host=#{worker_host || "local"}")
         record_rework_resume(issue, lifecycle_attempt_id)
+        consume_pending_decisions(issue, lifecycle_attempt_id, runner_context.answered_decisions, Keyword.get(opts, :decision_store, Commands.default_store()))
 
         running_entry =
           %{
@@ -346,10 +348,41 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
         worker_host: context.worker_host,
         orchestrator: recipient,
         worker_generation: context.worker_generation,
-        rework_head_sha: rework_head_sha
+        rework_head_sha: rework_head_sha,
+        answered_decisions: context.answered_decisions
       )
     end)
   end
+
+  defp pending_answered_decisions(%Issue{identifier: identifier}, store) do
+    Commands.list_decisions(store)
+    |> Enum.filter(&(&1.ticket.identifier == identifier and &1.pending_for_session?))
+    |> Enum.map(&%{action_id: &1.active_action_id, question: &1.question, answer: answer_text(&1), actor: answer_actor(&1), accepted_at: &1.answer.accepted_at})
+  end
+
+  defp pending_answered_decisions(_issue, _store), do: []
+
+  defp consume_pending_decisions(%Issue{identifier: identifier}, session_id, decisions, store) do
+    action_ids = Enum.map(decisions, & &1.action_id)
+    Commands.consume_pending_for_session(identifier, session_id, action_ids, store)
+  rescue
+    _error ->
+      Logger.warning("Unable to record pending decision consumption for ticket #{identifier}")
+      :ok
+  end
+
+  defp consume_pending_decisions(_issue, _session_id, _decisions, _store), do: :ok
+
+  defp answer_text(%{answer: %{selected_option_id: option_id}, options: options}) when is_binary(option_id) do
+    case Enum.find(options, &(&1.id == option_id)) do
+      %{label: label} -> "#{option_id}: #{label}"
+      _ -> option_id
+    end
+  end
+
+  defp answer_text(%{answer: %{custom_response: response}}), do: response
+
+  defp answer_actor(%{answer: %{actor: %{kind: kind, id: id}}}), do: "#{kind}: #{id || "unknown"}"
 
   defp capture_rework_head(_issue, initial_head, _opts) when initial_head != :pending, do: initial_head
 

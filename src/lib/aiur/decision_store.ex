@@ -107,6 +107,12 @@ defmodule Aiur.DecisionStore do
     GenServer.call(server, {:answer, decision_id, payload, opts}, timeout)
   end
 
+  @doc false
+  @spec consume_pending_for_session(String.t(), String.t(), [String.t()], GenServer.server()) :: :ok
+  def consume_pending_for_session(ticket_identifier, session_id, action_ids, server \\ __MODULE__) do
+    GenServer.call(server, {:consume_pending_for_session, ticket_identifier, session_id, action_ids}, @request_timeout)
+  end
+
   @doc """
   Durably records that the Executor deferred one still-undecided Command to
   the operator, then opens the keyed operator attention.
