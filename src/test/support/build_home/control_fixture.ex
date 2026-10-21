@@ -24,7 +24,8 @@ defmodule Aiur.TestSupport.BuildHome.ControlFixture do
     action = String.to_existing_atom(action)
     status = String.to_existing_atom(status)
     if status == :applied, do: :persistent_term.put({__MODULE__, id}, if(action == :pause, do: "paused", else: "active"))
-    Aiur.AgentPubSub.broadcast_control_lifecycle(id, %{tracker_identity: %{identifier: id}, action: action, status: status, applied_at: DateTime.utc_now()})
+    rejection = if params["class"] == "stale_generation", do: %{class: :stale_generation}
+    Aiur.AgentPubSub.broadcast_control_lifecycle(id, %{tracker_identity: %{identifier: id}, action: action, status: status, rejection: rejection, applied_at: DateTime.utc_now()})
     if status == :applied, do: diff(conn, id, action)
     Plug.Conn.send_resp(conn, 200, "build control lifecycle: #{params["status"]}")
   end

@@ -24,8 +24,8 @@ async function open(page, writable = true, state = 'active') {
   await expect(page.locator('.bm-agent')).toHaveAttribute('data-control', 'ready')
   return row
 }
-async function lifecycle(page, id, control, status) {
-  await page.request.get('/build-control/lifecycle?' + new URLSearchParams({ id, control, status }))
+async function lifecycle(page, id, control, status, rejection) {
+  await page.request.get('/build-control/lifecycle?' + new URLSearchParams({ id, control, status, ...(rejection ? { class: rejection } : {}) }))
 }
 async function calls(page) {
   await page.evaluate(async () => {
@@ -82,6 +82,11 @@ test('expiry permits retry, same-row diffs preserve control and error feedback',
   await expect(page.locator('#bm-title')).toContainText('updated')
   await expect(pause(page)).toHaveAttribute('title', 'Pause timed out — retry')
   await expect(pause(page)).not.toHaveAttribute('disabled')
+  await pause(page).click()
+  await lifecycle(page, row.id, 'pause', 'rejected', 'stale_generation')
+  await expect(pause(page)).toHaveClass(/warn/)
+  await expect(pause(page)).toHaveAttribute('title', 'Unit changed generation — pause canceled')
+  await capture(page, 'stale-generation-warning')
 })
 
 test('unavailable and historical controls stay safe, mobile keeps live buttons', async ({ page }) => {
