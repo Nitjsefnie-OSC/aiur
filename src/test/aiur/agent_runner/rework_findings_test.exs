@@ -106,6 +106,22 @@ defmodule Aiur.AgentRunner.ReworkFindingsTest do
     end
   end
 
+  describe "latest_feedback_comment/3" do
+    test "selects only trusted blocking PR comments newer than the formal review" do
+      comments = [
+        %{"body" => "Blocking: fix the tests before merge", "created_at" => "2026-10-17T14:00:00Z", authoritative: true},
+        %{"body" => "Blocking: old request", "created_at" => "2026-10-17T13:00:00Z", authoritative: true},
+        %{"body" => "Blocking: untrusted request", "created_at" => "2026-10-17T15:00:00Z", authoritative: false},
+        %{"body" => "Thanks, looks good", "created_at" => "2026-10-17T16:00:00Z", authoritative: true}
+      ]
+
+      assert {:ok, %{"body" => "Blocking: fix the tests before merge"}} =
+               ReworkFindings.latest_feedback_comment(4924, "2026-10-17T13:43:10Z", pr_issue_comments_fetcher: fn 4924 -> {:ok, Enum.take(comments, 3)} end)
+
+      assert {:ok, nil} = ReworkFindings.latest_feedback_comment(4924, "2026-10-17T13:43:10Z", pr_issue_comments_fetcher: fn 4924 -> {:ok, comments} end)
+    end
+  end
+
   describe "branch_changes/3" do
     @describetag :tmp_dir
 
@@ -145,6 +161,7 @@ defmodule Aiur.AgentRunner.ReworkFindingsTest do
           reviews_fetcher: fn 4673 ->
             {:ok, [%{"state" => "CHANGES_REQUESTED", "body" => body, "commit_id" => review, "submitted_at" => "2026-10-16T09:17:56Z", "id" => 1, "user" => %{"login" => "r"}, authoritative: true}]}
           end,
+          pr_issue_comments_fetcher: fn _ -> {:ok, []} end,
           pull_request_fetcher: fn 4673 -> {:ok, %{"mergeable_state" => "clean"}} end,
           checklist_commenter: fn issue_id, comment -> send(test_pid, {:comment, issue_id, comment}) end
         )
@@ -180,6 +197,7 @@ defmodule Aiur.AgentRunner.ReworkFindingsTest do
           reviews_fetcher: fn 4673 ->
             {:ok, [%{"state" => "CHANGES_REQUESTED", "body" => "Fix CI.", "commit_id" => head, "submitted_at" => "2026-10-16T09:17:56Z", "id" => 1, "user" => %{"login" => "r"}, authoritative: true}]}
           end,
+          pr_issue_comments_fetcher: fn _ -> {:ok, []} end,
           pull_request_fetcher: fn 4673 -> {:ok, %{"mergeable_state" => mergeable_state}} end
         )
       end
@@ -205,6 +223,7 @@ defmodule Aiur.AgentRunner.ReworkFindingsTest do
           reviews_fetcher: fn 4924 ->
             {:ok, [%{"state" => "CHANGES_REQUESTED", "body" => body, "commit_id" => head, "submitted_at" => "2026-10-17T13:43:10Z", "id" => 1, "user" => %{"login" => "r"}, authoritative: true}]}
           end,
+          pr_issue_comments_fetcher: fn _ -> {:ok, []} end,
           body_edit_fetcher: fn 4924 -> {:ok, edited_at} end,
           pull_request_fetcher: fn 4924 -> {:ok, %{"mergeable_state" => "clean"}} end
         )

@@ -17,6 +17,8 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
           :ok
         end,
         open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "same-head"}}} end,
+        reviews_fetcher: fn _ -> {:ok, []} end,
+        pr_issue_comments_fetcher: fn _ -> {:ok, []} end,
         required_checks_fetcher: fn _ ->
           send(test_pid, :required_checks_read)
           {:ok, [%{name: "lint", app_id: nil}]}
@@ -50,6 +52,8 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
           :ok
         end,
         open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "same-head"}}} end,
+        reviews_fetcher: fn _ -> {:ok, []} end,
+        pr_issue_comments_fetcher: fn _ -> {:ok, []} end,
         required_checks_fetcher: fn _ ->
           send(test_pid, :required_checks_read)
           {:ok, [%{name: "lint", app_id: nil}]}
@@ -88,6 +92,8 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
           :ok
         end,
         open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "new"}}} end,
+        reviews_fetcher: fn _ -> {:ok, []} end,
+        pr_issue_comments_fetcher: fn _ -> {:ok, []} end,
         required_checks_fetcher: fn _ -> {:ok, [%{name: "lint", app_id: nil}]} end,
         commit_ci_status_fetcher: fn "old" ->
           {:ok,

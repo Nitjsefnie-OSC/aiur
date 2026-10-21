@@ -49,7 +49,9 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
   # #4611: a PR created after the first `aiur pre-pr` keeps stale Local tests evidence; refuse the handoff until it is refreshed.
   # #4937: with the worker's checkout at hand it runs the full `mix pr_body.check` lint (`Aiur.PrBodyLint`), so a body CI would reject is refused too.
   # An unreadable PR fails open here; the `pr body` CI check and the push backstop alert still cover it.
-  defp evidence_blockers(issue, state, workspace, opts) when state in ["ci-wait", "human-review"] do
+  @doc false
+  @spec evidence_blockers(Issue.t(), String.t(), Path.t() | nil, keyword()) :: :allow | {:refused, atom(), String.t()}
+  def evidence_blockers(issue, state, workspace, opts) when state in ["ci-wait", "human-review"] do
     with {:ok, pr} <- ReworkGate.open_pr(issue.identifier, opts),
          head when is_binary(head) <- ReworkGate.head_sha(pr),
          body when is_binary(body) <- pr["body"],
@@ -60,7 +62,7 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
     end
   end
 
-  defp evidence_blockers(_issue, _state, _workspace, _opts), do: :allow
+  def evidence_blockers(_issue, _state, _workspace, _opts), do: :allow
 
   defp evidence_refusal(issue, state, pr, head, {:stale_tested_head, tested_head}) do
     "Cannot hand ticket #{issue.identifier} to #{state}: PR ##{pr["number"]} body Tested head #{tested_head} does not match PR head #{head}. Rerun the touched tests at the PR head, then update the Tested head and Base evidence before handing off."
@@ -120,21 +122,53 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
   defp default_pull_request(number), do: if(ReworkGate.available?(), do: GitHubClient.fetch_open_pull_request(number), else: {:ok, nil})
 
   # #4654: a rework handback must answer every finding of the latest blocking review and carry commits made since it.
-  defp findings_blockers(%Issue{state: rework} = issue, state, workspace, opts)
-       when state in ["ci-wait", "human-review"] and rework in ["rework", "agent:rework"] do
+  @doc false
+  @spec findings_blockers(Issue.t(), String.t(), Path.t() | nil, keyword()) :: {:allow, [ReworkFindings.finding()]} | {:refused, atom(), String.t()}
+  def findings_blockers(%Issue{state: rework} = issue, state, workspace, opts)
+      when state in ["ci-wait", "human-review"] and rework in ["rework", "agent:rework"] do
     case ReworkFindings.fetch(issue.identifier, opts) do
+      {:ok, %{number: number, head: head, review_head: nil}} ->
+        case ReworkFindings.latest_feedback_comment(number, nil, opts) do
+          {:ok, %{body: body, updated_at: commented_at}} ->
+            comment_handoff_blocker(issue, state, workspace, head, body, commented_at)
+
+          {:ok, %{"body" => body, "updated_at" => commented_at}} ->
+            comment_handoff_blocker(issue, state, workspace, head, body, commented_at)
+
+          {:ok, nil} ->
+            {:allow, []}
+
+          {:error, reason} ->
+            {:refused, :rework_findings_unaddressed, "Cannot hand ticket #{issue.identifier} back to #{state}: trusted PR comments could not be checked (#{inspect(reason)}). Retry the handoff."}
+        end
+
       {:ok, %{review_head: review_head, head: head, findings: findings} = review} when is_binary(review_head) ->
         {commits, files} = ReworkFindings.branch_changes(workspace, review_head, head)
         # evidence_blockers already held the body to the current head, so an edit after the review is a body fix (#4944).
         body_edited? = commits == [] and ReworkFindings.body_edited_since?(review.number, review.review_at, opts)
 
-        case ReworkFindings.validate(findings, Keyword.get(opts, :review_findings), commits, files, body_edited?) do
-          :allow ->
-            {:allow, findings}
+        case ReworkFindings.latest_feedback_comment(review.number, review.review_at, opts) do
+          {:ok, %{body: body, updated_at: commented_at}} ->
+            if ReworkFindings.commit_after_comment?(workspace, head, commented_at) do
+              validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
+            else
+              {:refused, :rework_findings_unaddressed,
+               "Cannot hand ticket #{issue.identifier} back to #{state}: the latest trusted PR comment requests changes, but no new non-merge commit has been pushed after it. Address the comment, push a commit, then hand off. Comment: #{String.slice(body, 0, 240)}"}
+            end
 
-          {:blocked, reasons} ->
-            {:refused, :rework_findings_unaddressed,
-             "Cannot hand ticket #{issue.identifier} back to #{state}: #{Enum.join(reasons, "; ")}. Pass every finding in `review_findings` as `fixed` (with its commit) or `disputed` (with evidence); a PR-body-only fix counts once the body is edited after the review."}
+          {:ok, %{"body" => body, "updated_at" => commented_at}} ->
+            if ReworkFindings.commit_after_comment?(workspace, head, commented_at) do
+              validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
+            else
+              {:refused, :rework_findings_unaddressed,
+               "Cannot hand ticket #{issue.identifier} back to #{state}: the latest trusted PR comment requests changes, but no new non-merge commit has been pushed after it. Address the comment, push a commit, then hand off. Comment: #{String.slice(body, 0, 240)}"}
+            end
+
+          {:ok, nil} ->
+            validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
+
+          {:error, reason} ->
+            {:refused, :rework_findings_unaddressed, "Cannot hand ticket #{issue.identifier} back to #{state}: trusted PR comments could not be checked (#{inspect(reason)}). Retry the handoff."}
         end
 
       {:ok, _no_blocking_review} ->
@@ -145,7 +179,27 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
     end
   end
 
-  defp findings_blockers(_issue, _state, _workspace, _opts), do: {:allow, []}
+  def findings_blockers(_issue, _state, _workspace, _opts), do: {:allow, []}
+
+  defp validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts) do
+    case ReworkFindings.validate(findings, Keyword.get(opts, :review_findings), commits, files, body_edited?) do
+      :allow ->
+        {:allow, findings}
+
+      {:blocked, reasons} ->
+        {:refused, :rework_findings_unaddressed,
+         "Cannot hand ticket #{issue.identifier} back to #{state}: #{Enum.join(reasons, "; ")}. Pass every finding in `review_findings` as `fixed` (with its commit) or `disputed` (with evidence); a PR-body-only fix counts once the body is edited after the review (#{review.review_at})."}
+    end
+  end
+
+  defp comment_handoff_blocker(issue, state, workspace, head, body, commented_at) do
+    if ReworkFindings.commit_after_comment?(workspace, head, commented_at) do
+      {:allow, []}
+    else
+      {:refused, :rework_findings_unaddressed,
+       "Cannot hand ticket #{issue.identifier} back to #{state}: the latest trusted PR comment requests changes, but no new non-merge commit has been pushed after it. Address the comment, push a commit, then hand off. Comment: #{String.slice(body, 0, 240)}"}
+    end
+  end
 
   # The re-review reads the worker's answers from this ticket comment; a failed post does not undo the handback.
   defp report_checklist(_issue, [], _opts, result), do: result

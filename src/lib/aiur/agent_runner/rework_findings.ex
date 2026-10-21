@@ -9,7 +9,7 @@ defmodule Aiur.AgentRunner.ReworkFindings do
   never blocks a handback.
   """
 
-  alias Aiur.Orchestrator.ReworkGate
+  alias Aiur.{Orchestrator.ReworkGate, PRLifecycle.ReviewFindings, Tracker}
 
   @type finding :: %{id: String.t(), file: String.t(), line: String.t(), ask: String.t()}
 
@@ -86,6 +86,69 @@ defmodule Aiur.AgentRunner.ReworkFindings do
       _no_edit -> false
     end
   end
+
+  @doc "Returns the newest trusted PR conversation comment newer than the formal review when it asks for changes."
+  @spec latest_feedback_comment(term(), String.t() | nil, keyword()) :: {:ok, map() | nil} | {:error, term()}
+  def latest_feedback_comment(number, review_at, opts \\ []) do
+    fetch_comments = Keyword.get(opts, :pr_issue_comments_fetcher, &default_pr_issue_comments/1)
+
+    with {:ok, comments} when is_list(comments) <- fetch_comments.(number) do
+      latest =
+        comments
+        |> Enum.filter(&trusted_comment?(&1, review_at))
+        |> Enum.max_by(&comment_timestamp/1, fn -> nil end)
+
+      comment = if latest && change_request_comment?(field(latest, "body")), do: latest, else: nil
+
+      {:ok, comment}
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :invalid_comment_response}
+    end
+  end
+
+  @doc "Checks whether a first-parent, non-merge commit was made after a blocking PR comment."
+  @spec commit_after_comment?(Path.t() | nil, String.t() | nil, String.t() | nil) :: boolean()
+  def commit_after_comment?(workspace, head, commented_at) do
+    with true <- is_binary(workspace) and File.dir?(workspace) and is_binary(head) and is_binary(commented_at),
+         {:ok, commented, _offset} <- DateTime.from_iso8601(commented_at),
+         {output, 0} <- System.cmd("git", ["-C", workspace, "log", "--first-parent", "--no-merges", "--format=%cI", "-1", head], stderr_to_stdout: true),
+         [committed_at | _] <- String.split(output, "\n", trim: true),
+         {:ok, committed, _offset} <- DateTime.from_iso8601(committed_at) do
+      DateTime.after?(committed, commented)
+    else
+      _unavailable -> false
+    end
+  end
+
+  defp trusted_comment?(comment, review_at) when is_map(comment) do
+    timestamp = comment_timestamp(comment)
+
+    Map.get(comment, :authoritative) == true and is_binary(timestamp) and newer_than_review?(timestamp, review_at)
+  end
+
+  defp trusted_comment?(_comment, _review_at), do: false
+
+  defp change_request_comment?(body) do
+    ReviewFindings.blocking_body?(body) or
+      (is_binary(body) and String.match?(body, ~r/\b(?:failing|failed) tests?\b|\btests? (?:are )?(?:failing|failed)\b/i))
+  end
+
+  defp newer_than_review?(_timestamp, nil), do: true
+
+  defp newer_than_review?(timestamp, review_at) do
+    with {:ok, comment, _offset} <- DateTime.from_iso8601(timestamp),
+         {:ok, review, _offset} <- DateTime.from_iso8601(review_at) do
+      DateTime.after?(comment, review)
+    else
+      _invalid_timestamp -> false
+    end
+  end
+
+  defp comment_timestamp(comment),
+    do: Map.get(comment, "updated_at") || Map.get(comment, :updated_at) || Map.get(comment, "created_at") || Map.get(comment, :created_at)
+
+  defp default_pr_issue_comments(number), do: Tracker.fetch_classified_issue_comments(number)
 
   defp default_body_edit(number), do: if(ReworkGate.available?(), do: Aiur.CodeHost.pull_request_body_edited_at(number), else: {:ok, nil})
 
