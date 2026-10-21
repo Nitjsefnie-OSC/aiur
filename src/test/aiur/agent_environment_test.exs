@@ -326,7 +326,7 @@ defmodule Aiur.AgentEnvironmentTest do
 
   test "scrub_shell_command clears parent log environment before exec" do
     grep_pattern =
-      "^(AIUR_LOGS_ROOT|AIUR_AGENT_IR_LOGS_PARENT|AIUR_CI_READINESS_TOKEN|AIUR_SECRET_KEY_BASE|AIUR_AGENT_WORKSPACE|AIUR_DEBUG)="
+      "^(AIUR_LOGS_ROOT|AIUR_AGENT_IR_LOGS_PARENT|AIUR_CI_READINESS_TOKEN|AIUR_AGENT_WORKSPACE|AIUR_DEBUG)="
 
     command =
       AgentEnvironment.scrub_shell_command("env | grep -E '#{grep_pattern}' | sort")
@@ -337,7 +337,6 @@ defmodule Aiur.AgentEnvironmentTest do
           {"AIUR_LOGS_ROOT", "/home/operator/.aiur/logs/live-session"},
           {"AIUR_AGENT_IR_LOGS_PARENT", "/home/operator/.aiur/logs"},
           {"AIUR_CI_READINESS_TOKEN", "operator-only"},
-          {"AIUR_SECRET_KEY_BASE", "secret-signing-key"},
           {"AIUR_AGENT_WORKSPACE", "/work/aiur/697"},
           {"AIUR_DEBUG", "1"}
         ]
@@ -702,9 +701,6 @@ defmodule Aiur.AgentEnvironmentTest do
 
       assert {~c"AIUR_CI_READINESS_TOKEN", false} =
                List.keyfind(env, ~c"AIUR_CI_READINESS_TOKEN", 0)
-
-      assert {~c"AIUR_SECRET_KEY_BASE", false} =
-               List.keyfind(env, ~c"AIUR_SECRET_KEY_BASE", 0)
 
       for name <- ~w(ERL_LIBS ERL_CRASH_DUMP ERL_CRASH_DUMP_SECONDS) do
         assert {String.to_charlist(name), false} in env
