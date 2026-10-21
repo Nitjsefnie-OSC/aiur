@@ -1,5 +1,18 @@
 defmodule Aiur.RunTelemetry.Cohort do
   @moduledoc "Bounded cohort values preserved by capture and reduction."
+  @spec work_kind([String.t()], String.t() | nil) :: String.t()
+  def work_kind(labels, title) do
+    cond do
+      "build-order" in labels or Enum.any?(labels, &(String.starts_with?(&1, "build-lane:") or String.starts_with?(&1, "feature:"))) -> "feature"
+      Enum.any?(labels, &(contains_any?(String.downcase(&1), ["flake", "test"]) or String.starts_with?(&1, "main-fix"))) or title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i) -> "test_ci"
+      Enum.any?(labels, &contains_any?(String.downcase(&1), ["tooling", "chore"])) or title_matches?(title, ~r/\b(tooling|chore|dependency|deps)\b/i) -> "tooling"
+      true -> "other"
+    end
+  end
+
+  defp title_matches?(title, pattern), do: is_binary(title) and Regex.match?(pattern, title)
+  defp contains_any?(value, needles), do: Enum.any?(needles, &String.contains?(value, &1))
+
   @spec event_fields(map()) :: map()
   def event_fields(attributes) do
     Map.new([:backend, :model, :effort, :feature, :epic, :tags, :work_kind, :blockers, :start_mode], &{&1, attributes[Atom.to_string(&1)]})

@@ -2,6 +2,7 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
   @moduledoc false
   alias Aiur.Experiments.Sources.Common
   alias Aiur.Experiments.WindowEvents
+  alias Aiur.RunTelemetry.Cohort
 
   @spec collect(String.t(), map(), map(), keyword()) :: {[map()], [String.t()]}
   def collect(repo, sources, range, opts) do
@@ -51,20 +52,7 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
 
   @doc false
   @spec work_kind([String.t()], String.t() | nil) :: String.t()
-  def work_kind(labels, title) do
-    cond do
-      feature_labels?(labels) -> "feature"
-      test_ci_labels?(labels) or title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i) -> "test_ci"
-      tooling_labels?(labels) or title_matches?(title, ~r/\b(tooling|chore|dependency|deps)\b/i) -> "tooling"
-      true -> "other"
-    end
-  end
-
-  defp feature_labels?(labels), do: "build-order" in labels or Enum.any?(labels, &(String.starts_with?(&1, "build-lane:") or String.starts_with?(&1, "feature:")))
-  defp test_ci_labels?(labels), do: Enum.any?(labels, &(contains_any?(String.downcase(&1), ["flake", "test"]) or String.starts_with?(&1, "main-fix")))
-  defp tooling_labels?(labels), do: Enum.any?(labels, &contains_any?(String.downcase(&1), ["tooling", "chore"]))
-  defp title_matches?(title, pattern), do: is_binary(title) and Regex.match?(pattern, title)
-  defp contains_any?(value, needles), do: Enum.any?(needles, &String.contains?(value, &1))
+  def work_kind(labels, title), do: Cohort.work_kind(labels, title)
 
   defp nodes(row, key), do: get_in(row, [key, "nodes"]) || []
 
