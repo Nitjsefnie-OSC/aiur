@@ -25,7 +25,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
         expect(t).toBeTruthy()
         await pair.design.evaluate(id => window.AiurBuild.open('AIUR-' + id), t.id)
         await pair.product.evaluate(async id => (await import('/build-home/modal/frame.js')).openById(id), t.id)
-        if (t.agent) await expect(pair.product.locator('.bm-agent')).toHaveAttribute('data-control', 'ready')
+        if (t.agent) await expect(pair.product.locator('#tk-head .bm-agent')).toHaveAttribute('data-control', 'ready')
         for (const side of ['design', 'product']) await pair[side].locator('#tk-head').evaluate((el, section) => { el.dataset.modalSection = section }, t.sec)
         // Only the frame/header belongs to this ticket; body ports have their own successors.
         for (const side of ['design', 'product']) await pair[side].locator('#tk-body').evaluate(el => { el.style.visibility = 'hidden' })

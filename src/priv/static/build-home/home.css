@@ -51,7 +51,7 @@ span.ax-cnt:hover { color: var(--muted); background: none; }
 .bm-tt h3:focus { outline: none; }
 
 /* H:154: preserve the design gutter when the ticket modal locks body scrolling. */
-html:has(#build-root) { scrollbar-gutter: stable; scrollbar-width: auto; }
+html:has(#build-root):has(#tk-backdrop.show) { scrollbar-gutter: stable; scrollbar-width: auto; }
 
 /* MP-E8-C11-T07: button states the design does not draw (C:153 disabled look). */
 .bm-ib[aria-disabled="true"] { opacity: .4; cursor: default; }

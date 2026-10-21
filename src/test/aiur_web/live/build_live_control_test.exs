@@ -1,7 +1,7 @@
 defmodule AiurWeb.BuildLiveControlTest do
   use Aiur.TestSupport.BuildHome.ProtocolCase
   alias Aiur.TestSupport.BuildHome.FixtureSource
-  alias Aiur.TestSupport.LiveViewAsync
+  alias Aiur.TestSupport.{EndpointStubs, LiveViewAsync}
   alias AiurWeb.Build.TicketControl
 
   defmodule Source do
@@ -25,16 +25,21 @@ defmodule AiurWeb.BuildLiveControlTest do
     test_pid = self()
     Phoenix.Config.put(AiurWeb.Endpoint, :dashboard_writable, true)
 
-    Phoenix.Config.put(AiurWeb.Endpoint, :agent_chat_capabilities_fun, fn id ->
-      send(test_pid, {:unit_caps, id})
-      Agent.get(store, & &1.capabilities)
-    end)
+    EndpointStubs.put(
+      agent_chat_capabilities_fun: fn id ->
+        send(test_pid, {:unit_caps, id})
+        Agent.get(store, & &1.capabilities)
+      end
+    )
 
     for {key, message, result} <- [{:agent_chat_pause_fun, :unit_pause, {:ok, 8}}, {:agent_chat_resume_fun, :unit_resume, {:ok, :resumed}}] do
-      Phoenix.Config.put(AiurWeb.Endpoint, key, fn id ->
-        send(test_pid, {message, id})
-        result
-      end)
+      EndpointStubs.put([
+        {key,
+         fn id ->
+           send(test_pid, {message, id})
+           result
+         end}
+      ])
     end
 
     Application.put_env(:aiur, :build_data_source, {Source, [store: store, dataset: "live", test_pid: self()]})
@@ -215,10 +220,12 @@ defmodule AiurWeb.BuildLiveControlTest do
     view = view("/build?ticket=1110")
     payload = %{tracker_identity: %{identifier: "1110"}, action: :pause, status: :applied, request_id: 8, applied_at: DateTime.utc_now()}
 
-    Phoenix.Config.put(AiurWeb.Endpoint, :agent_chat_pause_fun, fn _id ->
-      Aiur.AgentPubSub.broadcast_control_lifecycle("1110", payload)
-      {:ok, 8}
-    end)
+    EndpointStubs.put(
+      agent_chat_pause_fun: fn _id ->
+        Aiur.AgentPubSub.broadcast_control_lifecycle("1110", payload)
+        {:ok, 8}
+      end
+    )
 
     :erlang.trace(view.pid, true, [:receive])
     Aiur.AgentPubSub.broadcast_control_lifecycle("1110", payload)
@@ -239,10 +246,12 @@ defmodule AiurWeb.BuildLiveControlTest do
   test "a canceled preflight cannot consume an unrelated lifecycle from its temporary subscription" do
     view = view()
 
-    Phoenix.Config.put(AiurWeb.Endpoint, :agent_chat_capabilities_fun, fn _id ->
-      Aiur.AgentPubSub.broadcast_control_lifecycle("1110", %{tracker_identity: %{identifier: "1110"}, action: :pause, status: :applied, request_id: 9})
-      {:error, :unavailable}
-    end)
+    EndpointStubs.put(
+      agent_chat_capabilities_fun: fn _id ->
+        Aiur.AgentPubSub.broadcast_control_lifecycle("1110", %{tracker_identity: %{identifier: "1110"}, action: :pause, status: :applied, request_id: 9})
+        {:error, :unavailable}
+      end
+    )
 
     request(view)
     assert_reply(view, %{"control" => %{"status" => %{"tone" => "error"}}})
