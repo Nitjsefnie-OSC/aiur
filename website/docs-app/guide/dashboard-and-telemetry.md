@@ -14,7 +14,7 @@ When `server.port` (or CLI `--port`) is set, Aiur exposes:
 
 The endpoint serves packaged dashboard hooks, styles, fonts, logos, and provider icons from `priv/static` before router dispatch. Explicit allowlists keep the dashboard Basic Auth boundary intact: runtime assets revalidate, stable logo and font files use long-lived caching, and provider icons derive from the coding-agent registry.
 
-The `/build` timeline shows epic columns for whole visible history days, with a shared column set for planned and not-queued tickets. Feature focus locks the columns while scrolling. Counts show server totals; `—` means the count is unavailable. Narrow flow layouts replace headers with “Colour = epic”.
+The `/build` timeline shows epic columns only when a matching DAG ticket is visible in the current range or viewport after filters. History uses whole visible days; planned and not-queued tickets share columns when their section is in view. Live-agent cards keep their epic colour but do not keep an otherwise empty epic column visible. Feature focus follows its visible tickets while scrolling. Counts show server totals; `—` means the count is unavailable. Narrow flow layouts replace headers with “Colour = epic”.
 
 Click a ticket on `/build` (or press Enter/Space on a focused card, Enter on a list row), or follow `/build?ticket=<number>`, to open its header with state, epic, feature, points and repository links. Deep links also find indexed tickets outside the loaded history window.
 
