@@ -73,8 +73,9 @@ defmodule Aiur.Experiments.ArmsTest do
   test "work-kind filter assigns only feature tickets to the experiment" do
     ab = Path.join(__DIR__, "fixtures/valid_ab.json") |> File.read!() |> Jason.decode!() |> Map.fetch!("spec")
     ab = put_in(ab, ["filters"], %{"attr" => "tags.work_kind", "op" => "eq", "value" => "feature"})
-    feature = row("feature", "2026-10-09T13:00:00Z", nil, %{"tags" => %{"team" => "one", "work_kind" => "feature"}})
-    tooling = row("tooling", "2026-10-09T13:00:00Z", nil, %{"tags" => %{"team" => "one", "work_kind" => "tooling"}})
+    at = DateTime.utc_now() |> DateTime.to_iso8601()
+    feature = row("feature", at, nil, %{"tags" => %{"team" => "one", "work_kind" => "feature"}})
+    tooling = row("tooling", at, nil, %{"tags" => %{"team" => "one", "work_kind" => "tooling"}})
 
     result = Arms.assign(ab, [{"observation", window([feature, tooling])}])
 
