@@ -108,6 +108,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStrip.ServiceRows do
   def github_windows(%{windows: windows}) when is_map(windows) do
     @github_resources
     |> Enum.map(&Map.get(windows, &1))
+    |> Enum.map(fn window -> if window && Map.has_key?(window, :snapshot_stale?), do: Map.put(window, :snapshot_stale?, true), else: window end)
     |> Enum.reject(&is_nil/1)
   end
 
@@ -132,17 +133,24 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStrip.ServiceRows do
 
   @spec github_window_meta(map(), DateTime.t()) :: String.t()
   def github_window_meta(window, now) do
-    "#{window.remaining}/#{window.limit} left · #{github_percent_text(window)} · #{reset_text(Map.get(window, :reset_at), now)}"
+    "#{window.remaining}/#{window.limit} left · #{github_percent_text(window)} · #{reset_text(Map.get(window, :reset_at), now)}#{stale_age_text(window, now)}"
   end
 
   @spec github_window_compact_meta(map(), DateTime.t()) :: String.t()
   def github_window_compact_meta(window, now) do
-    "#{window.remaining}/#{window.limit} · #{github_percent_text(window)} · #{compact_reset_text(Map.get(window, :reset_at), now)}"
+    "#{window.remaining}/#{window.limit} · #{github_percent_text(window)} · #{compact_reset_text(Map.get(window, :reset_at), now)}#{stale_age_text(window, now)}"
   end
 
   defp github_percent_text(%{remaining_percent: percent}) when is_number(percent), do: "#{format_used_percent(RemainingMeter.clamp(percent))}% left"
-  defp github_percent_text(%{used_percent: percent}) when is_number(percent), do: "#{format_used_percent(RemainingMeter.percent(percent) / 1)}% left"
+  defp github_percent_text(%{used_percent: percent}) when is_number(percent), do: "#{format_used_percent(RemainingMeter.percent(percent))}% left"
   defp github_percent_text(_window), do: "remaining unknown"
+
+  defp stale_age_text(%{snapshot_stale?: true, observed_at: %DateTime{} = observed_at}, now) do
+    age_minutes = max(DateTime.diff(now, observed_at, :minute), 0)
+    " · as of #{Calendar.strftime(observed_at, "%H:%MZ")} (#{age_minutes}m ago)"
+  end
+
+  defp stale_age_text(_window, _now), do: ""
 
   defp compact_reset_text(reset_at, now) do
     reset_at
