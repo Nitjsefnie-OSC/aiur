@@ -348,4 +348,8 @@ defmodule Aiur.DecisionStore.Calls do
   def handle_cast({:deliver_pending_answers, ticket_identifier}, state) do
     {:noreply, Retry.schedule_pending_answer_delivery(state, ticket_identifier)}
   end
+
+  def handle_cast({:consume_pending_for_session, ticket_identifier, session_id, action_ids}, state) do
+    {:noreply, Answers.consume_pending_for_session(ticket_identifier, session_id, action_ids, state)}
+  end
 end

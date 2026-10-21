@@ -12,6 +12,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   alias Aiur.Commands
   alias Aiur.Issue
   alias Aiur.Orchestrator
+  alias Aiur.Orchestrator.Dispatcher.AnsweredDecisions
   alias Aiur.Orchestrator.Dispatcher.Budgets
   alias Aiur.Orchestrator.Dispatcher.BudgetTrip
   alias Aiur.Orchestrator.Dispatcher.Candidates
@@ -257,6 +258,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
 
     OptimisticDispatch.record(issue, lifecycle_attempt_id, optimistic_blockers)
     rework_head_sha = Keyword.get(opts, :rework_head_sha) || :pending
+    decision_store = Keyword.get(opts, :decision_store, Commands.default_store())
 
     runner_context = %{
       attempt: attempt,
@@ -264,7 +266,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
       worker_generation: worker_generation,
       lifecycle_attempt_id: lifecycle_attempt_id,
       rework_head_sha: rework_head_sha,
-      answered_decisions: pending_answered_decisions(issue, Keyword.get(opts, :decision_store, Commands.default_store()))
+      answered_decisions: AnsweredDecisions.for_ticket(issue.identifier, decision_store, Keyword.get(opts, :decision_store_read_timeout, 5_000))
     }
 
     case start_runner_task(issue, runner, recipient, runner_context, opts) do
@@ -273,7 +275,6 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
         ref = Process.monitor(pid)
         Logger.info("Dispatching issue to agent: #{State.issue_context(issue)} pid=#{inspect(pid)} attempt=#{inspect(attempt)} worker_host=#{worker_host || "local"}")
         record_rework_resume(issue, lifecycle_attempt_id)
-        consume_pending_decisions(issue, lifecycle_attempt_id, runner_context.answered_decisions, Keyword.get(opts, :decision_store, Commands.default_store()))
 
         running_entry =
           %{
@@ -309,6 +310,8 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
             retry_attempt: RetryEngine.normalize_retry_attempt(attempt),
             prior_work: Keyword.get(opts, :prior_work, false),
             rework_head_sha: rework_head_sha,
+            pending_answered_decisions: Enum.map(runner_context.answered_decisions, & &1.action_id),
+            decision_store: decision_store,
             started_at: DateTime.utc_now()
           }
           |> inherit_redispatch_safety(Map.get(state.running, issue.id))
@@ -358,32 +361,6 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
       )
     end)
   end
-
-  defp pending_answered_decisions(%Issue{identifier: identifier}, store) do
-    Commands.list_decisions(store)
-    |> Enum.filter(&(&1.ticket.identifier == identifier and &1.pending_for_session?))
-    |> Enum.map(&%{action_id: &1.active_action_id, question: &1.question, answer: answer_text(&1), actor: answer_actor(&1), accepted_at: &1.answer.accepted_at})
-  end
-
-  defp consume_pending_decisions(%Issue{identifier: identifier}, session_id, decisions, store) do
-    action_ids = Enum.map(decisions, & &1.action_id)
-    Commands.consume_pending_for_session(identifier, session_id, action_ids, store)
-  rescue
-    _error ->
-      Logger.warning("Unable to record pending decision consumption for ticket #{identifier}")
-      :ok
-  end
-
-  defp answer_text(%{answer: %{selected_option_id: option_id}, options: options}) when is_binary(option_id) do
-    case Enum.find(options, &(&1.id == option_id)) do
-      %{label: label} -> "#{option_id}: #{label}"
-      _ -> option_id
-    end
-  end
-
-  defp answer_text(%{answer: %{custom_response: response}}), do: response
-
-  defp answer_actor(%{answer: %{actor: %{kind: kind, id: id}}}), do: "#{kind}: #{id || "unknown"}"
 
   defp capture_rework_head(_issue, initial_head, _opts) when initial_head != :pending, do: initial_head
 
