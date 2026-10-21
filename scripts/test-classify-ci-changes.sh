@@ -55,7 +55,7 @@ classify() {
     REPO=o/r PR_NUMBER=7 \
     GITHUB_OUTPUT="$test_dir/out" GITHUB_STEP_SUMMARY="$test_dir/summary" MIX_BIN="$test_dir/bin/mix" \
     PATH="$test_dir/bin:$PATH" bash "$root/scripts/classify-ci-changes.sh" || return $?
-  grep -E '^(full_ci|docs_only)=' "$test_dir/out" | sort | paste -sd' ' -
+  grep -E '^(full_ci|docs_only|browser_smoke)=' "$test_dir/out" | sort | paste -sd' ' -
 }
 expect() {
   local want="$1" got; shift
@@ -63,52 +63,57 @@ expect() {
   [[ "$got" == "$want" ]] || { echo "expected '$want', got '$got'" >&2; exit 1; }
 }
 for draft in true false; do
-  expect 'docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"src/lib/aiur/config.ex"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=false' pull_request "$draft" '[{"filename":"src/lib/aiur/config.ex"}]'
   grep -Fxq 'dialyzer=true' "$test_dir/out"
-  expect 'docs_only=true full_ci=false' pull_request "$draft" '[{"filename":"website/docs-app/guide/a.md"}]'
+  expect 'browser_smoke=false docs_only=true full_ci=false' pull_request "$draft" '[{"filename":"website/docs-app/guide/a.md"}]'
   grep -Fxq 'dialyzer=false' "$test_dir/out"
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":".github/workflows/ci.yml"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/mix.lock"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"mix.lock"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md","previous_filename":"src/mix.exs"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"MAIN-FIX"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"urgent"}]'
-  expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[{"name":"CI:FULL"}]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[]'
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/test/support/helper.exs"}]' '[]' full
-  expect 'docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"scripts/example.sh"}]' '[]' full
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":".github/workflows/ci.yml"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/mix.lock"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"mix.lock"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md","previous_filename":"src/mix.exs"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"MAIN-FIX"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md"}]' '[{"name":"urgent"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[{"name":"CI:FULL"}]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[]'
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/test/support/helper.exs"}]' '[]' full
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"scripts/example.sh"}]' '[]' full
 done
-expect 'docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.exs"}]'
+for path in src/browser/tests/example.browser.spec.mjs src/lib/aiur_web/router.ex src/priv/static/js/app.js; do
+  expect 'browser_smoke=true docs_only=false full_ci=false' pull_request false "[{\"filename\":\"$path\"}]"
+done
+expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/orchestrator.ex"}]'
+expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.exs"}]'
 grep -Fxq 'dialyzer=false' "$test_dir/out"
 for path in scripts/check-ci-gate.py scripts/classify-ci-changes.sh scripts/ci-policy.rb scripts/ci-test-selection.exs scripts/run-ci-affected-tests.py src/lib/aiur/affected_tests.ex src/lib/mix/tasks/aiur.affected_tests.ex; do
-  expect 'docs_only=false full_ci=true' pull_request false "[{\"filename\":\"$path\"}]"
+  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false "[{\"filename\":\"$path\"}]"
 done
 for event in push workflow_dispatch; do
   if [[ "$event" == push ]]; then
-    GITHUB_REF=refs/heads/v2 expect 'docs_only=false full_ci=true' "$event" true '[]'
+    GITHUB_REF=refs/heads/v2 expect 'browser_smoke=true docs_only=false full_ci=true' "$event" true '[]'
   else
-    expect 'docs_only=false full_ci=true' "$event" true '[]'
+    expect 'browser_smoke=true docs_only=false full_ci=true' "$event" true '[]'
   fi
 done
-GITHUB_REF=refs/heads/main expect 'docs_only=false full_ci=true' push true '[]'
-GITHUB_REF=refs/heads/main expect 'docs_only=false full_ci=false' schedule true '[]'
-GITHUB_REF=refs/heads/v2 expect 'docs_only=false full_ci=true' push true '[]'
-TEST_BIGPATCH=true expect 'docs_only=false full_ci=false' pull_request false '[]'
-TEST_LEGACY=true expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"website/new.md"}]'
-TEST_LEGACY=true expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]'
-TEST_FILE_CAP=true expect 'docs_only=false full_ci=true' pull_request false '[]'
-expect 'docs_only=false full_ci=true' pull_request false '[]' '[]' '' true
-expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:401
-expect 'docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:400
+GITHUB_REF=refs/heads/main expect 'browser_smoke=true docs_only=false full_ci=true' push true '[]'
+GITHUB_REF=refs/heads/main expect 'browser_smoke=false docs_only=false full_ci=false' schedule true '[]'
+GITHUB_REF=refs/heads/v2 expect 'browser_smoke=true docs_only=false full_ci=true' push true '[]'
+TEST_BIGPATCH=true expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[]'
+TEST_LEGACY=true expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"website/new.md"}]'
+TEST_LEGACY=true expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]'
+TEST_FILE_CAP=true expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[]'
+expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[]' '[]' '' true
+expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:401
+expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:400
 classify pull_request false '[{"filename":"src/test/aiur/config_test.exs"},{"filename":"src/lib/aiur/config.ex"}]' >/dev/null
 expected_paths="$(printf '["src/lib/aiur/config.ex","src/test/aiur/config_test.exs"]' | base64 -w0)"
 grep -Fxq "affected_paths_b64=$expected_paths" "$test_dir/out"
-PATH="$test_dir/failbin:$PATH" expect 'docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' fail
+PATH="$test_dir/failbin:$PATH" expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' fail
 workflow="$root/.github/workflows/ci.yml"
 ! grep -q 'outputs.draft\|pull_request.draft' "$workflow"
 grep -Fq 'uses: ./.github/actions/setup-elixir' "$workflow"
 grep -Eq 'outputs:.*full_ci:.*steps\.classify\.outputs\.full_ci' "$workflow"
 grep -Eq 'outputs:.*affected_paths_b64:.*steps\.classify\.outputs\.affected_paths_b64' "$workflow"
 grep -Fq 'run: bash scripts/classify-ci-changes.sh' "$workflow"
+grep -Fq "needs.changes.outputs.browser_smoke == 'true'" "$workflow"
 grep -Fq 'run: bash scripts/test-classify-ci-changes.sh' "$workflow"
 echo 'CI classifier event, policy, rename and draft tests passed'
