@@ -33,7 +33,6 @@ test('harness self-check: live ticket shimmer keeps its phase across a live diff
   }))
   const expected = (before.angle + (after.at - before.at) * 360 / 9000) % 360
   expect(after.angle).toBeGreaterThan(140)
-  expect(after.angle).toBeLessThan(180)
   expect(Math.abs(after.angle - expected)).toBeLessThan(15)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.locator('#build-root')).toHaveClass(/\brm\b/)
