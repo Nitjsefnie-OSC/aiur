@@ -2,7 +2,7 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
   @moduledoc false
   alias Aiur.Experiments.Sources.Common
   alias Aiur.Experiments.WindowEvents
-  alias Aiur.RunTelemetry.Cohort
+  alias Aiur.RunTelemetry
 
   @spec collect(String.t(), map(), map(), keyword()) :: {[map()], [String.t()]}
   def collect(repo, sources, range, opts) do
@@ -52,7 +52,7 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
 
   @doc false
   @spec work_kind([String.t()], String.t() | nil) :: String.t()
-  def work_kind(labels, title), do: Cohort.work_kind(labels, title)
+  def work_kind(labels, title), do: RunTelemetry.work_kind(labels, title)
 
   defp nodes(row, key), do: get_in(row, [key, "nodes"]) || []
 
