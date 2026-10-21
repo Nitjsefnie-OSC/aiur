@@ -1,9 +1,9 @@
 defmodule Aiur.Orchestrator.AnsweredDecisionsLaunchTest do
   use Aiur.TestSupport
 
-  alias Aiur.TestSupport.Isolation
   alias Aiur.{DecisionPubSub, DecisionStore, Issue}
   alias Aiur.Orchestrator.{Dispatcher, State, TokenAccounting, TrackerTasks}
+  alias Aiur.TestSupport.Isolation
 
   setup do
     :ok = DecisionPubSub.subscribe()
