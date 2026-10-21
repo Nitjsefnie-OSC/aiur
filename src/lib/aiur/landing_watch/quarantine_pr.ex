@@ -22,8 +22,7 @@ defmodule Aiur.LandingWatch.QuarantinePR do
   @doc "The quarantine list for a test identity: Playwright specs (`BrowserSpec :: src/browser/tests/<spec>`) use the browser list."
   @spec list_path(String.t()) :: String.t()
   def list_path(identity),
-    do:
-      if(String.starts_with?(identity, "BrowserSpec :: "), do: @browser_list, else: @exunit_list)
+    do: if(String.starts_with?(identity, "BrowserSpec :: "), do: @browser_list, else: @exunit_list)
 
   @spec open(map(), pos_integer(), keyword()) ::
           {:ok, map() | :already_quarantined} | {:error, term()}
@@ -155,8 +154,7 @@ defmodule Aiur.LandingWatch.QuarantinePR do
 
       # The browser list is created by its first entry.
       {:error, {:github, _, %{status: 404}}} ->
-        {:ok,
-         "# BrowserSpec, spec path (as the failure annotation names it), and tracking ticket. Tabs delimit fields.\n"}
+        {:ok, "# BrowserSpec, spec path (as the failure annotation names it), and tracking ticket. Tabs delimit fields.\n"}
 
       {:error, _} = error ->
         error
@@ -292,9 +290,7 @@ defmodule Aiur.LandingWatch.QuarantinePR do
   defp skip_scope(_identity), do: {"one flaky test", "the test"}
 
   defp enable_auto_merge(ctx, %{"node_id" => id}) when is_binary(id) do
-    case Transport.github_graphql(request(ctx.opts), ctx.token, @auto_merge, %{"id" => id},
-           caller: "landing_watch_quarantine_auto_merge"
-         ) do
+    case Transport.github_graphql(request(ctx.opts), ctx.token, @auto_merge, %{"id" => id}, caller: "landing_watch_quarantine_auto_merge") do
       {:ok, %{"data" => %{"enablePullRequestAutoMerge" => %{}}}} -> :ok
       {:ok, _} -> {:error, :quarantine_auto_merge_unconfirmed}
       {:error, _} = error -> error

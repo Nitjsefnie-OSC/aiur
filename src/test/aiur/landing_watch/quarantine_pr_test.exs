@@ -31,8 +31,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
     assert contents =~
              "Aiur.Claude.Repl.ReaperTest\tstop_session/1 reports cleanup unknown while the process group remains alive\t#4786\t"
 
-    assert_received {:request, :post, @api <> "/git/trees",
-                     %{"tree" => [%{"path" => "src/test/quarantine.txt"}]}}
+    assert_received {:request, :post, @api <> "/git/trees", %{"tree" => [%{"path" => "src/test/quarantine.txt"}]}}
 
     assert_received {:request, :post, @api <> "/pulls", body}
     assert body["base"] == "main"
@@ -45,8 +44,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
     template = File.read!(Path.expand("../../../../.github/pull_request_template.md", __DIR__))
     assert Aiur.PrBodyLint.errors(template, body["body"], head: @commit) == []
 
-    assert_received {:request, :post, "https://api.github.com/graphql",
-                     %{"query" => query, "variables" => %{"id" => "PR_node_901"}}}
+    assert_received {:request, :post, "https://api.github.com/graphql", %{"query" => query, "variables" => %{"id" => "PR_node_901"}}}
 
     assert query =~ "enablePullRequestAutoMerge"
   end
@@ -103,11 +101,9 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
                opts(parent, retry, fn -> {:ok, "# Existing entries\n"} end)
              )
 
-    assert_received {:request, :patch, @api <> "/git/refs/heads/aiur/quarantine/" <> _,
-                     %{"sha" => @commit, "force" => true}}
+    assert_received {:request, :patch, @api <> "/git/refs/heads/aiur/quarantine/" <> _, %{"sha" => @commit, "force" => true}}
 
-    assert_received {:request, :post, "https://api.github.com/graphql",
-                     %{"variables" => %{"id" => "PR_node_901"}}}
+    assert_received {:request, :post, "https://api.github.com/graphql", %{"variables" => %{"id" => "PR_node_901"}}}
   end
 
   test "when only auto-merge fails, the retry reuses the committed branch and writes no new head" do
@@ -142,9 +138,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
 
       :post, "https://api.github.com/graphql" ->
         if Agent.get_and_update(graphql_calls, &{&1, &1 + 1}) < 2,
-          do:
-            {:ok,
-             %{status: 200, body: %{"errors" => [%{"message" => "Auto merge is not allowed"}]}}},
+          do: {:ok, %{status: 200, body: %{"errors" => [%{"message" => "Auto merge is not allowed"}]}}},
           else: response(:post, "https://api.github.com/graphql")
 
       method, url ->
@@ -187,8 +181,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
     assert contents =~ ~r/\A# BrowserSpec/
     assert contents =~ "BrowserSpec\tsrc/browser/tests/build-home-list.browser.spec.mjs\t#5118\n"
 
-    assert_received {:request, :post, @api <> "/git/trees",
-                     %{"tree" => [%{"path" => "src/browser/quarantine.txt"}]}}
+    assert_received {:request, :post, @api <> "/git/trees", %{"tree" => [%{"path" => "src/browser/quarantine.txt"}]}}
 
     # The entry skips the whole spec file, so the body must name the file rather than "the test".
     assert_received {:request, :post, @api <> "/pulls", %{"body" => pr_body}}
