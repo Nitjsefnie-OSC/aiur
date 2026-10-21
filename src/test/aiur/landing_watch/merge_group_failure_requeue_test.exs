@@ -77,7 +77,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     File.rm(journal)
   end
 
-  test "the fourth group requeue in fifteen minutes is not enqueued" do
+  test "the fifth group requeue in fifteen minutes is not enqueued" do
     parent = self()
 
     journal =
@@ -86,10 +86,11 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
         "landing-watch-rate-cap-#{System.unique_integer([:positive])}.json"
       )
 
-    run = group_run(401, "failure", "pr-17-a-pr-18-b-pr-19-c-pr-20-d")
+    group_branch = "pr-17-a-pr-18-b-pr-19-c-pr-20-d-pr-21-e"
+    run = group_run(401, "failure", group_branch)
 
     prs =
-      for number <- 17..20,
+      for number <- 17..21,
           do: %{
             number: number,
             base: "main",
@@ -104,7 +105,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
 
     request = fn
       %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
-        {:ok, %{status: 200, body: [%{"ref" => "refs/heads/gh-readonly-queue/main/pr-17-a-pr-18-b-pr-19-c-pr-20-d"}]}}
+        {:ok, %{status: 200, body: [%{"ref" => "refs/heads/gh-readonly-queue/main/#{group_branch}"}]}}
 
       %{method: :get, url: url} ->
         runs = if String.contains?(url, "status=completed"), do: [run], else: []
@@ -118,7 +119,9 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
       journal_path: journal,
       now_ms: 2_000_000,
       live_observations_fun: fn _, _ -> {:ok, prs} end,
-      job_log_fun: fn _, _ -> {:ok, "runner lost before job setup"} end,
+      job_log_fun: fn _, _ -> {:ok, "runner lost before job setup; failed test"} end,
+      recent_main_failure_paths_fun: fn _, _ -> {:ok, []} end,
+      changed_paths_fun: fn _prs, _ -> {:ok, []} end,
       jobs_fun: fn _, _ ->
         {:ok, [%{"id" => 12, "name" => "ci gate", "conclusion" => "failure"}]}
       end,
@@ -135,15 +138,15 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     assert :ok = MergeGroups.cancel_stale([], options)
 
     enqueued =
-      for _ <- 1..3 do
+      for _ <- 1..4 do
         assert_received {:enqueue, node, _}
         node
       end
 
-    assert length(enqueued) == 3
+    assert length(enqueued) == 4
     assert :ok = MergeGroups.cancel_stale([], options)
     refute_received {:enqueue, _, _}
-    assert {:ok, %{"1970-01-01T00:00:00Z" => 3}} = journal_counts(journal)
+    assert {:ok, %{"1970-01-01T00:00:00Z" => 4}} = journal_counts(journal)
     File.rm(journal)
   end
 
