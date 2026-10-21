@@ -110,7 +110,7 @@ export async function selectProductDataset(page, dataset) {
 }
 
 export async function openProduct(page, cell, opts = {}) {
-  const { dataset = cell.dataset ?? 'live', phase = 'board', productRoute = '/build' } = opts
+  const { dataset = cell.dataset ?? 'live', phase = 'board', productRoute = '/' } = opts
   if (!['board', 'loading', 'shell'].includes(phase)) throw new Error(`unknown parity phase ${phase}`)
   await prepare(page, phase, 'product', opts.motion, opts.pauseAtSelector)
   const origin = new URL(test.info().project.use.baseURL).origin

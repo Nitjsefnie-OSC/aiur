@@ -75,12 +75,12 @@ defmodule Aiur.BrowserHarness.FixtureRouter do
 
     live("/fixture", Aiur.BrowserHarness.FixtureLive, :index)
     live("/ticket-context", Aiur.BrowserHarness.TicketContextLive, :index)
-    live("/units", Aiur.BrowserHarness.UnitsLive, :index)
+    live("/units-fixture", Aiur.BrowserHarness.UnitsLive, :index)
     live("/provider-meters", Aiur.BrowserHarness.ProviderMetersLive, :index)
     live("/meter-row", Aiur.BrowserHarness.MeterRowLive, :index)
     live("/models-panel", Aiur.BrowserHarness.ModelsPanelLive, :index)
     live("/quota-panel", Aiur.BrowserHarness.QuotaPanelLive, :index)
-    live("/", Aiur.BrowserHarness.RouteShellLive, :index)
+    live("/route-shell", Aiur.BrowserHarness.RouteShellLive, :build)
     live("/commands", Aiur.BrowserHarness.RouteShellLive, :decisions)
     live("/commands/:decision_id", Aiur.BrowserHarness.RouteShellLive, :decision)
   end
