@@ -1,6 +1,6 @@
 defmodule AiurWeb.BuildLiveQueueAddTest do
   use Aiur.TestSupport.BuildHome.ProtocolCase
-  alias Aiur.TestSupport.LiveViewAsync
+  alias Aiur.TestSupport.{EndpointStubs, LiveViewAsync}
   alias AiurWeb.Endpoint
 
   defp open_view(writable \\ true) do
@@ -10,7 +10,7 @@ defmodule AiurWeb.BuildLiveQueueAddTest do
     view
   end
 
-  defp add_fun(fun), do: Phoenix.Config.put(Endpoint, :build_queue_add_fun, fun)
+  defp add_fun(fun), do: EndpointStubs.put(build_queue_add_fun: fun)
 
   test "queue-add uses CLI default queue, replies pending, and pushes success" do
     owner = self()

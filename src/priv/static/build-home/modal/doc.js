@@ -2,7 +2,7 @@ import { ctx, fx, onReset } from '../state.js';
 import { $, esc } from '../dom.js';
 import { I } from '../icons.js';
 import { nowMs } from '../clock.js';
-import { MS, onModalClose } from './frame.js';
+import { MS, onModalClose, registerBody } from './frame.js';
 
 let view = null;
 const adds = new Map();
@@ -142,14 +142,15 @@ export function reconnectDoc() {
   for (const [id, state] of adds) if (state.pending) adds.set(id, { ok: false, reason: 'outcome_unknown' });
   repaint(); if (view && MS.t?.id === view.id) requestDoc(MS.t);
 }
-fx.renderDocBody = (t, body, opts = {}) => {
+registerBody('doc', (t, body, opts = {}) => {
   view = { id: t.id, opts, doc: null };
   renderDoc(body, t, ctx.D, null, opts); requestDoc(t);
-};
+});
 const modalSync = fx.modalSync;
 fx.modalSync = msg => { modalSync(msg); syncDoc(msg); };
 onModalClose(() => {
+  const hadDoc = view && numeric(view.id);
   view = null;
-  if (ctx.socket === 'up' && ctx.push) ctx.push('ticket-doc-close', {}).catch(() => {});
+  if (hadDoc && ctx.socket === 'up' && ctx.push) ctx.push('ticket-doc-close', {}).catch(() => {});
 });
 onReset(() => { view = null; adds.clear(); });

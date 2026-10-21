@@ -8,20 +8,6 @@ defmodule Aiur.TestSupport.BuildHome.TicketDocs do
   @dir Path.expand("../../fixtures/build_home", __DIR__)
   @datasets ~w(live dense newrepo noqueue offline now0 now24)
 
-  def configure(:ok) do
-    config = Application.get_env(:aiur, AiurWeb.Endpoint, [])
-
-    Application.put_env(
-      :aiur,
-      AiurWeb.Endpoint,
-      Keyword.merge(config,
-        ticket_detail_request_fun: &request/1,
-        ticket_detail_subscribe_fun: &ignore/1,
-        ticket_detail_unsubscribe_fun: &ignore/1
-      )
-    )
-  end
-
   def ignore(_identity), do: :ok
 
   def request(%TrackerIdentity{provider_id: "build-fixture:" <> key} = identity) do

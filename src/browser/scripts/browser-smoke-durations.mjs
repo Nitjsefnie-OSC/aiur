@@ -6,10 +6,10 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
-  // #3157 restored local harness (2026-10-21): 23 functional tests in 1.6m; 24 parity comparisons in 3.8m.
-  // Provisional rounded bounds; refresh from the first CI suite-duration log.
-  'test:build-home-modal-doc': 100,
-  'test:build-home-modal-doc-parity': 230,
+  // CI run 39616972873 (2026-10-21), jobs 119280971812/119280971969:
+  // document functional 43.8s and parity 150.5s suite wall time, rounded up.
+  'test:build-home-modal-doc': 44,
+  'test:build-home-modal-doc-parity': 151,
   // CI run 39590874795 (2026-10-21), full suite wall times including fixture startup:
   // shards 5/8/7 measured modal 30.9s, parity 122.8s, motion 25.6s; round each up.
   'test:build-modal': 31,

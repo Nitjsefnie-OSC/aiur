@@ -155,8 +155,12 @@ test('conversation opens skip body reads; doc close unsubscribes and pack ids ne
   await display(page, { agent: { model: 'codex', state: 'active' }, start: 1 })
   expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'ticket-doc'))).toEqual([])
   await page.keyboard.press('Escape')
-  expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'ticket-doc-close').length)).toBeGreaterThan(0)
+  expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'ticket-doc-close'))).toEqual([])
+  await display(page)
+  await page.keyboard.press('Escape')
+  expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'ticket-doc-close').length)).toBe(1)
   await page.evaluate(async () => {
+    window.docCalls = []
     const { ctx } = await import('/build-home/state.js')
     ;(await import('/build-home/modal/frame.js')).openModal({ ...ctx.D.plan[0], id: 'pack:future/item', num: null, agent: null })
   })
