@@ -14,6 +14,13 @@ defmodule AiurWeb.HostAllowlistTest do
     assert conn.resp_body == "Forbidden"
   end
 
+  test "rejects a foreign Host before Phoenix socket dispatch" do
+    EndpointStubs.put(allowed_hosts: ["dashboard.example"], allow_tailnet_hosts: false)
+    conn = Plug.Test.conn(:get, "/live/websocket") |> then(&%{&1 | host: "attacker.example"})
+
+    assert AiurWeb.Endpoint.call(conn, AiurWeb.Endpoint.init([])).status == 403
+  end
+
   test "accepts an allowlisted Host with a port" do
     EndpointStubs.put(allowed_hosts: ["dashboard.example"], allow_tailnet_hosts: false)
     conn = Plug.Test.conn(:get, "/") |> then(&%{&1 | host: "dashboard.example"})
