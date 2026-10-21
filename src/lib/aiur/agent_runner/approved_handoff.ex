@@ -12,6 +12,9 @@ defmodule Aiur.AgentRunner.ApprovedHandoff do
   alias Aiur.Orchestrator.ReworkGate
 
   @spec target_state(Issue.t(), String.t(), keyword()) :: {String.t(), String.t() | nil}
+  def target_state(%Issue{state: state}, "human-review", _opts) when state in ["rework", "agent:rework"],
+    do: {"human-review", nil}
+
   def target_state(%Issue{} = issue, "human-review", opts) do
     case ReworkGate.open_pr(issue.identifier, opts) do
       {:ok, pr} ->
