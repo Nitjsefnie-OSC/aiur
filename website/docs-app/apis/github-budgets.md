@@ -21,12 +21,13 @@ Landing-watch observation and per-PR reads, plus issue-provenance timeline reads
 Resident broker exits also back off as local holds; the next call restarts the
 broker. Requests retain independent deadlines while sharing a transaction.
 Expired work is rolled back before commit, with 50 ms reserved for commit and
-reply delivery. WAL auto-checkpointing is disabled on the request connection;
-passive checkpoints run on a background thread so checkpoint I/O does not hold
-the serialized request loop. One-minute measurements report latency by broker
-command type, including Python queue wait, SQLite lock wait, command execution,
-and commit. They also report the latest completed checkpoint duration and frame
-counts.
+reply delivery.
+
+The resident broker disables WAL auto-checkpointing on request connections. A
+background thread runs passive checkpoints so checkpoint I/O does not hold the
+serialized request loop. One-minute measurements report latency by command
+type, Python queue wait, SQLite lock wait, command execution, commit, and the
+latest completed checkpoint duration and frame counts.
 
 Sustained timeouts raise one `system.github.budget_broker_degraded` attention with duration; its `.resolved` clears it on recovery.
 
