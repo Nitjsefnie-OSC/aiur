@@ -3,7 +3,7 @@ defmodule Aiur.AgentRunner.TurnCompletion do
 
   require Logger
   alias Aiur.AgentCompaction.Handoff
-  alias Aiur.AgentRunner.{NoopWait, ReworkHandoff, TurnAlerts, TurnLoop, TurnProgress}
+  alias Aiur.AgentRunner.{NoopWait, ReworkHandoff, ReworkHandoffGuard, TurnAlerts, TurnLoop, TurnProgress}
   alias Aiur.{Config, Issue}
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
@@ -159,13 +159,19 @@ defmodule Aiur.AgentRunner.TurnCompletion do
 
     case stopped_agent_handoff(refreshed_issue, workspace, worker_host, opts) do
       {:handoff, state} ->
-        case TicketTransition.write_state(refreshed_issue.identifier, state, writer: :turn_loop) do
-          :ok ->
-            TurnAlerts.emit_rework_handoff_alert(refreshed_issue, workspace, worker_host, state)
-            {:handoff, TurnLoop.return_completed(turn_context, %{refreshed_issue | state: state})}
+        case ReworkHandoffGuard.evidence_blockers(refreshed_issue, state, workspace, opts) do
+          :allow ->
+            case TicketTransition.write_state(refreshed_issue.identifier, state, writer: :turn_loop) do
+              :ok ->
+                TurnAlerts.emit_rework_handoff_alert(refreshed_issue, workspace, worker_host, state)
+                {:handoff, TurnLoop.return_completed(turn_context, %{refreshed_issue | state: state})}
 
-          {:error, reason} ->
-            {:error, {:rework_handoff_state_write_failed, reason}}
+              {:error, reason} ->
+                {:error, {:rework_handoff_state_write_failed, reason}}
+            end
+
+          {:refused, reason, message} ->
+            {:error, {:rework_handoff_evidence_refused, reason, message}}
         end
 
       :none ->
