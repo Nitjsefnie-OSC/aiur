@@ -154,6 +154,25 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedTest do
     assert [%{value: 120_000}] = job_wait.observations
   end
 
+  test "missing landing-watch journal makes flaky failure rate unavailable" do
+    ctx =
+      Map.merge(context(), %{
+        github_window: %{
+          "required_workflows" => ["CI"],
+          "runs" => [%{"id" => 1, "name" => "CI", "event" => "merge_group", "conclusion" => "failure", "updated_at" => "2026-10-09T12:00:00Z"}],
+          "jobs" => [],
+          "pulls" => [],
+          "incidents" => []
+        },
+        landing_watch_state_fun: fn _opts -> {:error, :journal_unavailable} end
+      })
+
+    assert result("flaky_failure_rate", ctx) == %{
+             coverage: %{state: :unavailable, reason: :landing_watch_journal_unavailable},
+             observations: []
+           }
+  end
+
   test "sampled GitHub job details make flaky failure coverage partial" do
     ctx =
       Map.merge(context(), %{

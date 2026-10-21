@@ -84,7 +84,8 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
 
   defp github_data(github, ci_runs, flake_state, records, capacity, window) do
     github = github || %{}
-    journal = flake_state || %{}
+    journal_captured? = is_map(flake_state)
+    journal = if journal_captured?, do: flake_state, else: %{}
 
     %{
       ci_runs: ci_runs,
@@ -92,26 +93,26 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
       github_pulls: Map.get(github, "pulls"),
       flake_issues: Map.get(github, "flake_issues", Map.get(github, "incidents")),
       ci_jobs: Map.get(github, "jobs"),
-      flake_evidence: failure_evidence(journal),
-      source_partials: source_partials(github, journal, window),
-      facts: github_facts(facts(records, capacity), github, ci_runs, journal)
+      flake_evidence: if(journal_captured?, do: failure_evidence(journal), else: nil),
+      source_partials: source_partials(github, journal, window, journal_captured?),
+      facts: github_facts(facts(records, capacity), github, ci_runs, journal_captured?)
     }
   end
 
-  defp github_facts(facts, github, ci_runs, journal) do
+  defp github_facts(facts, github, ci_runs, journal_captured?) do
     facts
     |> maybe_fact(is_list(ci_runs), "ci_runs")
     |> maybe_fact(is_list(Map.get(github, "jobs")), "ci_jobs")
     |> maybe_fact(Map.get(github, "pulls", []) != [], "work_kind")
     |> maybe_fact(is_list(Map.get(github, "pulls")), "pulls")
     |> maybe_fact(Map.has_key?(github, "flake_issues") or Map.has_key?(github, "incidents"), "flake_issues")
-    |> maybe_fact(is_map(journal), "flake_evidence")
+    |> maybe_fact(journal_captured?, "flake_evidence")
   end
 
-  defp source_partials(github, journal, window) do
+  defp source_partials(github, journal, window, journal_captured?) do
     partials = Enum.filter(~w(runs ci_runs jobs pulls incidents flake_issues), &Map.get(github, &1 <> "_partial", false))
 
-    if Enum.any?(failure_evidence(journal), &(evidence_in_window?(&1, window) and (not Map.has_key?(&1, "job_failure_set_complete") or not Map.has_key?(&1, "touched")))),
+    if journal_captured? and Enum.any?(failure_evidence(journal), &(evidence_in_window?(&1, window) and (not Map.has_key?(&1, "job_failure_set_complete") or not Map.has_key?(&1, "touched")))),
       do: ["flake_evidence" | partials],
       else: partials
   end
