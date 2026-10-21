@@ -159,7 +159,7 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPr do
         {:error, _reason} = error -> error
       end
     else
-      if identifier in RecentMerge.referenced_issue_identifiers_in_body(Keyword.get(opts, :pr_body), merge_repository(opts)), do: @non_closing_merge_state, else: "human-review"
+      if identifier in merge_linked_identifiers(opts), do: @non_closing_merge_state, else: "human-review"
     end
   end
 
@@ -180,8 +180,7 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPr do
   # prevent.
   defp merged_pr_closes_ticket?(identifier, opts) do
     identifier = to_string(identifier)
-    body = Keyword.get(opts, :pr_body)
-    closes? = identifier in RecentMerge.closing_issue_identifiers_in_body(body, merge_repository(opts))
+    closes? = identifier in merge_linked_identifiers(opts) and identifier in RecentMerge.closing_issue_identifiers_in_body(Keyword.get(opts, :pr_body), merge_repository(opts))
 
     unless closes? do
       Logger.info(
@@ -191,6 +190,12 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPr do
     end
 
     closes?
+  end
+
+  defp merge_linked_identifiers(opts) do
+    body_ids = RecentMerge.ClosingReferences.linked_identifiers_in_text(Keyword.get(opts, :pr_body), merge_repository(opts))
+    commit_ids = Enum.flat_map(Keyword.get(opts, :commit_messages, []), &RecentMerge.ClosingReferences.linked_identifiers_in_text(&1, merge_repository(opts)))
+    Enum.uniq(body_ids ++ commit_ids)
   end
 
   defp merge_repository(opts) do

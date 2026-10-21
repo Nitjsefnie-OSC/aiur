@@ -60,6 +60,26 @@ defmodule Aiur.Events.GithubWebhookTest do
   end
 
   describe "unrecognized and malformed deliveries" do
+    test "PR references from body and commits publish a merge event for the referenced ticket" do
+      delivery = %{
+        "action" => "closed",
+        "repository" => %{"full_name" => @repo},
+        "pull_request" => %{
+          "number" => 902,
+          "merged" => true,
+          "body" => "Refs #5605",
+          "head" => %{"ref" => "executor/quarantine", "sha" => "deadbeef"},
+          "commit_messages" => ["Closes #5606"]
+        }
+      }
+
+      assert {:publish, triples} = Normalizer.normalize("pull_request", delivery, repo: @repo)
+      topics = Enum.map(triples, &elem(&1, 0))
+      assert "ticket.5605.pr.merged" in topics
+      assert "ticket.5606.pr.merged" in topics
+      assert Enum.all?(triples, fn {_topic, _payload, opts} -> opts[:issue_number] in ["5605", "5606"] end)
+    end
+
     test "an unrecognized event type is ignored without crashing" do
       ticket = Integer.to_string(System.unique_integer([:positive]))
 

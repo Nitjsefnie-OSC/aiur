@@ -44,13 +44,13 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
     assert state.running == %{}
   end
 
-  test "a Refs-only merge keeps the ticket open, moves it to triage, and comments with the PR" do
+  test "a Refs-only merge leaves the ticket state alone and comments with the PR" do
     issue = %Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}
     parent = self()
 
     {state, issues} =
       MergedTicketReconciler.reconcile(%State{}, [issue],
-        recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1570"}] end,
+        recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1600"}] end,
         reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> false end,
         mark_reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> :ok end,
         now_fun: fn -> @now end,
@@ -72,15 +72,36 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
         end
       )
 
-    assert_receive {:label, "1570", "needs-triage"}, 1000
-    assert_receive {:transition, "1570", "human-review", "in-progress"}, 1000
     assert_receive {:comment, "1570", body}, 1000
-    assert body =~ "PR #1600"
-    assert body =~ "https://github.com/owner/repo/pull/1600"
+    assert body =~ "PR 1600 referencing this ticket merged"
+    refute_receive {:label, _, _}, 100
+    refute_receive {:transition, _, _, _}, 100
     assert issues == []
     assert MapSet.member?(state.merged_ticket_reconciliations, {"1570", "owner/repo#1600"})
     refute_receive {:transition, "1570", "done", _}, 100
     refute_receive {:ledger_closed, "1570", :merged}, 100
+  end
+
+  test "a commit-message Refs link gets a comment and never writes ticket state" do
+    issue = %Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}
+    parent = self()
+    merge = %{merged_pr(nil) | ticket_id: "1600", commit_messages: ["Refs #1570"]}
+
+    {_state, []} =
+      MergedTicketReconciler.reconcile(%State{}, [issue],
+        recent_merges_fun: fn -> [merge] end,
+        reference_merge_reconciled_fun: fn _, _ -> false end,
+        mark_reference_merge_reconciled_fun: fn _, _ -> :ok end,
+        now_fun: fn -> @now end,
+        update_issue_state_fun: fn _, _, _ -> flunk("reference merge must not change ticket state") end,
+        create_comment_fun: fn id, body ->
+          send(parent, {:comment, id, body})
+          :ok
+        end
+      )
+
+    assert_receive {:comment, "1570", body}, 1000
+    assert body =~ "PR 1600 referencing this ticket merged"
   end
 
   test "does not triage a different ticket referenced by this PR" do
@@ -90,7 +111,7 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
 
     {state, [^issue]} =
       MergedTicketReconciler.reconcile(%State{}, [issue],
-        recent_merges_fun: fn -> [merge] end,
+        recent_merges_fun: fn -> [%{merge | ticket_id: "5162"}] end,
         reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> false end,
         mark_reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> :ok end,
         now_fun: fn -> @now end,
@@ -114,13 +135,13 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
     refute_receive {:comment, _, _}, 100
   end
 
-  test "a leading Part of reference parks the merged ticket for triage" do
+  test "a Refs comment does not change state" do
     issue = %Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}
     parent = self()
 
     {state, []} =
       MergedTicketReconciler.reconcile(%State{}, [issue],
-        recent_merges_fun: fn -> [%{merged_pr("Part of #1570") | ticket_id: "1570"}] end,
+        recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1600"}] end,
         reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> false end,
         mark_reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> :ok end,
         now_fun: fn -> @now end,
@@ -138,10 +159,10 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
         end
       )
 
-    assert_receive {:label, "1570", "needs-triage"}, 1000
-    assert_receive {:transition, "1570", "human-review"}, 1000
     assert_receive {:comment, "1570", body}, 1000
-    assert body =~ "PR #1600"
+    assert body =~ "PR 1600 referencing this ticket merged"
+    refute_receive {:label, _, _}, 100
+    refute_receive {:transition, _, _}, 100
     assert MapSet.member?(state.merged_ticket_reconciliations, {"1570", "owner/repo#1600"})
   end
 
@@ -167,7 +188,7 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
     assert MapSet.member?(state.merged_ticket_reconciliations, {"1570", merge.id})
   end
 
-  test "alerts when the owner task cannot write reference triage" do
+  test "reference comment write failure is reported" do
     parent = self()
     owner_name = String.to_atom("merged_ticket_owner_#{System.unique_integer([:positive])}")
 
@@ -178,12 +199,12 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
 
         pending =
           MergedTicketReconciler.reconcile(state, [%Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}],
-            recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1570"}] end,
+            recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1600"}] end,
             reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> false end,
             mark_reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> :ok end,
             now_fun: fn -> @now end,
-            update_issue_state_fun: fn _, _, _ -> {:error, :forbidden} end,
-            add_label_fun: fn _, _ -> :ok end,
+            update_issue_state_fun: fn _, _, _ -> flunk("reference merge must not change ticket state") end,
+            create_comment_fun: fn _, _ -> {:error, :forbidden} end,
             emit_alert_fun: fn topic, opts -> send(parent, {:alert, topic, opts}) end
           )
           |> elem(0)

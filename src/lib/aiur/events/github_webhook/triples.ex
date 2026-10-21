@@ -11,6 +11,7 @@ defmodule Aiur.Events.GithubWebhook.Triples do
 
   alias Aiur.Events.{GithubKeys, GithubReviewThreadIdentity, PostDeployChecks}
   alias Aiur.Events.GithubWebhook.Identity
+  alias Aiur.GitHub.PullRequests
   alias Aiur.GitHub.ResourceStore
 
   @type triple :: {String.t(), map(), keyword()}
@@ -280,14 +281,21 @@ defmodule Aiur.Events.GithubWebhook.Triples do
         _ -> pr
       end
 
+    linked_ids = Identity.linked_ticket_identifiers(pr)
+    branch_id = Identity.ticket_from_head_ref(pr)
+
     with {:ok, target, _pr_number} <- Identity.pull_request_identity(payload),
          topic when is_binary(topic) <- pr_topic(target, action, merged?) do
+      targets = Enum.uniq([branch_id | linked_ids] |> Enum.reject(&is_nil/1))
+
       publish_opts = [
         actor: actor,
         issue_number: target,
         bypass_contamination: merged?,
         dedup_key: GithubKeys.pr_dedup_key(repo, pr_number, action, head_sha)
       ]
+
+      pr = maybe_enrich_commit_messages(pr, pr_number)
 
       event = %{
         action: action,
@@ -298,7 +306,13 @@ defmodule Aiur.Events.GithubWebhook.Triples do
 
       event = if merged?, do: Map.put(event, :post_deploy_checks, PostDeployChecks.from_pr_body(Map.get(pr, "body"))), else: event
 
-      {:publish, [{topic, event, publish_opts}]}
+      triples =
+        Enum.map(targets, fn ticket ->
+          target_topic = pr_topic(ticket, action, merged?)
+          {target_topic, event, Keyword.put(publish_opts, :issue_number, ticket)}
+        end)
+
+      {:publish, triples}
     else
       {:drop, _reason} = drop -> drop
       {:error, _reason} = error -> error
@@ -310,6 +324,17 @@ defmodule Aiur.Events.GithubWebhook.Triples do
   defp pr_topic(target, "ready_for_review", _merged), do: "ticket.#{target}.pr.ready_for_review"
   defp pr_topic(target, _action, true), do: "ticket.#{target}.pr.merged"
   defp pr_topic(_target, _action, _merged), do: nil
+
+  defp maybe_enrich_commit_messages(pr, number) do
+    if Map.has_key?(pr, "commit_messages") do
+      pr
+    else
+      case PullRequests.fetch_pull_request_commits(number) do
+        {:ok, messages} -> Map.put(pr, "commit_messages", messages)
+        _ -> pr
+      end
+    end
+  end
 
   defp merged_pull_request?("closed", true), do: true
   defp merged_pull_request?("merged", _merged), do: true

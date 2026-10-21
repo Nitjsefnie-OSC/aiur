@@ -4,6 +4,7 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   identity" on `Aiur.Events.GithubWebhook.Normalizer`.
   """
 
+  alias Aiur.RecentMerge.ClosingReferences
   alias Aiur.TicketBranch
 
   @closing_keyword ~r/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/i
@@ -14,7 +15,7 @@ defmodule Aiur.Events.GithubWebhook.Identity do
     pr_number = if is_map(pr), do: Map.get(pr, "number")
 
     if is_map(pr) and is_integer(pr_number) do
-      case ticket_from_head_ref(pr) do
+      case ticket_from_head_ref(pr) || ticket_from_pr_body(Map.get(pr, "body")) || ticket_from_commit_messages(Map.get(pr, "commit_messages", [])) do
         nil -> {:drop, {:unresolved_ticket, "pull_request", pr_number}}
         ticket -> {:ok, ticket, pr_number}
       end
@@ -43,6 +44,41 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   end
 
   def ticket_from_pr_body(_body), do: nil
+
+  @doc "Returns closing-keyword ticket ids in an arbitrary commit message."
+  @spec ticket_from_commit_message(term()) :: String.t() | nil
+  def ticket_from_commit_message(message) when is_binary(message) do
+    case Regex.run(@closing_keyword, message) do
+      [_match, number] -> number
+      _other -> nil
+    end
+  end
+
+  def ticket_from_commit_message(_message), do: nil
+
+  defp ticket_from_commit_messages(messages) when is_list(messages) do
+    Enum.find_value(messages, &ticket_from_commit_message/1)
+  end
+
+  defp ticket_from_commit_messages(_messages), do: nil
+
+  @doc "Returns ticket ids explicitly linked by the body or commit messages."
+  @spec linked_ticket_identifiers(map()) :: [String.t()]
+  def linked_ticket_identifiers(pr) do
+    repository = get_in(pr, ["base", "repo", "full_name"])
+    body = Map.get(pr, "body")
+    body_ids = ClosingReferences.linked_identifiers_in_text(body, repository)
+
+    commit_ids =
+      pr
+      |> Map.get("commit_messages", [])
+      |> Enum.flat_map(fn message ->
+        ClosingReferences.linked_identifiers_in_text(message, repository) ++
+          List.wrap(ticket_from_commit_message(message))
+      end)
+
+    Enum.uniq(body_ids ++ commit_ids)
+  end
 
   @spec ticket_identifier(term()) :: String.t() | nil
   def ticket_identifier(number) when is_integer(number) and number > 0, do: Integer.to_string(number)

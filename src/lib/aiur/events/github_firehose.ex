@@ -408,7 +408,12 @@ defmodule Aiur.Events.GithubFirehose do
     pr_number = Map.get(pr, "number")
     merged? = merged_pull_request_event?(action, Map.get(pr, "merged"))
 
-    with {:ticket, id, _push_topic} <- GithubKeys.ref_to_topic("refs/heads/" <> head_ref),
+    closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_name)
+    body_ids = RecentMerge.ClosingReferences.linked_identifiers_in_text(Map.get(pr, "body"), repo_name)
+
+    with {:ticket, branch_id, _push_topic} <- GithubKeys.ref_to_topic("refs/heads/" <> head_ref),
+         id when is_binary(id) <-
+           if(merged?, do: List.first(closing_ids) || Enum.find(body_ids, &(&1 != branch_id)) || branch_id, else: branch_id),
          topic when is_binary(topic) <- pr_topic(id, action, Map.get(pr, "merged")) do
       publish_opts = [
         actor: actor,

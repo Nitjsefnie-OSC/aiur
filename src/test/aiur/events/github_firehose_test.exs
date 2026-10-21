@@ -31,6 +31,34 @@ defmodule Aiur.Events.GithubFirehoseTest do
   end
 
   describe "poll/1" do
+    test "a Refs body routes a merged PR to the referenced ticket instead of its head branch" do
+      :ok = Exchange.subscribe("ticket.5605.pr.merged")
+
+      stub = fn _ ->
+        {:ok,
+         %{
+           status: 200,
+           headers: [{"ETag", ~s("ref-merge")}],
+           body: [
+             %{
+               "id" => "refs-merge",
+               "type" => "PullRequestEvent",
+               "created_at" => "2026-07-12T17:59:00Z",
+               "actor" => %{"login" => "carol"},
+               "repo" => %{"name" => "owner/repo"},
+               "payload" => %{
+                 "action" => "merged",
+                 "pull_request" => %{"number" => 5606, "body" => "Refs #5605", "merged" => true, "head" => %{"ref" => "aiur/5605-quarantine", "sha" => String.duplicate("a", 40)}}
+               }
+             }
+           ]
+         }}
+      end
+
+      assert {:ok, %{count: 1}} = GithubFirehose.poll(request_fun: stub, boot_time: ~U[2026-07-12 18:00:00Z] |> DateTime.to_unix())
+      assert_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 500
+    end
+
     test "PushEvent on ticket branch is ignored", %{ticket: ticket} do
       :ok = Exchange.subscribe("ticket.#{ticket}.branch.push")
 
