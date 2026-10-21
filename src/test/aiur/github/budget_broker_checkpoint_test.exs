@@ -18,6 +18,7 @@ defmodule Aiur.GitHub.BudgetBrokerCheckpointTest do
     conn.execute("INSERT INTO values_table VALUES (1)")
     metrics.CHECKPOINT_THREAD = None
     metrics.CHECKPOINT_REQUESTS = __import__("queue").Queue(maxsize=1)
+    metrics.CHECKPOINT_REQUESTS.put(db)
     status = metrics.recover_checkpoint_if_needed(db, conn)
     assert metrics.LAST_SUCCESSFUL_CHECKPOINT_NS is not None
     assert conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()[2] >= 2

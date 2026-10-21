@@ -95,12 +95,19 @@ def recover_checkpoint_if_needed(db, conn):
     status = checkpoint_status(db)
     dead_worker = CHECKPOINT_THREAD is None or not CHECKPOINT_THREAD.is_alive()
     try:
-        frames = conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()[1]
+        page_size = conn.execute("PRAGMA page_size").fetchone()[0]
+        frames = max((status["sqlite_wal_size_bytes"] - 32) // (page_size + 24), 0)
     except sqlite3.Error:
         frames = 0
     if not dead_worker and frames <= WAL_FRAME_LIMIT and not stale_checkpoint(status):
         return status
-    if not CHECKPOINT_REQUESTS.empty() or (CHECKPOINT_ACTIVE is not None and CHECKPOINT_ACTIVE.is_set()):
+    if dead_worker:
+        while True:
+            try:
+                CHECKPOINT_REQUESTS.get_nowait()
+            except queue.Empty:
+                break
+    elif not CHECKPOINT_REQUESTS.empty() or (CHECKPOINT_ACTIVE is not None and CHECKPOINT_ACTIVE.is_set()):
         return status
     try:
         conn.execute("PRAGMA busy_timeout = 50")
