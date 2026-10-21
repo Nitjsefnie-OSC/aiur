@@ -53,6 +53,13 @@ defmodule Aiur.TestQuarantineTest do
     assert :ok = ExUnit.Filters.eval([], TestQuarantine.filters(entries), tags, :test)
   end
 
+  test "a synthetic quarantined describe test is excluded by its full ExUnit name" do
+    assert {:ok, entries} = TestQuarantine.parse("Aiur.ExampleTest\touter inside\t#1\n")
+    tags = %{module: Aiur.ExampleTest, describe: "outer", test: :"test outer inside"}
+
+    assert {:excluded, "due to test filter"} = ExUnit.Filters.eval([], TestQuarantine.filters(entries), tags, :test)
+  end
+
   test "the blocking ExUnit run config excludes a listed test by its exact name" do
     assert {:test, :"test create freezes the baseline and reports its window, count and coverage"} in ExUnit.configuration()[:exclude]
   end
