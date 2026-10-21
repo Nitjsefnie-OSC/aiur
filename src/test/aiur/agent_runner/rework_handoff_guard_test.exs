@@ -1,6 +1,7 @@
 defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
   use ExUnit.Case, async: true
 
+  alias Aiur.AgentRunner.ReworkHandoffGuard
   alias Aiur.AgentRunner.ToolExecutor
   alias Aiur.Issue
 
@@ -153,6 +154,51 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
   end
 
   @tag :tmp_dir
+  test "stale body evidence is accepted only when intervening commits merge the base", %{tmp_dir: tmp_dir} do
+    repo = Path.join(tmp_dir, "repo")
+    git_bin = Path.join(tmp_dir, "git")
+    File.write!(git_bin, "#!/bin/sh\nexec /usr/bin/git \"$@\"\n")
+    File.chmod!(git_bin, 0o755)
+    File.mkdir_p!(repo)
+    git!(git_bin, repo, ["init", "--quiet", "-b", "main"])
+    git!(git_bin, repo, ["config", "user.name", "Test"])
+    git!(git_bin, repo, ["config", "user.email", "test@example.com"])
+    File.write!(Path.join(repo, "base.txt"), "base 1\n")
+    git!(git_bin, repo, ["add", "."])
+    git!(git_bin, repo, ["commit", "--quiet", "-m", "base one"])
+
+    git!(git_bin, repo, ["checkout", "-b", "feature"])
+    File.write!(Path.join(repo, "feature.txt"), "feature\n")
+    git!(git_bin, repo, ["add", "."])
+    git!(git_bin, repo, ["commit", "--quiet", "-m", "feature"])
+    tested_head = git!(git_bin, repo, ["rev-parse", "HEAD"])
+
+    git!(git_bin, repo, ["checkout", "main"])
+    File.write!(Path.join(repo, "base.txt"), "base 2\n")
+    git!(git_bin, repo, ["commit", "--quiet", "-am", "base two"])
+    base_head = git!(git_bin, repo, ["rev-parse", "HEAD"])
+
+    git!(git_bin, repo, ["checkout", "feature"])
+    git!(git_bin, repo, ["merge", "--quiet", "--no-ff", "main", "-m", "merge base"])
+    merged_head = git!(git_bin, repo, ["rev-parse", "HEAD"])
+    body = "## Local tests\n\nPolicy: partial\nTested head: #{tested_head}\nBase: main @ #{base_head}\nSelection: focused\n- `mix test` -> pass\n"
+    issue = %Issue{id: "gid-merge-evidence", identifier: "5408", state: "in-progress"}
+    opts = [open_pr_fetcher: fn _ -> {:ok, %{"number" => 5408, "body" => body, "head" => %{"sha" => merged_head}, "base" => %{"sha" => base_head}}} end]
+
+    assert :allow = ReworkHandoffGuard.evidence_blockers(issue, "ci-wait", repo, opts)
+
+    File.write!(Path.join(repo, "feature.txt"), "feature changed\n")
+    git!(git_bin, repo, ["commit", "--quiet", "-am", "feature follow-up"])
+    changed_head = git!(git_bin, repo, ["rev-parse", "HEAD"])
+    opts = [open_pr_fetcher: fn _ -> {:ok, %{"number" => 5408, "body" => body, "head" => %{"sha" => changed_head}, "base" => %{"sha" => base_head}}} end]
+
+    assert {:refused, :stale_pr_body_evidence, message} =
+             ReworkHandoffGuard.evidence_blockers(issue, "ci-wait", repo, opts)
+
+    assert message =~ "does not match PR head #{changed_head}"
+  end
+
+  @tag :tmp_dir
   test "with the worker's checkout, handoffs run the full PR body check against the live head", %{tmp_dir: workspace} do
     head = String.duplicate("c", 40)
     issue = %Issue{id: "gid-body", identifier: "4937", state: "in-progress"}
@@ -193,5 +239,10 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuardTest do
 
     assert handoff.("#### Summary\n\n- Fix.\n\n" <> evidence.(head))["success"]
     assert_receive {:state_write, "gid-body", "human-review"}, 100
+  end
+
+  defp git!(git_bin, repo, args) do
+    {output, 0} = System.cmd(git_bin, ["-C", repo | args], stderr_to_stdout: true)
+    String.trim(output)
   end
 end

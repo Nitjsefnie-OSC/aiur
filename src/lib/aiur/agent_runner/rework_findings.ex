@@ -99,11 +99,10 @@ defmodule Aiur.AgentRunner.ReworkFindings do
       {:ok, comments} when is_list(comments) ->
         latest =
           comments
-          |> Enum.filter(&trusted_comment?(&1, review_at))
+          |> Enum.filter(fn comment -> trusted_comment?(comment, review_at) and change_request_comment?(field(comment, "body")) end)
           |> Enum.max_by(&comment_timestamp/1, fn -> nil end)
 
-        comment = if latest && change_request_comment?(field(latest, "body")), do: latest, else: nil
-        {:ok, comment}
+        {:ok, latest}
 
       {:error, reason} ->
         {:error, reason}

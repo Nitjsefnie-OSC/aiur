@@ -118,7 +118,9 @@ defmodule Aiur.AgentRunner.ReworkFindingsTest do
       assert {:ok, %{"body" => "Blocking: fix the tests before merge"}} =
                ReworkFindings.latest_feedback_comment(4924, "2026-10-17T13:43:10Z", pr_issue_comments_fetcher: fn 4924 -> {:ok, Enum.take(comments, 3)} end)
 
-      assert {:ok, nil} = ReworkFindings.latest_feedback_comment(4924, "2026-10-17T13:43:10Z", pr_issue_comments_fetcher: fn 4924 -> {:ok, comments} end)
+      # A later benign Executor comment cannot conceal the still-open request.
+      assert {:ok, %{"body" => "Blocking: fix the tests before merge"}} =
+               ReworkFindings.latest_feedback_comment(4924, "2026-10-17T13:43:10Z", pr_issue_comments_fetcher: fn 4924 -> {:ok, comments} end)
     end
   end
 

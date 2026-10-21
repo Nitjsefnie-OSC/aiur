@@ -55,7 +55,7 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
     with {:ok, pr} <- ReworkGate.open_pr(issue.identifier, opts),
          head when is_binary(head) <- ReworkGate.head_sha(pr),
          body when is_binary(body) <- pr["body"],
-         {:error, reason} <- evidence_error(body, head, workspace) do
+         {:error, reason} <- evidence_error(body, head, workspace, pr) do
       {:refused, :stale_pr_body_evidence, evidence_refusal(issue, state, pr, head, reason)}
     else
       _ -> :allow
@@ -72,19 +72,56 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
     "Cannot hand ticket #{issue.identifier} to #{state}: PR ##{pr["number"]} body fails the PR body check (#{reason}). Fix the body. Run `aiur pre-pr` again after `gh pr create` so it writes `Tested head: #{head}` and `Base:`, then hand off."
   end
 
-  defp evidence_error(body, head, workspace) do
+  defp evidence_error(body, head, workspace, pr) do
     case LocalTestEvidence.parse(body) do
       {:ok, %{tested_head: tested_head}} ->
-        if String.downcase(tested_head) != String.downcase(head) do
-          {:error, {:stale_tested_head, tested_head}}
-        else
-          lint_evidence_error(body, head, workspace)
-        end
+        validate_tested_head(body, tested_head, head, workspace, get_in(pr, ["base", "sha"]))
 
       _ ->
         lint_evidence_error(body, head, workspace)
     end
   end
+
+  defp validate_tested_head(body, tested_head, head, workspace, base_sha) do
+    cond do
+      String.downcase(tested_head) == String.downcase(head) ->
+        lint_evidence_error(body, head, workspace)
+
+      merge_only_base_advance?(workspace, tested_head, head, base_sha) ->
+        lint_evidence_error(body, tested_head, workspace)
+
+      true ->
+        {:error, {:stale_tested_head, tested_head}}
+    end
+  end
+
+  defp merge_only_base_advance?(workspace, tested_head, head, base_sha)
+       when is_binary(workspace) and is_binary(tested_head) and is_binary(head) and is_binary(base_sha) do
+    with true <- File.dir?(workspace),
+         true <- valid_sha?(tested_head) and valid_sha?(head) and valid_sha?(base_sha),
+         {_, 0} <- System.cmd("git", ["-C", workspace, "merge-base", "--is-ancestor", tested_head, head], stderr_to_stdout: true),
+         {output, 0} <- System.cmd("git", ["-C", workspace, "rev-list", "--first-parent", "--reverse", "--parents", "#{tested_head}..#{head}"], stderr_to_stdout: true),
+         [_ | _] = commits <- String.split(output, "\n", trim: true),
+         true <- Enum.all?(commits, &base_merge_commit?(&1, workspace, base_sha)) do
+      true
+    else
+      _unavailable_or_non_merge -> false
+    end
+  end
+
+  defp merge_only_base_advance?(_workspace, _tested_head, _head, _base_sha), do: false
+
+  defp base_merge_commit?(line, workspace, base_sha) do
+    case String.split(line) do
+      [_commit, _first_parent, second_parent] ->
+        match?({_, 0}, System.cmd("git", ["-C", workspace, "merge-base", "--is-ancestor", second_parent, base_sha], stderr_to_stdout: true))
+
+      _not_a_merge_commit ->
+        false
+    end
+  end
+
+  defp valid_sha?(sha), do: Regex.match?(~r/\A[0-9a-fA-F]{40}\z/, sha)
 
   defp lint_evidence_error(body, head, workspace) do
     case pr_template(workspace) do
