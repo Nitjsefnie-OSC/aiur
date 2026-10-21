@@ -7,14 +7,15 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
 
   @page_limit 5
 
-  @spec recent_main_paths(binary(), keyword()) :: [String.t()]
+  @spec recent_main_paths(binary(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
   def recent_main_paths(base, opts) do
     case Keyword.get(opts, :recent_main_failure_paths_fun, &fetch_recent_main_failure_paths/2).(
            base,
            opts
          ) do
-      {:ok, paths} when is_list(paths) -> paths |> Enum.filter(&is_binary/1) |> Enum.uniq()
-      _ -> []
+      {:ok, paths} when is_list(paths) -> {:ok, paths |> Enum.filter(&is_binary/1) |> Enum.uniq()}
+      {:error, reason} -> {:error, reason}
+      other -> {:error, {:invalid_recent_main_evidence, other}}
     end
   end
 
@@ -90,18 +91,37 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
   def known_patterns(opts) do
     case Keyword.fetch(opts, :known_failure_patterns) do
       {:ok, patterns} ->
-        patterns
+        known_flaky_patterns(opts) ++ patterns
 
       :error ->
         case Keyword.get(opts, :known_failure_patterns_fun, fn ->
                FailureEvidence.flake_issues(opts)
              end).() do
           {:ok, issues} when is_list(issues) ->
-            Enum.flat_map(issues, &failure_issue_patterns(&1, opts))
+            known_flaky_patterns(opts) ++ Enum.flat_map(issues, &failure_issue_patterns(&1, opts))
 
           _ ->
             []
         end
+    end
+  end
+
+  defp known_flaky_patterns(opts) do
+    path = Keyword.get(opts, :known_flaky_tests_path, ".github/known-flaky-tests.txt")
+
+    case File.read(path) do
+      {:ok, contents} ->
+        contents
+        |> String.split(~r/[\r\n]+/)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+
+      {:error, :enoent} ->
+        []
+
+      {:error, reason} ->
+        Logger.warning("known flaky test list unavailable path=#{path} reason=#{inspect(reason)}")
+        []
     end
   end
 

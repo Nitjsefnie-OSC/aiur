@@ -210,6 +210,17 @@ defmodule Aiur.LandingWatch.Journal do
     end)
   end
 
+  @doc "Counts innocent merge-group failures for one PR head and returns its new attempt number."
+  @spec record_merge_group_blame_attempt(pos_integer(), String.t(), keyword()) :: {:ok, pos_integer()} | {:error, term()}
+  def record_merge_group_blame_attempt(pr, head, opts \\ []) when is_integer(pr) and is_binary(head) do
+    update(opts, fn state ->
+      attempts = Map.get(state, "merge_group_blame_attempts", %{})
+      identity = key(pr, head)
+      count = Map.get(attempts, identity, 0) + 1
+      {:ok, Map.put(state, "merge_group_blame_attempts", Map.put(attempts, identity, count)), count}
+    end)
+  end
+
   @spec failure_observations(keyword()) :: {:ok, [map()]} | {:error, term()}
   def failure_observations(opts \\ []) do
     with {:ok, state} <- state(opts), do: {:ok, Map.get(state, "failure_observations", [])}
