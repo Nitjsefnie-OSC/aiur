@@ -40,6 +40,7 @@ class QuarantinedTestSelectionTest(unittest.TestCase):
         self.assertGreaterEqual(len(selected), len(RUNNER.entries()))
         self.assertTrue(any(item.startswith("test/aiur/experiments_cli_test.exs:") for item in selected))
         self.assertTrue(any(item.startswith("test/aiur/decision_store/enrichment_test.exs:") for item in selected))
+        self.assertEqual(self.select(("Aiur.FixtureTest", "*")), ["test/fixture_test.exs:5", "test/fixture_test.exs:9"])
 
     def test_selector_locations_are_unique(self):
         selected = RUNNER.selectors()
@@ -70,10 +71,6 @@ class QuarantinedTestSelectionTest(unittest.TestCase):
         # ExUnit excludes by name alone, so this entry would also exclude Aiur.OtherFixtureTest.
         with self.assertRaisesRegex(ValueError, "matches 1 test\\(s\\) in its module and 2 suite-wide"):
             self.select(("Aiur.FixtureTest", "outside"))
-
-    def test_module_wildcard_selects_every_test(self):
-        self.assertEqual(self.select(("Aiur.FixtureTest", "*")), ["test/fixture_test.exs:5", "test/fixture_test.exs:9"])
-
 
 if __name__ == "__main__":
     unittest.main()
