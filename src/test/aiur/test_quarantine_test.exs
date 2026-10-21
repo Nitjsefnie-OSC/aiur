@@ -54,6 +54,7 @@ defmodule Aiur.TestQuarantineTest do
   end
 
   test "the fixed experiment test is not excluded from the blocking ExUnit run" do
+    assert {:test, :"test supervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification"} in ExUnit.configuration()[:exclude]
     refute {:test, :"test create freezes the baseline and reports its window, count and coverage"} in ExUnit.configuration()[:exclude]
   end
 
