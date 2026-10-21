@@ -106,7 +106,7 @@ defmodule Aiur.GitHub.Transport do
   members had different visibility would need the credential in the cache key.
   """
   @spec default_request_fun(map()) :: {:ok, map()} | {:error, term()}
-  def default_request_fun(req), do: TestScope.run(req, &do_request/1)
+  def default_request_fun(req), do: Settings.with_request(fn -> TestScope.run(req, &do_request/1) end)
 
   defp do_request(%{method: :get, url: url, token: token} = req) do
     headers =
@@ -593,14 +593,16 @@ defmodule Aiur.GitHub.Transport do
   end
 
   defp send_graphql(request_fun, token, query, variables, opts) do
-    body = %{"query" => GraphQLCost.instrument(query), "variables" => variables}
+    Settings.with_request(fn ->
+      body = %{"query" => GraphQLCost.instrument(query), "variables" => variables}
 
-    request =
-      %{method: :post, url: graphql_url(), token: token, body: body}
-      |> maybe_put_max_response_bytes(opts)
-      |> maybe_put_caller(opts)
+      request =
+        %{method: :post, url: graphql_url(), token: token, body: body}
+        |> maybe_put_max_response_bytes(opts)
+        |> maybe_put_caller(opts)
 
-    validate_graphql_response(request_fun.(request))
+      validate_graphql_response(request_fun.(request))
+    end)
   end
 
   # The budget is the reason the call is refused, so the refusal has to be

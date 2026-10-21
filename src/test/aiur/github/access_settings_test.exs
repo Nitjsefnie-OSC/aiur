@@ -3,10 +3,12 @@ defmodule Aiur.GitHub.AccessSettingsTest do
 
   alias Aiur.Config.Paths
   alias Aiur.GitHub.{AccessSettings, Budget, CredentialRegistry, RequestLog}
+  alias Aiur.GitHub.EventSourcePolicy
   alias Aiur.GitHub.Quota.{ShellObservations, Windows}
   alias Aiur.GitHub.ReadCache.Policy, as: CachePolicy
   alias Aiur.GitHub.ResourceStore.Persistence
   alias Aiur.TestSupport.WorkflowFiles
+  alias Aiur.TestSupport.WorkflowYaml
   alias Aiur.{Workflow, WorkflowStore}
 
   @tag :tmp_dir
@@ -76,6 +78,42 @@ defmodule Aiur.GitHub.AccessSettingsTest do
     assert settings.repo == "o/r"
     refute is_struct(settings.budget)
     assert settings.budget.daemon_core_limit_per_hour == 3000
+  end
+
+  test "a broken config does not read as a negative daemon self-loop decision" do
+    path = Workflow.workflow_file_path()
+    original = File.read!(path)
+    previous_provider = Application.fetch_env(:aiur, :github_access_settings_provider)
+
+    {invalid, _prompt} = invalid_github_workflow()
+
+    on_exit(fn ->
+      case previous_provider do
+        {:ok, value} -> Application.put_env(:aiur, :github_access_settings_provider, value)
+        :error -> Application.delete_env(:aiur, :github_access_settings_provider)
+      end
+
+      File.write!(path, original)
+      _ = WorkflowStore.force_reload()
+    end)
+
+    WorkflowFiles.write_workflow_file_atomic!(path, invalid)
+    assert {:error, _reason} = WorkflowStore.force_reload()
+
+    Application.put_env(:aiur, :github_access_settings_provider, __MODULE__.BrokenProvider)
+    assert_raise ArgumentError, fn -> EventSourcePolicy.self_authored?("ticket.1.comment", "daemon[bot]", %{}) end
+  end
+
+  defmodule BrokenProvider do
+    def settings, do: raise(ArgumentError, "broken config")
+  end
+
+  defp invalid_github_workflow do
+    WorkflowYaml.workflow_content(
+      tracker_kind: "github",
+      tracker_repo: "owner/repo",
+      tracker_github_app_account: "bad"
+    )
   end
 
   test "the next budget call sees a reloaded workflow limit" do
