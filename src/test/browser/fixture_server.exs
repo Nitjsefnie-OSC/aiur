@@ -153,8 +153,8 @@ end
 
 defmodule Aiur.BrowserHarness.FixtureServer do
   alias Aiur.BrowserHarness.{BaseNavigation, ExperimentsFixture, FixtureEndpoint}
-  alias Aiur.Experiments
   alias Aiur.BrowserHarness.FixtureEndpointStart
+  alias Aiur.Experiments
   alias Aiur.IssueLog
   alias Aiur.TestSupport.BuildHome.FixtureSource
 

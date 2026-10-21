@@ -9,7 +9,7 @@ import { shardCommands } from './browser-suites.mjs';
 // Balanced by recorded durations (browser-smoke-durations.mjs); check-browser-smoke-shards.mjs keeps each shard under 75% of budgetMs.
 export const shards = {
   1: ["test:build-home-columns", "test:shell-width", "test:tokens", "test:ticket-context", "test:quota-panel", "test:palette"],
-  2: ["test:build-home-band-parity", "test:build-home-usage", "test:build-home", "test:build-home-span", "test:build-home-offline", "test:home-css-ci", "test:build-home-edges-unit", "test:command-history"],
+  2: ["test:build-home-band-parity", "test:build-home-usage", "test:build-home", "test:build-home-span", "test:build-home-offline", "test:home-css-ci", "test:build-home-edges-unit", "test:command-history", "test:cutover-nav-parity"],
   3: ["test:build-home-tools", "test:build-home-render", "test:shell-parity", "test:build-order", "test:build-queue", "check:build-home-fixtures"],
   4: ["test:build-home-motion", "test:design-parity", "test:shell", "test:smoke", "test:meter-row", "test:models-panel"],
   5: ["test:build-home-band-motion", "test:build-home-states-parity", "test:build-home-edges-parity", "test:streamdeck", "test:interaction", "test:performance", "test:build-home-assets", "test:harness", "test:build-modal"],
