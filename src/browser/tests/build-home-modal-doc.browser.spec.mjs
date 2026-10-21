@@ -19,7 +19,7 @@ async function display(page, patch = {}, options = {}) {
     const { ctx } = await import('/build-home/state.js')
     const t = { ...(patch.sec === 'nq' ? ctx.D.nq[0] : ctx.D.plan[0]), agent: null, ...patch }
     window.docCalls = []
-    const push = ctx.push
+    const push = window.docPush ||= ctx.push
     ctx.push = (event, payload) => {
       window.docCalls.push({ event, payload })
       if (['ticket-doc', 'queue-add'].includes(event)) return new Promise(resolve => { window[event + 'Reply'] = resolve })
