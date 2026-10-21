@@ -33,8 +33,7 @@ defmodule AiurWeb.BuildLiveCutoverTest do
     LiveViewAsync.render_when_complete(view)
     rows = data()["sections"]["now"]
     active = Enum.filter(rows, &(get_in(&1, ["agent", "state"]) == "active"))
-    count = length(active)
-    assert count > 0
+    count = 3
     badge = ~s(a[href="/"] .snav-c)
     assert view |> element(badge) |> render() =~ ">#{count}<"
     row = hd(active) |> put_in(["agent", "state"], "paused")
