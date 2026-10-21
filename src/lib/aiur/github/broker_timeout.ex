@@ -69,6 +69,17 @@ defmodule Aiur.GitHub.BrokerTimeout do
   def record, do: record(System.monotonic_time(:millisecond))
 
   @doc false
+  @spec record_checkpoint_degraded() :: :ok
+  def record_checkpoint_degraded do
+    GenServer.cast(__MODULE__, {:checkpoint_degraded, System.monotonic_time(:millisecond)})
+    :ok
+  rescue
+    ArgumentError -> :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
+  @doc false
   @spec record(integer(), keyword()) :: :ok
   def record(now_ms, opts \\ []) when is_integer(now_ms) and is_list(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -147,6 +158,12 @@ defmodule Aiur.GitHub.BrokerTimeout do
   @impl true
   def handle_cast({:record, now_ms}, state) do
     {:noreply, record_event(state, now_ms)}
+  end
+
+  def handle_cast({:checkpoint_degraded, now_ms}, state) do
+    safe_emit(fn -> emit_retry_event(state) end)
+    state = %{state | events: [now_ms | prune_older(state.events, now_ms)]}
+    {:noreply, %{state | since_ms: state.since_ms || now_ms}}
   end
 
   @impl true

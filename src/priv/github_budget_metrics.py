@@ -1,9 +1,11 @@
 """Timing helpers and background WAL checkpoints for the resident broker."""
 
 import json
+import os
 import queue
 import secrets
 import sqlite3
+import sys
 import threading
 import time
 
@@ -11,6 +13,10 @@ import time
 CHECKPOINT_REQUESTS = None
 CHECKPOINT_RESULTS = None
 CHECKPOINT_LOCK = None
+CHECKPOINT_THREAD = None
+LAST_SUCCESSFUL_CHECKPOINT_NS = None
+FALLBACK_LOGGED = False
+WAL_FRAME_LIMIT = 10_000
 
 
 class SessionConnection:
@@ -52,6 +58,21 @@ def take_checkpoint_result(db):
         return CHECKPOINT_RESULTS.pop(db, None)
 
 
+def checkpoint_status(db):
+    wal_path = db + "-wal"
+    try:
+        wal_size = os.path.getsize(wal_path)
+    except OSError:
+        wal_size = 0
+    last = LAST_SUCCESSFUL_CHECKPOINT_NS
+    age_ms = None if last is None else max((time.monotonic_ns() - last) / 1_000_000, 0)
+    return {
+        "sqlite_wal_size_bytes": wal_size,
+        "sqlite_checkpoint_age_ms": age_ms,
+        "sqlite_checkpoint_stale": age_ms is not None and age_ms > 600_000,
+    }
+
+
 def schedule_checkpoint(db):
     if CHECKPOINT_REQUESTS is None:
         return
@@ -61,8 +82,37 @@ def schedule_checkpoint(db):
         pass
 
 
+def stale_checkpoint(status):
+    age = status["sqlite_checkpoint_age_ms"]
+    return age is not None and age > 600_000
+
+
+def recover_checkpoint_if_needed(db, conn):
+    global FALLBACK_LOGGED, LAST_SUCCESSFUL_CHECKPOINT_NS
+    status = checkpoint_status(db)
+    dead_worker = CHECKPOINT_THREAD is None or not CHECKPOINT_THREAD.is_alive()
+    try:
+        frames = conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()[1]
+    except sqlite3.Error:
+        frames = 0
+    if not dead_worker and frames <= WAL_FRAME_LIMIT and not stale_checkpoint(status):
+        return status
+    if CHECKPOINT_REQUESTS is not None and not CHECKPOINT_REQUESTS.empty():
+        return status
+    try:
+        busy, total, checkpointed = conn.execute("PRAGMA wal_checkpoint(RESTART)").fetchone()
+        if busy == 0 and checkpointed >= total:
+            LAST_SUCCESSFUL_CHECKPOINT_NS = time.monotonic_ns()
+        if not FALLBACK_LOGGED:
+            print("budget broker checkpoint worker fallback checkpoint ran", file=sys.stderr)
+            FALLBACK_LOGGED = True
+    except sqlite3.Error:
+        pass
+    return checkpoint_status(db)
+
+
 def start_checkpoint_worker():
-    global CHECKPOINT_REQUESTS, CHECKPOINT_RESULTS, CHECKPOINT_LOCK
+    global CHECKPOINT_REQUESTS, CHECKPOINT_RESULTS, CHECKPOINT_LOCK, CHECKPOINT_THREAD, LAST_SUCCESSFUL_CHECKPOINT_NS
     CHECKPOINT_REQUESTS = queue.Queue(maxsize=1)
     CHECKPOINT_RESULTS = {}
     CHECKPOINT_LOCK = threading.Lock()
@@ -83,12 +133,15 @@ def start_checkpoint_worker():
                     "sqlite_wal_frames": frames,
                     "sqlite_checkpointed_frames": checkpointed,
                 }
+                if busy == 0 and checkpointed >= frames:
+                    LAST_SUCCESSFUL_CHECKPOINT_NS = time.monotonic_ns()
             except sqlite3.Error:
                 result = {"sqlite_checkpoint_ms": (time.monotonic_ns() - started_ns) / 1_000_000}
             with CHECKPOINT_LOCK:
                 CHECKPOINT_RESULTS[db] = result
 
-    threading.Thread(target=run, daemon=True).start()
+    CHECKPOINT_THREAD = threading.Thread(target=run, daemon=True)
+    CHECKPOINT_THREAD.start()
 
 
 def receive_requests(lines, inbox):
@@ -166,6 +219,7 @@ def successful_replies(replies, requests, sqlite_open_ms, lock_wait_ms, transact
         })
         if checkpoint:
             reply.update(checkpoint)
+        reply.update(checkpoint_status(request.get("_db_path", "")) if request.get("_db_path") else {})
     return replies
 
 
