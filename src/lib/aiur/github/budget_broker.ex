@@ -190,7 +190,8 @@ defmodule Aiur.GitHub.BudgetBroker do
 
         observe_command(:timeout, measurements)
         cleanup = Process.send_after(self(), {:forget_late, id}, :timer.minutes(1))
-        state |> put_in([:pending, id], {nil, cleanup, submitted_at, mailbox_wait_ms, command_type, measurements}) |> add_sample(:timeout, measurements)
+        sample = Map.put(measurements, :sample_id, make_ref())
+        state |> put_in([:pending, id], {nil, cleanup, submitted_at, mailbox_wait_ms, command_type, sample}) |> add_sample(:timeout, sample)
 
       _already_expired_or_completed ->
         state
@@ -223,11 +224,13 @@ defmodule Aiur.GitHub.BudgetBroker do
   end
 
   defp update_timeout_sample(state, original, late) do
+    sample_id = original.sample_id
+
     %{
       state
       | stats:
           Enum.map(state.stats, fn
-            {:timeout, ^original} -> {:timeout, Map.merge(original, Map.drop(late, [:late_duration_ms]))}
+            {:timeout, %{sample_id: ^sample_id} = sample} -> {:timeout, Map.merge(sample, Map.drop(late, [:late_duration_ms]))}
             sample -> sample
           end)
     }
