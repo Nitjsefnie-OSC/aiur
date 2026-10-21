@@ -44,7 +44,7 @@ defmodule Aiur.GitHub.Transport do
   @orchestrator_request_deadline_ms 10_000
   @budget_admission_timeout_ms 5_000
   @budget_command_timeout_ms 3_000
-  @orchestrator_budget_admission_timeout_ms 3_000
+  @orchestrator_budget_admission_timeout_ms 1_500
 
   @spec base_url() :: String.t()
   def base_url, do: Settings.current().api_base_url

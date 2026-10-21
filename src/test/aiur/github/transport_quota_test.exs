@@ -219,8 +219,8 @@ defmodule Aiur.GitHub.TransportQuotaTest do
     assert {:ok, %{status: 200}} = Task.await(second, 2_000)
   end
 
-  # The Orchestrator uses the measured 3-second broker command bound under host pressure.
-  test "the Orchestrator process gives up on a held lease after the broker deadline", %{budget_dir: budget_dir} do
+  # Orchestrator admission sleeps on the caller; keep its mailbox wait bounded.
+  test "the Orchestrator process gives up on a held lease after 1.5 s", %{budget_dir: budget_dir} do
     Application.put_env(:aiur, :github_budget_enabled?, true)
     Application.put_env(:aiur, :github_budget_dir, budget_dir)
     Application.put_env(:aiur, :github_budget_settings_override, %{max_inflight: 1, max_inflight_per_endpoint: 1, requests_per_minute: 20, stagger_ms: 0})
@@ -249,7 +249,7 @@ defmodule Aiur.GitHub.TransportQuotaTest do
       end)
 
     assert {elapsed_ms, {:error, {:aiur, :locally_held, %{reason: :shared_budget}}}} = Task.await(orchestrator, 5_000)
-    assert elapsed_ms < 4_500
+    assert elapsed_ms < 3_000
     send(first_conn, :release_request)
     assert {:ok, %{status: 200}} = Task.await(first, 2_000)
   end
@@ -329,11 +329,10 @@ defmodule Aiur.GitHub.TransportQuotaTest do
     assert {:ok, %{status: 200}} = Task.await(pending_request, 2_000)
   end
 
-  test "orchestrator transport survives a broker wait at the measured high-load p99", %{budget_dir: budget_dir} do
+  test "non-orchestrator transport survives a broker wait at the measured high-load p99", %{budget_dir: budget_dir} do
     Application.put_env(:aiur, :github_budget_enabled?, true)
     Application.put_env(:aiur, :github_budget_dir, budget_dir)
     Application.put_env(:aiur, :github_request_deadline_ms, 5_000)
-    Application.put_env(:aiur, :github_poll_owner, self())
 
     Application.put_env(:aiur, :github_budget_settings_override, %{
       max_inflight: 4,
