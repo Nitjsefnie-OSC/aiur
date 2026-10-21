@@ -398,6 +398,7 @@
   },
   {
     "id": "chain-fit-settled",
+    "spec": "build-home-chains-parity.browser.spec.mjs",
     "kind": "property",
     "selector": ".bd-lt",
     "property": "left and dependency edge paths",

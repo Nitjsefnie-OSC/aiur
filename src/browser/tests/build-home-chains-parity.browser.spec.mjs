@@ -111,6 +111,7 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     if (cell.viewport.width === 1440) {
       const entry = pair.allowlist.find(entry => entry.id === 'chain-fit-settled')
       expect(entry.approval.status).toBe('approved')
+      expect(entry.spec).toBe('build-home-chains-parity.browser.spec.mjs')
       const positioned = await pair.product.evaluate(id => {
         const card = document.querySelector(`.bd-card[data-id="${id}"]`).getBoundingClientRect()
         const content = document.querySelector('#bd-content').getBoundingClientRect()
