@@ -185,9 +185,6 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
           opts: opts
         })
 
-      {:ok, _no_blocking_review} ->
-        {:allow, []}
-
       {:error, reason} ->
         {:refused, :rework_findings_unaddressed, "Cannot hand ticket #{issue.identifier} back to #{state}: the latest review's findings could not be read (#{inspect(reason)}). Retry the handoff."}
     end
