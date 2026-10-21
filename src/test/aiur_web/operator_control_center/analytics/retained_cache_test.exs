@@ -1,7 +1,7 @@
 defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
   use ExUnit.Case, async: false
   import Aiur.TestSupport, only: [receive_barrier: 1]
-  alias Aiur.RunTelemetry.RetainedCache
+  alias Aiur.RunTelemetry.{RetainedCache, Summaries}
   alias AiurWeb.OperatorControlCenter.Analytics.LatestRun
 
   test "concurrent latest cold loads survive the first requester exiting" do
@@ -92,6 +92,33 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
     path = Path.join(runs, "boot-b")
     File.mkdir_p!(path)
     assert ["boot-a", "boot-b"] = RetainedCache.summaries_identity("current") |> Enum.map(&elem(&1, 0))
+  end
+
+  test "dashboard cache identity changes when retained boots are added" do
+    root = Aiur.TestSupport.tmp_root!("retained-directory-identity")
+    previous = for key <- [:repo_base_root, :analytics_repo], do: {key, Application.fetch_env(:aiur, key)}
+    Application.put_env(:aiur, :repo_base_root, root)
+    Application.put_env(:aiur, :analytics_repo, "test/retained-directory-identity")
+    runs = Summaries.runs_dir()
+    File.mkdir_p!(runs)
+
+    for boot <- 1..256 do
+      File.mkdir_p!(Path.join(runs, "boot-#{boot}"))
+      File.write!(Summaries.run_summary_path("boot-#{boot}"), "summary")
+    end
+
+    on_exit(fn ->
+      Aiur.TestSupport.restore_app_env(previous)
+      Aiur.TestCleanup.rm_rf!(root)
+    end)
+
+    identity = RetainedCache.identity(nil)
+
+    assert identity == RetainedCache.identity(nil)
+
+    File.mkdir_p!(Path.join(runs, "boot-new"))
+    RetainedCache.invalidate_identity()
+    refute identity == RetainedCache.identity(nil)
   end
 
   test "latest-run decodes newest analyzable summary only" do

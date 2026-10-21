@@ -4,6 +4,8 @@ defmodule Aiur.RunTelemetry.RetainedCache do
 
   alias Aiur.RunTelemetry.Summaries
 
+  @identity_table Aiur.RunTelemetry.RetainedCache.Identity
+
   @doc "Shares a cold load; failures are propagated to every waiter and never cached."
   @spec fetch(atom(), term(), (-> term()), keyword()) :: term()
   def fetch(table, key, loader, opts \\ []) do
@@ -18,7 +20,29 @@ defmodule Aiur.RunTelemetry.RetainedCache do
   @doc "Identity of retained summary files, excluding the current boot."
   @spec identity(String.t() | nil) :: term()
   def identity(current_boot) do
-    {Summaries.state_node(), current_boot, summaries_identity(current_boot)}
+    {Summaries.state_node(), current_boot, cached_identity(current_boot)}
+  end
+
+  @doc false
+  @spec invalidate_identity() :: :ok
+  def invalidate_identity do
+    if :ets.whereis(@identity_table) != :undefined, do: :ets.delete_all_objects(@identity_table)
+    :ok
+  end
+
+  defp cached_identity(current_boot) do
+    ensure_table(@identity_table)
+    key = {Summaries.state_node(), current_boot}
+
+    case :ets.lookup(@identity_table, key) do
+      [{^key, identity}] ->
+        identity
+
+      [] ->
+        identity = summaries_identity(current_boot)
+        :ets.insert(@identity_table, {key, identity})
+        identity
+    end
   end
 
   @doc false
