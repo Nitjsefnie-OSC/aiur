@@ -5,6 +5,20 @@ defmodule Aiur.LandingWatch.RuntimeTest do
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.Journal
 
+  defp observation_raw do
+    %{
+      "id" => "PR_17",
+      "headRefOid" => "head-17",
+      "isDraft" => false,
+      "reviewDecision" => "APPROVED",
+      "mergeable" => "MERGEABLE",
+      "mergeStateStatus" => "CLEAN",
+      "autoMergeRequest" => nil,
+      "mergeQueueEntry" => nil,
+      "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-17"}}]}
+    }
+  end
+
   test "poll visits every observation and fails on a malformed census" do
     parent = self()
 
@@ -21,6 +35,51 @@ defmodule Aiur.LandingWatch.RuntimeTest do
     assert_received {:seen, 1}
     assert_received {:seen, 2}
     assert {:error, :invalid_observations} = LandingWatch.poll(observe_fun: fn _ -> :bad end)
+  end
+
+  test "watchdog receives completed merge-group evidence even when failure routing fails" do
+    run = %{"id" => 81, "event" => "merge_group", "status" => "completed", "conclusion" => "failure", "head_branch" => "gh-readonly-queue/main/pr-17-head"}
+
+    request = fn
+      %{method: :get, url: url} ->
+        runs = if String.contains?(url, "status=completed"), do: [run], else: []
+        {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+
+      %{method: :post, body: %{"query" => query}} ->
+        cond do
+          query =~ "dequeuePullRequest" -> {:ok, %{status: 200, body: %{"data" => %{"dequeuePullRequest" => %{}}}}}
+          query =~ "pullRequest(number:" -> {:ok, %{status: 200, body: %{"data" => %{"repository" => %{"pr_0" => observation_raw()}}}}}
+          true -> flunk("unexpected GraphQL request: #{query}")
+        end
+    end
+
+    observation = %{
+      number: 17,
+      base: "main",
+      head: "head-17",
+      node_id: "PR_17",
+      draft?: false,
+      review_decision: "APPROVED",
+      auto_merge_request: nil,
+      mergeable: "MERGEABLE",
+      merge_state_status: "CLEAN",
+      merge_queue_entry: %{"id" => "entry-17", "state" => "UNMERGEABLE", "pullRequest" => %{"headRefOid" => "head-17"}},
+      raw: %{}
+    }
+
+    assert {:error, :routing_fixture_failure} =
+             LandingWatch.poll(
+               observe_fun: fn _ -> {:ok, [observation]} end,
+               journal_path: journal_path(),
+               token: "test-gh-token",
+               base_branch: "main",
+               request_fun: request,
+               live_observations_fun: fn observations, _ -> {:ok, observations} end,
+               jobs_fun: fn _, _ -> {:error, :routing_fixture_failure} end,
+               merge_queue_watchdog_fun: fn _observations, _opts -> :ok end
+             )
+
+    assert_received {:merge_group_evidence, _ref, %{runs: [^run], observations: [^observation]}}
   end
 
   test "poll waits through an expired shared-budget hold and retries the observation" do
