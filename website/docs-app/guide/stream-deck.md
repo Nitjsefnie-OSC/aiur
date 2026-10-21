@@ -4,7 +4,7 @@ Open `/streamdeck` in the [GUI](/guide/gui) to use the browser emulator, or inst
 
 <img src="/images/dashboard/streamdeck-dark.png" alt="Desktop Stream Deck emulator showing synthetic agent keys">
 
-The Claude provider meter names the selected account and shows “worst of N accounts” when every account was read. Partial readings show the observed account count. See [Claude accounts](/guide/claude-accounts) for the selection rule and individual dashboard bars.
+The Claude provider meter names the selected account and summarizes the least remaining share when every account was read. Partial readings show the observed account count. See [Claude accounts](/guide/claude-accounts) for the selection rule and individual dashboard bars.
 
 ## Drive the four modes
 
@@ -196,7 +196,7 @@ Prefer the environment reference over a literal key. See [Configuration](/refere
 | Transcript returned | Text stays in memory until sent or discarded; nothing writes it to disk. |
 | Coding agent launched | `ELEVENLABS_API_KEY` is removed from its environment and never logged. |
 
-When voice input is enabled, the Units meter reads the ElevenLabs credit quota as percentage used and the amount due on the next invoice, not speech-to-text audio-minute spend; see [ElevenLabs metering](/apis/elevenlabs#what-the-units-meter-measures). Declining voice input disables this provider meter.
+When voice input is enabled, the Units meter reads the ElevenLabs credit quota as percentage remaining and the amount due on the next invoice, not speech-to-text audio-minute spend; see [ElevenLabs metering](/apis/elevenlabs#what-the-units-meter-measures). Declining voice input disables this provider meter.
 
 ### Without a key
 

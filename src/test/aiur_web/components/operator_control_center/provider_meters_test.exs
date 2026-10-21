@@ -41,7 +41,10 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMetersTest do
 
     assert html =~ ~s(id="provider-meter-codex-title")
     assert html =~ ~s(role="progressbar")
-    assert html =~ ~s(aria-valuenow="40")
+    assert html =~ ~s(aria-valuenow="60")
+    assert html =~ ~s(aria-label="Primary remaining")
+    assert html =~ "60% left"
+    assert html =~ ~s(width: 60%)
     assert html =~ ~s(aria-valuemin="0")
     assert html =~ ~s(aria-valuemax="100")
     assert html =~ ~s(<time)
@@ -131,7 +134,7 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMetersTest do
     html = render(view, announcement)
     assert html =~ ~r/provider-meter-badge state-stale[^>]*>Stale<\/span>/
     assert html =~ ~r/<dt>Health<\/dt>\s*<dd>Stale<\/dd>/
-    assert html =~ ~s(aria-valuenow="33")
+    assert html =~ ~s(aria-valuenow="67")
     assert html =~ "10 seconds old"
     refute html =~ "Healthy"
   end
@@ -189,14 +192,15 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMetersTest do
     html = render(view, Presenter.announcement(view))
 
     card = Enum.find(view.cards, &(&1.provider == :claude))
-    assert card.account_usage.total_percent == 94
-    assert Enum.map(card.account_usage.accounts, &{&1.name, &1.percent}) == [{"default", 94}, {"work", 33}]
+    assert card.account_usage.total_percent == 6
+    assert Enum.map(card.account_usage.accounts, &{&1.name, &1.percent}) == [{"default", 6}, {"work", 67}]
     assert html =~ "×2"
-    assert html =~ "Weekly · worst of 2 accounts: 94%"
-    assert html =~ ~s(width: 94%)
-    assert html =~ ~s(width: 33%)
-    assert html =~ "default: 94%"
-    assert html =~ "work: 33%"
+    assert html =~ "Weekly · least remaining of 2 accounts: 6% left"
+    assert card.account_usage.title =~ "default: 94% used"
+    assert html =~ ~s(width: 6%)
+    assert html =~ ~s(width: 67%)
+    assert html =~ "default: 6% left"
+    assert html =~ "work: 67% left"
     assert html =~ "stale"
     assert html =~ "30s old"
     assert html =~ "role=\"progressbar\""
@@ -205,8 +209,8 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMetersTest do
     strip = render_component(&RunSummaryStrip.run_summary_strip/1, run: %{state: :loading}, usage: %{state: :locked}, meters: view, now: observed_at)
     assert strip =~ ~s(data-account="default")
     assert strip =~ ~s(data-account="work")
-    assert strip =~ ~s(width:94%)
-    assert strip =~ ~s(width:33%)
+    assert strip =~ ~s(width:6%)
+    assert strip =~ ~s(width:67%)
     assert length(Regex.scan(~r/class="provider-meter-bar"/, html)) == 1
     refute html =~ ~s(class="provider-meter-window-name">Weekly<)
   end
@@ -223,7 +227,7 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMetersTest do
     card = Enum.find(view.cards, &(&1.provider == :claude))
     assert card.account_usage.total_percent == nil
     assert Enum.find(card.account_usage.accounts, &(&1.name == "offline")).percent == nil
-    assert html =~ "Weekly · worst of 2 accounts: unknown"
+    assert html =~ "Weekly · least remaining of 2 accounts: unknown"
     assert html =~ "offline: unknown"
     refute html =~ "offline: 0%"
   end
