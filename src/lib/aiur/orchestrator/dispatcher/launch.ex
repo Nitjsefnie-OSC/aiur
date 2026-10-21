@@ -365,8 +365,6 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
     |> Enum.map(&%{action_id: &1.active_action_id, question: &1.question, answer: answer_text(&1), actor: answer_actor(&1), accepted_at: &1.answer.accepted_at})
   end
 
-  defp pending_answered_decisions(_issue, _store), do: []
-
   defp consume_pending_decisions(%Issue{identifier: identifier}, session_id, decisions, store) do
     action_ids = Enum.map(decisions, & &1.action_id)
     Commands.consume_pending_for_session(identifier, session_id, action_ids, store)
@@ -375,8 +373,6 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
       Logger.warning("Unable to record pending decision consumption for ticket #{identifier}")
       :ok
   end
-
-  defp consume_pending_decisions(_issue, _session_id, _decisions, _store), do: :ok
 
   defp answer_text(%{answer: %{selected_option_id: option_id}, options: options}) when is_binary(option_id) do
     case Enum.find(options, &(&1.id == option_id)) do

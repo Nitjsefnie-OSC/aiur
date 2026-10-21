@@ -231,24 +231,34 @@ defmodule Aiur.DecisionStore.Answers do
   @doc false
   @spec schedule_ticket_comment(Decision.t(), (Decision.t() -> term())) :: :ok
   def schedule_ticket_comment(decision, publisher) do
-    if decision.ticket_comment_status == :pending do
-      start_ticket_comment_task(decision, publisher, self())
-    end
-
+    start_ticket_comment_task(decision, publisher, self())
     :ok
   end
 
   defp start_ticket_comment_task(decision, publisher, store) do
     Task.Supervisor.start_child(Aiur.TaskSupervisor, fn ->
-      if publish_ticket_comment(decision, publisher, [0, 1_000, 5_000, 30_000]) == :ok do
-        send(store, {:answer_comment_published, decision.decision_id, decision.answer.action_id})
+      case publish_ticket_comment(decision, publisher, [0, 1_000, 5_000, 30_000]) do
+        :ok -> send(store, {:answer_comment_published, decision.decision_id, decision.answer.action_id})
+        :error -> :ok
       end
     end)
   end
 
-  defp publish_ticket_comment(decision, publisher, [delay | rest]) do
-    if delay > 0, do: Process.sleep(delay)
+  defp publish_ticket_comment(decision, publisher, [0 | rest]) do
+    publish_ticket_comment_attempt(decision, publisher, rest)
+  end
 
+  defp publish_ticket_comment(decision, publisher, [delay | rest]) when delay > 0 do
+    Process.sleep(delay)
+    publish_ticket_comment_attempt(decision, publisher, rest)
+  end
+
+  defp publish_ticket_comment(decision, _publisher, []) do
+    Logger.error("aiur_decision_answer_comment phase=retries_exhausted decision_id=#{decision.decision_id}")
+    :error
+  end
+
+  defp publish_ticket_comment_attempt(decision, publisher, rest) do
     case publisher.(decision) do
       :ok ->
         :ok
@@ -261,11 +271,6 @@ defmodule Aiur.DecisionStore.Answers do
         Logger.warning("aiur_decision_answer_comment phase=publish_failed decision_id=#{decision.decision_id} result_class=#{safe_failure_class(other)}")
         publish_ticket_comment(decision, publisher, rest)
     end
-  end
-
-  defp publish_ticket_comment(decision, _publisher, []) do
-    Logger.error("aiur_decision_answer_comment phase=retries_exhausted decision_id=#{decision.decision_id}")
-    :ok
   end
 
   defp safe_failure_class(reason) when is_atom(reason), do: reason
