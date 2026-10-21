@@ -9,12 +9,15 @@ defmodule Aiur.AgentRunner.ReworkFindings do
   never blocks a handback.
   """
 
-  alias Aiur.{Orchestrator.ReworkGate, PRLifecycle.ReviewFindings, Tracker}
+  alias Aiur.{Orchestrator.ReworkGate, Tracker}
 
   @type finding :: %{id: String.t(), file: String.t(), line: String.t(), ask: String.t()}
 
   @item ~r/^\s*(\d+)[.)]\s+(.+)$/
   @location ~r/([A-Za-z0-9_.\/-]+\.[A-Za-z0-9]+):~?(\d+)/
+  @non_blocking_comment ~r/\b(?:no (?:blockers|blocking (?:findings|issues))|all blockers (?:addressed|resolved))\b/i
+  @blocking_comment ~r/^(?:\s*\#{1,6})?\s*(?:blocking(?: findings| issues)?|blockers?|must fix|changes required)\s*:/im
+  @pre_merge_request ~r/\b(?:update|rebase|merge|fix)\b[^\n.!?]*\bbefore merge\b/i
 
   @doc "Parses the numbered `file:line` items of a review body."
   @spec parse(term()) :: [finding()]
@@ -133,9 +136,16 @@ defmodule Aiur.AgentRunner.ReworkFindings do
   defp trusted_comment?(_comment, _review_at), do: false
 
   defp change_request_comment?(body) do
-    ReviewFindings.blocking_body?(body) or
+    blocking_comment?(body) or
       (is_binary(body) and String.match?(body, ~r/\b(?:failing|failed) tests?\b|\btests? (?:are )?(?:failing|failed)\b/i))
   end
+
+  defp blocking_comment?(body) when is_binary(body) do
+    body = String.trim(body)
+    not String.match?(body, @non_blocking_comment) and (String.match?(body, @blocking_comment) or String.match?(body, @pre_merge_request))
+  end
+
+  defp blocking_comment?(_body), do: false
 
   defp newer_than_review?(_timestamp, nil), do: true
 
