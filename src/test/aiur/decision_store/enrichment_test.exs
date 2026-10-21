@@ -81,6 +81,8 @@ defmodule Aiur.DecisionStore.EnrichmentTest do
 
     test "exact replay is duplicate while changed reuse conflicts without append or notification", %{dir: dir} do
       pid = start_store!(dir)
+      :ok = Exchange.subscribe("ticket.979.agent.decision.requested")
+      :ok = DecisionPubSub.subscribe()
 
       assert {:ok, %{decision: v1}} =
                request(pid, %{
@@ -89,11 +91,15 @@ defmodule Aiur.DecisionStore.EnrichmentTest do
                  "source_id" => "supervisor-replay"
                })
 
-      patch = %{"context" => %{"short_summary" => "Canonical"}}
-      assert {:ok, %{status: :accepted, decision: accepted}} = enrich(pid, v1.decision_id, patch, 1)
+      decision_id = v1.decision_id
+      assert_receive {:event, %{"decision_id" => ^decision_id, topic: "ticket.979.agent.decision.requested"}}, 500
+      assert_receive {:decision_changed, ^decision_id, 1}, 500
 
+      patch = %{"context" => %{"short_summary" => "Canonical"}}
       :ok = Exchange.subscribe("ticket.979.agent.decision.enriched")
-      :ok = DecisionPubSub.subscribe()
+      assert {:ok, %{status: :accepted, decision: accepted}} = enrich(pid, v1.decision_id, patch, 1)
+      assert_receive {:event, %{"decision_id" => ^decision_id, topic: "ticket.979.agent.decision.enriched"}}, 500
+      assert_receive {:decision_changed, ^decision_id, 2}, 500
 
       assert {:ok, %{status: :duplicate, decision: duplicate}} = enrich(pid, v1.decision_id, patch, 1)
       assert duplicate.version == accepted.version
@@ -105,7 +111,6 @@ defmodule Aiur.DecisionStore.EnrichmentTest do
 
       assert {:ok, audit} = DecisionStore.audit_history(v1.decision_id, pid)
       assert Enum.map(audit, &audit_type/1) == [:requested, :enriched]
-      decision_id = v1.decision_id
       refute_receive {:event, %{"decision_id" => ^decision_id, topic: "ticket.979.agent.decision.enriched"}}, 100
       refute_receive {:decision_changed, ^decision_id, _version}, 100
       assert length(String.split(File.read!(Path.join(dir, "decisions.ndjson")), "\n", trim: true)) == 2
