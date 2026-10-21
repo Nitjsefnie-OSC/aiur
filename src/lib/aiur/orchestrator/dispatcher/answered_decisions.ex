@@ -6,6 +6,8 @@ defmodule Aiur.Orchestrator.Dispatcher.AnsweredDecisions do
   alias Aiur.{Commands, Decision}
 
   @spec for_ticket(String.t(), GenServer.server(), timeout()) :: [map()]
+  def for_ticket(nil, _store, _timeout), do: []
+
   def for_ticket(identifier, store, timeout) when is_binary(identifier) do
     Commands.list_decisions(store, timeout)
     |> Enum.filter(fn decision ->

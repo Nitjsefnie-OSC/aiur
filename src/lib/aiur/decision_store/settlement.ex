@@ -287,7 +287,7 @@ defmodule Aiur.DecisionStore.Settlement do
 
   defp persist_pending_for_session(state, decision, action_id) do
     case Persistence.build_and_persist_event(:pending_for_session, decision, %{action_id: action_id}, DateTime.utc_now(), state) do
-      {:ok, next_state, _updated} -> next_state
+      {:ok, next_state, updated} -> FailureAttention.maybe_project_delivery_attention(next_state, decision, updated, :pending_for_session, action_id)
       {:error, reason} -> AppendRecovery.recover_background_append(state, decision, action_id, :pending_for_session, reason)
     end
   end

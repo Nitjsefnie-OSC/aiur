@@ -334,7 +334,7 @@ defmodule Aiur.DecisionWithdrawalInFlightTest do
       case :atomics.get(worker, 1) do
         @no_worker ->
           send(parent, {:dispatch_refused, action_id})
-          {:error, :no_running_agent}
+          {:error, :unavailable}
 
         @worker ->
           item = queue_item(decision, action_id, opts[:attempt_id], System.unique_integer([:positive]))

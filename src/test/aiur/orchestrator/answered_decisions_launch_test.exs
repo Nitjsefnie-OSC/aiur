@@ -1,8 +1,14 @@
 defmodule Aiur.Orchestrator.AnsweredDecisionsLaunchTest do
   use Aiur.TestSupport
 
-  alias Aiur.{DecisionStore, Issue}
+  alias Aiur.TestSupport.Isolation
+  alias Aiur.{DecisionPubSub, DecisionStore, Issue}
   alias Aiur.Orchestrator.{Dispatcher, State, TokenAccounting, TrackerTasks}
+
+  setup do
+    :ok = DecisionPubSub.subscribe()
+    :ok
+  end
 
   test "a pre-turn runner failure leaves the answer pending until the next turn starts", %{test: test} do
     parent = self()
@@ -101,8 +107,16 @@ defmodule Aiur.Orchestrator.AnsweredDecisionsLaunchTest do
 
   test "dispatch continues when the decision store times out" do
     parent = self()
-    slow_store = spawn(fn -> Process.sleep(:infinity) end)
-    on_exit(fn -> if Process.alive?(slow_store), do: Process.exit(slow_store, :kill) end)
+
+    slow_store =
+      Isolation.start_owned!(
+        {Task,
+         fn ->
+           receive do
+             :stop -> :ok
+           end
+         end}
+      )
 
     issue = %Issue{id: "5491", identifier: "5491", title: "Carry decisions", state: "todo", selected_backend: "codex"}
     state = dispatch(issue, parent, slow_store, decision_store_read_timeout: 10)
@@ -268,7 +282,7 @@ defmodule Aiur.Orchestrator.AnsweredDecisionsLaunchTest do
     if predicate.(decision) do
       decision
     else
-      Process.sleep(10)
+      assert_receive {:decision_changed, ^decision_id, _version}, 1_000
       wait_for_decision(store, decision_id, predicate, attempts - 1)
     end
   end
