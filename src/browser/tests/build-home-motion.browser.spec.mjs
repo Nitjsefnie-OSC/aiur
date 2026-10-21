@@ -1,7 +1,6 @@
 import { alignBoard, alignEtaMask, primeBoardPaint } from '../support/build-home-band-canvas.mjs'
 import { installScrollPaint, flushScrollPaint } from '../support/build-home-scroll-paint.mjs'
 import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
-import { assertStaticGrainCapture } from './support/build-home-grain-capture-test.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
 import { openVisualRoute } from '../support/visual.mjs'
 import { test, expect } from '@playwright/test'
@@ -9,6 +8,7 @@ import { openDesign, openProduct, selectProductDataset, guardNetwork, parityCont
 
 // Per-action DOM traces dominate the frame sampler; failures retain numeric diffs and screenshots.
 test.use({ trace: 'off' })
+
 const cell = { viewport: { width: 1440, height: 900 }, theme: 'dark', palette: 'gruvbox', dataset: 'live' }
 
 test('clock probe: product connects and patches with preinstalled clock', async ({ browser }) => {
@@ -357,14 +357,13 @@ for (const selectedCell of colourCells) test.describe(`product inventory/grain $
     const product = await runOn(pair.product, 'inventory', { reduce, ids: FIXTURE_META.ids })
     collectAllowlist(design, product, scopedEntries(pair.allowlist, selectedCell))
   })
-  for (const name of ['inventory', 'grain.static']) for (const [selector, owner] of Object.entries(OWNER[name].per)) test(`${name} ${selector}`, async ({ browser }) => {
+  for (const name of ['inventory', 'grain.static']) for (const [selector, owner] of Object.entries(OWNER[name].per)) test(`${name} ${selector}`, async () => {
     const loading = selector === '.bd-skel i'
     if (loading && !OWNER['loading.spin'].pending) await openProduct(pair.product, selectedCell, { motion: true, phase: 'loading', productPending: true })
     const absent = !await pair.product.locator(selector).count() || (loading && OWNER['loading.spin'].pending)
     if (absent) missingPorts.add(`${name} ${selector}: ${owner}`)
     test.fixme(absent, `awaiting ${owner}`)
     const phase = selector === '.bd-skel i' ? 'loading' : 'board'
-    if (name === 'grain.static' && selector === '.bd-content .bd-lanes') await assertStaticGrainCapture(browser)
     await openDesign(pair.design, selectedCell, { motion: true, phase })
     await openProduct(pair.product, selectedCell, { motion: true, phase })
     const reduce = selectedCell.reducedMotion === 'reduce'

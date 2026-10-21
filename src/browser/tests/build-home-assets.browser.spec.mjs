@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { fileURLToPath } from 'node:url'
 import { openFixture } from './support/browser-helpers.mjs'
+
 const callbacks = ['mounted', 'beforeUpdate', 'updated', 'destroyed', 'disconnected', 'reconnected']
 const spyModule = `export function createBuildHomeHook() {
   window.created = true;
