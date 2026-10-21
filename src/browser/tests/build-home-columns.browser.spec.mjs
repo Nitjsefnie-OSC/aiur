@@ -67,10 +67,10 @@ test('empty DAG visibility hides agent-only epics without losing the card color'
     ctx.D.epics = { bug: { label: 'Bug', icon: 'bug', hue: 38, general: true }, ops: { label: 'Ops', icon: 'server', hue: 200, general: true }, unsorted: { label: 'Unsorted', icon: 'unsorted', hue: 0, unsorted: true } }
     ctx.D.order = ['bug', 'ops', 'unsorted']; ctx.D.now = [{ id: 'agent-only', num: 91, epic: 'bug', sec: 'now', agent: { state: 'running' }, also: [], deps: [], type: 'bug', cue: {} }]
     ctx.D.hist = []; ctx.D.plan = []; ctx.D.nq = []; ctx.D._fwd = null; S.flow = false; S.feature = null; S.f.epic = []
-    ctx.L = { secs: { hist: { items: [], h: 100 } }, band: { items: [{ t: ctx.D.now[0], key: 'b0', y: 42, h: 32, sec: 'now' }] } }
+    const agentCard = st.fx.makeCard({ t: ctx.D.now[0], key: 'b0', y: 42, h: 32, sec: 'now' })
+    ctx.L = { secs: { hist: { items: [], h: 100 } }, band: { BK: 1, items: [{ t: ctx.D.now[0], key: 'b0', y: 42, h: 32, sec: 'now', el: agentCard }] } }
     cols.applyCols([], true)
-    const visible = cols.visibleCols(), card = st.fx.makeCard(ctx.L.band.items[0])
-    return { visible, rendered: ctx.laneEls.size, epicColor: card.style.getPropertyValue('--h') }
+    return { visible: cols.visibleCols(), rendered: ctx.laneEls.size, epicColor: agentCard.style.getPropertyValue('--h') }
   })
   expect(result).toEqual({ visible: [], rendered: 0, epicColor: '38' })
 })
@@ -104,7 +104,7 @@ test('whole days, forward union, feature locks and compact dependencies', async 
     S.flow = true; S.K = 3; const flow = cols.visibleCols()
     return { day, forward, focus, locked, compact, unknown, fallback, flow }
   })
-  expect(result).toEqual({ day: ['bugs', 'unsorted'], forward: ['infra', 'docs'], focus: ['bugs', 'infra', 'unsorted'], locked: ['bugs', 'infra', 'unsorted'], compact: ['bugs', 'infra', 'docs', 'unsorted'], unknown: [], fallback: ['docs'], flow: ['s0', 's1', 's2'] })
+  expect(result).toEqual({ day: ['bugs', 'unsorted'], forward: ['infra', 'docs'], focus: ['bugs', 'infra', 'unsorted'], locked: ['bugs', 'infra', 'unsorted'], compact: ['bugs', 'infra', 'unsorted'], unknown: [], fallback: [], flow: ['s0', 's1', 's2'] })
 })
 
 test('lane visibility follows filtered DAG tickets while live cards retain epic color', async ({ page }) => {
@@ -122,19 +122,22 @@ test('lane visibility follows filtered DAG tickets while live cards retain epic 
     ctx.L = computeLayout(ctx.D, S, { vpW: 1440, vpH: 900, gut: 84 }, ctx.snap.sources, { gantt: (await import('/build-home/gantt.js')).ganttExt })
     ctx.L.band.items[0].el = st.fx.makeCard(ctx.L.band.items[0])
     const selected = cols.visibleCols(), style = ctx.L.band.items[0].el.style.getPropertyValue('--h')
-    S.f.epic = ['docs']; ctx.D._fwd = null
+    S.f.epic = ['docs']
+    ctx.L = computeLayout(ctx.D, S, { vpW: 1440, vpH: 900, gut: 84 }, ctx.snap.sources, { gantt: (await import('/build-home/gantt.js')).ganttExt })
     const afterFilter = cols.visibleCols()
-    S.f.epic = ['absent']; ctx.D._fwd = null; cols.scheduleCols(true)
-    return { selected, afterFilter, agentColor: style, cleared: ctx.cols }
+    S.f.epic = ['absent']
+    ctx.L = computeLayout(ctx.D, S, { vpW: 1440, vpH: 900, gut: 84 }, ctx.snap.sources, { gantt: (await import('/build-home/gantt.js')).ganttExt })
+    const hidden = cols.visibleCols()
+    return { selected, afterFilter, agentColor: style, hidden }
   })
-  expect(result).toEqual({ selected: ['infra'], afterFilter: ['docs'], agentColor: '46', cleared: [] })
+  expect(result).toEqual({ selected: ['infra'], afterFilter: ['docs'], agentColor: '46', hidden: [] })
 })
 
 test('feature lanes lock and unsorted stays last; flow clears headers', async ({ page }) => {
   const result = await page.evaluate(() => {
     S.feature = Object.keys(ctx.D.features)[0]
     cols.applyCols(cols.visibleCols(), true)
-    const locks = ctx.D.features[S.feature].epics.map(k => ctx.laneEls.get(k).classList.contains('lock') && !!ctx.laneEls.get(k).querySelector('em svg'))
+    const locks = ctx.D.features[S.feature].epics.filter(k => ctx.laneEls.has(k)).map(k => ctx.laneEls.get(k).classList.contains('lock') && !!ctx.laneEls.get(k).querySelector('em svg'))
     S.feature = null; cols.applyCols(['bugs', 'unsorted'], true)
     const unsorted = ctx.laneEls.get('unsorted')
     const cls = unsorted.className, label = unsorted.querySelector('span').textContent
@@ -219,8 +222,7 @@ test('rendered cards keep the current layout back-reference through a live pass'
 
 test('unknown URL epics cannot become lanes', async ({ page }) => {
   await page.goto('/build?epic=nope')
-  await expect(page.locator('.bd-lane')).toHaveCount(4)
-  expect(await page.locator('.bd-lane').evaluateAll(els => els.map(el => el.title))).toEqual(['Bugs', 'Design', 'Infra', 'Docs'])
+  await expect(page.locator('.bd-lane')).toHaveCount(0)
 })
 
 

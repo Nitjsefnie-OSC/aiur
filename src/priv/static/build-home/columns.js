@@ -5,7 +5,6 @@ import { dayKey } from './util.js';
 import { I } from './icons.js';
 import { place } from './render.js';
 
-const epicOk = t => !S.f.epic.length || S.f.epic.includes(colKey(t));
 let leaveSeq = 0;
 
 export function visibleCols() {
@@ -16,7 +15,9 @@ export function visibleCols() {
   const hs = ctx.L.secs.hist, htop = ctx.secs.hist.el.offsetTop, a = st - htop + LH, b = st - htop + chh;
   if (!ctx.L._dayCols) { ctx.L._dayCols = {}; hs.items.forEach((it) => { if (!it.t.end) return; const d = dayKey(it.t.end); (ctx.L._dayCols[d] = ctx.L._dayCols[d] || new Set()).add(it.key); }); }
   hs.items.forEach((it) => { if (it.t.end && it.y + it.h > a && it.y < b) ctx.L._dayCols[dayKey(it.t.end)].forEach((k) => vis.add(k)); });
-  if (st + chh > htop + hs.h + 40) { if (!ctx.D._fwd) ctx.D._fwd = new Set([...ctx.D.plan, ...ctx.D.nq].filter(epicOk).map(colKey)); ctx.D._fwd.forEach((k) => vis.add(k)); }
+  if (st + chh > htop + hs.h + 40) {
+    for (const sec of ['plan', 'nq']) ctx.L.secs[sec].items.forEach(it => vis.add(it.key));
+  }
   return ctx.D.order.filter((k) => vis.has(k));
 }
 function featureCols() {
