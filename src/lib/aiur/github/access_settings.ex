@@ -86,7 +86,7 @@ defmodule Aiur.GitHub.AccessSettings do
     defaults = %Agent{}
 
     Map.new(Map.keys(%Settings{state_root: nil}.broker_timeout), fn field ->
-      value = if config, do: Map.get(config.agent, field)
+      value = Map.get(config.agent, field)
       {field, if(is_integer(value) and value > 0, do: value, else: Map.fetch!(defaults, field))}
     end)
   end
