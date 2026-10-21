@@ -13,8 +13,8 @@ defmodule Aiur.LandingWatch.PrRerun do
   check; ordinary base movement is not a reason to update the branch.
   """
 
-  alias Aiur.GitHub.{CIRecovery, Client}
   alias Aiur.Events.GithubCIPoller
+  alias Aiur.GitHub.{CIRecovery, Client}
   alias Aiur.LandingWatch
   alias Aiur.LandingWatch.{Journal, MergeGroupJournal, MergeGroupRunFetcher, PrRerunClassifier}
   alias Aiur.TicketBranch
