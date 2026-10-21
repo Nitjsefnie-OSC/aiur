@@ -35,6 +35,9 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     ]
 
     request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: Enum.map(runs, &%{"ref" => "refs/heads/#{&1["head_branch"]}"})}}
+
       %{method: :get} ->
         {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
 
@@ -81,6 +84,9 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     ]
 
     request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: Enum.map(runs, &%{"ref" => "refs/heads/#{&1["head_branch"]}"})}}
+
       %{method: :get} ->
         {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
 
@@ -129,15 +135,20 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     on_exit(fn -> Enum.each(keys, &ResourceStore.drop_data/1) end)
 
     request = fn call ->
-      status =
-        call.url |> URI.parse() |> Map.get(:query) |> URI.decode_query() |> Map.fetch!("status")
-
-      send(parent, {:census_request, status, Map.get(call, :etag)})
-
-      if is_binary(Map.get(call, :etag)) do
-        {:ok, %{status: 304, headers: [{"etag", Map.get(call, :etag)}]}}
+      if String.contains?(call.url, "matching-refs") do
+        send(parent, {:refs_request, call.url})
+        {:ok, %{status: 200, body: []}}
       else
-        {:ok, %{status: 200, body: %{"workflow_runs" => []}, headers: [{"etag", ~s("#{status}-etag")}]}}
+        status =
+          call.url |> URI.parse() |> Map.get(:query) |> URI.decode_query() |> Map.fetch!("status")
+
+        send(parent, {:census_request, status, Map.get(call, :etag)})
+
+        if is_binary(Map.get(call, :etag)) do
+          {:ok, %{status: 304, headers: [{"etag", Map.get(call, :etag)}]}}
+        else
+          {:ok, %{status: 200, body: %{"workflow_runs" => []}, headers: [{"etag", ~s("#{status}-etag")}]}}
+        end
       end
     end
 
@@ -150,6 +161,8 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
 
     assert :ok = MergeGroups.cancel_stale([], opts)
     assert :ok = MergeGroups.cancel_stale([], opts)
+
+    assert_received {:refs_request, "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/etag-census-test/"}
 
     requests =
       for _ <- 1..10 do
@@ -177,6 +190,9 @@ defmodule Aiur.LandingWatch.MergeGroupsTest do
     ]
 
     request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: Enum.map(runs, &%{"ref" => "refs/heads/#{&1["head_branch"]}"})}}
+
       %{method: :get} ->
         {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
 

@@ -20,8 +20,10 @@ defmodule Aiur.LandingWatch.MergeGroups do
          {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts),
          {:ok, runs} <- MergeGroupRunFetcher.active_runs(owner, repo, base, token, opts),
+         {:ok, group_refs} <- MergeGroupRunFetcher.queue_group_refs(owner, repo, base, token, opts),
          {:ok, completed} <- MergeGroupRunFetcher.completed_runs(owner, repo, base, token, opts),
          {:ok, fresh_observations} <- live_observations(observations, opts) do
+      completed = Enum.filter(completed, &MapSet.member?(group_refs, "refs/heads/#{&1["head_branch"]}"))
       # Quarantine runs first and on its own: a failure-routing error must not stop it, and
       # the failure router then requeues, rather than reworks, PRs a quarantined test dropped.
       quarantine =
@@ -55,6 +57,9 @@ defmodule Aiur.LandingWatch.MergeGroups do
         stale =
           Enum.flat_map(runs, fn run ->
             cond do
+              stale_missing_group_ref?(run, base, group_refs) ->
+                [{run, "group_branch_missing"}]
+
               stale?(run, base, live) ->
                 [{run, "queue_entry_not_live"}]
 
@@ -66,6 +71,7 @@ defmodule Aiur.LandingWatch.MergeGroups do
             end
           end)
 
+        Logger.info("landing watcher stale merge-group runs=#{length(stale)}")
         cancel_runs(stale, opts)
       end
     end
@@ -116,6 +122,14 @@ defmodule Aiur.LandingWatch.MergeGroups do
   end
 
   defp stale?(_run, _base, _live), do: false
+
+  defp stale_missing_group_ref?(%{"event" => "merge_group", "status" => status, "head_branch" => branch}, base, refs)
+       when status in ["queued", "in_progress", "waiting", "requested"] and is_binary(branch) do
+    String.starts_with?(branch, "gh-readonly-queue/#{base}/pr-") and
+      not MapSet.member?(refs, "refs/heads/#{branch}")
+  end
+
+  defp stale_missing_group_ref?(_run, _base, _refs), do: false
 
   defp run_pr_numbers(branch, prefix) do
     branch
