@@ -61,16 +61,15 @@ defmodule Aiur.HttpServer do
   defp configure_endpoint(opts, host, ip, port, dashboard_writable) do
     settings = Config.settings!().server
     public_url = settings.public_url
-    allowed_hosts = AiurWeb.HostAllowlist.allowed_hosts(public_url, settings.allowed_hosts)
+    endpoint_config = Application.get_env(:aiur, Endpoint, [])
+
+    endpoint_hosts =
+      List.wrap(Keyword.get(endpoint_config, :allowed_hosts)) ++ List.wrap(get_in(endpoint_config, [:url, :host]))
+
+    allow_tailnet_hosts? = loopback?(ip)
 
     allowed_hosts =
-      if is_nil(settings.allowed_hosts) do
-        endpoint_config = Application.get_env(:aiur, Endpoint, [])
-        endpoint_hosts = Keyword.get(endpoint_config, :allowed_hosts, []) ++ List.wrap(get_in(endpoint_config, [:url, :host]))
-        Enum.uniq(allowed_hosts ++ endpoint_hosts)
-      else
-        allowed_hosts
-      end
+      AiurWeb.HostAllowlist.allowed_hosts(public_url, List.wrap(settings.allowed_hosts) ++ endpoint_hosts, allow_tailnet_hosts?)
 
     endpoint_opts = [
       server: true,
@@ -86,7 +85,8 @@ defmodule Aiur.HttpServer do
       decision_policy: Keyword.get(opts, :decision_policy),
       secret_key_base: secret_key_base(),
       allowed_hosts: allowed_hosts,
-      check_origin: AiurWeb.HostAllowlist.origins(public_url),
+      check_origin: {AiurWeb.HostAllowlist, :check_origin, [AiurWeb.HostAllowlist.origins(public_url), allow_tailnet_hosts?]},
+      allow_tailnet_hosts: allow_tailnet_hosts?,
       session_options: [
         secure: public_url_https?(public_url),
         same_site: "Lax",
@@ -301,7 +301,8 @@ defmodule Aiur.HttpServer do
   defp secret_key_base do
     case System.get_env("AIUR_SECRET_KEY_BASE") do
       value when is_binary(value) and byte_size(value) >= 64 -> value
-      _ -> persisted_secret_key_base()
+      nil -> persisted_secret_key_base()
+      _short_value -> raise "AIUR_SECRET_KEY_BASE must be at least 64 bytes"
     end
   end
 
@@ -311,37 +312,40 @@ defmodule Aiur.HttpServer do
 
   defp persisted_secret_key_base do
     path = secret_key_path()
+    lock = {__MODULE__, :dashboard_secret_key, path}
 
-    case File.read(path) do
-      {:ok, value} when byte_size(value) >= 64 ->
-        File.chmod!(path, 0o600)
-        value
+    :global.trans({lock, self()}, fn ->
+      case File.read(path) do
+        {:ok, value} when byte_size(value) >= 64 ->
+          File.chmod!(path, 0o600)
+          value
 
-      {:ok, _invalid} ->
-        raise "Aiur dashboard secret key file is invalid: #{path}"
+        {:ok, _invalid} ->
+          raise "Aiur dashboard secret key file is invalid: #{path}"
 
-      {:error, :enoent} ->
-        create_secret_key(path)
+        {:error, :enoent} ->
+          create_secret_key(path)
 
-      {:error, reason} ->
-        raise "cannot read Aiur dashboard secret key file #{path}: #{inspect(reason)}"
-    end
+        {:error, reason} ->
+          raise "cannot read Aiur dashboard secret key file #{path}: #{inspect(reason)}"
+      end
+    end)
   end
 
   defp create_secret_key(path) do
-    File.mkdir_p!(Path.dirname(path))
+    directory = Path.dirname(path)
+    File.mkdir_p!(directory)
+    File.chmod!(directory, 0o700)
     value = Base.encode64(:crypto.strong_rand_bytes(@secret_key_bytes), padding: false)
+    temp_path = Path.join(directory, ".secret_key_base-#{Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)}.tmp")
 
-    case File.write(path, value, [:binary, :exclusive]) do
-      :ok ->
-        File.chmod!(path, 0o600)
-        value
-
-      {:error, :eexist} ->
-        persisted_secret_key_base()
-
-      {:error, reason} ->
-        raise "cannot create Aiur dashboard secret key file #{path}: #{inspect(reason)}"
+    try do
+      File.write!(temp_path, value, [:binary, :exclusive])
+      File.chmod!(temp_path, 0o600)
+      File.rename!(temp_path, path)
+      value
+    after
+      File.rm(temp_path)
     end
   end
 

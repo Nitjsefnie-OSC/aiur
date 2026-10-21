@@ -7,7 +7,8 @@ defmodule AiurWeb.Session do
 
   @impl Plug
   def call(conn, config) do
-    configured_secure? = AiurWeb.EndpointConfig.get(:session_options, [])[:secure] == true
+    endpoint_config = Application.get_env(:aiur, AiurWeb.Endpoint, [])
+    configured_secure? = Keyword.get(endpoint_config, :session_options, [])[:secure] == true
     secure? = configured_secure? or conn.scheme == :https
     config = Map.update!(config, :cookie_opts, &Keyword.put(&1, :secure, secure?))
     Plug.Session.call(conn, config)

@@ -20,7 +20,7 @@ defmodule AiurWeb.Endpoint do
   require Streamdeck
   require Voice
 
-  plug(AiurWeb.HostAllowlist)
+  @before_compile AiurWeb.EndpointCallGuard
 
   LiveView.mount(@session_options)
   Streamdeck.mount(@session_options)

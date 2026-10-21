@@ -107,6 +107,19 @@ defmodule Aiur.Extensions.HttpServerTest do
 
     assert cross_origin_socket_conn.status == 403
 
+    tailnet_socket_conn =
+      Plug.Test.conn(:get, "/live/websocket")
+      |> then(&%{&1 | host: "127.0.0.1", port: port})
+      |> Plug.Conn.put_req_header("origin", "https://orangekid.tailnet-name.ts.net:4001")
+      |> Transport.check_origin(nil, AiurWeb.Endpoint, [])
+
+    refute tailnet_socket_conn.halted
+
+    foreign_socket_response =
+      Req.get!("http://127.0.0.1:#{port}/live/websocket", headers: [{"host", "attacker.example"}])
+
+    assert foreign_socket_response.status == 403
+
     # Regression guard: router auth still returns 401 if the static directory registration is removed.
     for asset_path <- [
           "/conversation-drawer-hook.js",

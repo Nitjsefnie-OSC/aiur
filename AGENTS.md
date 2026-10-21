@@ -221,9 +221,8 @@ disables the API, while a present non-empty unusable value aborts startup.
 Provider keys use
 `MOONSHOT_API_KEY`, `DEEPSEEK_API_KEY`,
 `OPENROUTER_API_KEY`, and (for the credits meter) `OPENROUTER_MANAGEMENT_KEY`.
-`AIUR_SECRET_KEY_BASE` overrides the dashboard signing key; otherwise Aiur
-stores a persistent mode-0600 key per instance under `~/.aiur/instances/`.
-Dashboard Host and WebSocket origin checks use the public URL and loopback.
+`AIUR_SECRET_KEY_BASE` (at least 64 bytes) overrides the dashboard signing key; otherwise Aiur stores a persistent mode-0600 key per instance under `~/.aiur/instances/`.
+Dashboard Host/origin checks use the public URL and loopback; loopback binds temporarily accept `*.ts.net` until `server.public_url` is set, and `server.allowed_hosts` adds Host names.
 Keep the global per-user file outside Git trees and never commit either dotenv
 file. `aiur init` also reads `.env` for the GitHub token during setup.
 
