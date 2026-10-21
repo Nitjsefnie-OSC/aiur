@@ -2,22 +2,22 @@ defmodule Aiur.ExecutorSweep.SnapshotCacheTest do
   use Aiur.TestSupport
 
   alias Aiur.ExecutorSweep.{Checks, SnapshotCache}
-  alias Aiur.GitHub.{Config, ResourceStore}
+  alias Aiur.GitHub.ResourceStore
   alias Aiur.OpenTicketSource.Snapshot
 
-  setup_all do
-    if Process.whereis(ResourceStore) == nil, do: Supervisor.restart_child(Aiur.Supervisor, ResourceStore)
-    :ok
-  end
-
   setup do
+    Aiur.TestSupport.write_workflow_file!(Aiur.Workflow.workflow_file_path(),
+      tracker_kind: "github",
+      tracker_repo: Aiur.TestSupport.github_repository()
+    )
+
     ResourceStore.reset()
     on_exit(fn -> ResourceStore.reset() end)
     :ok
   end
 
   test "skips a metadata-only ResourceStore entry while reading cached resources" do
-    [owner, repo] = String.split(Config.repo(), "/", parts: 2)
+    [owner, repo] = String.split(Aiur.TestSupport.github_repository(), "/", parts: 2)
     key = ResourceStore.key(:issue, owner, repo, 3787)
     neighboring_key = ResourceStore.key(:issue, owner, repo, 3788)
     assert :ok = ResourceStore.put_resource(key, %{"number" => 3787, "created_at" => "2026-10-15T13:25:40Z"}, source: :mutation, version: "2026-10-15T13:25:40Z")

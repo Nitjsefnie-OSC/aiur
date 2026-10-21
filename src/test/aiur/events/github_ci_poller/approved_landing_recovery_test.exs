@@ -2,18 +2,26 @@ defmodule Aiur.Events.GithubCIPoller.ApprovedLandingRecoveryTest do
   use Aiur.TestSupport
 
   alias Aiur.Events.GithubCIPoller.Recovery
+  alias Aiur.GitHub.Quota
   alias Aiur.Issue
+  alias Aiur.TestSupport.Isolation
 
   setup do
     root = Aiur.TestSupport.tmp_root!("approved_landing_recovery")
     File.mkdir_p!(root)
+    parent = self()
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
+
+    quota = Isolation.start_owned!({Quota, name: nil, emit_fun: fn _name, _opts -> :ok end})
+    Isolation.with_app_env!(:aiur, :github_quota_server, quota)
+    Isolation.with_app_env!(:aiur, :github_budget_enabled?, false)
 
     opts = [
       token: "test-gh-token",
       ci_recovery_path: Path.join(root, "recovery.json"),
       ci_recovery_enabled: false,
       alert_emitter: fn topic, _details ->
-        send(self(), {:attention, topic})
+        send(parent, {:attention, topic})
         :ok
       end
     ]
