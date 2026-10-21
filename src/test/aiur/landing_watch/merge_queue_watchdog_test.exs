@@ -3,6 +3,71 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
 
   alias Aiur.LandingWatch.MergeQueueWatchdog
 
+  defp observation_raw do
+    %{
+      "id" => "PR_17",
+      "headRefOid" => "head-17",
+      "isDraft" => false,
+      "reviewDecision" => "APPROVED",
+      "mergeable" => "MERGEABLE",
+      "mergeStateStatus" => "CLEAN",
+      "autoMergeRequest" => nil,
+      "mergeQueueEntry" => nil,
+      "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-17"}}]}
+    }
+  end
+
+  test "completed merge-group evidence reaches the watchdog after a routing error" do
+    run = %{"id" => 81, "event" => "merge_group", "status" => "completed", "conclusion" => "failure", "head_branch" => "gh-readonly-queue/main/pr-17-head"}
+
+    request = fn
+      %{method: :get, url: url} ->
+        runs = if String.contains?(url, "status=completed"), do: [run], else: []
+        {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+
+      %{method: :post, body: %{"query" => query}} ->
+        cond do
+          query =~ "dequeuePullRequest" -> {:ok, %{status: 200, body: %{"data" => %{"dequeuePullRequest" => %{}}}}}
+          query =~ "pullRequest(number:" -> {:ok, %{status: 200, body: %{"data" => %{"repository" => %{"pr_0" => observation_raw()}}}}}
+          true -> flunk("unexpected GraphQL request: #{query}")
+        end
+    end
+
+    observation = %{
+      number: 17,
+      base: "main",
+      head: "head-17",
+      node_id: "PR_17",
+      draft?: false,
+      review_decision: "APPROVED",
+      auto_merge_request: nil,
+      mergeable: "MERGEABLE",
+      merge_state_status: "CLEAN",
+      merge_queue_entry: %{"id" => "entry-17", "state" => "UNMERGEABLE", "pullRequest" => %{"headRefOid" => "head-17"}},
+      raw: %{}
+    }
+
+    assert {:error, :routing_fixture_failure} =
+             Aiur.LandingWatch.LandingReconciliation.process(
+               [observation],
+               [
+                 journal_path: temp_journal(),
+                 token: "test-gh-token",
+                 base_branch: "main",
+                 request_fun: request,
+                 live_observations_fun: fn observations, _ -> {:ok, observations} end,
+                 jobs_fun: fn _, _ -> {:error, :routing_fixture_failure} end,
+                 merge_queue_watchdog_fun: fn _, opts ->
+                   send(self(), {:watchdog_evidence, opts[:completed_merge_group_runs], opts[:all_observations]})
+                   :ok
+                 end
+               ],
+               fn _, _ -> :ok end
+             )
+
+    assert_received {:watchdog_evidence, [^run], [^observation]}
+  end
+
   defp observation(number, overrides \\ %{}) do
     Map.merge(
       %{
