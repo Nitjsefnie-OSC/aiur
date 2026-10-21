@@ -29,7 +29,7 @@ test('agent-only epic stays hidden while its live card keeps its hue', async ({ 
 test('visible ticket lanes follow filters and hide when the last ticket is filtered', async ({ page }) => {
   const result = await page.evaluate(async () => {
     const { computeLayout } = await import('/build-home/layout.js'), gantt = (await import('/build-home/gantt.js')).ganttExt
-    const day = Date.parse('2026-10-21T12:00:00-07:00'), ticket = (id, epic, sec) => ({ id, epic, sec, end: day, also: [], deps: [], type: 'bug', cue: {} })
+    const day = Date.now(), ticket = (id, epic, sec) => ({ id, epic, sec, end: day, also: [], deps: [], type: 'bug', cue: {} })
     const infra = ticket('infra-ticket', 'infra', 'plan'), docs = ticket('docs-ticket', 'docs', 'plan')
     const agent = { ...ticket('agent', 'docs', 'now'), num: 93, agent: { state: 'running' } }
     ctx.D.order = ['infra', 'docs', 'unsorted']; ctx.D.epics.infra = { label: 'Infra', icon: 'server', hue: 202 }; ctx.D.epics.docs = { label: 'Docs', icon: 'docs', hue: 46 }
