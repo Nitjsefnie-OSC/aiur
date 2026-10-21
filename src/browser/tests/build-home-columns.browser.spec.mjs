@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
+// Cohesion: these browser cases exercise one shared lane-selection and transition lifecycle.
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 test.beforeEach(async ({ page }) => {
   page.on('pageerror', error => errors.push(error.message))
