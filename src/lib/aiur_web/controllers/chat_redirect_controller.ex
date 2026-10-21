@@ -3,6 +3,7 @@ defmodule AiurWeb.ChatRedirectController do
   use Phoenix.Controller, formats: []
 
   alias Aiur.Bounded
+  alias Aiur.GitHub.Config
   alias Plug.Conn
 
   @spec show(Conn.t(), map()) :: Conn.t()
@@ -17,7 +18,7 @@ defmodule AiurWeb.ChatRedirectController do
   end
 
   defp redirect_repository(conn, candidate, ticket) do
-    reader = conn.private[:aiur_configured_repo] || (&Aiur.GitHub.Config.configured_repo/0)
+    reader = conn.private[:aiur_configured_repo] || (&Config.configured_repo/0)
 
     case reader.() do
       {:ok, {owner, repository}} ->

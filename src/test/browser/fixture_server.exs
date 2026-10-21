@@ -152,7 +152,8 @@ defmodule Aiur.BrowserHarness.FixtureEndpoint do
 end
 
 defmodule Aiur.BrowserHarness.FixtureServer do
-  alias Aiur.BrowserHarness.{ExperimentsFixture, FixtureEndpoint}
+  alias Aiur.BrowserHarness.{BaseNavigation, ExperimentsFixture, FixtureEndpoint}
+  alias Aiur.Experiments
   alias Aiur.BrowserHarness.FixtureEndpointStart
   alias Aiur.IssueLog
   alias Aiur.TestSupport.BuildHome.FixtureSource
@@ -163,7 +164,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
 
     System.put_env("AIUR_DASHBOARD_USERNAME", "browser_fixture")
     System.put_env("AIUR_DASHBOARD_PASSWORD", "browser_fixture_password")
-    Application.put_env(:aiur, :workflow_file_path, Aiur.BrowserHarness.BaseNavigation.workflow_path(Path.expand("../fixtures/test.yaml", __DIR__)))
+    Application.put_env(:aiur, :workflow_file_path, BaseNavigation.workflow_path(Path.expand("../fixtures/test.yaml", __DIR__)))
     Application.put_env(:aiur, :build_data_source, FixtureSource)
     Application.put_env(:aiur, :build_conversation_source, Aiur.TestSupport.BuildHome.FixtureConversationSource)
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
@@ -185,7 +186,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
           {AiurWeb.Endpoint, []},
           AiurWeb.FinancialDataAccess.Generation,
           AiurWeb.VoiceSessionLimiter
-        ] ++ List.wrap(Aiur.Experiments.child(true)),
+        ] ++ List.wrap(Experiments.child(true)),
         strategy: :one_for_one
       )
 

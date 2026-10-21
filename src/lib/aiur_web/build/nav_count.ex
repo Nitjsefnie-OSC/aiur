@@ -1,6 +1,7 @@
 defmodule AiurWeb.Build.NavCount do
   @moduledoc false
   import Phoenix.Component, only: [assign: 2]
+  alias AiurWeb.Build.Payload
 
   @type t :: %{ids: MapSet.t(), known?: boolean(), ready?: boolean()}
 
@@ -9,19 +10,19 @@ defmodule AiurWeb.Build.NavCount do
 
   @spec from_snapshot(map()) :: t()
   def from_snapshot(payload) do
-    payload = AiurWeb.Build.Payload.scrub(payload)
+    payload = Payload.scrub(payload)
     rows = get_in(payload, ["sections", "now"]) || []
     %{ids: rows |> Enum.filter(&active?/1) |> MapSet.new(& &1["id"]), known?: known?(payload["sources"]), ready?: true}
   end
 
   @spec apply(t(), map()) :: t()
   def apply(state, changes) do
-    changes = AiurWeb.Build.Payload.scrub(changes)
+    changes = Payload.scrub(changes)
 
     if changes["resync"] == true do
       unknown()
     else
-      ids = Enum.reduce(changes["upsert"] || [], state.ids, fn row, ids -> if active?(row), do: MapSet.put(ids, row["id"]), else: MapSet.delete(ids, row["id"]) end)
+      ids = Enum.reduce(changes["upsert"] || [], state.ids, &put_row/2)
       ids = Enum.reduce(changes["remove"] || [], ids, &MapSet.delete(&2, &1))
       sources = get_in(changes, ["set", "sources"])
       %{state | ids: ids, known?: if(is_map(sources), do: known?(sources), else: state.known?)}
@@ -47,6 +48,7 @@ defmodule AiurWeb.Build.NavCount do
 
   defp active?(%{"sec" => "now", "agent" => %{"state" => "active"}}), do: true
   defp active?(_row), do: false
+  defp put_row(row, ids), do: if(active?(row), do: MapSet.put(ids, row["id"]), else: MapSet.delete(ids, row["id"]))
   defp known?(%{"agents" => %{"state" => state}}), do: state in ["ok", "stale"]
   defp known?(_sources), do: false
 end

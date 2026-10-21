@@ -116,7 +116,7 @@ defmodule AiurWeb.Build.Protocol do
 
     if validate(message) == :ok do
       socket
-      |> NavCount.put(NavCount.apply(socket.assigns.build_nav_count, message))
+      |> NavCount.put(NavCount.apply(socket.assigns.build_nav_count, changes))
       |> assign(
         build_generation: generation,
         build_history: Map.get(message["set"], "history", socket.assigns.build_history),

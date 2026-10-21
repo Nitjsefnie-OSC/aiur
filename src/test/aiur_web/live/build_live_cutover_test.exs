@@ -43,6 +43,12 @@ defmodule AiurWeb.BuildLiveCutoverTest do
     assert view |> element(badge) |> render() =~ ">#{count - 1}<"
     send(view.pid, {:decision_changed, "refresh", 1})
     assert view |> element(badge) |> render() =~ ">#{count - 1}<"
+    send(view.pid, {:build_changes, change(hd(active), 8)})
+    assert view |> element(badge) |> render() =~ ">#{count}<"
+    old_history = hd(active) |> Map.merge(%{"sec" => "hist", "status" => "done", "start" => 0, "end" => 1, "agent" => nil})
+    send(view.pid, {:build_changes, change(old_history, 9)})
+    assert_push_event(view, "build-diff", %{"upsert" => []})
+    assert view |> element(badge) |> render() =~ ">#{count - 1}<"
     send(view.pid, {:build_changes, %{resync: true}})
     render(view)
     refute has_element?(view, badge)
