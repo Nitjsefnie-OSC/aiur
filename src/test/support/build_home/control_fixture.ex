@@ -3,8 +3,8 @@ defmodule Aiur.TestSupport.BuildHome.ControlFixture do
   alias Aiur.TestSupport.BuildHome.FixtureSource
 
   def reset do
-    {:ok, data} = FixtureSource.full(dataset: "live")
-    Enum.each(data["sections"]["now"], &:persistent_term.erase({__MODULE__, &1["id"]}))
+    for {{__MODULE__, _id} = key, _state} <- :persistent_term.get(), do: :persistent_term.erase(key)
+    :ok
   end
 
   def unit_row(id, opts) do
