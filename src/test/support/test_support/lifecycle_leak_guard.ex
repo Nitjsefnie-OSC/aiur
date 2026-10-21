@@ -134,8 +134,7 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
       test_pid when is_pid(test_pid) ->
         case :ets.lookup(@tests, test_pid) do
           [{^test_pid, test, true}] ->
-            :ets.insert(@leaks, {:leak, test, {pid, dictionary_value(pid, :"$initial_call", nil)}, "late log: #{message}"})
-            if fail_mode?(), do: Process.exit(pid, :kill)
+            report_finished_test_log(pid, test, message)
 
           _ ->
             :ok
@@ -144,6 +143,15 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
       _ ->
         :ok
     end
+  end
+
+  defp report_finished_test_log(pid, test, message) do
+    :ets.insert(@leaks, {:leak, test, {pid, dictionary_value(pid, :"$initial_call", nil)}, "late log: #{message}"})
+    maybe_kill_late_logger(pid)
+  end
+
+  defp maybe_kill_late_logger(pid) do
+    if fail_mode?(), do: Process.exit(pid, :kill)
   end
 
   def owner_for_log(pid) do
