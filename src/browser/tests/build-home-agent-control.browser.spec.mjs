@@ -1,7 +1,15 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, height: 1000 } })
+// Mutation runs serve the isolated production module through the real mounted hook.
+test.beforeEach(async ({ page }) => {
+  const root = process.env.AIUR_AGENT_CONTROL_ASSET_ROOT
+  if (root) await page.route('**/build-home/modal/agent-control.js', async route => route.fulfill({
+    body: await readFile(root + '/modal/agent-control.js', 'utf8'), contentType: 'text/javascript',
+  }))
+})
 const pause = page => page.locator('#tk-head [data-a="pause"]')
 async function capture(page, name) {
   await test.info().attach(name, { body: await page.locator('#tk-head .bm-agent').screenshot(), contentType: 'image/png' })
