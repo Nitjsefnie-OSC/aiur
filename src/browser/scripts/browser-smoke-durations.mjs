@@ -6,6 +6,9 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
+  // Governed local run (2026-10-21): all 13 nav cells passed in 151.44s;
+  // conservative measured 200s wrapper wall bound includes gate wait/startup.
+  'test:cutover-nav-parity': 200,
   // CI run 39590874795 (2026-10-21), full suite wall times including fixture startup:
   // shards 5/8/7 measured modal 30.9s, parity 122.8s, motion 25.6s; round each up.
   'test:build-modal': 31,
