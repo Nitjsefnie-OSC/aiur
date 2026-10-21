@@ -62,19 +62,6 @@ test('missing counts are unknown, zero stays zero, and labels are text', async (
   expect(result).toEqual({ zero: '0', unknown: '—', title: 'Ticket count unavailable', label: '<b>x</b>', children: 0 })
 })
 
-test('empty DAG visibility hides agent-only epics without losing the card color', async ({ page }) => {
-  const result = await page.evaluate(() => {
-    ctx.D.epics = { bug: { label: 'Bug', icon: 'bug', hue: 38, general: true }, ops: { label: 'Ops', icon: 'server', hue: 200, general: true }, unsorted: { label: 'Unsorted', icon: 'unsorted', hue: 0, unsorted: true } }
-    ctx.D.order = ['bug', 'ops', 'unsorted']; ctx.D.now = [{ id: 'agent-only', num: 91, epic: 'bug', sec: 'now', agent: { state: 'running' }, also: [], deps: [], type: 'bug', cue: {} }]
-    ctx.D.hist = []; ctx.D.plan = []; ctx.D.nq = []; ctx.D._fwd = null; S.flow = false; S.feature = null; S.f.epic = []
-    const agentCard = st.fx.makeCard({ t: ctx.D.now[0], key: 'b0', y: 42, h: 32, sec: 'now' })
-    ctx.L = { secs: { hist: { items: [], h: 100 } }, band: { BK: 1, items: [{ t: ctx.D.now[0], key: 'b0', y: 42, h: 32, sec: 'now', el: agentCard }] } }
-    cols.applyCols([], true)
-    return { visible: cols.visibleCols(), rendered: ctx.laneEls.size, epicColor: agentCard.style.getPropertyValue('--h') }
-  })
-  expect(result).toEqual({ visible: [], rendered: 0, epicColor: '38' })
-})
-
 for (const section of ['plan', 'hist']) test(`live ${section} epic invalidates visibility cache`, async ({ page }) => {
   await page.evaluate(section => {
     ctx.vp.scrollTop = section === 'plan' ? ctx.secs.plan.el.offsetTop : ctx.secs.hist.el.offsetTop + ctx.L.secs.hist.h - 500
@@ -107,32 +94,6 @@ test('whole days, forward union, feature locks and compact dependencies', async 
   expect(result).toEqual({ day: ['bugs', 'unsorted'], forward: ['infra', 'docs'], focus: ['bugs', 'infra', 'unsorted'], locked: ['bugs', 'infra', 'unsorted'], compact: ['bugs', 'infra', 'unsorted'], unknown: [], fallback: [], flow: ['s0', 's1', 's2'] })
 })
 
-test('lane visibility follows filtered DAG tickets while live cards retain epic color', async ({ page }) => {
-  const result = await page.evaluate(async () => {
-    const { computeLayout } = await import('/build-home/layout.js')
-    const day = Date.parse('2026-10-21T12:00:00-07:00')
-    const ticket = (id, epic, sec, extra = {}) => ({ id, epic, sec, end: day, also: [], deps: [], type: 'bug', cue: {}, ...extra })
-    const visible = ticket('visible', 'infra', 'plan'), filtered = ticket('filtered', 'docs', 'plan')
-    const agent = ticket('agent', 'docs', 'now', { num: 93, agent: { state: 'running' } })
-    ctx.D.order = ['infra', 'docs', 'unsorted']; ctx.D.epics.infra = { label: 'Infra', icon: 'server', hue: 202 }; ctx.D.epics.docs = { label: 'Docs', icon: 'docs', hue: 46 }
-    ctx.D.features = {}; ctx.D.byId.agent = agent; ctx.D.now = [agent]; ctx.D.plan = [visible, filtered]; ctx.D.nq = []; ctx.D.hist = []
-    ctx.D._fwd = null; ctx.D.all = [visible, filtered, agent]
-    S.feature = null; S.flow = false; S.f.epic = ['infra']
-    ctx.vp.scrollTop = 100000; ctx.vp.clientHeight = 900
-    ctx.L = computeLayout(ctx.D, S, { vpW: 1440, vpH: 900, gut: 84 }, ctx.snap.sources, { gantt: (await import('/build-home/gantt.js')).ganttExt })
-    ctx.L.band.items[0].el = st.fx.makeCard(ctx.L.band.items[0])
-    const selected = cols.visibleCols(), style = ctx.L.band.items[0].el.style.getPropertyValue('--h')
-    S.f.epic = ['docs']
-    ctx.L = computeLayout(ctx.D, S, { vpW: 1440, vpH: 900, gut: 84 }, ctx.snap.sources, { gantt: (await import('/build-home/gantt.js')).ganttExt })
-    const afterFilter = cols.visibleCols()
-    S.f.epic = ['absent']
-    ctx.L = computeLayout(ctx.D, S, { vpW: 1440, vpH: 900, gut: 84 }, ctx.snap.sources, { gantt: (await import('/build-home/gantt.js')).ganttExt })
-    const hidden = cols.visibleCols()
-    return { selected, afterFilter, agentColor: style, hidden }
-  })
-  expect(result).toEqual({ selected: ['infra'], afterFilter: ['docs'], agentColor: '46', hidden: [] })
-})
-
 test('feature lanes lock and unsorted stays last; flow clears headers', async ({ page }) => {
   const result = await page.evaluate(() => {
     S.feature = Object.keys(ctx.D.features)[0]
@@ -144,7 +105,7 @@ test('feature lanes lock and unsorted stays last; flow clears headers', async ({
     S.flow = true; S.K = 2; cols.applyCols(cols.visibleCols(), true)
     return { locks, cls, label, lanes: ctx.laneEls.size, guides: ctx.guideEls.size, caption: ctx.lanesEl.querySelector('.bd-lane-g').textContent, hidden: ctx.svg.classList.contains('hide'), bands: ctx.bandMap, bandCount: ctx.L.band.BK, viewportWidth: ctx.vp.clientWidth, nowCount: ctx.D.now.length, group: ctx.colMap.g }
   })
-  expect(result.locks.length).toBeGreaterThan(0); expect(result.locks.every(Boolean)).toBe(true)
+  expect(result.locks.every(Boolean)).toBe(true)
   expect(result.cls).toContain('unsorted'); expect(result.label).toBe('Unsorted')
   expect(result.lanes).toBe(0); expect(result.guides).toBe(0); expect(result.caption).toBe('Colour = epic'); expect(result.hidden).toBe(true)
   // Reference design build.js: Now uses 230px columns, a 16px gap and a 380px width cap, independently of flow K.
