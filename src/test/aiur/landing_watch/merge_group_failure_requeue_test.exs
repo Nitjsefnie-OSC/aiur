@@ -15,9 +15,13 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     failed = group_run(201, "failure", "pr-17-a")
     passed = group_run(202, "success", "pr-17-b")
 
-    request = fn %{method: :get, url: url} ->
-      runs = if String.contains?(url, "status=completed"), do: [failed, passed], else: []
-      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: [%{"ref" => "refs/heads/gh-readonly-queue/main/pr-17-a"}]}}
+
+      %{method: :get, url: url} ->
+        runs = if String.contains?(url, "status=completed"), do: [failed, passed], else: []
+        {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
     end
 
     pr = %{
@@ -98,9 +102,13 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
             rest: %{"head" => %{"ref" => "aiur/#{number}-work"}}
           }
 
-    request = fn %{method: :get, url: url} ->
-      runs = if String.contains?(url, "status=completed"), do: [run], else: []
-      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: [%{"ref" => "refs/heads/gh-readonly-queue/main/pr-17-a-pr-18-b-pr-19-c-pr-20-d"}]}}
+
+      %{method: :get, url: url} ->
+        runs = if String.contains?(url, "status=completed"), do: [run], else: []
+        {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
     end
 
     options = [

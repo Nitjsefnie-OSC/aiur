@@ -11,9 +11,11 @@ defmodule Aiur.LandingWatch.MergeGroupLastingFailureTest do
 
     opts =
       Keyword.put(options, :request_fun, fn call ->
-        if String.contains?(call.url, "matching-refs"),
-          do: {:ok, %{status: 200, body: []}},
-          else: request.(call)
+        if String.contains?(call.url, "matching-refs") do
+          {:ok, %{status: 200, body: []}}
+        else
+          request.(call)
+        end
       end)
 
     assert :ok = MergeGroups.cancel_stale([], opts)
