@@ -51,4 +51,4 @@ span.ax-cnt:hover { color: var(--muted); background: none; }
 .bm-tt h3:focus { outline: none; }
 
 /* H:154: preserve the design gutter when the ticket modal locks body scrolling. */
-html:has(#build-root) { scrollbar-gutter: stable; }
+html:has(#build-root) { scrollbar-gutter: stable; scrollbar-width: auto; }

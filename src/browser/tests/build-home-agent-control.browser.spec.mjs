@@ -96,7 +96,7 @@ test('unavailable and historical controls stay safe, mobile keeps live buttons',
   await expect(chat(page)).toBeVisible()
 })
 
-test('parked and command rows do not gain pause buttons', async ({ page }) => {
+test('guard: parked and command rows retain the existing design visibility rule', async ({ page }) => {
   await open(page, true, 'command')
   await expect(pause(page)).toHaveCount(0)
   await page.evaluate(async () => {
