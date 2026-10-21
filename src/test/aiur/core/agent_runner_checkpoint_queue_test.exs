@@ -160,7 +160,7 @@ defmodule Aiur.Core.AgentRunnerCheckpointQueueTest do
       assert Exchange.bindings_for(orchestrator_pid) == []
     after
       System.delete_env("SYMP_TEST_CODEX_TRACE")
-      File.rm_rf(test_root)
+      Aiur.TestCleanup.rm_rf!(test_root)
     end
   end
 
@@ -295,7 +295,7 @@ defmodule Aiur.Core.AgentRunnerCheckpointQueueTest do
       refute log =~ "Agent run failed"
     after
       System.delete_env("SYMP_TEST_CODEX_TRACE")
-      File.rm_rf(test_root)
+      Aiur.TestCleanup.rm_rf!(test_root)
     end
   end
 end
