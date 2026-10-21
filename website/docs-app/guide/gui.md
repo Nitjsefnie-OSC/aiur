@@ -29,7 +29,8 @@ Closed tickets distinguish merged, failed, not planned and other closed outcomes
 
 In a running ticket's modal, use **Pause agent** or **Resume agent** with writable
 access. The button waits for the agent's confirmation; a change from the TUI or
-another tab takes precedence. Pending, unavailable and failed requests explain
+another tab takes precedence. 
+Pending, unavailable and failed requests explain
 why through the button's accessible label. **Open in Conversations** opens the
 existing chat drawer when a server-side agent identity is available; Back
 returns to the ticket modal.
