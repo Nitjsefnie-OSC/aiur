@@ -149,7 +149,7 @@
     "kind": "copy",
     "selector": "#bd-vp",
     "cells": {},
-    "reason": "earlier days could not load · scroll up to retry",
+    "reason": "earlier days could not load \u00b7 scroll up to retry",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -162,7 +162,7 @@
     "kind": "copy",
     "selector": "#bd-vp",
     "cells": {},
-    "reason": "loaded · total unknown",
+    "reason": "loaded \u00b7 total unknown",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -355,6 +355,20 @@
       "by": null,
       "date": null,
       "ref": "MP-E8-C9-T09 Pixel parity / DESIGN-E8 S-5"
+    }
+  },
+  {
+    "id": "modal-historical-chat",
+    "kind": "design-style",
+    "selector": "#build-root",
+    "css": "[data-modal-section=\"hist\"] [data-a=\"chat\"] { display: none; }",
+    "cells": {},
+    "reason": "S-41: historical tickets lack a Units drawer destination until C14-T03; hide only their design expand button.",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "MP-E8-C11-T07 decision 2 / DESIGN-E8 S-41; removed by C14-T03"
     }
   }
 ]

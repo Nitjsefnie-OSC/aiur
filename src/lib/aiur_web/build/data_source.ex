@@ -6,7 +6,8 @@ defmodule AiurWeb.Build.DataSource do
   @callback earlier(integer(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   @callback ticket(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   @callback daemon(keyword()) :: map() | nil
-  @optional_callbacks daemon: 1
+  @callback unit_row(String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  @optional_callbacks daemon: 1, unit_row: 2
 
   @spec source() :: module() | {module(), keyword()}
   def source, do: Application.get_env(:aiur, :build_data_source, AiurWeb.Build.IndexSource)
@@ -34,6 +35,9 @@ defmodule AiurWeb.Build.DataSource do
 
   @spec ticket(String.t(), keyword()) :: {:error, :not_wired}
   def ticket(_id, _opts), do: {:error, :not_wired}
+
+  @spec unit_row(String.t(), keyword()) :: {:error, :not_wired}
+  def unit_row(_id, _opts), do: {:error, :not_wired}
 
   defp merge_opts([], opts), do: [opts]
 

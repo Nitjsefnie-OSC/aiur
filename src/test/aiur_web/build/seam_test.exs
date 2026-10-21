@@ -6,7 +6,7 @@ defmodule AiurWeb.Build.SeamTest do
   # C8-T01 Now-band rows read the Units catalog through its policy, tracker identity, and pause-reason facades;
   # components.json declares these (dashboard-ui requires projections, kernel and orchestration).
   # MP-E8-C8-T04 reads C8-T01 Units through the existing shared payload cache.
-  @allowed ~w(AiurWeb.OperatorControlCenter.PayloadLoader AiurWeb.BuildLive AiurWeb.Endpoint AiurWeb.EndpointConfig Aiur.BuildQueue Aiur.AgentChat AiurWeb.Layouts AiurWeb.FinancialDataAccess AiurWeb.Presenter AiurWeb.BuildOrder.Runtime AiurWeb.OperatorControlCenter.UnitsURL Aiur.Projections.UnitsPolicy Aiur.TrackerIdentity Aiur.Orchestrator.State)
+  @allowed ~w(AiurWeb.OperatorControlCenter.PayloadLoader AiurWeb.BuildLive AiurWeb.Endpoint AiurWeb.EndpointConfig Aiur.BuildQueue Aiur.AgentChat Aiur.AgentPubSub AiurWeb.Layouts AiurWeb.FinancialDataAccess AiurWeb.Presenter AiurWeb.BuildOrder.Runtime AiurWeb.OperatorControlCenter.UnitsURL Aiur.Projections.UnitsPolicy Aiur.TrackerIdentity Aiur.Orchestrator.State)
   @usage_facades [
     # Authorized usage reads configured Claude account labels.
     "Aiur.Accounts",
@@ -35,7 +35,7 @@ defmodule AiurWeb.Build.SeamTest do
     # Build and Stream Deck share the same pure window classification.
     "AiurWeb.ProviderMeterWindows"
   ]
-  @shell ~w(UnitsRow UnitsControlPolicy UnitsPresentation DecisionCommands DashboardShell NavState AwaitingCommands RouteRegistry)
+  @shell ~w(UnitControls UnitsRow UnitsControlPolicy UnitsPresentation DecisionCommands DashboardShell NavState AwaitingCommands RouteRegistry)
 
   test "web side references only the seam (future regression guard)" do
     files = [Path.join(@root, "lib/aiur_web/live/build_live.ex")] ++ Path.wildcard(Path.join(@root, "lib/aiur_web/build/**/*.ex"))

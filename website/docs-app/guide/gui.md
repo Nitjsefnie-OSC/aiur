@@ -27,6 +27,13 @@ space changes. Full cards show complexity, section status and queue cues. Unknow
 progress, points and estimates read `—`; unknown progress has no progress bar.
 Closed tickets distinguish merged, failed, not planned and other closed outcomes.
 
+In a running ticket's modal, use **Pause agent** or **Resume agent** with writable
+access. The button waits for the agent's confirmation; a change from the TUI or
+another tab takes precedence. Pending, unavailable and failed requests explain
+why through the button's accessible label. **Open in Conversations** opens the
+existing chat drawer when a server-side agent identity is available; Back
+returns to the ticket modal.
+
 ## Build timeline freshness
 
 The build timeline at `/build` labels daemon state separately from socket reachability. An offline or stale snapshot shows its last heartbeat age and local time; a missing heartbeat reads “no heartbeat recorded”. Socket loss lasting at least 500 ms shows “Daemon unreachable” and stops the live glows.

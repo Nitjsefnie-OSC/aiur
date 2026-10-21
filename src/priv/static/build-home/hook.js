@@ -18,7 +18,7 @@ import './edges.js';
 import './band.js';
 import './states.js';
 import './list.js';
-import './modal/frame.js';
+import { controlMessage } from './modal/frame.js';
 
 export function writeOwnData() {
   if (ctx.bdStates != null) ctx.root.dataset.bdStates = ctx.bdStates;
@@ -98,6 +98,7 @@ export function createBuildHomeHook() {
       if (!this.buildActive) return;
       fx.renderTools(); fx.initModal();
       writeOwnData();
+      this.handleEvent('build-ticket-control', controlMessage);
       this.handleEvent('build-diff', receive); this.handleEvent('build:url', onServerURL);
       showServerState(this.el.dataset); resync();
     },

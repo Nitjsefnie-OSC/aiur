@@ -5,7 +5,7 @@ defmodule AiurWeb.BuildLive do
 
   require Logger
 
-  alias AiurWeb.Build.{DataSource, Protocol, Read, Ticket, URLState, UsageUpdates}
+  alias AiurWeb.Build.{Controls, DataSource, Protocol, Read, Ticket, URLState, UsageUpdates}
   alias AiurWeb.BuildOrder.Runtime
   alias AiurWeb.OperatorControlCenter.{AwaitingCommands, DashboardShell, NavState, RouteRegistry}
   alias AiurWeb.Presenter
@@ -20,6 +20,7 @@ defmodule AiurWeb.BuildLive do
     socket =
       socket
       |> Protocol.init()
+      |> Controls.init()
       |> DashboardShell.mount()
       |> UsageUpdates.init(connected)
       |> AwaitingCommands.mount(connected)
@@ -45,7 +46,7 @@ defmodule AiurWeb.BuildLive do
     location = URI.parse(uri)
     socket = assign(socket, url_path: location.path, url_state: state)
     socket = if previous != nil and previous != state and connected?(socket), do: push_event(socket, "build:url", %{state: state}), else: socket
-    {:noreply, patch_url(socket, location.query || "", URLState.to_query(state))}
+    {:noreply, socket |> refresh_controls() |> patch_url(location.query || "", URLState.to_query(state))}
   end
 
   defp patch_url(socket, current, query) do
@@ -95,7 +96,9 @@ defmodule AiurWeb.BuildLive do
   def handle_info(:build_snapshot_timeout, %{assigns: %{build_state: :loading}} = socket),
     do: {:noreply, socket |> cancel_async(:build_snapshot) |> unavailable("timeout")}
 
-  def handle_info({:build_changes, changes}, socket), do: {:noreply, Protocol.changes(socket, changes, source_opts(socket))}
+  def handle_info({:build_changes, changes}, socket), do: {:noreply, socket |> Protocol.changes(changes, source_opts(socket)) |> Controls.refresh()}
+
+  def handle_info({:control_lifecycle, payload}, socket) when is_map(payload), do: {:noreply, Controls.lifecycle(socket, payload)}
 
   def handle_info(:fleet_changed, socket), do: {:noreply, DashboardShell.refresh_pause(socket)}
   def handle_info({AiurWeb.FinancialData, :updated, _} = message, socket), do: {:noreply, UsageUpdates.queue(socket, message)}
@@ -111,6 +114,8 @@ defmodule AiurWeb.BuildLive do
 
   @impl true
   def handle_event("build-resync", _params, socket), do: Protocol.resync(socket, source_opts(socket))
+  def handle_event("request-unit-control", params, socket), do: Controls.request(socket, params)
+  def handle_event("open-conversation", params, socket), do: Controls.open_conversation(socket, params)
   def handle_event("open-ticket", params, socket), do: Ticket.open(socket, params)
   def handle_event("close-ticket", _params, socket), do: {:noreply, assign(socket, :open_ticket, nil)}
   def handle_event("load-earlier", params, socket), do: Protocol.earlier(socket, params, source_opts(socket))
@@ -123,7 +128,7 @@ defmodule AiurWeb.BuildLive do
     query = URLState.to_query(state)
     socket = assign(socket, :url_state, state)
     socket = if corrected_url?(params, query), do: push_event(socket, "build:url", %{state: state}), else: socket
-    {:noreply, patch_url(socket, URLState.to_query(previous), query)}
+    {:noreply, socket |> Controls.refresh() |> patch_url(URLState.to_query(previous), query)}
   end
 
   def handle_event("toggle-nav", _params, socket), do: {:noreply, NavState.toggle(socket)}
@@ -132,6 +137,8 @@ defmodule AiurWeb.BuildLive do
     do: {:noreply, NavState.restore(socket, collapsed)}
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
+
+  defp refresh_controls(socket), do: if(connected?(socket), do: Controls.refresh(socket), else: socket)
 
   defp source_opts(socket), do: Read.source_opts(socket)
 
