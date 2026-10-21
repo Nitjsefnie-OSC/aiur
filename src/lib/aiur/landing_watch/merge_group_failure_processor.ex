@@ -287,18 +287,20 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
   end
 
   defp record_requeued_heads(prs, observations, opts) do
-    Enum.reduce_while(prs, :ok, fn number, :ok ->
-      case Enum.find(observations, &(&1.number == number)) do
-        %{head: head} when is_binary(head) ->
-          case Journal.record_merge_group_blame_attempt(number, head, opts) do
-            {:ok, _count} -> {:cont, :ok}
-            {:error, _} = error -> {:halt, error}
-          end
+    Enum.reduce_while(prs, :ok, &record_requeued_head(&1, &2, observations, opts))
+  end
 
-        _ ->
-          {:cont, :ok}
-      end
-    end)
+  defp record_requeued_head(number, :ok, observations, opts) do
+    case Enum.find(observations, &(&1.number == number)) do
+      %{head: head} when is_binary(head) ->
+        case Journal.record_merge_group_blame_attempt(number, head, opts) do
+          {:ok, _count} -> {:cont, :ok}
+          {:error, _} = error -> {:halt, error}
+        end
+
+      _ ->
+        {:cont, :ok}
+    end
   end
 
   defp rework_repeat_prs([], _observations, _failure, _run, _opts), do: :ok
