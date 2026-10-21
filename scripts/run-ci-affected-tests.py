@@ -10,6 +10,7 @@ import sys
 import time
 
 SELECTED_TEST_TIMEOUT_SECONDS = 600
+MAX_CHANGED_TEST_MODULES = 8
 TIME_BOMB_CHECK = os.environ.get('AIUR_TIME_BOMB_CHECK', str(Path(__file__).with_name('check-test-time-bombs.py')))
 
 
@@ -59,10 +60,17 @@ def changed_test_modules(base):
 
 
 def run_changed_test_modules(base):
-    for path in changed_test_modules(base):
+    modules = changed_test_modules(base)
+    for path in modules[:MAX_CHANGED_TEST_MODULES]:
         run_timed(f'changed test module {path}',
                   ['mix', 'test', '--max-cases', '4', path],
                   timeout=SELECTED_TEST_TIMEOUT_SECONDS)
+    skipped = modules[MAX_CHANGED_TEST_MODULES:]
+    if skipped:
+        print('::notice::changed-module isolation ran the first '
+              f'{MAX_CHANGED_TEST_MODULES} of {len(modules)} modules; '
+              'the grouped affected-tests run still covers skipped modules: '
+              + ', '.join(skipped), flush=True)
 
 
 def main():
