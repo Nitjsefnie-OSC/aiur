@@ -153,9 +153,9 @@ test('touch strip renders two provider meters and design segment geometry', asyn
   }
 
   await expect(providers.filter({ hasText: 'Claude' }).locator('[data-meter="session"]')).toContainText('30% · 22m')
-  await expect(providers.filter({ hasText: 'Claude' }).locator('[data-meter="weekly"]')).toContainText('47% · Thu 6PM')
-  await expect(providers.filter({ hasText: 'Codex' }).locator('[data-meter="session"]')).toContainText('50% · 1h')
-  await expect(providers.filter({ hasText: 'Codex' }).locator('[data-meter="weekly"]')).toContainText('75% · Fri 8PM')
+  await expect(providers.filter({ hasText: 'Claude' }).locator('[data-meter="weekly"]')).toContainText('47% left · Thu 6PM')
+  await expect(providers.filter({ hasText: 'Codex' }).locator('[data-meter="session"]')).toContainText('50% left · 1h')
+  await expect(providers.filter({ hasText: 'Codex' }).locator('[data-meter="weekly"]')).toContainText('75% left · Fri 8PM')
 
   const pagerDots = page.locator('[data-segment="pager"] .sd-pager-dot')
   const pageCount = parseInt(await page.locator('#sd-keys').getAttribute('data-grid-page-count'), 10)

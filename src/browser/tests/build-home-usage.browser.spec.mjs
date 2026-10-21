@@ -141,7 +141,7 @@ test('popover mouse and keyboard, offsets, hide delay, scroll and live diff repl
   await page.mouse.move(0,0); await page.clock.runFor(50); await expect(pop).toHaveClass('ax-pop show')
   await page.clock.runFor(20); await expect(pop).toHaveClass('ax-pop')
   await line.focus(); await expect(pop).toHaveClass('ax-pop show')
-  await expect(line).toHaveAttribute('aria-label', /Claude.*Max · work 1%/)
+  await expect(line).toHaveAttribute('aria-label', /Claude.*Max · work 99% left/)
   await page.evaluate(() => window.dispatchEvent(new Event('scroll'))); await expect(pop).toHaveClass('ax-pop')
   await line.hover()
   await page.clock.resume()

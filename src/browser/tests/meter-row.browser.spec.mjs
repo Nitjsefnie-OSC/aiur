@@ -82,7 +82,7 @@ test('Models and APIs use standard bars with labels above, without narrow overfl
 
       const elevenlabs = page.locator('.rs-elevenlabs')
       await expect(elevenlabs).toContainText('75.0K left · 75% left · resets 3d')
-      await expect(elevenlabs.locator('.rs-meter > i')).toHaveAttribute('style', /width:75\.0%/)
+      await expect(elevenlabs.locator('.rs-meter > i')).toHaveAttribute('style', /width:75%/)
       await expect(elevenlabs.locator('img')).toHaveAttribute('src', '/elevenlabs-symbol.svg')
       await expect(elevenlabs.locator('img')).toHaveAttribute('alt', 'ElevenLabs')
       await expect.poll(() => elevenlabs.locator('img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0)
