@@ -170,7 +170,11 @@ defmodule Aiur.ExperimentsCLITest do
   end
 
   test "create freezes the baseline and reports its window, count and coverage" do
-    change_at = DateTime.utc_now() |> DateTime.truncate(:second)
+    clock = ~U[2026-10-08 00:00:00Z]
+    stop_supervised(Aiur.Experiments.Store)
+    start_supervised!({Aiur.Experiments.Store, catalog_context: %{clock: fn -> clock end}})
+
+    change_at = DateTime.add(clock, -1, :second)
     change_at_text = DateTime.to_iso8601(change_at)
     window_start = change_at |> DateTime.add(-14 * 86_400) |> DateTime.to_iso8601()
     argv = ["--title", "frozen", "--line", "manual:frozen@#{change_at_text}", "--metric", "delivery/start"]
