@@ -12,9 +12,14 @@ defmodule Aiur.GitHub.AccessSettings do
 
   @impl true
   def settings do
-    config = safely(fn -> Config.settings!() end, nil)
-    github = if config, do: config.tracker.github, else: %{}
-    repo = safely(&GitHubConfig.repo/0, nil)
+    config =
+      case Config.settings() do
+        {:ok, settings} -> settings
+        {:error, reason} -> raise ArgumentError, message: "invalid GitHub config: #{inspect(reason)}"
+      end
+
+    github = config.tracker.github
+    repo = GitHubConfig.repo(config)
 
     %Settings{
       state_root: &decision_root/0,
@@ -25,8 +30,8 @@ defmodule Aiur.GitHub.AccessSettings do
       app_account: get_in(plain(github), [:github_app, :account]),
       bot_account: Map.get(github, :bot_account),
       credentials: github |> Map.get(:credentials, []) |> Enum.reject(&(&1.enabled == false)) |> Enum.map(&credential/1),
-      quota_dir: &quota_dir/0,
-      request_log_dir: &request_log_dir/0,
+      quota_dir: fn -> quota_dir(repo) end,
+      request_log_dir: fn -> request_log_dir(repo) end,
       resource_store_path: &resource_store_path/0,
       probe_dir: &probe_dir/0,
       cache: %{
@@ -37,25 +42,12 @@ defmodule Aiur.GitHub.AccessSettings do
     }
   end
 
-  defp quota_dir do
-    safely(
-      fn ->
-        case GitHubConfig.repo() do
-          repo when is_binary(repo) and repo != "" -> Path.join(RepoBase.repo_path(repo), "github-quota")
-          _ -> nil
-        end
-      end,
-      nil
-    )
-  end
+  defp quota_dir(repo) when is_binary(repo) and repo != "", do: Path.join(RepoBase.repo_path(repo), "github-quota")
+  defp quota_dir(_repo), do: nil
 
-  defp request_log_dir do
-    if Application.get_env(:aiur, :env) != :test, do: quota_dir()
-  end
+  defp request_log_dir(repo), do: if(Application.get_env(:aiur, :env) != :test, do: quota_dir(repo))
 
-  defp probe_dir do
-    safely(fn -> Config.workspace_root() |> Path.expand() |> Layout.issue_workspace_path("__github_quota_probe__") end, nil)
-  end
+  defp probe_dir, do: Config.workspace_root() |> Path.expand() |> Layout.issue_workspace_path("__github_quota_probe__")
 
   defp budget_dir do
     case System.get_env("AIUR_DEV_TEST_TICKET_IDS") do
@@ -114,12 +106,4 @@ defmodule Aiur.GitHub.AccessSettings do
   defp plain(value) when is_map(value), do: Map.new(value, fn {key, item} -> {key, plain(item)} end)
   defp plain(value) when is_list(value), do: Enum.map(value, &plain/1)
   defp plain(value), do: value
-
-  defp safely(fun, fallback) do
-    fun.()
-  rescue
-    _ -> fallback
-  catch
-    :exit, _ -> fallback
-  end
 end

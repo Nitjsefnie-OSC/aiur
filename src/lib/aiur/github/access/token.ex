@@ -120,7 +120,10 @@ defmodule Aiur.GitHub.Access.Token do
   def app_account, do: normalize_account(Settings.current().app_account)
 
   @spec daemon_account() :: String.t() | nil
-  def daemon_account, do: app_account() || normalize_account(Settings.current().bot_account)
+  def daemon_account do
+    settings = Settings.current()
+    normalize_account(settings.app_account) || normalize_account(settings.bot_account)
+  end
 
   @spec app_identity_issue() :: nil | :bot_account_missing | {:bot_account_not_app_bot, String.t()}
   def app_identity_issue do
