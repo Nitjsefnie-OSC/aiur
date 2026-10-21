@@ -144,6 +144,63 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     assert_received :dequeued
   end
 
+  test "only one poll can reserve a queue recovery at a time" do
+    path = temp_journal()
+    parent = self()
+    observation = observation(49)
+    calls = Agent.start_link(fn -> 0 end) |> elem(1)
+
+    opts =
+      [journal_path: path, token: "test-gh-token"] ++
+        check_opts(parent, 49,
+          revalidate_queue_fun: fn _, _ ->
+            call = Agent.get_and_update(calls, &{&1, &1 + 1})
+
+            if call == 0 do
+              send(parent, :first_repair_reserved)
+              receive do: (:continue_first_repair -> :ok)
+            else
+              send(parent, :second_repair_started)
+              :ok
+            end
+          end
+        )
+
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_000))
+
+    first =
+      Task.async(fn ->
+        MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_201_000))
+      end)
+
+    assert_receive :first_repair_reserved, 2_000
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_201_000))
+    refute_received :second_repair_started
+
+    send(first.pid, :continue_first_repair)
+    assert :ok = Task.await(first)
+    assert_received :dequeued
+    refute_received :dequeued
+  end
+
+  test "attempts recovery even when merge-group routing reports an error" do
+    parent = self()
+    observation = observation(50)
+
+    assert {:error, :routing_failed} =
+             MergeQueueWatchdog.after_reconcile(
+               :ok,
+               {:error, :routing_failed},
+               [observation],
+               merge_queue_watchdog_fun: fn [^observation], _opts ->
+                 send(parent, :watchdog_ran)
+                 :ok
+               end
+             )
+
+    assert_received :watchdog_ran
+  end
+
   test "uses merge-group failure evidence and counts earlier runs containing the head" do
     path = temp_journal()
     parent = self()
@@ -194,6 +251,8 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
   test "ignores failed merge-group runs from before the current unmergeable period" do
     path = temp_journal()
     observation = observation(56)
+    {:ok, started_at, _offset} = DateTime.from_iso8601("2026-10-21T12:05:00Z")
+    since_ms = DateTime.to_unix(started_at, :millisecond)
 
     old_run = %{
       "id" => 910,
@@ -209,8 +268,14 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
       request_fun: fn _ -> flunk("stale evidence must not authorize recovery") end
     ]
 
-    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_000))
-    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_201_000))
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, since_ms))
+
+    assert :ok =
+             MergeQueueWatchdog.reconcile(
+               [observation],
+               Keyword.put(opts, :now_ms, since_ms + 20 * 60_000 + 1)
+             )
+
     refute_received :dequeued
   end
 
