@@ -101,6 +101,8 @@ defmodule Aiur.GitHub.BudgetBroker do
 
     if Enum.any?(state.stats, fn {_outcome, measurements} -> measurements[:sqlite_checkpoint_stale] end) do
       BrokerTimeout.record_checkpoint_degraded()
+    else
+      BrokerTimeout.record_checkpoint_recovered()
     end
 
     Process.send_after(self(), :report_stats, :timer.minutes(1))

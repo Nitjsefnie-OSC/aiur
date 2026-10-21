@@ -14,6 +14,7 @@ CHECKPOINT_REQUESTS = None
 CHECKPOINT_RESULTS = None
 CHECKPOINT_LOCK = None
 CHECKPOINT_THREAD = None
+CHECKPOINT_ACTIVE = None
 LAST_SUCCESSFUL_CHECKPOINT_NS = None
 FALLBACK_LOGGED = False
 WAL_FRAME_LIMIT = 10_000
@@ -89,6 +90,8 @@ def stale_checkpoint(status):
 
 def recover_checkpoint_if_needed(db, conn):
     global FALLBACK_LOGGED, LAST_SUCCESSFUL_CHECKPOINT_NS
+    if CHECKPOINT_REQUESTS is None:
+        return checkpoint_status(db)
     status = checkpoint_status(db)
     dead_worker = CHECKPOINT_THREAD is None or not CHECKPOINT_THREAD.is_alive()
     try:
@@ -97,9 +100,10 @@ def recover_checkpoint_if_needed(db, conn):
         frames = 0
     if not dead_worker and frames <= WAL_FRAME_LIMIT and not stale_checkpoint(status):
         return status
-    if CHECKPOINT_REQUESTS is not None and not CHECKPOINT_REQUESTS.empty():
+    if not CHECKPOINT_REQUESTS.empty() or (CHECKPOINT_ACTIVE is not None and CHECKPOINT_ACTIVE.is_set()):
         return status
     try:
+        conn.execute("PRAGMA busy_timeout = 50")
         busy, total, checkpointed = conn.execute("PRAGMA wal_checkpoint(RESTART)").fetchone()
         if busy == 0 and checkpointed >= total:
             LAST_SUCCESSFUL_CHECKPOINT_NS = time.monotonic_ns()
@@ -112,14 +116,16 @@ def recover_checkpoint_if_needed(db, conn):
 
 
 def start_checkpoint_worker():
-    global CHECKPOINT_REQUESTS, CHECKPOINT_RESULTS, CHECKPOINT_LOCK, CHECKPOINT_THREAD, LAST_SUCCESSFUL_CHECKPOINT_NS
+    global CHECKPOINT_REQUESTS, CHECKPOINT_RESULTS, CHECKPOINT_LOCK, CHECKPOINT_THREAD, CHECKPOINT_ACTIVE, LAST_SUCCESSFUL_CHECKPOINT_NS
     CHECKPOINT_REQUESTS = queue.Queue(maxsize=1)
     CHECKPOINT_RESULTS = {}
     CHECKPOINT_LOCK = threading.Lock()
+    CHECKPOINT_ACTIVE = threading.Event()
 
     def run():
         while True:
             db = CHECKPOINT_REQUESTS.get()
+            CHECKPOINT_ACTIVE.set()
             started_ns = time.monotonic_ns()
             try:
                 conn = sqlite3.connect(db, timeout=0.05, isolation_level=None)
@@ -139,6 +145,7 @@ def start_checkpoint_worker():
                 result = {"sqlite_checkpoint_ms": (time.monotonic_ns() - started_ns) / 1_000_000}
             with CHECKPOINT_LOCK:
                 CHECKPOINT_RESULTS[db] = result
+            CHECKPOINT_ACTIVE.clear()
 
     CHECKPOINT_THREAD = threading.Thread(target=run, daemon=True)
     CHECKPOINT_THREAD.start()

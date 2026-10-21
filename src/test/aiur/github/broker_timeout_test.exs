@@ -144,4 +144,17 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
       assert opts[:needs_attention] == false
     end)
   end
+
+  test "a stale checkpoint raises the existing degraded alert immediately" do
+    :ok = BrokerTimeout.record_checkpoint_degraded(name: @name)
+    check(1_000)
+
+    assert_receive {:emitted, @degraded_topic, opts}, 1000
+    assert opts[:message] =~ "checkpoint is stale"
+    assert opts[:reason] =~ "exceeded ten minutes"
+
+    :ok = BrokerTimeout.record_checkpoint_recovered(name: @name)
+    check(2_000)
+    assert_receive {:emitted, @resolved_topic, _}, 1000
+  end
 end
