@@ -76,8 +76,8 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
 
   test "the incident timeout pattern raises one alert and clears after recovery" do
     # Exact offsets (seconds) of the 17 timeout lines from 21:40:46 through
-    # 21:41:53 in the incident log. This pattern crossed the old threshold,
-    # but the old 600s dwell could never fit inside the 300s window.
+    # 21:41:53 in the incident log. With production defaults, the old 600s
+    # dwell could never fit inside the 300s window, so the alert never fired.
     [0, 1, 3, 5, 11, 11, 13, 18, 23, 25, 26, 27, 51, 55, 57, 59, 67]
     |> Enum.each(fn seconds ->
       record(seconds * 1_000, 1)
