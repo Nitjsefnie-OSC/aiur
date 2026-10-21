@@ -14,7 +14,7 @@ export const shards = {
   4: ["test:build-home-motion", "test:design-parity", "test:smoke", "test:models-panel", "test:build-home-edges"],
   5: ["test:build-home-band-motion", "test:build-home-states-parity", "test:build-home-edges-parity", "test:streamdeck", "test:interaction", "test:performance", "test:build-home-assets", "test:harness", "test:build-modal", "test:shell-chrome", "test:provider-meters"],
   6: ["test:build-home-cards:4", "test:build-home-cards:3", "test:build-home-cards:1", "test:units", "test:layout", "test:responsive", "test:streamdeck-flow", "test:admission", "check:elk", "test:build-home-protocol", "test:build-home-now-state", "test:build-home-list-unit", "test:build-home-now-band"],
-  7: ["test:build-home-cards:2", "test:build-home-span-parity", "test:build-home-layout", "test:parity", "test:experiments", "test:time-brush", "test:build-modal-motion", "test:build-home-conversation", "test:command-answer", "test:build-home-modal-doc"],
+  7: ["test:build-home-estimate", "test:build-home-estimate-browser", "test:build-home-cards:2", "test:build-home-span-parity", "test:build-home-layout", "test:parity", "test:experiments", "test:time-brush", "test:build-modal-motion", "test:build-home-conversation", "test:command-answer", "test:build-home-modal-doc"],
   8: ["test:build-home-gantt", "test:build-index-live", "test:build-modal-parity", "test:build-home-modal-doc-parity"],
 };
 
