@@ -148,7 +148,10 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
     first = json.loads(sys.stdin.readline())
     second = json.loads(sys.stdin.readline())
     for request, output in [(first, "late"), (second, "current")]:
-        print(json.dumps({"id": request["id"], "output": output, "status": 0}), flush=True)
+        reply = {"id": request["id"], "output": output, "status": 0}
+        if output == "late":
+            reply.update({"python_queue_wait_ms": 37, "python_queue_depth": 3, "sqlite_lock_wait_ms": 19, "sqlite_transaction_ms": 8, "command_type": "acquire"})
+        print(json.dumps(reply), flush=True)
     for line in sys.stdin:
         pass
     """)
@@ -156,6 +159,11 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
     assert :timeout = BudgetBroker.command(server, broker, [], System.monotonic_time(:millisecond) + 100)
     assert {:ok, "current", 0} = command(server, broker, [])
     assert :sys.get_state(server).pending == %{}
+
+    assert Enum.any?(:sys.get_state(server).stats, fn
+             {:timeout, %{python_queue_wait_ms: 37, sqlite_lock_wait_ms: 19, sqlite_transaction_ms: 8, command_type: :acquire}} -> true
+             _sample -> false
+           end)
   end
 
   test "a locked resident admission expires without a late lease and recovers after unlock", %{root: root, server: server} do
@@ -187,6 +195,8 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
     receive do
       {^lock, {:data, "released\n"}} -> :ok
     end
+
+    assert timeout_has_python_metrics?(server, 20)
 
     assert {:ok, snapshot, 0} = command(server, Budget.broker_path(), ["snapshot" | common(root)])
     assert %{"inflight" => %{}, "admissions" => [_]} = Jason.decode!(snapshot)
@@ -453,12 +463,33 @@ defmodule Aiur.GitHub.BudgetBrokerTest do
 
   defp command(server, broker, args), do: BudgetBroker.command(server, broker, args, System.monotonic_time(:millisecond) + 5_000)
 
+  defp timeout_has_python_metrics?(_server, 0), do: false
+
+  defp timeout_has_python_metrics?(server, attempts) do
+    observed? =
+      Enum.any?(:sys.get_state(server).stats, fn
+        {:timeout, %{command_type: :acquire, python_queue_wait_ms: python_wait, sqlite_lock_wait_ms: lock_wait}}
+        when is_number(python_wait) and is_number(lock_wait) ->
+          true
+
+        _sample ->
+          false
+      end)
+
+    if observed? do
+      true
+    else
+      Process.sleep(10)
+      timeout_has_python_metrics?(server, attempts - 1)
+    end
+  end
+
   defp checkpoint_observed?(_server, _opts, 0), do: false
 
   defp checkpoint_observed?(server, opts, attempts) do
     Budget.snapshot("daemon-token", opts)
 
-    if Enum.any?(:sys.get_state(server).stats, fn {_outcome, measurements} -> is_number(measurements.sqlite_checkpoint_ms) end) do
+    if Enum.any?(:sys.get_state(server).stats, fn {_outcome, measurements} -> is_number(Map.get(measurements, :sqlite_checkpoint_ms)) end) do
       true
     else
       Process.sleep(10)
