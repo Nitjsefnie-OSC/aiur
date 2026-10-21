@@ -8,6 +8,7 @@ defmodule AiurWeb.AnalyticsLoadingTest do
   alias Aiur.RunTelemetry.Summaries
   alias Aiur.TestSupport.LiveViewAsync
   alias AiurWeb.Endpoint
+  alias AiurWeb.OperatorControlCenter.Analytics.Presenter
 
   @endpoint Endpoint
   @summary Path.expand("../../fixtures/analytics/runs/boot-a/run-summary.json", __DIR__)
@@ -32,7 +33,9 @@ defmodule AiurWeb.AnalyticsLoadingTest do
         end
       end
 
-      {:ok, Runtime.load(socket, [cache_identity: session["identity"], prior_loader: loader], fn -> %{state: :absent, title: "Disabled", message: "Compression is disabled."} end)}
+      opts = [cache_identity: session["identity"], prior_loader: loader]
+      if session["cached_model"], do: Runtime.cache_result({:current, nil, nil, session["identity"]}, {:ok, session["cached_model"]})
+      {:ok, Runtime.load(socket, opts, fn -> %{state: :absent, title: "Disabled", message: "Compression is disabled."} end)}
     end
 
     @impl true
@@ -104,6 +107,20 @@ defmodule AiurWeb.AnalyticsLoadingTest do
     end
 
     refute_received {:scan_started, _worker}
+  end
+
+  test "serves the prior model while refreshing a retained scan" do
+    {:ok, dataset} = @summary |> File.read!() |> Summaries.decode_summary()
+    cached_model = Presenter.model(dataset)
+    session = %{"parent" => self(), "identity" => make_ref(), "dataset" => dataset, "cached_model" => cached_model}
+    {:ok, view, html} = live_isolated(build_conn(), SlowAnalyticsLive, session: session)
+    assert html =~ "Showing the last computed analytics result while refreshing."
+    receive_barrier({:scan_started, worker})
+    refute html =~ "Loading run analytics"
+    send(worker, :release)
+    rendered = LiveViewAsync.render_when_complete(view)
+    assert rendered =~ "Peak concurrency"
+    refute rendered =~ "while refreshing"
   end
 
   test "blocked analytics scan shows elapsed loading time then a named timeout" do

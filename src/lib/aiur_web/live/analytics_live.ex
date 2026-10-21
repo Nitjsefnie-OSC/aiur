@@ -55,8 +55,27 @@ defmodule AiurWeb.AnalyticsLive do
   defdelegate handle_info(message, socket), to: Runtime
 
   @impl true
-  def handle_async(:analytics_model, {:ok, {result, rtk}}, %{assigns: %{unavailable: :loading}} = socket) do
+  def handle_async(:analytics_model, {:ok, {result, rtk}}, socket), do: accept_analytics_result(socket, result, rtk)
+
+  def handle_async(:analytics_model, {:exit, reason}, socket) do
+    if socket.assigns[:analytics_refreshing?] || socket.assigns[:analytics_timed_out?] do
+      {:noreply, assign(socket, :analytics_refreshing?, false)}
+    else
+      Logger.warning("Analytics loading failed: #{inspect(reason)}")
+      handle_async(:analytics_model, {:ok, {{:unavailable, :error}, %{state: :absent, title: "Compression unavailable", message: "Analytics loading failed."}}}, socket)
+    end
+  end
+
+  def handle_async(:analytics_model, _result, socket), do: {:noreply, socket}
+
+  defp chart_model(model, %{start_ms: start_ms, end_ms: end_ms}) when is_integer(start_ms) and is_integer(end_ms),
+    do: Charts.with_exact_time_domain(model, {start_ms, end_ms}, boundary_samples: false)
+
+  defp chart_model(model, _domain), do: model
+
+  defp accept_analytics_result(socket, result, rtk) do
     now = DateTime.utc_now()
+    if socket.assigns[:analytics_cache_key], do: Runtime.cache_result(socket.assigns.analytics_cache_key, result)
     socket = assign(socket, :rtk, rtk)
 
     socket =
@@ -67,10 +86,12 @@ defmodule AiurWeb.AnalyticsLive do
           socket
           |> assign(
             model: model,
+            chart_model: chart_model(model, domain),
             provider_spend: provider_spend(socket, model.source_boot_id),
             selected: MapSet.new(model.actors, & &1.key),
             unavailable: nil,
             source: source_info(model, now),
+            analytics_refreshing?: false,
             now: now
           )
           |> assign_time_domain(domain)
@@ -84,19 +105,13 @@ defmodule AiurWeb.AnalyticsLive do
             selected: MapSet.new(),
             source: nil,
             unavailable: reason,
+            analytics_refreshing?: false,
             now: now
           )
       end
 
     {:noreply, socket}
   end
-
-  def handle_async(:analytics_model, {:exit, reason}, %{assigns: %{unavailable: :loading}} = socket) do
-    Logger.warning("Analytics loading failed: #{inspect(reason)}")
-    handle_async(:analytics_model, {:ok, {{:unavailable, :error}, %{state: :absent, title: "Compression unavailable", message: "Analytics loading failed."}}}, socket)
-  end
-
-  def handle_async(:analytics_model, _result, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("toggle-global-pause", _params, socket), do: {:noreply, DashboardShell.toggle_pause(socket)}
@@ -167,6 +182,8 @@ defmodule AiurWeb.AnalyticsLive do
           state={@unavailable}
           elapsed_seconds={@analytics_load_elapsed_seconds}
           timeout_seconds={@analytics_load_timeout_seconds}
+          refreshing?={@analytics_refreshing?}
+          refresh_timed_out?={@analytics_timed_out?}
         />
         <div :if={@unavailable && @unavailable not in [:loading, :timeout]} class="an-empty" data-empty-reason={@unavailable}>
           <div :if={@unavailable == :no_telemetry}>

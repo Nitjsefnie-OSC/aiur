@@ -113,6 +113,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.ExecutorWakeInbox,
     Aiur.ExecutorListener,
     AiurWeb.ControlCenterCache,
+    Aiur.RunTelemetry.RetainedCache,
     AiurWeb.FinancialData.Supervisor,
     {Aiur.HttpServer, dashboard_pages?: true},
     Aiur.Opencode.TokenRegistry,
@@ -168,7 +169,7 @@ defmodule Aiur.BuildOrder.ComponentTest do
 
     without_dashboard =
       @foreground
-      |> Enum.reject(&(&1 in [AiurWeb.ControlCenterCache, AiurWeb.FinancialData.Supervisor, AiurWeb.Build.IndexSupervisor, {Aiur.HttpServer, dashboard_pages?: true}]))
+      |> Enum.reject(&(&1 in [AiurWeb.ControlCenterCache, Aiur.RunTelemetry.RetainedCache, AiurWeb.FinancialData.Supervisor, AiurWeb.Build.IndexSupervisor, {Aiur.HttpServer, dashboard_pages?: true}]))
       |> Enum.map(fn
         {Aiur.OpenTicketSource, _} -> {Aiur.OpenTicketSource, poll_on_start: false}
         spec -> spec

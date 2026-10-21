@@ -116,9 +116,28 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
 
     assert identity == RetainedCache.identity(nil)
 
-    File.mkdir_p!(Path.join(runs, "boot-new"))
-    RetainedCache.invalidate_identity()
+    replacement = Path.join([runs, "boot-1", "run-summary.tmp"])
+    File.write!(replacement, "replacement-summary")
+    File.rename!(replacement, Summaries.run_summary_path("boot-1"))
     refute identity == RetainedCache.identity(nil)
+  end
+
+  test "identity warming runs in the background and invalidation schedules another warm" do
+    root = Aiur.TestSupport.tmp_root!("retained-identity-warm")
+    previous = for key <- [:repo_base_root, :analytics_repo], do: {key, Application.fetch_env(:aiur, key)}
+    Application.put_env(:aiur, :repo_base_root, root)
+    Application.put_env(:aiur, :analytics_repo, "test/retained-identity-warm")
+    File.mkdir_p!(Summaries.runs_dir())
+    start_supervised!({RetainedCache, name: nil})
+
+    on_exit(fn ->
+      Aiur.TestSupport.restore_app_env(previous)
+      Aiur.TestCleanup.rm_rf!(root)
+    end)
+
+    assert eventually(fn -> :ets.lookup(Aiur.RunTelemetry.RetainedCache.Identity, {Summaries.state_node(), Aiur.RunTelemetry.boot_id()}) != [] end)
+    RetainedCache.invalidate_identity()
+    assert eventually(fn -> :ets.lookup(Aiur.RunTelemetry.RetainedCache.Identity, {Summaries.state_node(), Aiur.RunTelemetry.boot_id()}) != [] end)
   end
 
   test "latest-run decodes newest analyzable summary only" do
@@ -172,5 +191,18 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
       Process.sleep(10)
       await_waiters(id, count, attempts - 1)
     end
+  end
+
+  defp eventually(fun, attempts \\ 100)
+  defp eventually(_fun, 0), do: false
+
+  defp eventually(fun, attempts) do
+    if fun.(),
+      do: true,
+      else:
+        (
+          Process.sleep(10)
+          eventually(fun, attempts - 1)
+        )
   end
 end
