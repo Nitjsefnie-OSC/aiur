@@ -74,8 +74,8 @@ function addHTML(t, D) {
 export function renderDoc(body, t, D, doc, opts = {}) {
   const scroll = body.querySelector('.bm-doc')?.scrollTop || 0;
   const active = document.activeElement;
-  const focused = body.contains(active) ? active.closest('[data-goto], [data-a]') : null;
-  const focus = focused ? { goto: focused.dataset.goto, action: focused.dataset.a } : null;
+  const focused = body.contains(active) ? active.closest('[data-goto], [data-a], .bm-body a') : null;
+  const focus = focused ? { goto: focused.dataset.goto, action: focused.dataset.a, href: focused.getAttribute('href') } : null;
   const created = doc?.created ?? t.created;
   const source = I.github + '#' + esc(t.num ?? t.id) + (created == null ? '' : ' · opened ' + esc(fmtDate(created)) + (doc?.author ? ' by @' + esc(doc.author) : ''));
   const fact = (name, value) => '<div><small>' + name + '</small><b>' + esc(value) + '</b></div>';
@@ -90,8 +90,8 @@ export function renderDoc(body, t, D, doc, opts = {}) {
   else content.insertAdjacentHTML('afterbegin', cues(t));
   content.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
   if (focus) {
-    const replacement = Array.from(body.querySelectorAll('[data-goto], [data-a]')).find(el =>
-      focus.goto != null ? el.dataset.goto === focus.goto : el.dataset.a === focus.action);
+    const replacement = Array.from(body.querySelectorAll('[data-goto], [data-a], .bm-body a')).find(el =>
+      focus.href != null ? el.getAttribute('href') === focus.href : focus.goto != null ? el.dataset.goto === focus.goto : el.dataset.a === focus.action);
     if (replacement && !replacement.disabled) replacement.focus({ preventScroll: true });
   }
   body.querySelector('.bm-doc').scrollTop = scroll;
