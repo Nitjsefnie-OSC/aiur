@@ -27,6 +27,7 @@ defmodule AiurWeb.Build.Controls do
         {:reply, Payload.error(:unavailable), push_event(socket, "build-ticket-control", body(socket, id, nil))}
 
       row ->
+        socket = subscribe_before_dispatch(socket, row)
         {controls, _subscription} = UnitControls.request(socket.assigns.unit_controls, id, row, action)
         socket = socket |> assign(:unit_controls, controls) |> subscriptions()
         message = body(socket, id, row)
@@ -60,8 +61,17 @@ defmodule AiurWeb.Build.Controls do
 
   @spec lifecycle(Phoenix.LiveView.Socket.t(), map()) :: Phoenix.LiveView.Socket.t()
   def lifecycle(socket, payload) do
+    previous = socket.assigns.unit_controls[get_in(payload, [:tracker_identity, :identifier])]
+
+    if UnitsControlPolicy.settled?(previous) do
+      socket
+    else
+      apply_lifecycle(socket, previous, payload)
+    end
+  end
+
+  defp apply_lifecycle(socket, previous, payload) do
     {controls, key} = UnitControls.apply_lifecycle(socket.assigns.unit_controls, payload)
-    previous = socket.assigns.unit_controls[key]
     socket = socket |> assign(:unit_controls, controls) |> subscriptions()
     socket = record_pause(socket, key, previous, controls[key], payload)
     if key != nil and key == open_id(socket), do: push_event(socket, "build-ticket-control", body(socket, key, row(socket, key))), else: socket
@@ -98,6 +108,19 @@ defmodule AiurWeb.Build.Controls do
     case Read.safe_read(fn -> DataSource.call(source, :unit_row, [id, opts]) end) do
       {:ok, row} -> row
       {:error, _} -> nil
+    end
+  end
+
+  # A worker may publish its lifecycle before the synchronous owner call returns.
+  defp subscribe_before_dispatch(socket, row) do
+    identifier = UnitsControlPolicy.identifier(row)
+    current = socket.assigns.control_subscriptions
+
+    if is_binary(identifier) and connected?(socket) and not MapSet.member?(current, identifier) do
+      AgentPubSub.subscribe_agent(identifier)
+      assign(socket, :control_subscriptions, MapSet.put(current, identifier))
+    else
+      socket
     end
   end
 

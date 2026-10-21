@@ -8,7 +8,12 @@ defmodule AiurWeb.BuildLiveControlTest do
     def subscribe(opts), do: FixtureSource.subscribe(opts)
     def snapshot(opts), do: FixtureSource.snapshot(opts)
     def ticket(id, opts), do: FixtureSource.ticket(id, opts)
-    def unit_row(id, opts), do: Agent.get(opts[:store], &Map.fetch(&1.rows, id)) |> found()
+
+    def unit_row(id, opts) do
+      send(opts[:test_pid], {:unit_read, id})
+      Agent.get(opts[:store], &Map.fetch(&1.rows, id)) |> found()
+    end
+
     defp found(:error), do: {:error, :not_found}
     defp found(result), do: result
   end
@@ -32,7 +37,7 @@ defmodule AiurWeb.BuildLiveControlTest do
       end)
     end
 
-    Application.put_env(:aiur, :build_data_source, {Source, [store: store, dataset: "live"]})
+    Application.put_env(:aiur, :build_data_source, {Source, [store: store, dataset: "live", test_pid: self()]})
     %{store: store, row: row}
   end
 
@@ -82,6 +87,7 @@ defmodule AiurWeb.BuildLiveControlTest do
       assert :sys.get_state(view.pid).socket.assigns.writable == false
     end
 
+    refute_received {:unit_read, _}
     refute_received {:unit_caps, _}
     refute_received {:unit_pause, _}
   end
@@ -203,5 +209,45 @@ defmodule AiurWeb.BuildLiveControlTest do
       assert Payload.validate(message) == :ok
       assert {:error, _} = Payload.validate(put_in(message, [:control, :state], :invented))
     end
+  end
+
+  test "lifecycle published before the owner returns is observed and unsubscribed" do
+    view = view("/build?ticket=1110")
+    payload = %{tracker_identity: %{identifier: "1110"}, action: :pause, status: :applied, request_id: 8, applied_at: DateTime.utc_now()}
+
+    Phoenix.Config.put(AiurWeb.Endpoint, :agent_chat_pause_fun, fn _id ->
+      Aiur.AgentPubSub.broadcast_control_lifecycle("1110", payload)
+      {:ok, 8}
+    end)
+
+    :erlang.trace(view.pid, true, [:receive])
+    Aiur.AgentPubSub.broadcast_control_lifecycle("1110", payload)
+    render(view)
+    pid = view.pid
+    refute_received {:trace, ^pid, :receive, {:control_lifecycle, ^payload}}
+    request(view)
+    assert_reply(view, %{"control" => %{"state" => "pending"}})
+    render(view)
+    assert_received {:trace, ^pid, :receive, {:control_lifecycle, ^payload}}
+    assert :sys.get_state(pid).socket.assigns.unit_controls["1110"].status == :applied
+    Aiur.AgentPubSub.broadcast_control_lifecycle("1110", payload)
+    render(view)
+    refute_received {:trace, ^pid, :receive, {:control_lifecycle, ^payload}}
+    :erlang.trace(pid, false, [:receive])
+  end
+
+  test "a canceled preflight cannot consume an unrelated lifecycle from its temporary subscription" do
+    view = view()
+
+    Phoenix.Config.put(AiurWeb.Endpoint, :agent_chat_capabilities_fun, fn _id ->
+      Aiur.AgentPubSub.broadcast_control_lifecycle("1110", %{tracker_identity: %{identifier: "1110"}, action: :pause, status: :applied, request_id: 9})
+      {:error, :unavailable}
+    end)
+
+    request(view)
+    assert_reply(view, %{"control" => %{"status" => %{"tone" => "error"}}})
+    render(view)
+    assert :sys.get_state(view.pid).socket.assigns.unit_controls["1110"].status == :unavailable
+    refute_received {:unit_pause, _}
   end
 end
