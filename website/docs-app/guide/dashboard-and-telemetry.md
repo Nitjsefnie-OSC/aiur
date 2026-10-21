@@ -41,7 +41,7 @@ List view and return when you switch to Timeline or Gantt.
 
 ### Shared GitHub quota
 
-GitHub-backed runs meter the shared agent credential's core and GraphQL budgets in the dashboard, including remaining units, reset times, rolling read/write attribution, and the top ticket consumer. API and model bars show the share remaining: a full bar is 100% left and an empty bar is unusable until reset. Labels show the same remaining percentage, and warning colours appear as the bar approaches empty. Aiur raises an Executor alert at 10% remaining and pauses new dispatch until the affected window resets.
+GitHub-backed runs meter the shared credential's core and GraphQL budgets, with reset times, read/write attribution, and top ticket consumer. API and model bars show the share remaining: full is 100% left, empty is unusable until reset. Labels match the bar and warning colours appear near empty. Aiur alerts at 10% remaining and pauses dispatch until reset.
 
 At zero, daemon requests are rejected locally and agent-launched `gh` commands wait on the recorded reset instead of retrying into the exhausted budget. Quota state that has not yet been observed fails open so startup is not blocked by a meter.
 
