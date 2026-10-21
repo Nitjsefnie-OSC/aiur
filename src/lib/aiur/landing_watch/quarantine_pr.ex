@@ -1,6 +1,6 @@
 defmodule Aiur.LandingWatch.QuarantinePR do
   @moduledoc """
-  Opens an auto-merging one-line PR that quarantines a repeatedly failing test.
+  Opens an auto-merging one-line PR that quarantines a base-failing test with expiry metadata.
 
   Every step is safe to repeat, so a transient GitHub error on one poll is retried on the
   next: an existing branch is moved to the new commit and an existing PR is reused.
@@ -25,12 +25,15 @@ defmodule Aiur.LandingWatch.QuarantinePR do
 
   @spec open(map(), pos_integer(), keyword()) :: {:ok, map() | :already_quarantined} | {:error, term()}
   def open(%{identity: identity, observations: observations}, ticket, opts) when is_binary(identity) and is_list(observations) do
+    opts = Keyword.put_new(opts, :quarantine_expires_on, Date.add(Date.utc_today(), 90))
+
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts),
          base <- Keyword.get_lazy(opts, :base_branch, &TrackerSettings.base_branch/0),
          ctx <- %{owner: owner, repo: repo, token: token, base: base, path: list_path(identity), opts: opts},
          {:ok, existing} <- list_contents(ctx),
-         {:ok, contents} <- entry(identity, ticket, existing),
+         expires <- Keyword.fetch!(opts, :quarantine_expires_on),
+         {:ok, contents} <- entry(identity, ticket, existing, expires),
          {:ok, branch} <- branch_name(identity, base),
          {:ok, base_sha, commit_sha} <- reuse_or_publish(ctx, branch, contents, identity),
          {:ok, pr} <- pull_request(ctx, branch, identity, ticket, observations, base_sha, commit_sha),
@@ -44,10 +47,10 @@ defmodule Aiur.LandingWatch.QuarantinePR do
 
   def open(_, _, _), do: {:error, :invalid_quarantine_candidate}
 
-  defp entry(identity, ticket, contents) do
+  defp entry(identity, ticket, contents, expires) do
     case String.split(identity, " :: ", parts: 2) do
       [module, name] ->
-        line = Enum.join([module, name, "##{ticket}"], "\t")
+        line = Enum.join([module, name, "##{ticket}", Date.to_iso8601(expires)], "\t")
         if listed?(contents, identity), do: {:error, :already_quarantined}, else: {:ok, String.trim_trailing(contents) <> "\n" <> line <> "\n"}
 
       _ ->
@@ -188,7 +191,7 @@ defmodule Aiur.LandingWatch.QuarantinePR do
 
     #### Summary
 
-    - Adds one line to `#{list}`; blocking CI skips #{scope} and the non-blocking quarantine job still runs it.
+    - Adds one line to `#{list}` through #{Keyword.fetch!(ctx.opts, :quarantine_expires_on)}; blocking CI skips #{scope} and the non-blocking quarantine job still runs it nightly.
     - The landing watcher opened this PR. Failed runs:
     #{runs}
 

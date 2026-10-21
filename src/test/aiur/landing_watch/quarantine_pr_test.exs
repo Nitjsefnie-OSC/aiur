@@ -20,7 +20,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
              QuarantinePR.open(%{identity: @reaper, observations: observations}, 4786, opts(parent, &response/2, fn -> {:ok, "# Existing entries\n"} end))
 
     assert_received {:request, :post, @api <> "/git/blobs", %{"content" => contents}}
-    assert contents =~ "Aiur.Claude.Repl.ReaperTest\tstop_session/1 reports cleanup unknown while the process group remains alive\t#4786"
+    assert contents =~ "Aiur.Claude.Repl.ReaperTest\tstop_session/1 reports cleanup unknown while the process group remains alive\t#4786\t"
     assert_received {:request, :post, @api <> "/git/trees", %{"tree" => [%{"path" => "src/test/quarantine.txt"}]}}
 
     assert_received {:request, :post, @api <> "/pulls", body}
@@ -131,7 +131,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
 
     assert_received {:request, :post, @api <> "/git/blobs", %{"content" => contents}}
     assert contents =~ ~r/\A# BrowserSpec/
-    assert contents =~ "BrowserSpec\tsrc/browser/tests/build-home-list.browser.spec.mjs\t#5118\n"
+    assert contents =~ "BrowserSpec\tsrc/browser/tests/build-home-list.browser.spec.mjs\t#5118\t" <> Date.to_iso8601(Date.add(Date.utc_today(), 90)) <> "\n"
     assert_received {:request, :post, @api <> "/git/trees", %{"tree" => [%{"path" => "src/browser/quarantine.txt"}]}}
 
     # The entry skips the whole spec file, so the body must name the file rather than "the test".
@@ -157,7 +157,7 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
              QuarantinePR.open(%{identity: "Aiur.ExampleTest :: fails repeatedly", observations: []}, 900, opts(parent, listed, nil))
 
     assert_received {:request, :post, @api <> "/git/blobs", %{"content" => updated}}
-    assert updated == String.trim_trailing(contents) <> "\nAiur.ExampleTest\tfails repeatedly\t#900\n"
+    assert updated == String.trim_trailing(contents) <> "\nAiur.ExampleTest\tfails repeatedly\t#900\t" <> Date.to_iso8601(Date.add(Date.utc_today(), 90)) <> "\n"
   end
 
   defp opts(parent, responder, list_fun) do
