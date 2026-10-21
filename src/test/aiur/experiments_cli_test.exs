@@ -170,8 +170,13 @@ defmodule Aiur.ExperimentsCLITest do
   end
 
   test "create freezes the baseline and reports its window, count and coverage" do
-    output = capture_io(fn -> assert ExperimentsCLI.run(verb: :create, argv: quick_args("frozen")) == 0 end)
-    assert output =~ "froze before window 2026-09-25T00:00:00Z..2026-10-09T00:00:00Z: 1 observations"
+    change_at = DateTime.utc_now() |> DateTime.truncate(:second)
+    change_at_text = DateTime.to_iso8601(change_at)
+    window_start = change_at |> DateTime.add(-14 * 86_400) |> DateTime.to_iso8601()
+    argv = ["--title", "frozen", "--line", "manual:frozen@#{change_at_text}", "--metric", "delivery/start"]
+
+    output = capture_io(fn -> assert ExperimentsCLI.run(verb: :create, argv: argv) == 0 end)
+    assert output =~ "froze before window #{window_start}..#{change_at_text}: 1 observations"
     assert output =~ ~s|coverage delivery/start={"state":"captured"} (n=1)|
     {:ok, [row]} = Experiments.list()
     assert Enum.map(Experiments.journal(row.id), & &1["kind"]) == ["created", "frozen"]
