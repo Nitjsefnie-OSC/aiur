@@ -17,6 +17,7 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
   @retry_topic "system.github.budget_broker_retry"
   @degraded_topic "system.github.budget_broker_unavailable"
   @resolved_topic "system.github.budget_broker_unavailable.resolved"
+  @legacy_degraded_topic "system.github.budget_broker_degraded"
   @legacy_resolved_topic "system.github.budget_broker_degraded.resolved"
 
   setup do
@@ -68,6 +69,8 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     assert_receive {:emitted, @degraded_topic, opts}, 1000
     assert_receive {:emitted, @legacy_resolved_topic, legacy_opts}, 1000
     assert legacy_opts[:needs_attention] == false
+    assert_receive {:emitted, @legacy_degraded_topic, compatibility_opts}, 1000
+    assert compatibility_opts[:needs_attention] == false
     assert opts[:message] =~ "3s"
     assert opts[:needs_attention] == true
 
@@ -75,6 +78,7 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     # still be inside the default 300-second window, so the alert resolves.
     check(11_001)
     assert_receive {:emitted, @resolved_topic, _}, 1000
+    assert_receive {:emitted, @legacy_resolved_topic, _}, 1000
   end
 
   test "a sustained broker-timeout rate raises exactly one degraded alert after the dwell" do
@@ -94,6 +98,8 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     assert_receive {:emitted, @degraded_topic, opts}, 1000
     assert_receive {:emitted, @legacy_resolved_topic, legacy_opts}, 1000
     assert legacy_opts[:needs_attention] == false
+    assert_receive {:emitted, @legacy_degraded_topic, compatibility_opts}, 1000
+    assert compatibility_opts[:needs_attention] == false
     assert opts[:needs_attention] == true
     assert opts[:severity] == "warning"
     assert opts[:reason] =~ "sustained"
@@ -105,6 +111,7 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     # The rate ages out of the window: the .resolved sibling fires once.
     check(2_000_000)
     assert_receive {:emitted, @resolved_topic, resolved_opts}, 1000
+    assert_receive {:emitted, @legacy_resolved_topic, _}, 1000
     assert resolved_opts[:needs_attention] == false
   end
 

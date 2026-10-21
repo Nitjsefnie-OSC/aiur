@@ -41,6 +41,7 @@ defmodule Aiur.GitHub.BrokerTimeout do
   alias Aiur.Config.Schema.Agent, as: AgentConfig
 
   @retry_topic "system.github.budget_broker_retry"
+  @legacy_degraded_topic "system.github.budget_broker_degraded"
   @legacy_resolution_topic "system.github.budget_broker_degraded.resolved"
   @degraded_topic "system.github.budget_broker_unavailable"
   @resolution_topic "system.github.budget_broker_unavailable.resolved"
@@ -231,6 +232,8 @@ defmodule Aiur.GitHub.BrokerTimeout do
   defp emit_degraded(state, since_ms, now_ms) do
     elapsed_s = div(now_ms - since_ms, 1_000)
 
+    safe_emit(fn -> emit_legacy_compatibility(state, elapsed_s) end)
+
     state.emit_fun.(@degraded_topic,
       message: "GitHub budget broker has been unavailable for #{elapsed_s}s (#{length(state.events)} timeouts in the window)",
       reason: "Budget broker timeout rate sustained above threshold for #{elapsed_s}s",
@@ -240,9 +243,20 @@ defmodule Aiur.GitHub.BrokerTimeout do
   end
 
   defp emit_resolved(state) do
+    safe_emit(fn -> emit_legacy_resolved(state) end)
+
     state.emit_fun.(@resolution_topic,
       message: "GitHub budget broker timeout rate recovered; retries back below threshold",
       reason: "Budget broker retry rate dropped back below threshold",
+      severity: "info",
+      needs_attention: false
+    )
+  end
+
+  defp emit_legacy_compatibility(state, elapsed_s) do
+    state.emit_fun.(@legacy_degraded_topic,
+      message: "GitHub budget broker has been unavailable for #{elapsed_s}s (compatibility event)",
+      reason: "Compatibility event for subscribers to the previous broker alert topic",
       severity: "info",
       needs_attention: false
     )
