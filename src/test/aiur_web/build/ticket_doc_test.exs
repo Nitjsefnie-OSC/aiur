@@ -86,9 +86,14 @@ defmodule AiurWeb.Build.TicketDocTest do
     assert owners == ["aiur_web/build/ticket_doc.ex"]
   end
 
+  test "closed identity lookup failure never claims healthy absence" do
+    assert {:error, :identity_lookup_unavailable} =
+             TicketDoc.live_identity("12", snapshot_fun: fn -> %Aiur.OpenTicketSource.Snapshot{status: :available} end, history_fun: fn _ -> {:error, :history_unavailable} end)
+  end
+
   test "identity lookup distinguishes missing, degraded and closed tickets" do
     for status <- [:unavailable, :stale, :loading] do
-      assert {:error, :open_tickets_unavailable} = TicketDoc.live_identity("12", snapshot_fun: fn -> %Aiur.OpenTicketSource.Snapshot{status: status} end, history_fun: fn _ -> {:error, :down} end)
+      assert {:error, :open_tickets_unavailable} = TicketDoc.live_identity("12", snapshot_fun: fn -> %Aiur.OpenTicketSource.Snapshot{status: status} end, history_fun: fn _ -> {:ok, [], nil} end)
     end
 
     assert :no_identity = TicketDoc.live_identity("12", snapshot_fun: fn -> %Aiur.OpenTicketSource.Snapshot{status: :available} end, history_fun: fn _ -> {:ok, [], nil} end)
