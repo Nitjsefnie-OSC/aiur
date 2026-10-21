@@ -4,7 +4,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   alias Aiur.Alerts
   alias Aiur.GitHub.{CIRecovery, Transport}
   alias Aiur.LandingWatch.Classifier
-  alias Aiur.LandingWatch.{Journal, LocalRead, MergeFailureClassifier, MergeGroupFailureProcessor, MergeQueueFailureEvidence}
+  alias Aiur.LandingWatch.{Journal, LocalRead, MergeFailureClassifier, MergeGroupFailureProcessor}
   alias Aiur.PrMerge.Queue
 
   @threshold_ms 20 * 60_000
@@ -134,7 +134,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
       runs
       |> Enum.filter(fn item ->
         item["conclusion"] in ["failure", "cancelled", "timed_out", "startup_failure"] and
-          is_integer(item["id"]) and observation.number in MergeQueueFailureEvidence.run_pr_numbers(item["head_branch"], base) and
+          is_integer(item["id"]) and observation.number in run_pr_numbers(item["head_branch"], base) and
           run_in_unmergeable_window?(item, since_ms)
       end)
       |> Enum.max_by(&(&1["run_started_at"] || &1["created_at"] || ""), fn -> nil end)
@@ -152,7 +152,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   end
 
   defp classify_failed_run(run, runs, observation, base, opts) do
-    prs = MergeQueueFailureEvidence.run_pr_numbers(run["head_branch"], base)
+    prs = run_pr_numbers(run["head_branch"], base)
     observations = Keyword.get(opts, :all_observations, [observation])
 
     with {:ok, jobs} <- LocalRead.run(Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2), [run["id"], opts], opts),
@@ -176,8 +176,8 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
           {:ok,
            %{
              classification: kind,
-             failing_tests: failure |> then(&if(&1, do: &1.log, else: "")) |> MergeQueueFailureEvidence.test_names(),
-             rebuilt_groups: MergeQueueFailureEvidence.rebuilt_group_count(runs, run, prs, base, Keyword.get(opts, :unmergeable_since_ms, 0)),
+             failing_tests: failure |> then(&if(&1, do: &1.log, else: "")) |> test_names(),
+             rebuilt_groups: rebuilt_group_count(runs, run, prs, base, Keyword.get(opts, :unmergeable_since_ms)),
              run_id: run["id"]
            }}
       end
@@ -185,6 +185,30 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
       {:error, reason} -> {:skip, {:merge_group_evidence_unavailable, reason}}
       other -> {:skip, {:merge_group_evidence_unavailable, other}}
     end
+  end
+
+  defp run_pr_numbers(branch, base) when is_binary(branch) do
+    prefix = "gh-readonly-queue/#{base}/"
+
+    if String.starts_with?(branch, prefix) do
+      Regex.scan(~r/pr-(\d+)-/, branch, capture: :all_but_first) |> List.flatten() |> Enum.map(&String.to_integer/1)
+    else
+      []
+    end
+  end
+
+  defp run_pr_numbers(_, _), do: []
+
+  defp rebuilt_group_count(runs, failed_run, prs, base, since_ms) do
+    failed_time = parse_time(failed_run["created_at"] || failed_run["run_started_at"])
+    since_time = if is_integer(since_ms), do: DateTime.from_unix!(since_ms, :millisecond), else: DateTime.from_unix!(0)
+
+    Enum.count(runs, fn run ->
+      run["event"] == "merge_group" and run["id"] != failed_run["id"] and
+        Enum.any?(run_pr_numbers(run["head_branch"], base), &(&1 in prs)) and
+        DateTime.compare(parse_time(run["created_at"]), since_time) in [:eq, :gt] and
+        DateTime.compare(parse_time(run["created_at"]), failed_time) != :gt
+    end)
   end
 
   defp parse_time(value) when is_binary(value) do
@@ -195,6 +219,12 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   end
 
   defp parse_time(_), do: DateTime.from_unix!(0)
+
+  defp test_names(log) do
+    Regex.scan(~r/((?:test\/)?[\w.\/-]+_test\.exs(?::\d+)?|test [^\r\n]+)/, log, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.uniq()
+  end
 
   defp reserve_attempt(number, head, opts) do
     key = "#{number}:#{head}"

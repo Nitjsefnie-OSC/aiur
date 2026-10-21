@@ -6,7 +6,7 @@ defmodule Aiur.LandingWatch do
   alias Aiur.Alerts
   alias Aiur.Events
   alias Aiur.GitHub.{CiReadiness, CIRecovery, Client, HumanReviewGate, Transport}
-  alias Aiur.LandingWatch.{Attribution, Classifier, ConflictRouting, Journal, LandingReconciliation, LocalRead, MergeGroups, MergeQueueWatchdog, Observer, PrRerun}
+  alias Aiur.LandingWatch.{Attribution, Classifier, ConflictRouting, Journal, LocalRead, MergeGroups, MergeQueueWatchdog, Observer, PrRerun}
   alias Aiur.LandingWatch.RecoveryRuntime
   alias Aiur.LandingWatch.TicketLookup
   alias Aiur.Orchestrator.TicketTransition
@@ -146,7 +146,36 @@ defmodule Aiur.LandingWatch do
   end
 
   defp process_and_reconcile(observations, opts) do
-    LandingReconciliation.process(observations, opts, &process_all/2)
+    opts = poll_required_checks(observations, opts)
+    result = process_all(observations, opts)
+
+    evidence_ref = make_ref()
+
+    evidence_owner = self()
+
+    reconcile_opts =
+      Keyword.put(opts, :merge_group_evidence_fun, fn runs, fresh_observations, classifier_opts ->
+        send(evidence_owner, {:merge_group_evidence, evidence_ref, %{runs: runs, observations: fresh_observations, classifier_opts: classifier_opts}})
+        :ok
+      end)
+
+    reconcile_fun = Keyword.get(opts, :queue_reconcile_fun, &MergeGroups.cancel_stale/2)
+    reconcile = reconcile_fun.(observations, reconcile_opts)
+
+    evidence =
+      receive do
+        {:merge_group_evidence, ^evidence_ref, value} -> value
+      after
+        0 -> %{}
+      end
+
+    watchdog_opts =
+      opts
+      |> Keyword.merge(evidence[:classifier_opts] || [])
+      |> Keyword.put(:completed_merge_group_runs, evidence[:runs] || [])
+      |> Keyword.put(:all_observations, evidence[:observations] || observations)
+
+    MergeQueueWatchdog.after_reconcile(result, reconcile, observations, watchdog_opts)
   end
 
   defp process_all(observations, opts) do
