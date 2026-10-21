@@ -167,7 +167,7 @@ export async function captureStable(target, opts, page, viewportClip = false) {
       const box = await target.boundingBox()
       if (!box) throw new Error('unreachable screenshot region')
       const offset = await page.evaluate(() => ({ x: scrollX, y: scrollY }))
-      const viewport = page.viewportSize()
+      const viewport = viewportClip ? page.viewportSize() : null
       // Expanding an already-visible clip fires responsive relayouts and clears locks.
       const visible = viewport && !offset.x && !offset.y && box.x >= 0 && box.y >= 0
         && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height
