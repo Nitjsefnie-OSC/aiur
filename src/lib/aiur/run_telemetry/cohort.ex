@@ -3,11 +3,21 @@ defmodule Aiur.RunTelemetry.Cohort do
   @spec work_kind([String.t()], String.t() | nil) :: String.t()
   def work_kind(labels, title) do
     cond do
-      "build-order" in labels or Enum.any?(labels, &(String.starts_with?(&1, "build-lane:") or String.starts_with?(&1, "feature:"))) -> "feature"
-      Enum.any?(labels, &(contains_any?(String.downcase(&1), ["flake", "test"]) or String.starts_with?(&1, "main-fix"))) or title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i) -> "test_ci"
-      Enum.any?(labels, &contains_any?(String.downcase(&1), ["tooling", "chore"])) or title_matches?(title, ~r/\b(tooling|chore|dependency|deps)\b/i) -> "tooling"
+      feature_work?(labels) -> "feature"
+      test_ci_work?(labels, title) -> "test_ci"
+      tooling_work?(labels, title) -> "tooling"
       true -> "other"
     end
+  end
+
+  defp feature_work?(labels), do: "build-order" in labels or Enum.any?(labels, &(String.starts_with?(&1, "build-lane:") or String.starts_with?(&1, "feature:")))
+
+  defp test_ci_work?(labels, title) do
+    Enum.any?(labels, &(contains_any?(String.downcase(&1), ["flake", "test"]) or String.starts_with?(&1, "main-fix"))) or title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i)
+  end
+
+  defp tooling_work?(labels, title) do
+    Enum.any?(labels, &contains_any?(String.downcase(&1), ["tooling", "chore"])) or title_matches?(title, ~r/\b(tooling|chore|dependency|deps)\b/i)
   end
 
   defp title_matches?(title, pattern), do: is_binary(title) and Regex.match?(pattern, title)
