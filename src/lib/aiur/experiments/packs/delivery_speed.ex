@@ -29,7 +29,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
     {"ci_stability", "pr_ci_wall_time", "duration", "ms", ["ci_runs"]},
     {"ci_stability", "ci_queue_wait", "duration", "ms", ["ci_jobs"]},
     {"ci_stability", "feature_merge_share", "bucketed", "share", ["work_kind"]},
-    {"ci_stability", "innocent_dequeues", "count", "merged PRs", ["queue_removals"]},
+    {"ci_stability", "innocent_dequeues", "count", "merged PRs", ["pulls"]},
     {"ci_stability", "flaky_failure_rate", "rate", "share", ["flake_evidence", "ci_jobs"]},
     {"ci_stability", "flake_issues_filed", "bucketed", "issues/day", ["flake_issues"]}
   ]
@@ -75,13 +75,18 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
 
   @impl true
   def observations(ids, window, ctx) do
-    rows =
-      case TelemetrySource.load(window, Map.put(ctx, :include_accounting, Enum.any?(ids, &(&1 in ["spend_per_merged_ticket", "tokens_per_merged_ticket"])))) do
+    context =
+      ctx
+      |> Map.put(:include_accounting, Enum.any?(ids, &(&1 in ["spend_per_merged_ticket", "tokens_per_merged_ticket"])))
+      |> Map.put(:metric_ids, ids)
+
+    results =
+      case TelemetrySource.load(window, context) do
         {:error, reason} -> Map.new(ids, &{&1, Common.unavailable(reason)})
         {:ok, data} -> Map.new(Enum.filter(metrics(), &(&1.id in ids)), &{&1.id, evaluate(&1, data, window)})
       end
 
-    Map.new(rows, fn {id, result} -> {id, {result.coverage, result.observations}} end)
+    Map.new(results, fn {id, result} -> {id, {result.coverage, result.observations}} end)
   end
 
   defp evaluate(%{requires: ["accounting"]} = metric, data, window) do
@@ -125,11 +130,11 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
   defp mark_partial(%{state: :captured} = coverage, true, reason), do: Map.merge(coverage, %{state: :partial, reason: reason})
   defp mark_partial(coverage, _partial?, _reason), do: coverage
 
-  defp partial_source?("ci_runs", partials), do: "runs" in partials
+  defp partial_source?("ci_runs", partials), do: "ci_runs" in partials
   defp partial_source?("ci_jobs", partials), do: "jobs" in partials
-  defp partial_source?("flake_evidence", partials), do: "jobs" in partials
+  defp partial_source?("flake_evidence", partials), do: "flake_evidence" in partials
   defp partial_source?("work_kind", partials), do: "pulls" in partials
-  defp partial_source?("queue_removals", partials), do: "pulls" in partials
-  defp partial_source?("flake_issues", partials), do: "incidents" in partials
+  defp partial_source?("pulls", partials), do: "pulls" in partials
+  defp partial_source?("flake_issues", partials), do: "flake_issues" in partials
   defp partial_source?(_requirement, _partials), do: false
 end

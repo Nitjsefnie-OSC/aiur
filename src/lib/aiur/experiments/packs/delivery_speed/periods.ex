@@ -10,7 +10,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
   def observations("flaky_failure_rate", data, window), do: flaky_failure_rate(Map.get(data, :ci_jobs, []), Map.get(data, :flake_evidence, []), window)
   def observations("ci_queue_wait", data, window), do: queue_wait(Map.get(data, :ci_jobs, []), window)
   def observations("feature_merge_share", data, window), do: feature_merge_share(Map.get(data, :github_pulls, []), window)
-  def observations("innocent_dequeues", data, window), do: innocent_dequeues(Map.get(data, :github_pulls, []), Map.get(data, :queue_removals, []), window)
+  def observations("innocent_dequeues", data, window), do: innocent_dequeues(Map.get(data, :github_pulls, []), window)
 
   def observations(id, data, window) when id == "merge_group_failure_rate" or id in ["ci_run_failure_rate", "ci_rerun_rate", "pr_ci_wall_time"],
     do: ci_observations(id, Map.get(data, :ci_runs, []), window)
@@ -51,7 +51,8 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
 
     matching != [] and
       Enum.all?(matching, fn row ->
-        row["job_failure_set_complete"] == true and row["red_on_main"] == true and row["touched"] == false
+        row["job_failure_set_complete"] == true and row["touched"] == false and
+          (row["red_on_main"] == true or row["failure_class"] == "known-flake" or row["quarantined"] == true)
       end)
   end
 
@@ -113,7 +114,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
     GitHub.work_kind(issue_labels ++ pr_labels, pull["title"]) == "feature"
   end
 
-  defp innocent_dequeues(pulls, removals, window) do
+  defp innocent_dequeues(pulls, window) do
     observations =
       Enum.flat_map(pulls, fn pull ->
         with %DateTime{} = at <- Common.timestamp(pull["mergedAt"]),
@@ -121,7 +122,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
           number = pull["number"]
           head = pull["headRefOid"]
 
-          count = Enum.count(removals_for_pull(pull, removals), &innocent_removal?(&1, number, head, at))
+          count = Enum.count(removals_for_pull(pull), &innocent_removal?(&1, number, head, at))
 
           [%Observation{unit_id: "pr:" <> to_string(number), at: at, value: min(count, 1), attrs: %{"head" => head}}]
         else
@@ -132,7 +133,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
     {observations, 0}
   end
 
-  defp removals_for_pull(pull, journal_removals) do
+  defp removals_for_pull(pull) do
     timeline =
       pull
       |> get_in(["timelineItems", "nodes"])
@@ -146,7 +147,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
         }
       end)
 
-    timeline ++ Enum.filter(List.wrap(journal_removals), &(&1["pr"] == pull["number"]))
+    timeline
   end
 
   defp innocent_removal?(removal, number, head, merged_at) do

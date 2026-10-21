@@ -61,9 +61,10 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     by_ticket = records |> Enum.filter(&(&1.kind == "lifecycle")) |> Enum.group_by(& &1.attributes["ticket"])
     tickets = Map.new(tickets, fn {id, ticket} -> {id, ticket_record(ticket, Map.get(by_ticket, id, []), contexts)} end)
     capacity = (prior.samples ++ live.samples) |> Enum.uniq_by(& &1.record_id) |> capacity(window)
-    github = github_window(window, ctx)
+    github = if Map.get(ctx, :include_github, github_needed?(ctx)), do: github_window(window, ctx), else: nil
     required_workflows = Map.get(github || %{}, "required_workflows", Map.get(ctx, :required_workflows, configured_workflows()))
-    ci_runs = if is_map(github) and is_list(github["runs"]) and required_workflows != [], do: Enum.filter(github["runs"], &(&1["name"] in required_workflows)), else: nil
+    run_rows = Map.get(github || %{}, "ci_runs", Map.get(github || %{}, "runs"))
+    ci_runs = if is_list(run_rows) and required_workflows != [], do: Enum.filter(run_rows, &(&1["name"] in required_workflows)), else: nil
     flake_state = flake_state(ctx)
 
     {:ok,
@@ -75,13 +76,13 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
          partial?: unreadable? or prior.state != :complete or live.state != :complete,
          accounting: accounting_option(tickets, window, ctx)
        },
-       github_data(github, ci_runs, flake_state, records, capacity)
+       github_data(github, ci_runs, flake_state, records, capacity, window)
      )}
   end
 
   defp earliest_at(records), do: records |> Enum.map(& &1.timestamp) |> Enum.min(DateTime, fn -> nil end)
 
-  defp github_data(github, ci_runs, flake_state, records, capacity) do
+  defp github_data(github, ci_runs, flake_state, records, capacity, window) do
     github = github || %{}
     journal = flake_state || %{}
 
@@ -89,11 +90,10 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
       ci_runs: ci_runs,
       ci_runs_status: if(is_list(ci_runs), do: :captured, else: :unavailable),
       github_pulls: Map.get(github, "pulls"),
-      flake_issues: Map.get(github, "incidents"),
+      flake_issues: Map.get(github, "flake_issues", Map.get(github, "incidents")),
       ci_jobs: Map.get(github, "jobs"),
-      flake_evidence: Map.get(journal, "failure_observations"),
-      queue_removals: Map.get(journal, "queue_removals"),
-      source_partials: Enum.filter(~w(runs jobs pulls incidents), &Map.get(github, &1 <> "_partial", false)),
+      flake_evidence: failure_evidence(journal),
+      source_partials: source_partials(github, journal, window),
       facts: github_facts(facts(records, capacity), github, ci_runs, journal)
     }
   end
@@ -103,10 +103,43 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
     |> maybe_fact(is_list(ci_runs), "ci_runs")
     |> maybe_fact(is_list(Map.get(github, "jobs")), "ci_jobs")
     |> maybe_fact(Map.get(github, "pulls", []) != [], "work_kind")
-    |> maybe_fact(is_list(Map.get(github, "pulls")), "queue_removals")
-    |> maybe_fact(Map.has_key?(github, "incidents"), "flake_issues")
-    |> maybe_fact(is_list(Map.get(journal, "failure_observations")), "flake_evidence")
-    |> maybe_fact(is_list(Map.get(journal, "queue_removals")), "queue_removals")
+    |> maybe_fact(is_list(Map.get(github, "pulls")), "pulls")
+    |> maybe_fact(Map.has_key?(github, "flake_issues") or Map.has_key?(github, "incidents"), "flake_issues")
+    |> maybe_fact(is_map(journal), "flake_evidence")
+  end
+
+  defp source_partials(github, journal, window) do
+    partials = Enum.filter(~w(runs ci_runs jobs pulls incidents flake_issues), &Map.get(github, &1 <> "_partial", false))
+
+    if Enum.any?(failure_evidence(journal), &(evidence_in_window?(&1, window) and (not Map.has_key?(&1, "job_failure_set_complete") or not Map.has_key?(&1, "touched")))),
+      do: ["flake_evidence" | partials],
+      else: partials
+  end
+
+  defp evidence_in_window?(row, window) do
+    case row["at_ms"] do
+      at when is_integer(at) -> at >= DateTime.to_unix(window.start, :millisecond) and at < DateTime.to_unix(window.end, :millisecond)
+      _ -> true
+    end
+  end
+
+  defp failure_evidence(journal) do
+    (Map.get(journal, "failure_metric_evidence", []) ++ Map.get(journal, "failure_observations", []))
+    |> Enum.uniq_by(&{&1["identity"], &1["pr"], &1["run_url"], &1["job"]})
+    |> Enum.map(fn row -> Map.put(row, "quarantined", Map.has_key?(Map.get(journal, "flakes", %{}), "quarantine-pr :: " <> to_string(row["identity"]))) end)
+  end
+
+  defp github_needed?(ctx) do
+    case Map.get(ctx, :metric_ids) do
+      ids when is_list(ids) ->
+        Enum.any?(
+          ids,
+          &(&1 in ~w(ci_run_failure_rate ci_rerun_rate merge_group_failure_rate pr_ci_wall_time ci_queue_wait feature_merge_share innocent_dequeues flaky_failure_rate flake_issues_filed main_red_events))
+        )
+
+      _ ->
+        true
+    end
   end
 
   defp accounting_option(tickets, window, ctx) do
@@ -143,7 +176,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
 
       :error ->
         range = %{start: DateTime.to_iso8601(window.start), end: DateTime.to_iso8601(window.end)}
-        sources = %{"base_branch" => Aiur.Config.base_branch(), "required_workflows" => [], "incident_labels" => ["flake", Aiur.Config.base_branch() <> "-fix"]}
+        sources = request_sources(ctx)
         {data, _missing} = Map.get(ctx, :github_window_sources, &RunTelemetry.window_event_sources/4).(Map.get(ctx, :repo, Paths.repo()), sources, range, Map.get(ctx, :github_options, []))
         if data == %{}, do: nil, else: data
     end
@@ -152,6 +185,39 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
   catch
     :exit, _reason -> nil
   end
+
+  defp request_sources(ctx) do
+    ids =
+      Map.get(
+        ctx,
+        :metric_ids,
+        ~w(ci_run_failure_rate ci_rerun_rate merge_group_failure_rate pr_ci_wall_time ci_queue_wait feature_merge_share innocent_dequeues flaky_failure_rate flake_issues_filed main_red_events)
+      )
+
+    ci? = Enum.any?(ids, &(&1 in ~w(ci_run_failure_rate ci_rerun_rate merge_group_failure_rate pr_ci_wall_time ci_queue_wait flaky_failure_rate)))
+    jobs? = Enum.any?(ids, &(&1 in ["ci_queue_wait", "flaky_failure_rate"]))
+    pulls? = Enum.any?(ids, &(&1 in ["feature_merge_share", "innocent_dequeues"]))
+    incidents? = "flake_issues_filed" in ids
+
+    include =
+      []
+      |> maybe_include(pulls?, "pulls")
+      |> maybe_include(ci?, "ci_runs")
+      |> maybe_include(jobs?, "jobs")
+      |> maybe_include("main_red_events" in ids, "runs")
+      |> maybe_include(incidents?, "flake_issues")
+
+    %{
+      "base_branch" => Aiur.Config.base_branch(),
+      "required_workflows" => configured_workflows(),
+      "incident_labels" => [],
+      "flake_issue_labels" => if(incidents?, do: ["flake", Aiur.Config.base_branch() <> "-fix"], else: []),
+      "include_sources" => include
+    }
+  end
+
+  defp maybe_include(sources, true, source), do: [source | sources]
+  defp maybe_include(sources, false, _source), do: sources
 
   defp prior_projection(boot, _window, ctx) do
     case Map.fetch(ctx, :prior_loader) do

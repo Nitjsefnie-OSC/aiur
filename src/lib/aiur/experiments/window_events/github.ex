@@ -19,18 +19,21 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
     events =
       Enum.map(pulls, &pull(&1, repo)) ++
         releases(Map.get(data, "releases", [])) ++
-        tags(Map.get(data, "tags", [])) ++ incidents(Map.get(data, "incidents", []), repo) ++ ci_runs(Map.get(data, "runs", []), sources) ++ main_red(Map.get(data, "runs", []), sources)
+        tags(Map.get(data, "tags", [])) ++ incidents(Map.get(data, "incidents", []), repo) ++ ci_runs(Map.get(data, "ci_runs", []), sources) ++ main_red(Map.get(data, "runs", []), sources)
 
     {events, Enum.uniq(missing)}
   end
 
   defp validate_rows(data) do
-    Enum.reduce([{"pulls", "mergedAt", "number"}, {"releases", "publishedAt", "databaseId"}, {"incidents", "createdAt", "number"}, {"runs", "updated_at", "id"}], {data, false}, fn {source, at, id},
-                                                                                                                                                                                    {data, invalid?} ->
-      rows = Map.get(data, source, [])
-      good = Enum.filter(rows, &(is_map(&1) and not is_nil(&1[id]) and not is_nil(Common.timestamp(&1[at]))))
-      {Map.put(data, source, good), invalid? or length(good) != length(rows)}
-    end)
+    Enum.reduce(
+      [{"pulls", "mergedAt", "number"}, {"releases", "publishedAt", "databaseId"}, {"incidents", "createdAt", "number"}, {"ci_runs", "updated_at", "id"}, {"runs", "updated_at", "id"}],
+      {data, false},
+      fn {source, at, id}, {data, invalid?} ->
+        rows = Map.get(data, source, [])
+        good = Enum.filter(rows, &(is_map(&1) and not is_nil(&1[id]) and not is_nil(Common.timestamp(&1[at]))))
+        {Map.put(data, source, good), invalid? or length(good) != length(rows)}
+      end
+    )
   end
 
   defp pull(row, repo) do
