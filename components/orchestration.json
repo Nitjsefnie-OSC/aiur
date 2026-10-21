@@ -49,6 +49,7 @@
   ],
   "optional": [
     "build-queue",
+    "github",
     "github-listeners"
   ],
   "owns": {
