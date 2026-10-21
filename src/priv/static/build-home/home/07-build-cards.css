@@ -18,9 +18,10 @@
 
 /* C:288 */ .ag-active .bd-glow {
   opacity: .9;
-  background: repeating-conic-gradient(from var(--bd-a), transparent 0deg 30deg, var(--accent) 30deg 60deg, transparent 60deg 140deg, transparent 140deg 190deg, color-mix(in srgb, var(--accent) 65%, transparent) 190deg 260deg, transparent 260deg 360deg);
+  background: conic-gradient(from var(--bd-a), transparent 0deg, var(--accent) 60deg, transparent 140deg, transparent 190deg, color-mix(in srgb, var(--accent) 65%, transparent) 260deg, transparent 330deg);
   filter: blur(6px);
   animation: bdRot 9s linear infinite;
+  animation-delay: var(--bd-rotation-delay, 0ms);
 }
 
 /* C:289 */ .ag-stuck .bd-glow {
