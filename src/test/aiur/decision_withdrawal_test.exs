@@ -3,11 +3,9 @@ defmodule Aiur.DecisionWithdrawalTest do
   #2711: an unanswered `:decided` Command can be withdrawn or superseded;
   neither response reaches its worker or a later worker. Delivered answers stay immutable.
 
-  The scenario mirrors Khala #12/#13: the Executor answers a blocking Command
-  after its worker has gone, so every dispatch fails `target_agent_unavailable`
-  and the answer stays decided but undelivered. Then a fresh worker exists for
-  the same ticket (the dispatcher starts to accept) and the store restarts, which
-  is the moment the old code re-dispatched the stale answer to it.
+  A transient dispatch fault leaves the answer decided and undelivered, which
+  provides a window to withdraw or supersede it. After restart, only the active
+  revision may be dispatched.
   """
 
   use ExUnit.Case, async: false

@@ -172,7 +172,7 @@ defmodule Aiur.DecisionStore.AnswerRetryTest do
 
       assert_receive {:target_attempt, 1, false}, 1_000
 
-      # The bounded ladder — not an operator — schedules the second attempt.
+      # A live agent with a transient dispatch failure is retried automatically.
       assert_receive {:target_attempt, 2, false}, 1_000
 
       settled = wait_for_decision(pid, decision.decision_id, &(&1.delivery_status == :queued))
@@ -188,9 +188,8 @@ defmodule Aiur.DecisionStore.AnswerRetryTest do
     end
 
     # #2558 half one, the other acceptance branch: when the bounded ladder is
-    # spent the answer really is stuck, so it must be raised. The
-    # non-actionable suppression that keeps `target_agent_unavailable` off the
-    # feed is what made this failure mode invisible in the first place.
+    # spent after transient failures, the answer really is stuck, so it must be
+    # raised.
     test "an exhausted delivery ladder raises instead of going quiet", %{dir: dir} do
       parent = self()
       counter = :counters.new(1, [])
