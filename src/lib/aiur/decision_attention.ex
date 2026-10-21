@@ -246,7 +246,7 @@ defmodule Aiur.DecisionAttention do
   defp unknown_owner_attention(attention, _state), do: attention
 
   defp schedule_reask(attention, interval_ms) when is_integer(interval_ms) and interval_ms > 0 do
-    timer_ref = Process.send_after(self(), {:reask, attention_key(attention)}, interval_ms)
+    timer_ref = Process.send_after(self(), {:reask, Correlation.attention_key(attention)}, interval_ms)
     %{attention | timer_ref: timer_ref}
   end
 
@@ -457,7 +457,7 @@ defmodule Aiur.DecisionAttention do
   end
 
   defp emit_alert(attention) do
-    Signal.alert(attention_topic(attention),
+    Signal.alert(Correlation.attention_topic(attention),
       issue: attention.issue,
       workspace: attention.workspace,
       worker_host: attention.worker_host,
@@ -468,7 +468,7 @@ defmodule Aiur.DecisionAttention do
   end
 
   defp emit_resolution_alert(attention) do
-    Signal.agent_alert(resolution_topic(attention), "Executor decision updated",
+    Signal.agent_alert(Correlation.resolution_topic(attention), "Executor decision updated",
       issue: attention.issue,
       workspace: attention.workspace,
       worker_host: attention.worker_host,
@@ -477,10 +477,6 @@ defmodule Aiur.DecisionAttention do
       severity: "info"
     )
   end
-
-  defp attention_topic(attention), do: "ticket.#{issue_identifier!(attention.issue)}.agent.attention.#{attention.slug}"
-  defp resolution_topic(attention), do: attention_topic(attention) <> ".resolved"
-  defp attention_key(attention), do: {issue_identifier!(attention.issue), attention.slug}
 
   defp issue_identifier!(%Issue{id: id}) when is_binary(id) and id != "", do: id
   defp issue_identifier!(%Issue{identifier: identifier}) when is_binary(identifier) and identifier != "", do: identifier
