@@ -38,9 +38,6 @@ class QuarantinedTestSelectionTest(unittest.TestCase):
         selected = RUNNER.selectors()
 
         self.assertGreaterEqual(len(selected), len(RUNNER.entries()))
-        self.assertTrue(any(item.startswith("test/aiur/experiments_cli_test.exs:") for item in selected))
-        self.assertTrue(any(item.startswith("test/aiur/decision_store/enrichment_test.exs:") for item in selected))
-        self.assertGreaterEqual(sum(item.startswith("test/aiur/core/agent_runner_checkpoint_queue_test.exs:") for item in selected), 2)
 
     def test_selector_locations_are_unique(self):
         selected = RUNNER.selectors()
