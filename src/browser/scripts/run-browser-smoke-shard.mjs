@@ -8,14 +8,14 @@ import { shardCommands } from './browser-suites.mjs';
 // The key count is the shard count: it must match the browser matrix in .github/workflows/ci.yml.
 // Balanced by recorded durations (browser-smoke-durations.mjs); check-browser-smoke-shards.mjs keeps each shard under 75% of budgetMs.
 export const shards = {
-  1: ["test:build-home-cards:2","test:design-parity","test:build-home-edges-parity","test:shell","test:build-queue","test:meter-row","test:home-css-ci"],
+  1: ["test:build-home-cards:2","test:design-parity","test:build-home-edges-parity","test:shell","test:build-queue","test:meter-row","test:home-css-ci","test:build-modal"],
   2: ["test:build-home-usage","test:build-home-states-parity","test:streamdeck","test:build-home-now-band","test:interaction","test:ticket-context","test:build-home-assets","test:harness"],
   3: ["test:build-home-band-motion","test:build-home-render","test:build-home","test:shell-chrome","test:build-home-span","test:parity","test:quota-panel"],
-  4: ["test:build-home-tools","test:build-home-span-parity","test:build-home-cards:1","test:layout","test:palette","test:time-brush"],
+  4: ["test:build-home-tools","test:build-home-span-parity","test:build-home-cards:1","test:layout","test:palette","test:time-brush","test:build-modal-motion"],
   5: ["test:build-home-columns","test:build-order","test:performance","test:provider-meters","check:build-home-fixtures","test:command-answer","test:build-index-live"],
   6: ["test:build-home-gantt","test:build-home-edges","test:build-home-layout","test:responsive","test:experiments","test:admission","check:elk","test:build-home-protocol","test:build-home-now-state","test:build-home-edges-unit"],
   7: ["test:build-home-motion","test:build-home-chains-parity","test:streamdeck-flow","test:build-home-list-unit"],
-  8: ["test:build-home-chains-unit","test:build-home-band-parity","test:build-home-chains","test:shell-parity","test:build-home-offline"],
+  8: ["test:build-home-chains-unit","test:build-home-band-parity","test:build-home-chains","test:shell-parity","test:build-home-offline","test:build-modal-parity"],
   9: ["test:build-home-cards:4","test:build-home-cards:3","test:shell-width","test:units","test:tokens","test:smoke","test:command-history","test:models-panel"],
 };
 

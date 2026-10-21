@@ -16,6 +16,11 @@ export const recordedSeconds = {
   'test:build-home-chains-parity': 127,
   // Job 118131038510 (shard 2/9): 28.7s.
   'test:browser-suite -- build-home-chains-states': 29,
+  // #3156 local harness (2026-10-20): functional 19.3s, parity 1.2m, motion 15.0s.
+  // Round up for fixture startup; refresh these provisional bounds from the first CI suite log.
+  'test:build-modal': 25,
+  'test:build-modal-parity': 90,
+  'test:build-modal-motion': 20,
   // Governed core commands (2026-10-18): 31 cases in 518s; 32 cases on 2ed995a67 in 445s.
   // Keep the slower observed bound; wall timings include fixture startup and build-gate wait.
   'test:build-home-gantt': 518,
