@@ -25,7 +25,7 @@ defmodule AiurWeb.Build.TicketDocTest do
       "updated_at" => DateTime.to_iso8601(now)
     }
 
-    {:ok, detail} = TicketDetail.snapshot(identity(), raw, now: now)
+    {:ok, detail} = TicketDetail.snapshot(identity(), raw, now: now, relationships: %{nodes: [], truncated?: false})
     detail
   end
 

@@ -39,7 +39,7 @@ defmodule AiurWeb.Build.QueueAdd do
         |> start_async({:queue_add, id}, fn -> add.([id], "default") end)
       end
 
-    {:reply, %{v: 1, kind: "queue-add", id: id, state: "pending"}, socket}
+    {:reply, Payload.scrub(%{v: 1, kind: "queue-add", id: id, state: "pending"}), socket}
   end
 
   @spec result(Phoenix.LiveView.Socket.t(), String.t(), term()) :: Phoenix.LiveView.Socket.t()
@@ -48,7 +48,7 @@ defmodule AiurWeb.Build.QueueAdd do
 
     socket
     |> assign(:queue_add_pending, MapSet.delete(socket.assigns.queue_add_pending, id))
-    |> push_event("build-queue-add", message)
+    |> push_event("build-queue-add", Payload.scrub(message))
   end
 
   defp outcome({:ok, :ok}), do: %{ok: true}
