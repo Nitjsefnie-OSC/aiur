@@ -62,8 +62,9 @@ class CoverageFlakesTest(unittest.TestCase):
         shard = workflow.split("  coverage-partition:\n")[1].split("\n  test:\n")[0]
         self.assertIn("id: partition-tests", shard)
         self.assertIn("export AIUR_LIFECYCLE_LEAK_GUARD_MODE=report", shard)
-        self.assertIn('export AIUR_LIFECYCLE_LEAK_REPORT="$RUNNER_TEMP/lifecycle-leaks-', shard)
+        self.assertIn('export AIUR_LIFECYCLE_LEAK_GUARD_MODE=report AIUR_LIFECYCLE_LEAK_REPORT="$RUNNER_TEMP/lifecycle-leaks-', shard)
         self.assertIn("PARTITION_OUTCOME: ${{ steps.partition-tests.outcome }}", shard)
+        self.assertIn('AIUR_LIFECYCLE_LEAK_REPORT="$RUNNER_TEMP/lifecycle-leaks-${{ matrix.partition }}.txt" python3 scripts/record-coverage-flakes.py', shard)
         self.assertIn("pattern: shard-flake-evidence-${{ matrix.partition }}-*", shard)
         self.assertIn("name: shard-flake-evidence-${{ matrix.partition }}-${{ github.run_attempt }}", shard)
         for name in ("Download previous shard attempts", "Record coverage flake ledger", "Upload coverage flake evidence"):

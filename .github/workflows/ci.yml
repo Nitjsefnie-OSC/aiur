@@ -288,7 +288,7 @@ jobs:
           MIX_TEST_PARTITION: ${{ matrix.partition }}
           PARTITION_OUTCOME: ${{ steps.partition-tests.outcome }}
         run: >-
-          python3 scripts/record-coverage-flakes.py
+          AIUR_LIFECYCLE_LEAK_REPORT="$RUNNER_TEMP/lifecycle-leaks-${{ matrix.partition }}.txt" python3 scripts/record-coverage-flakes.py
           "$RUNNER_TEMP/coverage-partition-${{ matrix.partition }}.log"
           "$PARTITION_OUTCOME" "$RUNNER_TEMP/previous-shard-attempts"
           "$RUNNER_TEMP/shard-evidence" "$GITHUB_STEP_SUMMARY"

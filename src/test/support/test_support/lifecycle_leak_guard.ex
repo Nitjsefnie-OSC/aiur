@@ -7,7 +7,8 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
   this module wraps the `:signal` lifecycle sink, the path runner writes take.
   It drops a write from a process whose `$callers` or `$ancestors` chain
   reaches a finished `Aiur.TestSupport` test (one whose teardown completed),
-  kills that process, and the next test teardown fails naming that test.
+  records the finding, and kills the process only in fail mode. Report mode
+  records findings without changing other tests' outcomes.
   """
 
   alias Aiur.RunTelemetry.Lifecycle
@@ -134,7 +135,7 @@ defmodule Aiur.TestSupport.LifecycleLeakGuard do
         case :ets.lookup(@tests, test_pid) do
           [{^test_pid, test, true}] ->
             :ets.insert(@leaks, {:leak, test, {pid, dictionary_value(pid, :"$initial_call", nil)}, "late log: #{message}"})
-            Process.exit(pid, :kill)
+            if fail_mode?(), do: Process.exit(pid, :kill)
 
           _ ->
             :ok
