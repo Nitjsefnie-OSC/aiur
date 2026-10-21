@@ -7,7 +7,7 @@ defmodule Aiur.LandingWatch.PrRerunRefreshTest do
     parent = self()
 
     assert :ok =
-             LandingWatch.process(observation(),
+             LandingWatch.process(automerge_observation(),
                approved_fun: fn _, _ -> {:ok, true} end,
                required_checks_fun: fn _ -> {:ok, [%{name: "ci gate", app_id: nil}]} end,
                ci_status_fun: fn _, _ -> {:ok, %{check_runs: [failed_gate()], commit_status: %{"state" => "success", "statuses" => []}}} end,
@@ -16,7 +16,7 @@ defmodule Aiur.LandingWatch.PrRerunRefreshTest do
                base_branch: "main",
                changed_paths_fun: fn _, _ -> {:ok, ["src/lib/aiur/feature.ex"]} end,
                actions_run_fun: fn 99, _ -> {:ok, %{"path" => ".github/workflows/ci.yml"}} end,
-               workflow_definitions_fun: fn _, "main", _ -> {:ok, %{"gate" => %{"name" => "ci gate"}}} end,
+               workflow_definitions_fun: fn _, "main", _ -> {:ok, %{}} end,
                job_log_fun: fn _, _ -> {:ok, "unclassified failure"} end,
                known_failure_patterns: [],
                recent_main_failure_paths: [],
@@ -93,6 +93,10 @@ defmodule Aiur.LandingWatch.PrRerunRefreshTest do
       rest: %{"head" => %{"ref" => "aiur/17-work"}},
       raw: %{"reviewDecision" => "APPROVED", "headRefOid" => "head-sha", "isDraft" => false}
     }
+  end
+
+  defp automerge_observation do
+    %{observation() | auto_merge_request: %{"enabledAt" => "2026-10-14T09:00:00Z"}}
   end
 
   defp failed_gate do

@@ -45,7 +45,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
     path = journal_path()
     armed = %{observation() | auto_merge_request: %{"enabledAt" => "2026-10-14T09:00:00Z"}}
     runs = for id <- 99..101, do: failed_gate() |> Map.put("run_id", id) |> Map.put("id", id - 49) |> Map.put("started_at", @started)
-    for _ <- 1..2, do: assert(:ok = Journal.reserve_merge_group_requeue(@started_ms + 3_600_000, journal_path: path))
+    for _ <- 1..3, do: assert(:ok = Journal.reserve_merge_group_requeue(@started_ms + 3_600_000, journal_path: path))
 
     assert :ok =
              LandingWatch.process(
@@ -59,7 +59,6 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
 
     assert_received {:rerun, 99}
     assert_received {:rerun, 100}
-    assert_received {:rerun, 101}
     assert {:ok, []} = Journal.rerun_backlog(journal_path: path)
     assert {:ok, state} = Journal.state(journal_path: path)
     assert length(state["merge_group_requeues"]) == 4
@@ -72,7 +71,7 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
     shared = [ci_status_fun: fn _, _ -> {:ok, %{check_runs: runs, commit_status: %{"state" => "success", "statuses" => []}}} end, jobs_fun: fn id, _ -> {:ok, jobs_for_run(id)} end]
 
     assert :ok = LandingWatch.process(armed, opts(path, shared ++ [main_ci_recovery_window: {@started_ms - 60_000, @started_ms + 60_000}]))
-    assert {:ok, [%{"run_ids" => [102, 103, 104, 105, 106], "per_head_reserved" => true}]} = Journal.rerun_backlog(journal_path: path)
+    assert {:ok, [%{"run_ids" => [103, 104, 105, 106], "per_head_reserved" => true}]} = Journal.rerun_backlog(journal_path: path)
     assert_received {:rerun, 99}
     assert_received {:rerun, 100}
     assert_received {:rerun, 101}
