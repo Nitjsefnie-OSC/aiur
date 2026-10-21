@@ -4,12 +4,11 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   alias Aiur.Alerts
   alias Aiur.GitHub.{CIRecovery, Transport}
   alias Aiur.LandingWatch.Classifier
-  alias Aiur.LandingWatch.{Journal, LocalRead, MergeFailureClassifier, MergeGroupFailureProcessor, MergeQueueFailureEvidence}
+  alias Aiur.LandingWatch.{Journal, LocalRead, MergeFailureClassifier, MergeGroupFailureProcessor, MergeQueueFailureEvidence, MergeQueueRecoveryAttempt}
   alias Aiur.PrMerge.Queue
 
   @threshold_ms 20 * 60_000
   @max_attempts 1
-  @reservation_timeout_ms 2 * 60_000
 
   @spec reconcile([map()], keyword()) :: :ok | {:error, term()}
   def reconcile(observations, opts) do
@@ -113,7 +112,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   end
 
   defp reserve_and_repair(observation, failure, now, opts) do
-    case reserve_attempt(observation.number, observation.head, now, opts) do
+    case MergeQueueRecoveryAttempt.reserve(observation.number, observation.head, now, opts) do
       {:ok, :reserved} ->
         finish_reserved_repair(observation, failure, opts)
 
@@ -130,23 +129,23 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   defp finish_reserved_repair(observation, failure, opts) do
     case repair(observation, opts) do
       :ok ->
-        case commit_attempt(observation.number, observation.head, opts) do
+        case MergeQueueRecoveryAttempt.commit(observation.number, observation.head, opts) do
           {:ok, _committed} ->
             emit_attention(observation.number, observation.head, failure, opts)
             :ok
 
           {:error, _} = error ->
-            release_attempt(observation.number, observation.head, opts)
+            MergeQueueRecoveryAttempt.release(observation.number, observation.head, opts)
             error
         end
 
       {:skip, reason} ->
-        release_attempt(observation.number, observation.head, opts)
+        MergeQueueRecoveryAttempt.release(observation.number, observation.head, opts)
         log_skip(observation, reason)
         :ok
 
       {:error, reason} = error ->
-        release_attempt(observation.number, observation.head, opts)
+        MergeQueueRecoveryAttempt.release(observation.number, observation.head, opts)
         log_skip(observation, reason)
         error
     end
@@ -239,88 +238,6 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   end
 
   defp parse_time(_), do: DateTime.from_unix!(0)
-
-  defp reserve_attempt(number, head, now, opts) do
-    key = "#{number}:#{head}"
-
-    Journal.update(opts, fn state ->
-      rows = Map.get(state, "unmergeable_queue_entries", %{})
-      row = Map.get(rows, key, %{"since" => 0, "attempts" => 0})
-
-      cond do
-        row_attempts(row) >= @max_attempts ->
-          {:ok, state, {:error, :recovery_attempt_limit}}
-
-        reservation_live?(row, now) ->
-          {:ok, state, {:skip, :recovery_in_progress}}
-
-        true ->
-          updated =
-            row
-            |> Map.put("recovery_pending", true)
-            |> Map.put("recovery_pending_since", now)
-
-          {:ok, Map.put(state, "unmergeable_queue_entries", Map.put(rows, key, updated)), {:reserved, updated}}
-      end
-    end)
-    |> case do
-      {:ok, {:reserved, _row}} -> {:ok, :reserved}
-      {:ok, {:error, reason}} -> {:error, reason}
-      {:ok, {:skip, reason}} -> {:skip, reason}
-      {:error, _} = error -> error
-    end
-  end
-
-  defp reservation_live?(%{"recovery_pending" => true, "recovery_pending_since" => started}, now)
-       when is_integer(started),
-       do: now - started < @reservation_timeout_ms
-
-  defp reservation_live?(_, _), do: false
-
-  defp release_attempt(number, head, opts) do
-    key = "#{number}:#{head}"
-
-    Journal.update(opts, fn state ->
-      rows = Map.get(state, "unmergeable_queue_entries", %{})
-
-      rows =
-        case Map.get(rows, key) do
-          row when is_map(row) ->
-            Map.delete(row, "recovery_pending") |> Map.delete("recovery_pending_since") |> then(&Map.put(rows, key, &1))
-
-          _ ->
-            rows
-        end
-
-      {:ok, Map.put(state, "unmergeable_queue_entries", rows)}
-    end)
-  end
-
-  defp commit_attempt(number, head, opts) do
-    key = "#{number}:#{head}"
-
-    Journal.update(opts, fn state ->
-      rows = Map.get(state, "unmergeable_queue_entries", %{})
-      row = Map.get(rows, key, %{"since" => 0, "attempts" => 0})
-
-      if Map.get(row, "recovery_pending", false) do
-        updated =
-          row
-          |> Map.update("attempts", 1, &(&1 + 1))
-          |> Map.delete("recovery_pending")
-          |> Map.delete("recovery_pending_since")
-
-        {:ok, Map.put(state, "unmergeable_queue_entries", Map.put(rows, key, updated)), {:ok, updated}}
-      else
-        {:ok, state, {:error, :recovery_reservation_lost}}
-      end
-    end)
-    |> case do
-      {:ok, {:ok, row}} when is_map(row) -> {:ok, row}
-      {:ok, {:error, reason}} -> {:error, reason}
-      {:error, _} = error -> error
-    end
-  end
 
   defp row_since(%{"since" => since}) when is_integer(since), do: since
   defp row_since(since) when is_integer(since), do: since
