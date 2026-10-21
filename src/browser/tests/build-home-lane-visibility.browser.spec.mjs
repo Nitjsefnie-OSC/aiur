@@ -21,7 +21,7 @@ test('agent-only epic stays hidden while its live card keeps its hue', async ({ 
     const item = { t: ctx.D.now[0], key: 'b0', y: 42, h: 32, sec: 'now' }, card = st.fx.makeCard(item)
     ctx.L = { secs: { hist: { items: [], h: 100 }, plan: { items: [] }, nq: { items: [] } }, band: { BK: 1, items: [{ ...item, el: card }] } }
     cols.applyCols([], true)
-    return { visible: cols.visibleCols(), rendered: ctx.laneEls.size, epicColor: card.style.getPropertyValue('--h') }
+    return { visible: cols.visibleCols(), rendered: [...ctx.laneEls.values()].filter(el => !el.classList.contains('leave')).length, epicColor: card.style.getPropertyValue('--h') }
   })
   expect(result).toEqual({ visible: [], rendered: 0, epicColor: '38' })
 })
