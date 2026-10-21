@@ -200,7 +200,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
     |> Enum.reduce(:ok, &rework_if_ok(&1, &2, failures, run_link, opts))
   end
 
-  defp blamed_pr(%{log: log}, prs, opts) when is_binary(log) do
+  defp blamed_pr(%{log: log, blame_complete: true}, prs, opts) when is_binary(log) do
     with false <- Keyword.has_key?(opts, :blame_evidence_error),
          paths when paths != [] <- failure_paths(log) do
       paths_blame(paths, log, prs, opts)
@@ -252,7 +252,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
       Enum.any?(Keyword.get(opts, :known_failure_patterns, []), &String.contains?(String.downcase(log), String.downcase(&1)))
   end
 
-  defp failure_paths(log), do: Regex.scan(~r{(?:^|\s)([\w./-]+_test\.exs)(?::\d+)?}m, log, capture: :all_but_first) |> List.flatten() |> Enum.uniq()
+  defp failure_paths(log), do: MergeGroupFailureEvidence.test_paths(log)
 
   defp route_innocent(prs, observations, run, failure, reason, opts) do
     {repeat, first} = split_repeated_heads(prs, observations, opts)

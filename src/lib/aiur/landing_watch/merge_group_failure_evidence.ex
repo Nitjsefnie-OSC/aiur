@@ -7,6 +7,22 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
 
   @page_limit 5
 
+  @spec test_paths(binary()) :: [String.t()]
+  def test_paths(log) when is_binary(log) do
+    Regex.scan(
+      ~r/^\s*\d+\)\s+test .+\([^)]+\)\r?\n\s+((?:src\/)?test\/[\w.\/-]+_test\.exs):\d+(?::\d+)?/m,
+      log,
+      capture: :all_but_first
+    )
+    |> List.flatten()
+    |> Enum.map(&normalize_test_path/1)
+    |> Enum.uniq()
+  end
+
+  @spec normalize_test_path(String.t()) :: String.t()
+  def normalize_test_path("test/" <> _ = path), do: "src/" <> path
+  def normalize_test_path(path), do: path
+
   @spec recent_main_paths(binary(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
   def recent_main_paths(base, opts) do
     case Keyword.get(opts, :recent_main_failure_paths_fun, &fetch_recent_main_failure_paths/2).(
@@ -81,10 +97,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
   end
 
   defp extract_test_paths(log) do
-    case Regex.run(~r/(?:^|\s)([\w.\/-]+_test\.exs)(?::\d+)?/m, log, capture: :all_but_first) do
-      [path] -> [path]
-      _ -> []
-    end
+    test_paths(log)
   end
 
   @spec known_patterns(keyword()) :: list()
@@ -108,6 +121,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
 
   defp known_flaky_patterns(opts) do
     path = Keyword.get(opts, :known_flaky_tests_path, ".github/known-flaky-tests.txt")
+    path = if Path.type(path) == :absolute, do: path, else: Path.join(Keyword.get(opts, :repo_root, Aiur.Codeowners.repo_root()), path)
 
     case File.read(path) do
       {:ok, contents} ->
@@ -115,6 +129,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
         |> String.split(~r/[\r\n]+/)
         |> Enum.map(&String.trim/1)
         |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+        |> Enum.flat_map(&known_flaky_signatures/1)
 
       {:error, :enoent} ->
         []
@@ -122,6 +137,17 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
       {:error, reason} ->
         Logger.warning("known flaky test list unavailable path=#{path} reason=#{inspect(reason)}")
         []
+    end
+  end
+
+  defp known_flaky_signatures(line) do
+    case String.split(line, " :: ", parts: 2) do
+      [module, name] ->
+        name = String.replace_prefix(name, "test ", "")
+        ["test #{name} (#{module})", "#{name} (#{module})"]
+
+      _ ->
+        [line]
     end
   end
 
