@@ -143,7 +143,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.TelemetrySource do
 
       :error ->
         range = %{start: DateTime.to_iso8601(window.start), end: DateTime.to_iso8601(window.end)}
-        sources = %{"base_branch" => Aiur.Config.base_branch(), "required_workflows" => [], "incident_labels" => ["flake", "main-fix"]}
+        sources = %{"base_branch" => Aiur.Config.base_branch(), "required_workflows" => [], "incident_labels" => ["flake", Aiur.Config.base_branch() <> "-fix"]}
         {data, _missing} = Map.get(ctx, :github_window_sources, &RunTelemetry.window_event_sources/4).(Map.get(ctx, :repo, Paths.repo()), sources, range, Map.get(ctx, :github_options, []))
         if data == %{}, do: nil, else: data
     end
