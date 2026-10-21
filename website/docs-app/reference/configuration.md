@@ -11,6 +11,7 @@ Environment variables are declared once in the env schema (`Aiur.Env.Schema`), w
 - **Type validation.** Values that fail their declared type (for example `AIUR_OPENCODE_BRIDGE_PORT=banana`) abort the boot naming the variable and what was expected, instead of failing at first use hours later.
 - **Secrets never leak.** Secrets render as an empty placeholder in `.env.example` and are excluded from error text and startup warnings. No real value from any `.env` file reaches the generated example, logs, or error output.
 - **Dashboard credentials** (`AIUR_DASHBOARD_USERNAME` / `AIUR_DASHBOARD_PASSWORD`) are values an operator chooses and types into a browser; see [GUI](/guide/gui) for choosing and setting them. Without them the dashboard refuses all requests (fails closed); the CLI and TUI are unaffected.
+- **Dashboard signing key** (`AIUR_SECRET_KEY_BASE`) optionally overrides the key used to sign dashboard cookies. When unset, Aiur creates a persistent mode-0600 key under `~/.aiur/instances/<instance>/` so sessions remain valid across restarts.
 
 The generated `.env.example` groups variables under `## Required`, `## Optional - ...` (one section per integration), `## Runtime - launcher-managed`, and `## Development and debugging` headers, with a one-line purpose above each key and a terse right-hand "how to fetch" note aligned to a common column.
 
@@ -409,11 +410,13 @@ These policy keys never grant transport access by themselves. The supervisor API
 
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-18 -->
 | --- | --- | --- | --- |
-| `server.host` | string | `127.0.0.1` | HTTP bind address. Set it explicitly to serve the dashboard beyond the machine; there is no automatic Tailscale detection. |
+| `server.host` | string | `127.0.0.1` | HTTP bind address. `0.0.0.0` exposes the dashboard to the LAN; there is no automatic Tailscale detection. |
+| `server.public_url` | string | nil | Public dashboard URL used for generated links and the default Host and WebSocket origin allowlists. |
+| `server.allowed_hosts` | array | derived | Accepted Host header names; defaults to the public URL host plus `localhost`, `127.0.0.1`, and `::1`. |
 | `server.port` | integer | 0 | HTTP port; 0 selects a free OS port. |
 | `server.tailscale_funnel` | boolean | false | Reconcile an already-enabled Tailscale Funnel HTTPS route on port 443 to the dashboard's current bound host and port at startup and every 30 seconds. Requires the Tailscale CLI and an existing Funnel route; failures raise a Build Order Funnel alert and retry. |
 
-When `server.host` is absent, the dashboard binds `127.0.0.1` (or the `AIUR_DEFAULT_DASHBOARD_HOST` override). A configured value is never replaced by that default. An explicit `--host` remains the highest-precedence override.
+When `server.host` is absent, the dashboard binds `127.0.0.1` (or `AIUR_DEFAULT_DASHBOARD_HOST`). Explicit config and `--host` overrides take precedence. `0.0.0.0` exposes the dashboard to the LAN; `server.allowed_hosts` controls accepted Host names.
 
 Set `server.tailscale_funnel: true` only when this node already has a Funnel route the operator intends to keep. At startup and every 30 seconds, Aiur reads the dashboard's bound host and port and updates the route with `tailscale funnel --bg` when needed.
 
