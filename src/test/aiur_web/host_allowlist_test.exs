@@ -4,6 +4,11 @@ defmodule AiurWeb.HostAllowlistTest do
   alias Aiur.TestSupport.EndpointStubs
   alias AiurWeb.HostAllowlist
 
+  setup do
+    Aiur.TestSupport.start_owned_endpoint!()
+    :ok
+  end
+
   test "rejects a foreign Host before downstream endpoint plugs" do
     EndpointStubs.put(allowed_hosts: ["dashboard.example"], allow_tailnet_hosts: false)
     conn = Plug.Test.conn(:get, "/") |> then(&%{&1 | host: "attacker.example"})
@@ -38,7 +43,7 @@ defmodule AiurWeb.HostAllowlistTest do
              ["dashboard.example.com", "localhost", "127.0.0.1", "[::1]", "::1", "extra.example"]
   end
 
-  test "loopback listeners accept tailnet Host names until a public URL is configured" do
+  test "loopback listeners accept tailnet Host names while loopback-bound" do
     EndpointStubs.put(allowed_hosts: ["*.ts.net"], allow_tailnet_hosts: true)
     conn = Plug.Test.conn(:get, "/") |> then(&%{&1 | host: "orangekid.tailnet-name.ts.net"})
 

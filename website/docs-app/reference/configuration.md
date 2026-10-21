@@ -410,12 +410,12 @@ These policy keys never grant transport access by themselves. The supervisor API
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-18 -->
 | --- | --- | --- | --- |
 | `server.host` | string | `127.0.0.1` | HTTP bind address. `0.0.0.0` exposes the dashboard to the LAN; there is no automatic Tailscale detection. |
-| `server.public_url` | string | nil | Public dashboard URL used for generated links and the default Host and WebSocket origin allowlists. Loopback listeners temporarily accept tailnet hosts until this is set. |
+| `server.public_url` | string | nil | Public dashboard URL used for generated links and the default Host and WebSocket origin allowlists. Loopback listeners also accept tailnet hosts while they remain loopback-bound. |
 | `server.allowed_hosts` | array | derived | Additional accepted Host names; the public URL host and loopback addresses are always accepted. |
 | `server.port` | integer | 0 | HTTP port; 0 selects a free OS port. |
 | `server.tailscale_funnel` | boolean | false | Reconcile an already-enabled Tailscale Funnel HTTPS route on port 443 to the dashboard's current bound host and port at startup and every 30 seconds. Requires the Tailscale CLI and an existing Funnel route; failures raise a Build Order Funnel alert and retry. |
 
-Unset `server.host` binds `127.0.0.1` (or `AIUR_DEFAULT_DASHBOARD_HOST`); explicit config/`--host` override. `0.0.0.0` exposes LAN. For Tailscale, build/restart first; then set `server.public_url` (e.g. `https://<host>.ts.net:4001`) and restart again. Until then, loopback accepts `*.ts.net` Hosts/HTTPS origins. `server.allowed_hosts` adds hosts.
+Unset `server.host` binds `127.0.0.1` (or `AIUR_DEFAULT_DASHBOARD_HOST`); explicit config/`--host` override. `0.0.0.0` exposes LAN. Loopback accepts `*.ts.net` Hosts/HTTPS origins while it remains loopback-bound. For Tailscale, build and restart first, then set `server.public_url` (e.g. `https://<host>.ts.net:4001`) and restart again. `server.allowed_hosts` adds hosts.
 
 Set `server.tailscale_funnel: true` only when this node already has a Funnel route the operator intends to keep. At startup and every 30 seconds, Aiur reads the dashboard's bound host and port and updates the route with `tailscale funnel --bg` when needed.
 
