@@ -95,10 +95,12 @@ defmodule Aiur.AgentTools.TicketState do
     with {:ok, state} <- normalize_state(arguments),
          true <- is_function(setter, 2) || {:error, :ticket_state_setter_unavailable},
          {:ok, result} <- setter.(state, review_findings(arguments)) do
+      result = response_result(result, state)
+
       Response.build(
         true,
         Jason.encode!(
-          %{"ok" => true, "state" => state, "result" => Response.jsonable(result)},
+          %{"ok" => true, "state" => result_state(result, state), "result" => Response.jsonable(result)},
           pretty: true
         )
       )
@@ -110,6 +112,17 @@ defmodule Aiur.AgentTools.TicketState do
 
   defp review_findings(arguments) when is_map(arguments), do: Map.get(arguments, "review_findings") || Map.get(arguments, :review_findings)
   defp review_findings(_arguments), do: nil
+
+  defp response_result(%{} = result, requested_state) do
+    case Map.get(result, :requested_state) || Map.get(result, "requested_state") do
+      nil -> Map.put(result, :requested_state, requested_state)
+      _requested -> result
+    end
+  end
+
+  defp response_result(result, requested_state), do: %{requested_state: requested_state, result: result}
+
+  defp result_state(result, fallback), do: Map.get(result, :state) || Map.get(result, "state") || fallback
 
   @spec agent_settable_states() :: [String.t()]
   def agent_settable_states, do: @agent_settable_states

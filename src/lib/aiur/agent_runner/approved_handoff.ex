@@ -11,18 +11,18 @@ defmodule Aiur.AgentRunner.ApprovedHandoff do
   alias Aiur.Issue
   alias Aiur.Orchestrator.ReworkGate
 
-  @spec target_state(Issue.t(), String.t(), keyword()) :: String.t()
+  @spec target_state(Issue.t(), String.t(), keyword()) :: {String.t(), String.t() | nil}
   def target_state(%Issue{} = issue, "human-review", opts) do
     case ReworkGate.open_pr(issue.identifier, opts) do
       {:ok, pr} ->
-        if ReworkGate.post_agent_handoff_target(pr, "human-review", opts) == "ci-wait",
-          do: "ci-wait",
-          else: "human-review"
+        target = ReworkGate.post_agent_handoff_target(pr, "human-review", opts)
+        reason = if target == "ci-wait", do: "approved_at_current_head", else: nil
+        {target, reason}
 
       _ ->
-        "human-review"
+        {"human-review", nil}
     end
   end
 
-  def target_state(_issue, state, _opts), do: state
+  def target_state(_issue, state, _opts), do: {state, nil}
 end

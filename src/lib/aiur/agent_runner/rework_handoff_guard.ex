@@ -21,11 +21,13 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
         {:error, {reason, message}}
 
       {:allow, findings} ->
-        state = ApprovedHandoff.target_state(issue, state, opts)
+        requested_state = state
+        {state, routing_reason} = ApprovedHandoff.target_state(issue, requested_state, opts)
+        result = %{requested_state: requested_state, state: state, issue: issue_id, routing_reason: routing_reason}
 
         case writer.(issue_id, state) do
-          :ok -> {:ok, report_checklist(issue, findings, opts, %{state: state, issue: issue_id})}
-          {:ok, result} -> {:ok, report_checklist(issue, findings, opts, result)}
+          :ok -> {:ok, report_checklist(issue, findings, opts, result)}
+          {:ok, write_result} -> {:ok, report_checklist(issue, findings, opts, Map.merge(result, normalize_write_result(write_result)))}
           {:error, reason} -> {:error, reason}
           other -> {:error, other}
         end
@@ -148,6 +150,9 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
   defp findings_blockers(_issue, _state, _workspace, _opts), do: {:allow, []}
 
   # The re-review reads the worker's answers from this ticket comment; a failed post does not undo the handback.
+  defp normalize_write_result(%{} = result), do: Map.drop(result, [:state, "state", :issue, "issue"])
+  defp normalize_write_result(_result), do: %{}
+
   defp report_checklist(_issue, [], _opts, result), do: result
 
   defp report_checklist(issue, findings, opts, result) do
