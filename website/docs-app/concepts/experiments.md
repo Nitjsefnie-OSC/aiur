@@ -387,6 +387,7 @@ Durations, counts and spend prefer lower values; throughput and utilization pref
 Ticket units are `ticket:<number>`, assigned at first dispatch, with complexity
 and dispatch-time cohort attributes. Redispatch and restarts create no second
 unit. Merge, review-round and cost metrics exclude unmerged tickets (`filtered`).
+
 Dispatch cohorts also capture `tags.work_kind` (`feature`, `test_ci`, `tooling`,
 or `other`), using issue labels first and title rules as fallback.
 
