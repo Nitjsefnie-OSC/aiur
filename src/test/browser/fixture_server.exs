@@ -155,7 +155,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
   alias Aiur.BrowserHarness.{ExperimentsFixture, FixtureEndpoint}
   alias Aiur.BrowserHarness.FixtureEndpointStart
   alias Aiur.IssueLog
-  alias Aiur.TestSupport.BuildHome.FixtureSource
+  alias Aiur.TestSupport.BuildHome.{FixtureSource, TicketDocs}
 
   def run do
     {:ok, _} = Application.ensure_all_started(:bandit)
@@ -168,7 +168,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
     endpoint_overrides = AiurWeb.EndpointConfig.overrides_table()
     if :ets.whereis(endpoint_overrides) == :undefined, do: :ets.new(endpoint_overrides, [:named_table, :public, :set])
-    configure_forwarded_dashboard() |> FixtureSource.configure_usage() |> Aiur.TestSupport.BuildHome.TicketDocs.configure()
+    configure_forwarded_dashboard() |> FixtureSource.configure_usage() |> TicketDocs.configure()
     ExperimentsFixture.prepare("empty")
 
     {:ok, _} =

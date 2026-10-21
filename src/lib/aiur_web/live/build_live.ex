@@ -5,7 +5,7 @@ defmodule AiurWeb.BuildLive do
 
   require Logger
 
-  alias AiurWeb.Build.{DataSource, Protocol, Read, Ticket, TicketDoc, QueueAdd, URLState, UsageUpdates}
+  alias AiurWeb.Build.{DataSource, Protocol, QueueAdd, Read, Ticket, TicketDoc, URLState, UsageUpdates}
   alias AiurWeb.BuildOrder.Runtime
   alias AiurWeb.OperatorControlCenter.{AwaitingCommands, DashboardShell, NavState, RouteRegistry}
   alias AiurWeb.Presenter
