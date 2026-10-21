@@ -126,7 +126,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
 
   defp classify_observed_head_failure(observation, opts) do
     runs = Keyword.get(opts, :completed_merge_group_runs, [])
-    base = Keyword.get(opts, :base_branch, "main")
+    base = Keyword.get(opts, :base_branch, Aiur.Config.base_branch())
 
     since_ms = Keyword.get(opts, :unmergeable_since_ms, 0)
 
