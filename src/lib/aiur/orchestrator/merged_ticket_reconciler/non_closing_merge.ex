@@ -5,15 +5,9 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler.NonClosingMerge do
   alias Aiur.Orchestrator.MergeStateWriter
   alias Aiur.Orchestrator.TicketTransition
 
-  @pending_states ~w(in-progress ci-wait human-review merging)
-
   @spec reference_only?(Issue.t(), RecentMerge.t(), keyword()) :: boolean()
-  def reference_only?(%Issue{identifier: identifier} = issue, %RecentMerge{} = merge, opts \\ []) do
-    _ = opts
-
-    merge.ticket_id != identifier and
-      String.downcase(to_string(issue.state || "")) in @pending_states and
-      identifier in RecentMerge.linked_issue_identifiers(merge) and
+  def reference_only?(%Issue{identifier: identifier}, %RecentMerge{} = merge, _opts \\ []) do
+    identifier in RecentMerge.linked_issue_identifiers(merge) and
       identifier not in RecentMerge.closing_issue_identifiers(merge)
   end
 

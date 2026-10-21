@@ -13,6 +13,7 @@ defmodule Aiur.Events.GithubWebhook.Triples do
   alias Aiur.Events.GithubWebhook.Identity
   alias Aiur.GitHub.PullRequests
   alias Aiur.GitHub.ResourceStore
+  alias Aiur.RecentMerge.ClosingReferences
 
   @type triple :: {String.t(), map(), keyword()}
   @type result :: {:publish, [triple()]} | {:drop, term()} | {:error, term()}
@@ -269,7 +270,10 @@ defmodule Aiur.Events.GithubWebhook.Triples do
   defp approval_only_context(context), do: Map.delete(context, "head_committed_at")
 
   @spec pull_request_triple(map(), map(), term(), String.t()) :: result()
-  def pull_request_triple(payload, pr, action, repo) do
+  def pull_request_triple(payload, pr, action, repo), do: pull_request_triple(payload, pr, action, repo, [])
+
+  @spec pull_request_triple(map(), map(), term(), String.t(), keyword()) :: result()
+  def pull_request_triple(payload, pr, action, repo, opts) do
     merged? = merged_pull_request?(action, Map.get(pr, "merged"))
     actor = get_in(payload, ["sender", "login"])
     pr_number = Map.get(pr, "number")
@@ -281,10 +285,11 @@ defmodule Aiur.Events.GithubWebhook.Triples do
         _ -> pr
       end
 
+    pr = maybe_enrich_commit_messages(pr, pr_number, merged?, opts)
     linked_ids = Identity.linked_ticket_identifiers(pr)
     branch_id = Identity.ticket_from_head_ref(pr)
 
-    with {:ok, target, _pr_number} <- Identity.pull_request_identity(payload),
+    with {:ok, target, _pr_number} <- Identity.pull_request_identity(payload, allow_commit_messages: merged?),
          topic when is_binary(topic) <- pr_topic(target, action, merged?) do
       targets = Enum.uniq([branch_id | linked_ids] |> Enum.reject(&is_nil/1))
 
@@ -294,8 +299,6 @@ defmodule Aiur.Events.GithubWebhook.Triples do
         bypass_contamination: merged?,
         dedup_key: GithubKeys.pr_dedup_key(repo, pr_number, action, head_sha)
       ]
-
-      pr = maybe_enrich_commit_messages(pr, pr_number)
 
       event = %{
         action: action,
@@ -325,16 +328,26 @@ defmodule Aiur.Events.GithubWebhook.Triples do
   defp pr_topic(target, _action, true), do: "ticket.#{target}.pr.merged"
   defp pr_topic(_target, _action, _merged), do: nil
 
-  defp maybe_enrich_commit_messages(pr, number) do
-    if Map.has_key?(pr, "commit_messages") do
+  defp maybe_enrich_commit_messages(pr, number, true, opts) do
+    linked_in_body =
+      Map.get(pr, "body")
+      |> ClosingReferences.linked_identifiers_in_text(repo_from_pr(pr))
+
+    if Map.has_key?(pr, "commit_messages") or linked_in_body != [] do
       pr
     else
-      case PullRequests.fetch_pull_request_commits(number) do
+      request_opts = Keyword.take(opts, [:request_fun])
+
+      case PullRequests.fetch_pull_request_commits(number, request_opts) do
         {:ok, messages} -> Map.put(pr, "commit_messages", messages)
         _ -> pr
       end
     end
   end
+
+  defp maybe_enrich_commit_messages(pr, _number, _merged, _opts), do: pr
+
+  defp repo_from_pr(pr), do: get_in(pr, ["base", "repo", "full_name"])
 
   defp merged_pull_request?("closed", true), do: true
   defp merged_pull_request?("merged", _merged), do: true

@@ -9,13 +9,15 @@ defmodule Aiur.Events.GithubWebhook.Identity do
 
   @closing_keyword ~r/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/i
 
-  @spec pull_request_identity(map()) :: {:ok, String.t(), integer()} | {:drop, term()} | {:error, term()}
-  def pull_request_identity(payload) do
+  @spec pull_request_identity(map(), keyword()) :: {:ok, String.t(), integer()} | {:drop, term()} | {:error, term()}
+  def pull_request_identity(payload, opts \\ []) do
     pr = Map.get(payload, "pull_request")
     pr_number = if is_map(pr), do: Map.get(pr, "number")
 
     if is_map(pr) and is_integer(pr_number) do
-      case ticket_from_head_ref(pr) || ticket_from_pr_body(Map.get(pr, "body")) || ticket_from_commit_messages(Map.get(pr, "commit_messages", [])) do
+      commit_ticket = if Keyword.get(opts, :allow_commit_messages, false), do: List.first(linked_ticket_identifiers(pr))
+
+      case ticket_from_head_ref(pr) || ticket_from_pr_body(Map.get(pr, "body")) || commit_ticket do
         nil -> {:drop, {:unresolved_ticket, "pull_request", pr_number}}
         ticket -> {:ok, ticket, pr_number}
       end
@@ -55,12 +57,6 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   end
 
   def ticket_from_commit_message(_message), do: nil
-
-  defp ticket_from_commit_messages(messages) when is_list(messages) do
-    Enum.find_value(messages, &ticket_from_commit_message/1)
-  end
-
-  defp ticket_from_commit_messages(_messages), do: nil
 
   @doc "Returns ticket ids explicitly linked by the body or commit messages."
   @spec linked_ticket_identifiers(map()) :: [String.t()]

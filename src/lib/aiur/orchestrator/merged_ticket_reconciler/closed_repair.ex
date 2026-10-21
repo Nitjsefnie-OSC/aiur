@@ -55,7 +55,7 @@ defmodule Aiur.Orchestrator.MergedTicketReconciler.ClosedRepair do
 
   defp reference_only_merge?(merge) do
     merge.ticket_id not in RecentMerge.closing_issue_identifiers(merge) and
-      Enum.any?(RecentMerge.linked_issue_identifiers(merge), &(&1 != merge.ticket_id))
+      merge.ticket_id in RecentMerge.linked_issue_identifiers(merge)
   end
 
   defp recent_attributed_merge?(%RecentMerge{ticket_id: id, merged_by: actor, merged_at: %DateTime{} = at}, now)

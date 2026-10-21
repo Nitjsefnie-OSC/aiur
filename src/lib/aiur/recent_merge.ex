@@ -6,8 +6,9 @@ defmodule Aiur.RecentMerge do
   A merge can be backfilled from GitHub's bounded Events API window,
   observed live by the current BEAM run, or both. `observed_run_id` means
   only that the run saw the live GitHub event; it never claims that the run,
-  an Aiur agent, or a ticket caused the merge. Ticket linkage is derived only
-  from a canonical `aiur/<number>[-slug]` head branch.
+  an Aiur agent, or a ticket caused the merge. The implementing ticket id is
+  derived only from a canonical `aiur/<number>[-slug]` head branch; PR body and
+  commit references remain separate links used by ticket reconciliation.
   """
 
   alias Aiur.RecentMerge.ClosingReferences
@@ -95,7 +96,7 @@ defmodule Aiur.RecentMerge do
 
   @doc """
   Returns same-repository issue identifiers named by GitHub closing keywords in
-  a merged pull request body.
+  a merged pull request body or its commit messages.
 
   Detection is deliberately no wider than GitHub's documented rule, and in two
   places it is deliberately narrower. A false positive here force-closes a
@@ -121,11 +122,11 @@ defmodule Aiur.RecentMerge do
   retain their original content hashes.
   """
   @spec closing_issue_identifiers(t()) :: [String.t()]
-  def closing_issue_identifiers(%__MODULE__{summary: summary, repository: repository}) when is_binary(summary) do
-    closing_issue_identifiers_in_body(summary, repository)
+  def closing_issue_identifiers(%__MODULE__{summary: summary, repository: repository, commit_messages: messages}) do
+    (closing_issue_identifiers_in_body(summary, repository) ++
+       Enum.flat_map(messages, &closing_issue_identifiers_in_body(&1, repository)))
+    |> Enum.uniq()
   end
-
-  def closing_issue_identifiers(%__MODULE__{}), do: []
 
   @doc """
   `closing_issue_identifiers/1` against a raw pull request body.

@@ -131,6 +131,7 @@ defmodule Aiur.Orchestrator.EventTopics do
       pr_body: Map.get(pr, "body"),
       commit_messages: Map.get(pr, "commit_messages", []),
       pr_url: Map.get(pr, "html_url"),
+      repository: Map.get(event, :repository) || get_in(pr, ["base", "repo", "full_name"]),
       head_sha: get_in(pr, ["head", "sha"])
     ]
 

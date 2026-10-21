@@ -80,6 +80,25 @@ defmodule Aiur.Events.GithubWebhookTest do
       assert Enum.all?(triples, fn {_topic, _payload, opts} -> opts[:issue_number] in ["5605", "5606"] end)
     end
 
+    test "commit-only references resolve a merged PR when its branch has no ticket id" do
+      delivery = %{
+        "action" => "closed",
+        "repository" => %{"full_name" => @repo},
+        "pull_request" => %{
+          "number" => 903,
+          "merged" => true,
+          "body" => "maintenance change",
+          "head" => %{"ref" => "executor/quarantine", "sha" => "feedface"},
+          "commit_messages" => ["Refs #5605"]
+        }
+      }
+
+      assert {:publish, [{"ticket.5605.pr.merged", _event, opts}]} =
+               Normalizer.normalize("pull_request", delivery, repo: @repo)
+
+      assert opts[:issue_number] == "5605"
+    end
+
     test "an unrecognized event type is ignored without crashing" do
       ticket = Integer.to_string(System.unique_integer([:positive]))
 

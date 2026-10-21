@@ -39,6 +39,7 @@ defmodule Aiur.Events.GithubFirehose do
   alias Aiur.Events
   alias Aiur.Events.{GithubKeys, PostDeployChecks, Sanitizer}
   alias Aiur.GitHub.Client
+  alias Aiur.GitHub.PullRequests
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.StartTrigger.ProgressStore
 
@@ -229,7 +230,8 @@ defmodule Aiur.Events.GithubFirehose do
     Enum.reduce(
       events,
       %{count: 0, persistence_errors: [], persistence_attempted?: false},
-      fn event, acc ->
+      fn original_event, acc ->
+        event = enrich_merged_event(original_event, opts)
         persistence_result = persist_recent_merge(event, opts)
         publish_result = publish_one(event, opts)
 
@@ -241,6 +243,22 @@ defmodule Aiur.Events.GithubFirehose do
       end
     )
   end
+
+  defp enrich_merged_event(%{"type" => "PullRequestEvent", "payload" => %{"pull_request" => %{"number" => number} = pr} = payload} = event, opts)
+       when is_integer(number) do
+    body_links = RecentMerge.ClosingReferences.linked_identifiers_in_text(Map.get(pr, "body"), get_in(event, ["repo", "name"]))
+
+    if merged_pull_request_event?(Map.get(payload, "action"), Map.get(pr, "merged")) and body_links == [] do
+      case PullRequests.fetch_pull_request_commits(number, Keyword.take(opts, [:request_fun])) do
+        {:ok, messages} -> put_in(event, ["payload", "pull_request", "commit_messages"], messages)
+        _ -> event
+      end
+    else
+      event
+    end
+  end
+
+  defp enrich_merged_event(event, _opts), do: event
 
   defp persist_recent_merge(event, opts) do
     live? = not GithubKeys.pre_boot_event?(event, opts)
@@ -410,10 +428,16 @@ defmodule Aiur.Events.GithubFirehose do
 
     closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_name)
     body_ids = RecentMerge.ClosingReferences.linked_identifiers_in_text(Map.get(pr, "body"), repo_name)
+    commit_messages = Map.get(pr, "commit_messages", [])
+    commit_closing_ids = Enum.flat_map(commit_messages, &RecentMerge.closing_issue_identifiers_in_body(&1, repo_name))
+    commit_ids = Enum.flat_map(commit_messages, &RecentMerge.ClosingReferences.linked_identifiers_in_text(&1, repo_name))
+    closing_ids = Enum.uniq(closing_ids ++ commit_closing_ids)
+    linked_ids = Enum.uniq(body_ids ++ commit_ids)
 
-    with {:ticket, branch_id, _push_topic} <- GithubKeys.ref_to_topic("refs/heads/" <> head_ref),
-         id when is_binary(id) <-
-           if(merged?, do: List.first(closing_ids) || Enum.find(body_ids, &(&1 != branch_id)) || branch_id, else: branch_id),
+    branch_id = Aiur.TicketBranch.ticket_id(head_ref)
+
+    with id when is_binary(id) <-
+           if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id),
          topic when is_binary(topic) <- pr_topic(id, action, Map.get(pr, "merged")) do
       publish_opts = [
         actor: actor,
