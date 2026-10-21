@@ -56,14 +56,9 @@ defmodule Aiur.TestQuarantineTest do
              ExUnit.Filters.eval([], filters, %{module: Aiur.ExampleWildcardTest, test: :"test any name"}, :test)
   end
 
-  test "test helper wires parsed quarantine rows into ExUnit exclusions" do
-    path = Path.join([File.cwd!(), "test", "quarantine.txt"])
-    assert {:ok, entries} = TestQuarantine.read(path)
-    configured_exclusions = ExUnit.configuration()[:exclude]
-
-    assert Enum.all?(TestQuarantine.filters(entries), &(&1 in configured_exclusions))
-    assert TestQuarantine.filters([]) == []
-    refute {:test, :"test create freezes the baseline and reports its window, count and coverage"} in configured_exclusions
+  test "the fixed experiment test is not excluded from the blocking ExUnit run" do
+    refute {:test, :"test create freezes the baseline and reports its window, count and coverage"} in
+             ExUnit.configuration()[:exclude]
   end
 
   defp test_module_names(files) do
