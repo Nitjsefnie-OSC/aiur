@@ -83,12 +83,13 @@ defmodule Aiur.DecisionStore.EnrichmentTest do
       pid = start_store!(dir)
       :ok = Exchange.subscribe("ticket.979.agent.decision.requested")
       :ok = DecisionPubSub.subscribe()
+      source_id = "supervisor-replay-#{System.unique_integer([:positive])}"
 
       assert {:ok, %{decision: v1}} =
                request(pid, %{
                  "question" => "Which architecture?",
                  "blocking" => true,
-                 "source_id" => "supervisor-replay"
+                 "source_id" => source_id
                })
 
       decision_id = v1.decision_id

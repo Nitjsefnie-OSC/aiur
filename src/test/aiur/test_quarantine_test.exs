@@ -41,7 +41,7 @@ defmodule Aiur.TestQuarantineTest do
              ExUnit.Filters.eval([], TestQuarantine.filters(entries), %{module: :"Aiur.Core.AgentRunnerCheckpointQueueTest"}, :test)
   end
 
-  test "a listed describe-block test is excluded by the name ExUnit gives it" do
+  test "the fixed supervisor enrichment replay test is no longer quarantined" do
     assert {:ok, entries} = TestQuarantine.read(Path.join([File.cwd!(), "test", "quarantine.txt"]))
 
     tags = %{
@@ -50,7 +50,7 @@ defmodule Aiur.TestQuarantineTest do
       test: :"test supervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification"
     }
 
-    assert {:excluded, "due to test filter"} = ExUnit.Filters.eval([], TestQuarantine.filters(entries), tags, :test)
+    assert :ok = ExUnit.Filters.eval([], TestQuarantine.filters(entries), tags, :test)
   end
 
   test "the blocking ExUnit run config excludes a listed test by its exact name" do
