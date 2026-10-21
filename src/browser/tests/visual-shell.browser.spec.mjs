@@ -22,7 +22,7 @@ for (const theme of THEMES) {
         for (const state of states) {
           test(`shell ${route} ${state}`, async ({ page }) => {
             await openVisualRoute(page, { theme, route, collapsed: state === 'collapsed' })
-            const prefix = `${theme}-${size}-${route === '/route-shell' ? 'build' : route.slice(1)}-${state}`
+            const prefix = `${theme}-${size}-${route === '/route-shell' ? 'units' : route.slice(1)}-${state}`
             const mask = getMaskConfig(page)
             await expect(page).toHaveScreenshot(`${prefix}-shell.png`, { mask })
             for (const [name, selector] of [
