@@ -84,7 +84,11 @@ export function renderDoc(body, t, D, doc, opts = {}) {
     fact('Estimate', '—') + fact('Complexity', t.cx == null ? '—' : t.cx + '/5') + '</div>' +
     ((t.deps || []).length ? '<div class="bm-dg"><small>Depends on</small>' + dependencies(t.deps, D) + '</div>' : '') +
     ((D.children?.[t.id] || []).length ? '<div class="bm-dg"><small>Unblocks</small>' + dependencies(D.children[t.id], D) + '</div>' : '') + addHTML(t, D) + '</aside></div>';
-  if (opts.note) body.querySelector('.bm-src').after(opts.note);
+  if (opts.note) {
+    const note = typeof opts.note === 'string' ? document.createElement('p') : opts.note;
+    if (typeof opts.note === 'string') { note.className = 'bm-cue'; note.textContent = opts.note; }
+    body.querySelector('.bm-src').after(note);
+  }
   const content = body.querySelector('.bm-body'), first = content.firstElementChild;
   if (first?.tagName === 'P' && !first.classList.contains('bm-cue')) { first.classList.add('bm-sum'); first.insertAdjacentHTML('afterend', cues(t)); }
   else content.insertAdjacentHTML('afterbegin', cues(t));
