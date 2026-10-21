@@ -4,7 +4,7 @@ import { openParityPair } from './design-parity.mjs'
 
 // Serve only the isolated worktree's modal during mutation checks; fixture data and transport stay real.
 export async function openModalPair(browser, cell, options) {
-  const root = test.info().project.metadata.agentAssets || process.env.AIUR_AGENT_CONTROL_ASSET_ROOT
+  const root = test.info().project.metadata.agentAssets
   if (!root) return openParityPair(browser, cell, options)
   return openParityPair({ newContext: async opts => {
     const context = await browser.newContext(opts)

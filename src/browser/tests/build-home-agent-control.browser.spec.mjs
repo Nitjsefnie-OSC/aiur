@@ -4,8 +4,8 @@ import { dashboardCredentials } from './support/layout-worker.mjs'
 
 test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, height: 1000 } })
 // Mutation runs serve the isolated production module through the real mounted hook.
-test.beforeEach(async ({ page }) => {
-  const root = process.env.AIUR_AGENT_CONTROL_ASSET_ROOT
+test.beforeEach(async ({ page }, info) => {
+  const root = info.project.metadata.agentAssets
   if (root) await page.route('**/build-home/modal/agent-control.js', async route => route.fulfill({
     body: await readFile(root + '/modal/agent-control.js', 'utf8'), contentType: 'text/javascript',
   }))
