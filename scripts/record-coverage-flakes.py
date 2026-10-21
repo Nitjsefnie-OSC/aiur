@@ -52,6 +52,13 @@ def record(log, outcome, previous, output, summary):
                      "See the shard-flake-evidence artifact for seeds and attempts.\n")
         for row in rows:
             handle.write(f"- {row['test']} (attempt {row['failed_attempt']} → {row['passed_attempt']})\n")
+        report = Path(os.environ.get("AIUR_LIFECYCLE_LEAK_REPORT", ""))
+        handle.write("\n### Lifecycle leak guard findings (report only)\n\n")
+        if report.is_file() and report.stat().st_size:
+            handle.write(report.read_text())
+            (output / "lifecycle-leaks.txt").write_text(report.read_text())
+        else:
+            handle.write("No findings.\n")
 
 
 if __name__ == "__main__":

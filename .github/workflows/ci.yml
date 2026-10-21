@@ -234,7 +234,7 @@ jobs:
         # the log and known-flaky reporting steps below run; a job timeout
         # would cancel them. The private temp avoids quota-mounted /tmp.
         run: |
-          log="$RUNNER_TEMP/coverage-partition-${{ matrix.partition }}.log"
+          export AIUR_LIFECYCLE_LEAK_GUARD_MODE=report AIUR_LIFECYCLE_LEAK_REPORT="$RUNNER_TEMP/lifecycle-leaks-${{ matrix.partition }}.txt"; log="$RUNNER_TEMP/coverage-partition-${{ matrix.partition }}.log"
           : > "$log"
           tail -n +1 -F "$log" &
           tail_pid=$!
