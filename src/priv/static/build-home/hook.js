@@ -19,6 +19,7 @@ import './band.js';
 import './states.js';
 import './list.js';
 import './modal/frame.js';
+import { applyDoc, applyQueueAdd, reconnectDoc } from './modal/doc.js';
 
 export function writeOwnData() {
   if (ctx.bdStates != null) ctx.root.dataset.bdStates = ctx.bdStates;
@@ -59,7 +60,10 @@ export function receive(msg) {
         return;
       }
       fx.tickCardAges();
-      if (msg.kind === 'snapshot') { if (first) firstPaint(); else repaint(); }
+      if (msg.kind === 'snapshot') {
+        if (first) firstPaint();
+        else { repaint(); fx.modalSync({ upsert: ctx.D.all }); }
+      }
       else { fx.dataChanged(msg); fx.modalSync(msg); fx.drawEdgesSoon(30); }
       writeOwnData();
       break;
@@ -98,6 +102,7 @@ export function createBuildHomeHook() {
       if (!this.buildActive) return;
       fx.renderTools(); fx.initModal();
       writeOwnData();
+      this.handleEvent('build-ticket-doc', applyDoc); this.handleEvent('build-queue-add', applyQueueAdd);
       this.handleEvent('build-diff', receive); this.handleEvent('build:url', onServerURL);
       showServerState(this.el.dataset); resync();
     },
@@ -108,7 +113,7 @@ export function createBuildHomeHook() {
     },
     reconnected() {
       if (!this.buildActive) return;
-      ctx.socket = 'up'; writeOwnData(); resync(); flushURL(); fx.renderOffline();
+      ctx.socket = 'up'; writeOwnData(); resync(); flushURL(); fx.renderOffline(); reconnectDoc();
     },
     destroyed() {
       this.buildLife?.dispose();

@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import { nowPatch } from './build-home-now-patch.mjs';
 import { oddEdges } from './build-home-odd-edges.mjs';
 import { mapRawToPayload } from './build-home-fixture-map.mjs';
+import { exportTicketDocs } from './build-home-ticket-docs.mjs';
 
 const TZ = 'America/Los_Angeles';
 const ETAG = '1791431544512943';
@@ -75,13 +76,14 @@ function statsOracle(data, featureStats, now) {
 export function buildAll({ designDir = join(DEFAULT_OUT, 'design-source') } = {}) {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   if (zone !== TZ) throw new Error(`export needs TZ=${TZ}, got ${zone}`);
-  const prelude = 'const featStatsFor = (k) => { const prev = D; D = dataFor(k); try { return Object.fromEntries(Object.keys(D.features).map((f) => [f, featStats(f)])); } finally { D = prev; } };';
-  const { dataFor, NOW, PSETS, featStatsFor } = loadBuildJs({ designDir, expose: ['dataFor', 'NOW', 'PSETS', 'featStatsFor'], prelude });
+  const prelude = 'const featStatsFor = (k) => { const prev = D; D = dataFor(k); try { return Object.fromEntries(Object.keys(D.features).map((f) => [f, featStats(f)])); } finally { D = prev; } }; const docsFor = (data) => { const prev = D; D = data; try { return data.all.map(t => ({ id: t.id, ...descOf(t), author: pick(rng(hash(t.id)), CV.people).slice(1) })); } finally { D = prev; } };';
+  const { dataFor, NOW, PSETS, featStatsFor, docsFor } = loadBuildJs({ designDir, expose: ['dataFor', 'NOW', 'PSETS', 'featStatsFor', 'docsFor'], prelude });
   assert.equal(NOW, 1791408000000, `NOW moved: ${new Date(NOW).toISOString()}`);
   const files = {}, oracle = {};
   for (const dataset of DATASETS) {
     const kind = dataset === 'offline' ? 'live' : dataset;
     const data = dataFor(kind), featureStats = featStatsFor(kind);
+    files[`docs-${dataset}.json`] = encode(exportTicketDocs(docsFor(data)));
     if (dataset !== 'offline') oracle[dataset] = statsOracle(data, featureStats, NOW);
     files[`${dataset}.json`] = encode(mapRawToPayload({
       meta: { dataset, now: NOW, tz: TZ, design_etag: ETAG },
@@ -92,7 +94,9 @@ export function buildAll({ designDir = join(DEFAULT_OUT, 'design-source') } = {}
     }, { featureStats }));
   }
   for (const dataset of ['now0', 'now24']) {
-    const patched = loadBuildJs({ designDir, expose: ['dataFor'], dataset }).dataFor('live');
+    const patchedApi = loadBuildJs({ designDir, expose: ['dataFor', 'docsFor'], prelude, dataset });
+    const patched = patchedApi.dataFor('live');
+    files[`docs-${dataset}.json`] = encode(exportTicketDocs(patchedApi.docsFor(patched)));
     const snapshot = JSON.parse(files['live.json']);
     const mapped = mapRawToPayload({ meta: { now: NOW, tz: TZ }, data: raw(patched), usage: { models: PSETS[4], apis: API_ROWS }, daemon: snapshot.daemon });
     files[`${dataset}.json`] = encode(mapped);

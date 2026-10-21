@@ -5,7 +5,7 @@ defmodule AiurWeb.BuildLive do
 
   require Logger
 
-  alias AiurWeb.Build.{DataSource, Protocol, Read, Ticket, URLState, UsageUpdates}
+  alias AiurWeb.Build.{DataSource, Protocol, Read, Ticket, TicketDoc, QueueAdd, URLState, UsageUpdates}
   alias AiurWeb.BuildOrder.Runtime
   alias AiurWeb.OperatorControlCenter.{AwaitingCommands, DashboardShell, NavState, RouteRegistry}
   alias AiurWeb.Presenter
@@ -20,6 +20,8 @@ defmodule AiurWeb.BuildLive do
     socket =
       socket
       |> Protocol.init()
+      |> TicketDoc.init(connected)
+      |> QueueAdd.init()
       |> DashboardShell.mount()
       |> UsageUpdates.init(connected)
       |> AwaitingCommands.mount(connected)
@@ -89,6 +91,8 @@ defmodule AiurWeb.BuildLive do
   def handle_async(:build_snapshot, {:exit, _reason}, %{assigns: %{build_state: :loading}} = socket),
     do: {:noreply, unavailable(socket, "crashed")}
 
+  def handle_async({:queue_add, id}, result, socket), do: {:noreply, QueueAdd.result(socket, id, result)}
+
   def handle_async(:build_snapshot, _result, socket), do: {:noreply, socket}
 
   @impl true
@@ -104,6 +108,8 @@ defmodule AiurWeb.BuildLive do
 
   def handle_info({:decision_changed, _id, _version}, socket), do: {:noreply, AwaitingCommands.refresh(socket)}
   def handle_info(:awaiting_commands_tick, socket), do: {:noreply, AwaitingCommands.tick(socket)}
+  def handle_info({:ticket_detail_updated, _state} = message, socket), do: {:noreply, TicketDoc.update(socket, message)}
+  def handle_info({:ticket_detail_coordinator_reset, _epoch} = message, socket), do: {:noreply, TicketDoc.update(socket, message)}
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -112,7 +118,10 @@ defmodule AiurWeb.BuildLive do
   @impl true
   def handle_event("build-resync", _params, socket), do: Protocol.resync(socket, source_opts(socket))
   def handle_event("open-ticket", params, socket), do: Ticket.open(socket, params)
-  def handle_event("close-ticket", _params, socket), do: {:noreply, assign(socket, :open_ticket, nil)}
+  def handle_event("close-ticket", _params, socket), do: {:noreply, socket |> TicketDoc.close() |> assign(:open_ticket, nil)}
+  def handle_event("ticket-doc", params, socket), do: TicketDoc.open(socket, params)
+  def handle_event("ticket-doc-close", _params, socket), do: {:noreply, TicketDoc.close(socket)}
+  def handle_event("queue-add", params, socket), do: QueueAdd.open(socket, params)
   def handle_event("load-earlier", params, socket), do: Protocol.earlier(socket, params, source_opts(socket))
   def handle_event("usage-watch-start", _params, socket), do: {:noreply, UsageUpdates.watch(socket, :start)}
   def handle_event("usage-watch-stop", _params, socket), do: {:noreply, UsageUpdates.watch(socket, :stop)}
