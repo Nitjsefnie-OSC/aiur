@@ -38,6 +38,9 @@ else:
     sys.exit(int(os.environ['TEST_STATUS']))
 ''')
             mix.chmod(0o755)
+            git = root / 'git'
+            git.write_text('#!/usr/bin/env python3\nimport os\nprint(os.environ.get("GIT_DIFF_PATHS", ""))\n')
+            git.chmod(0o755)
             time_bombs = root / 'time_bombs.py'
             time_bombs.write_text('import json, os, sys\n'
                                   'open(os.environ["RECHECKS"], "a").write(json.dumps(sys.argv[1:]) + "\\n")\n')
@@ -48,6 +51,7 @@ else:
                                     env=dict(os.environ, PATH=f'{root}:{os.environ["PATH"]}',
                                              SELECTION=selection, CALLS=str(calls), TEST_STATUS=str(status),
                                              TEST_DELAY=str(test_delay),
+                                             GIT_DIFF_PATHS=os.environ.get('GIT_DIFF_PATHS', ''),
                                              AIUR_TIME_BOMB_CHECK=str(time_bombs), RECHECKS=str(rechecks),
                                              GITHUB_STEP_SUMMARY=str(summary),
                                              GITHUB_EVENT_NAME=''))
@@ -121,6 +125,19 @@ else:
         status, _calls, _output = self.run_selection('cd src && mise exec -- mix test --max-cases 4 test/a_test.exs')
         self.assertEqual(status, 0)
         self.assertEqual(self.last_rechecks, [['test/a_test.exs']])
+
+    def test_changed_test_modules_run_individually_before_the_affected_selection(self):
+        with patch.dict(os.environ, {'GIT_DIFF_PATHS': 'src/test/one_test.exs\nsrc/test/two_test.exs\nsrc/test/support/helper.exs'}):
+            status, calls, _output = self.run_selection(
+                'cd src && mise exec -- mix test --max-cases 4 test/one_test.exs test/dependency_test.exs'
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(calls, [
+            ['test', '--max-cases', '4', 'test/one_test.exs'],
+            ['test', '--max-cases', '4', 'test/two_test.exs'],
+            ['test', '--max-cases', '4', 'test/one_test.exs', 'test/dependency_test.exs'],
+        ])
 
     def test_failing_selection_skips_the_date_rerun(self):
         self.run_selection('cd src && mise exec -- mix test --max-cases 4 test/a_test.exs', 1)

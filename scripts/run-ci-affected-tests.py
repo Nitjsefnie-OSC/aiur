@@ -45,12 +45,34 @@ def merge_group_changed_paths(base):
     ).splitlines()
 
 
+def changed_test_modules(base):
+    """Return added or modified ExUnit modules introduced by this PR."""
+    changed = subprocess.check_output(
+        ['git', 'diff', '--name-only', '--diff-filter=ACMRT', f'{base}...HEAD', '--', 'test'],
+        text=True,
+    ).splitlines()
+    return sorted({
+        path.removeprefix('src/')
+        for path in changed
+        if path.startswith('src/test/') and path.endswith('_test.exs')
+    })
+
+
+def run_changed_test_modules(base):
+    for path in changed_test_modules(base):
+        run_timed(f'changed test module {path}',
+                  ['mix', 'test', '--max-cases', '4', path],
+                  timeout=SELECTED_TEST_TIMEOUT_SECONDS)
+
+
 def main():
     if os.environ.get('GITHUB_EVENT_NAME') == 'merge_group':
         paths = merge_group_changed_paths(sys.argv[1])
         os.environ['AIUR_CI_CHANGED_PATHS_B64'] = base64.b64encode(
             json.dumps(paths).encode('utf-8')
         ).decode('ascii')
+    run_changed_test_modules(sys.argv[1])
+
     selection_started = time.monotonic()
     selection = subprocess.check_output(['mix', 'aiur.affected_tests', sys.argv[1]], text=True)
     print(f'::notice::affected-tests selection duration: {time.monotonic() - selection_started:.1f}s',
