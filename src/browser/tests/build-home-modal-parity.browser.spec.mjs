@@ -12,6 +12,9 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
     for (const side of ['design', 'product']) pair[side].on('pageerror', error =>
       console.error(`[modal parity ${side}] ${pair[side].url()}\n${error.stack}`))
     try {
+      // The body is excluded from this comparison. Prevent its reference-only mock log
+      // from queuing scroll callbacks that run after another ticket replaces the body.
+      await pair.design.addStyleTag({ content: '#tk-body #cv-log { overflow: clip !important; }' })
       await expect(pair.product.locator("#build-root")).toHaveAttribute("data-build-generation", /\d+/)
       const rows = await pair.product.evaluate(async () => {
         const { ctx } = await import('/build-home/state.js')
@@ -20,14 +23,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) 
       })
       for (const t of rows) {
         expect(t).toBeTruthy()
-        await pair.design.bringToFront()
-        await pair.design.evaluate(id => {
-          window.AiurBuild.open('AIUR-' + id)
-          const log = document.querySelector('#cv-log')
-          // Complete the reference's initial scroll before another header replaces its body.
-          if (log && log.scrollHeight > log.clientHeight && log.scrollTop < log.scrollHeight - log.clientHeight)
-            return new Promise(resolve => log.addEventListener('scroll', resolve, { once: true }))
-        }, t.id)
+        await pair.design.evaluate(id => window.AiurBuild.open('AIUR-' + id), t.id)
         await pair.product.evaluate(async id => (await import('/build-home/modal/frame.js')).openById(id), t.id)
         // Only the frame/header belongs to this ticket; body ports have their own successors.
         for (const side of ['design', 'product']) await pair[side].locator('#tk-body').evaluate(el => { el.style.visibility = 'hidden' })
