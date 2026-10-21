@@ -39,16 +39,16 @@ test('unknown and partial model readings stay distinct with remaining percentage
   await expect(model.locator('i')).toHaveCount(0)
   await expect(model.locator('.ax-ln')).toHaveAttribute('data-tip', /not observed/)
   await paint(page, fixture('partial'))
-  await expect(model.locator('.ax-pc')).toHaveText('60% left')
+  await expect(model.locator('.ax-pc')).toHaveText('40% left')
   await expect(model.locator('.ax-x')).toHaveText('×2')
   await expect(model.locator('.ax-seg.none i')).toHaveCount(0)
-  await expect(model.locator('.ax-seg i')).toHaveAttribute('style','width:60%')
-  for (const [n, cls] of [[0,' max'],[50,''],[100,'']]) {
+  await expect(model.locator('.ax-seg i')).toHaveAttribute('style','width:40%')
+  for (const [n, cls] of [[0,'z max'],[10,' max'],[20,' hi'],[50,''],[100,'']]) {
     const u = fixture('unknown'); u.providers[0].session.acc = [n]; await paint(page,u)
     await expect(model.locator('.ax-pc')).toHaveText(`${n}% left`)
     await expect(model.locator('.ax-seg i')).toHaveAttribute('class',cls)
     await expect(model.locator('.ax-seg i')).toHaveAttribute('style', `width:${n}%`)
-    await expect(model.locator('.ax-pc')).toHaveAttribute('class','ax-pc'+(n <= 5 ? ' max' : n <= 20 ? ' hi' : ''))
+    await expect(model.locator('.ax-pc')).toHaveAttribute('class','ax-pc'+(n <= 10 ? ' max' : n <= 20 ? ' hi' : ''))
   }
 })
 test('API meters show remaining labels and widths while unknown stays unfilled', async ({ page }) => {

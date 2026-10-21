@@ -181,8 +181,8 @@ test('Models and APIs use standard bars with labels above, without narrow overfl
       // Every reading keeps its percentage; a provider that reported nothing
       // reads unknown over an inert bar, never a measured 0%.
       await expect(page.locator('.rs-state')).toHaveCount(0)
-      await expect(page.locator('.rs-model').filter({ hasText: 'Claude' }).locator('.rs-pc')).toHaveText('62%')
-      await expect(page.locator('.rs-model').filter({ hasText: 'DeepSeek' }).locator('.rs-pc')).toHaveText('0%')
+      await expect(page.locator('.rs-model').filter({ hasText: 'Claude' }).locator('.rs-pc')).toHaveText('62% left')
+      await expect(page.locator('.rs-model').filter({ hasText: 'DeepSeek' }).locator('.rs-pc')).toHaveText('0% left')
       await expectVisibleMetadata(elevenlabs, 'compact', '75.0K')
       const kimi = page.locator('.rs-model').filter({ hasText: 'Kimi' })
       await expect(kimi.locator('.rs-pc')).toHaveText('')

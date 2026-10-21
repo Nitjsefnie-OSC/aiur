@@ -194,7 +194,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
     assert html =~ ~s(<i class="is-critical" style="width:1%">)
   end
 
-  test "meter stages follow remaining: caution under 20%, critical under 10%" do
+  test "meter stages follow remaining: warning at 20%, critical at 10%" do
     render = fn percent ->
       meters = %{
         state: :authorized,
@@ -220,7 +220,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripModelsTest do
 
     assert render.(0) =~ ~s(<i class="" style="width:100%">)
     assert render.(50) =~ ~s(<i class="" style="width:50%">)
-    assert render.(85) =~ ~s(<i class="is-caution" style="width:15%">)
+    assert render.(85) =~ ~s(<i class="is-warning" style="width:15%">)
     assert render.(95) =~ ~s(<i class="is-critical" style="width:5%">)
   end
 

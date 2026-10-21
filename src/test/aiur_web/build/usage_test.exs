@@ -109,8 +109,8 @@ defmodule AiurWeb.Build.UsageTest do
     assert row.icon == "github"
 
     assert row.lines == [
-             %{tag: "core", acc: [95], reset_at: SourceFreshness.ms(DateTime.add(I.now(), 3600)), win: "1h", tip: [["Requests left", "4,736 of 5,000 left · 95% left"]], hold_until: nil},
-             %{tag: "gql", acc: [100], reset_at: SourceFreshness.ms(DateTime.add(I.now(), 3600)), win: "1h", tip: [["Points left", "4,998 of 5,000 left · 100% left"]], hold_until: nil}
+             %{tag: "core", acc: [95], reset_at: SourceFreshness.ms(DateTime.add(I.now(), 3600)), win: "1h", tip: [["Requests left", "4,736 of 5,000 · 95% left"]], hold_until: nil},
+             %{tag: "gql", acc: [100], reset_at: SourceFreshness.ms(DateTime.add(I.now(), 3600)), win: "1h", tip: [["Points left", "4,998 of 5,000 · 100% left"]], hold_until: nil}
            ]
   end
 
@@ -121,7 +121,7 @@ defmodule AiurWeb.Build.UsageTest do
 
     [core | _graphql] = hd(block(I.inputs(%{github: {:ok, quota}})).apis).lines
 
-    assert core.tip == [["Requests left", "4,159 of 5,000 left · 83% left"]]
+    assert core.tip == [["Requests left", "4,159 of 5,000 · 83% left"]]
     assert core.acc == [83]
   end
 

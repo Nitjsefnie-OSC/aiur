@@ -14,7 +14,7 @@ defmodule AiurWeb.OperatorControlCenter.ModelsPanel do
 
   use Phoenix.Component
 
-  import AiurWeb.OperatorControlCenter.MeterStyles, only: [meter_class: 3]
+  import AiurWeb.OperatorControlCenter.MeterStyles, only: [remaining_class: 1]
   alias AiurWeb.RemainingMeter
 
   @seconds_per_day 86_400
@@ -76,7 +76,7 @@ defmodule AiurWeb.OperatorControlCenter.ModelsPanel do
             aria-valuemax="100"
             aria-valuenow={line.percent}
           >
-            <i :if={is_number(line.percent) and line.percent > 0} class={meter_class(100 - line.percent, 80, 90)} style={"width:#{bar_width(line.percent)}%"}></i>
+            <i :if={is_number(line.percent) and line.percent > 0} class={remaining_class(line.percent)} style={"width:#{bar_width(line.percent)}%"}></i>
           </span>
           <span class="rs-rs">
             <span :if={line.reset}>{line.reset}<em :if={line.window}>/{line.window}</em></span>
@@ -283,7 +283,7 @@ defmodule AiurWeb.OperatorControlCenter.ModelsPanel do
   defp classes(names), do: names |> Enum.filter(&is_binary/1) |> Enum.join(" ")
 
   defp tone(percent) when is_number(percent) do
-    case meter_class(100 - percent, 80, 90) do
+    case remaining_class(percent) do
       "" -> nil
       class -> class
     end

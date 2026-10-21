@@ -172,7 +172,22 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripTest do
   end
 
   test "GitHub API meters show remaining width and keep an unknown window unfilled" do
-    github_quota = %{
+    Enum.each([{0, 5000, 100}, {50, 2500, 50}, {100, 0, 0}], fn {used, remaining, left} ->
+      github_quota = %{
+        state: :observed,
+        windows: %{
+          "core" => %{resource: "core", remaining: remaining, limit: 5000, used_percent: used},
+          "graphql" => %{resource: "graphql", remaining: 2500, limit: 5000, used_percent: 50}
+        },
+        attribution: []
+      }
+
+      html = render_component(&RunSummaryStrip.run_summary_strip/1, %{run: run_view(), usage: usage_view(), meters: meters_view(), github_quota: github_quota, now: @now})
+      assert html =~ ~s(style="width:#{left}%")
+      assert html =~ "#{left}% left"
+    end)
+
+    unknown = %{
       state: :observed,
       windows: %{
         "core" => %{resource: "core", remaining: nil, limit: 5000, used_percent: nil},
@@ -181,14 +196,11 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripTest do
       attribution: []
     }
 
-    html = render_component(&RunSummaryStrip.run_summary_strip/1, %{run: run_view(), usage: usage_view(), meters: meters_view(), github_quota: github_quota, now: @now})
-
+    html = render_component(&RunSummaryStrip.run_summary_strip/1, %{run: run_view(), usage: usage_view(), meters: meters_view(), github_quota: unknown, now: @now})
     assert html =~ "remaining unknown"
-    assert html =~ ~s(style="width:50%")
-    assert html =~ "50% left"
-    refute html =~ ~s(style="width:100%")
-    assert html =~ "2500/5000 left"
-    assert html =~ "remaining unknown"
+    unknown_meter = html |> Floki.parse_fragment!() |> Floki.find(".rs-meter.is-unknown")
+    assert length(unknown_meter) == 1
+    assert Floki.find(unknown_meter, "i") == []
   end
 
   test "names an active secondary-limit backoff, which the primary meters cannot show" do

@@ -104,7 +104,7 @@
 
 .rs-ln {
   display: grid;
-  grid-template-columns: 4ch minmax(0, 1fr) 12.5ch;
+  grid-template-columns: 8ch minmax(0, 1fr) 12.5ch;
   align-items: center;
   gap: 0.5rem;
   height: 11px;
@@ -113,7 +113,7 @@
   cursor: default;
 }
 
-.rs-ln.has-tag { grid-template-columns: var(--rs-tag-width, 3.4em) 4ch minmax(0, 1fr) 12.5ch; }
+.rs-ln.has-tag { grid-template-columns: var(--rs-tag-width, 3.4em) 8ch minmax(0, 1fr) 12.5ch; }
 
 .rs-ln > span { min-width: 0; overflow: hidden; white-space: nowrap; }
 
@@ -294,4 +294,3 @@
   background: var(--accent-soft);
   color: var(--accent-ink);
 }
-

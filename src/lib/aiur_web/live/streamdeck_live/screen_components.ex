@@ -10,6 +10,7 @@ defmodule AiurWeb.StreamdeckLive.ScreenComponents do
   import AiurWeb.StreamdeckLive.CommandKeys, only: [commands_panel: 1]
 
   alias AiurWeb.StreamdeckStrip
+  import AiurWeb.OperatorControlCenter.MeterStyles, only: [remaining_class: 1]
 
   attr(:sd_mode, :atom, required: true)
   attr(:screen, :list, required: true)
@@ -176,9 +177,7 @@ defmodule AiurWeb.StreamdeckLive.ScreenComponents do
 
   defp meter_aria_label(%{label: label}), do: "#{label} unavailable"
 
-  defp meter_tone(percent) when percent <= 10, do: "is-critical"
-  defp meter_tone(percent) when percent <= 20, do: "is-warning"
-  defp meter_tone(_percent), do: nil
+  defp meter_tone(percent), do: remaining_class(percent)
 
   defp progress_text(percent) when is_number(percent), do: "#{percent}%"
   defp progress_text(_percent), do: "—"

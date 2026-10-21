@@ -4,6 +4,7 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMeters do
   use Phoenix.Component
 
   alias AiurWeb.OperatorControlCenter.TimeFormat
+  import AiurWeb.OperatorControlCenter.MeterStyles, only: [remaining_class: 1]
 
   attr(:view, :map, required: true)
   attr(:announcement, :string, default: nil)
@@ -210,13 +211,9 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMeters do
 
   defp window_meter_aria_label(%{name: name}), do: "#{name} remaining"
 
-  defp meter_tone(remaining) when remaining <= 10, do: "provider-meter-fill is-critical"
-  defp meter_tone(remaining) when remaining <= 20, do: "provider-meter-fill is-warning"
-  defp meter_tone(_remaining), do: "provider-meter-fill"
+  defp meter_tone(remaining), do: ["provider-meter-fill", remaining_class(remaining)]
 
-  defp account_tone(remaining) when remaining <= 10, do: "provider-meter-account-fill is-critical"
-  defp account_tone(remaining) when remaining <= 20, do: "provider-meter-account-fill is-warning"
-  defp account_tone(_remaining), do: "provider-meter-account-fill"
+  defp account_tone(remaining), do: ["provider-meter-account-fill", remaining_class(remaining)]
 
   defp account_usage_title(account) do
     percent = account_percent(account.percent)

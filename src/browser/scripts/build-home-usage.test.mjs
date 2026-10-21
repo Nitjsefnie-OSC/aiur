@@ -27,17 +27,22 @@ test('unknown model is dashed, partial model retains its remaining percentage an
   unknown.providers[0].session.acc=[]
   assert.match(stripHTML(unknown,now),/class="ax-seg none"/)
 })
-test('model remaining thresholds agree between percent and segment', () => {
-  for (const [n,cls,seg] of [[0,' max','z max'],[5,' max',' max'],[20,' hi',' hi'],[50,'',''],[100,'','']]) {
-    const u=fixture('unknown');u.apis=[];u.providers[0].session.acc=[n]
-    const s=stripHTML(u,now)
-    assert.ok(s.includes(`<span class="ax-pc${cls}">${n}% left`))
-    assert.ok(s.includes(`<i class="${seg}" style="width:${n}%"`))
+test('model and API remaining tones share thresholds and match segment fill', () => {
+  for (const n of [0,10,20,50,100]) {
+    const cls=n <= 10 ? ' max' : n <= 20 ? ' hi' : ''
+    const seg=`${n === 0 ? 'z' : ''}${n <= 10 ? ' max' : n <= 20 ? ' hi' : ''}`
+    const model=fixture('unknown');model.apis=[];model.providers[0].session.acc=[n]
+    const api=fixture('one');api.providers=[];api.apis[0].lines[0].acc=[n]
+    for (const s of [stripHTML(model,now),stripHTML(api,now)]) {
+      assert.ok(s.includes(`<span class="ax-pc${cls}">${n}% left`))
+      assert.ok(s.includes(`<i class="${seg}" style="width:${n}%"`))
+    }
   }
 })
 test('reset unknown and ended never claim a countdown or window length', () => {
   const u=fixture('unknown');u.apis=[];const s=stripHTML(u,now)
   assert.match(s,/reset unknown/);assert.doesNotMatch(s,/resets in/)
+  assert.match(s,/<span class="ax-pc max"><\/span><span class="ax-bar"><span class="ax-seg none"><\/span><\/span>/)
   const e=fixture('ended');e.apis=[];e.providers[0].session.win=null
   const ended=stripHTML(e,now)
   assert.match(ended,/window ended/);assert.match(ended,/class="ax-ln stale"/)

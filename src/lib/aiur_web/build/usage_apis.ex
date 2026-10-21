@@ -42,7 +42,7 @@ defmodule AiurWeb.Build.UsageAPIs do
           base
           | acc: [Usage.percent(RemainingMeter.percent(percent))],
             reset_at: reset,
-            tip: [[label, "#{commas(remaining)} of #{commas(limit)} left · #{percent_text(RemainingMeter.percent(percent))}% left"]],
+            tip: [[label, "#{commas(remaining)} of #{commas(limit)} · #{percent_text(RemainingMeter.percent(percent))}% left"]],
             hold_until: hold_until(snapshot, resource, window, now)
         }
 

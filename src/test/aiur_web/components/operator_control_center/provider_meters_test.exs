@@ -54,6 +54,36 @@ defmodule AiurWeb.OperatorControlCenter.ProviderMetersTest do
     assert html =~ "<dd>Pro</dd>"
   end
 
+  test "supported provider meter width, label and tone follow remaining at 0, 50 and 100 used" do
+    Enum.each([{0, 100}, {50, 50}, {100, 0}], fn {used, remaining} ->
+      snapshot = put_in(healthy(:codex).windows["primary"].used_percent, used)
+      snapshot = put_in(snapshot.windows["primary"].remaining_percent, remaining)
+      html = Presenter.present(authorized(), %{codex: snapshot}) |> then(&render(&1, nil))
+
+      assert html =~ ~s(aria-valuenow="#{remaining}")
+      assert html =~ "#{remaining}% left"
+      assert html =~ "width: #{remaining}%"
+
+      if remaining == 0 do
+        assert html =~ "provider-meter-fill is-critical"
+      else
+        refute html =~ "provider-meter-fill is-critical"
+      end
+
+      refute html =~ "is-warning"
+    end)
+  end
+
+  test "supported provider meter keeps an unknown reading without a numeric value or fill" do
+    snapshot = put_in(healthy(:codex).windows["primary"].used_percent, nil)
+    snapshot = put_in(snapshot.windows["primary"].remaining_percent, nil)
+    html = Presenter.present(authorized(), %{codex: snapshot}) |> then(&render(&1, nil))
+
+    refute html =~ "aria-valuenow"
+    refute html =~ "% left"
+    refute html =~ "width: 100%"
+  end
+
   test "a retained card renders its last-known values with the observation age" do
     snapshot =
       healthy(:codex)

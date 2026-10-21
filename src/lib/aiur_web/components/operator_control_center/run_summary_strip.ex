@@ -22,7 +22,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStrip do
       github_window_compact_meta: 2
     ]
 
-  import AiurWeb.OperatorControlCenter.MeterStyles, only: [meter_class: 1, meter_class: 3]
+  import AiurWeb.OperatorControlCenter.MeterStyles, only: [meter_class: 1, remaining_class: 1]
 
   alias Aiur.CodingAgent
   alias AiurWeb.Build.UsageFacts
@@ -94,7 +94,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStrip do
           <div :for={window <- @windows} class="rs-limit">
             <span class="rs-limit-label" title={github_window_explanation(window)}>{github_window_label(window)}</span>
             <div class={["rs-meter", is_nil(github_percent(window)) && "is-unknown"]}>
-              <i :if={is_number(github_percent(window))} class={meter_class(100 - github_percent(window), 80, 90)} style={"width:#{100 - github_percent(window)}%"}></i>
+              <i :if={is_number(github_percent(window))} class={remaining_class(github_percent(window))} style={"width:#{github_percent(window)}%"}></i>
             </div>
                 <span class="rs-limit-meta rs-limit-meta-wide">{github_window_meta(window, @now)}</span>
                 <span class="rs-limit-meta rs-limit-meta-compact">{github_window_compact_meta(window, @now)}</span>
@@ -139,7 +139,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStrip do
           <div class="rs-limit">
             <span class="rs-limit-label" title={elevenlabs_explanation()}>Credits</span>
             <div class={["rs-meter", is_nil(@meter_percent) && "is-unknown"]}>
-              <i :if={is_number(@meter_percent)} class={meter_class(100 - @meter_percent, 80, 90)} style={"width:#{meter_width(@meter_percent)}%"}></i>
+              <i :if={is_number(@meter_percent)} class={remaining_class(@meter_percent)} style={"width:#{meter_width(@meter_percent)}%"}></i>
             </div>
             <span class={["rs-limit-meta", "rs-limit-meta-wide", @quota.state == :observed && "is-compact"]}>{elevenlabs_meta(@quota, @now)}</span>
             <span class="rs-limit-meta rs-limit-meta-compact">{elevenlabs_compact_meta(@quota, @now)}</span>

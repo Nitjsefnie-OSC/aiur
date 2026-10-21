@@ -1,7 +1,7 @@
 import { createCanvas } from "@napi-rs/canvas";
 import { describe, expect, it } from "vitest";
 
-import { ageLabel, PROVIDER_SCROLL_BAND_TOP, resetLabel } from "../../src/art/segments.js";
+import { ageLabel, PROVIDER_SCROLL_BAND_TOP, providerSessionReading, resetLabel } from "../../src/art/segments.js";
 import type { SegmentContent } from "../../src/touchStrip/stripLayout.js";
 import { PROVIDER_SCROLL_ENCODER, VISIBLE_PROVIDER_ROWS, type ProviderPanelModel, type ProviderPanelRow } from "../../src/touchStrip/providerPanel.js";
 import { encoderCenterX, SEGMENT_WIDTH } from "../../src/touchStrip/geometry.js";
@@ -78,23 +78,31 @@ describe("summary panel", () => {
 });
 
 describe("provider panel (two providers)", () => {
-  it("paints the provider name, its session percent and its reset", () => {
+  it("uses the remaining fraction and label for empty, half and full use", () => {
+    const row = (usedPercent: number) => providerRow("claude", { hasData: true, ...session(usedPercent) });
+    expect(providerSessionReading(row(100), NOW)).toEqual({ text: "Session 0% left", fraction: 0 });
+    expect(providerSessionReading(row(50), NOW)).toEqual({ text: "Session 50% left", fraction: 0.5 });
+    expect(providerSessionReading(row(0), NOW)).toEqual({ text: "Session 100% left", fraction: 1 });
+    expect(providerSessionReading(providerRow("claude", { hasData: false }), NOW)).toEqual({ text: "Awaiting data", fraction: null });
+  });
+
+  it("paints the provider name, its remaining session percent and its reset", () => {
     const { ink } = render(provider(session(86, "2026-08-13T03:22:00Z")));
     expect(drew(ink, "Claude")).toBeDefined();
     expect(drew(ink, "Session")).toBeDefined();
-    expect(drew(ink, "86% · 22m")).toBeDefined();
+    expect(drew(ink, "14% left · 22m")).toBeDefined();
   });
 
   it("shows the percent alone when the window reported no reset", () => {
-    expect(drew(render(provider(session(86))).ink, "86%")).toBeDefined();
+    expect(drew(render(provider(session(86))).ink, "14% left")).toBeDefined();
   });
 
   // A durable last-known reading (the dashboard's dispatch-limits fallback,
-  // #2185) renders its real used% without staleness wording (operator directive).
+  // #2185) renders its real remaining percentage without staleness wording.
   it("renders a durable provider reading without staleness text", () => {
     const { ink } = render(provider({ ...session(99), freshness: "stale" }));
     expect(drew(ink, "Session")).toBeDefined();
-    expect(drew(ink, "99%")).toBeDefined();
+    expect(drew(ink, "1% left")).toBeDefined();
     expect(drew(ink, "stale")).toBeUndefined();
   });
 
@@ -105,7 +113,7 @@ describe("provider panel (two providers)", () => {
     expect(drew(awaiting.ink, "Awaiting data")).toBeDefined();
     expect(awaiting.ink.some((entry) => entry.text.includes("0%"))).toBe(false);
 
-    expect(drew(render(provider(session(0))).ink, "0%")).toBeDefined();
+    expect(drew(render(provider(session(0))).ink, "100% left")).toBeDefined();
   });
 
   it("says which window is missing when a reporting provider has no session", () => {
@@ -144,8 +152,8 @@ describe("provider panel (three or more)", () => {
     expect(drew(ink, "Claude")).toBeDefined();
     expect(drew(ink, "Codex")).toBeDefined();
     expect(drew(ink, "Deepseek")).toBeDefined();
-    expect(drew(ink, "Session 86% · 22m")).toBeDefined();
-    expect(drew(ink, "Session 19%")).toBeDefined();
+    expect(drew(ink, "Session 14% left · 22m")).toBeDefined();
+    expect(drew(ink, "Session 81% left")).toBeDefined();
   });
 
   it("keeps every row and the scroll label inside the panel", () => {
