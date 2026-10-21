@@ -39,6 +39,18 @@ On the build timeline, Day, Week and Month set the visible range; − and + step
 through 1–30 days. The span is kept in the link. Range controls are hidden in
 List view and return when you switch to Timeline or Gantt.
 
+On the build timeline, `?trees=1` enables dependency-chain hover. Lock the chain
+with its lock tab, use Fit to bring the loaded chain into view, or select the eye
+button to open the Dependency tree overlay.
+
+Each Fit action searches at most three earlier pages for undated, unloaded
+links; unresolved links stay counted.
+Fit also waits for history needed to measure zoom density, up to 30 more pages.
+
+Clicking a dependency arrow locks its chain on touch screens too. Escape closes
+the tree, then releases the lock. Links outside the loaded board are counted;
+“links not yet known” means the dependency index is incomplete.
+
 ### Shared GitHub quota
 
 GitHub-backed runs meter the shared credential's core and GraphQL budgets, with reset times, read/write attribution, and top ticket consumer. API and model bars show the share remaining: full is 100% left, empty is unusable until reset. Labels match the bar and warning colours appear near empty. Aiur alerts at 10% remaining and pauses dispatch until reset.
