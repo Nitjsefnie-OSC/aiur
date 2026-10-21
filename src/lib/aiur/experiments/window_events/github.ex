@@ -11,12 +11,14 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
     missing = if invalid?, do: ["github" | missing], else: missing
     pulls = Map.get(data, "pulls", [])
     missing = if Enum.any?(pulls, &(get_in(&1, ["closingIssuesReferences", "pageInfo", "hasNextPage"]) == true)), do: ["github" | missing], else: missing
+    missing = if Enum.any?(pulls, &(get_in(&1, ["timelineItems", "pageInfo", "hasNextPage"]) == true)), do: ["github" | missing], else: missing
 
     missing = if sources["required_workflows"] == [], do: ["main_red" | missing], else: missing
 
     events =
       Enum.map(pulls, &pull(&1, repo)) ++
-        releases(Map.get(data, "releases", [])) ++ tags(Map.get(data, "tags", [])) ++ incidents(Map.get(data, "incidents", []), repo) ++ main_red(Map.get(data, "runs", []), sources)
+        releases(Map.get(data, "releases", [])) ++
+        tags(Map.get(data, "tags", [])) ++ incidents(Map.get(data, "incidents", []), repo) ++ ci_runs(Map.get(data, "runs", []), sources) ++ main_red(Map.get(data, "runs", []), sources)
 
     {events, Enum.uniq(missing)}
   end
@@ -41,8 +43,28 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
       "author" => get_in(row, ["author", "login"])
     }
 
+    labels = attrs["labels"]
+    attrs = Map.put(attrs, "work_kind", work_kind(labels, row["title"]))
+
     WindowEvents.event("merged_pr", "github", row["number"], row["mergedAt"], ref: repo <> "#" <> to_string(row["number"]), title: row["title"], attrs: attrs)
   end
+
+  @doc false
+  @spec work_kind([String.t()], String.t() | nil) :: String.t()
+  def work_kind(labels, title) do
+    cond do
+      feature_labels?(labels) -> "feature"
+      test_ci_labels?(labels) or title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i) -> "test_ci"
+      tooling_labels?(labels) or title_matches?(title, ~r/\b(tooling|chore|dependency|deps)\b/i) -> "tooling"
+      true -> "other"
+    end
+  end
+
+  defp feature_labels?(labels), do: "build-order" in labels or Enum.any?(labels, &(String.starts_with?(&1, "build-lane:") or String.starts_with?(&1, "feature:")))
+  defp test_ci_labels?(labels), do: Enum.any?(labels, &(contains_any?(String.downcase(&1), ["flake", "test"]) or String.starts_with?(&1, "main-fix")))
+  defp tooling_labels?(labels), do: Enum.any?(labels, &contains_any?(String.downcase(&1), ["tooling", "chore"]))
+  defp title_matches?(title, pattern), do: is_binary(title) and Regex.match?(pattern, title)
+  defp contains_any?(value, needles), do: Enum.any?(needles, &String.contains?(value, &1))
 
   defp nodes(row, key), do: get_in(row, [key, "nodes"]) || []
 
@@ -74,6 +96,18 @@ defmodule Aiur.Experiments.WindowEvents.GitHub do
         from: row["createdAt"],
         to: row["closedAt"],
         attrs: %{"labels" => Enum.map(nodes(row, "labels"), & &1["name"]) |> Enum.sort()}
+      )
+    end)
+  end
+
+  @spec ci_runs([map()], map()) :: [map()]
+  def ci_runs(runs, sources) do
+    runs
+    |> Enum.filter(&(&1["name"] in sources["required_workflows"] and &1["event"] in ["pull_request", "merge_group"] and &1["status"] == "completed" and &1["conclusion"] in ["failure", "success"]))
+    |> Enum.map(fn run ->
+      WindowEvents.event("ci_run", "github", run["id"], run["updated_at"],
+        ref: run["html_url"],
+        attrs: %{"workflow" => run["name"], "event" => run["event"], "conclusion" => run["conclusion"], "run_attempt" => run["run_attempt"], "run_started_at" => run["run_started_at"]}
       )
     end)
   end

@@ -175,14 +175,14 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
 
     case cached_changed_paths(pr, changed_paths, opts) do
       {:ok, paths} when is_list(paths) ->
-        if QuarantineEvidence.touched?(failure.path, paths), do: :ok, else: Journal.record_failure_observation(group_row(pr, failure, run, at_ms, prs, opts), opts)
+        Journal.record_failure_observation(group_row(pr, failure, run, at_ms, prs, opts, QuarantineEvidence.touched?(failure.path, paths)), opts)
 
       {:error, _} = error ->
         error
     end
   end
 
-  defp group_row(pr, failure, run, at_ms, prs, opts) do
+  defp group_row(pr, failure, run, at_ms, prs, opts, touched?) do
     identity = "#{failure.module} :: #{failure.name}"
 
     %{
@@ -192,6 +192,8 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
       "pr" => pr,
       "run_url" => run["html_url"],
       "head_sha" => run["head_sha"],
+      "job_failure_set_complete" => true,
+      "touched" => touched?,
       "at_ms" => at_ms,
       "path" => failure.path,
       "job" => failure.job,

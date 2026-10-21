@@ -28,6 +28,10 @@ defmodule Aiur.RunTelemetry do
   @spec window_event_sources(String.t(), map(), map(), keyword()) :: {map(), [String.t()]}
   def window_event_sources(repo, sources, range, opts), do: WindowEventSources.fetch(repo, sources, range, opts)
 
+  @doc false
+  @spec workflow_runs(String.t(), String.t(), map(), keyword()) :: {:ok, [map()]} | {:partial, [map()]} | {:error, term()}
+  def workflow_runs(repo, branch, range, opts \\ []), do: WindowEventSources.workflow_runs(repo, branch, range, opts)
+
   @doc "Current durable telemetry schema version."
   @spec schema_version() :: pos_integer()
   def schema_version, do: @schema_version

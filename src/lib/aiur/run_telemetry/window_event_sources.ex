@@ -6,10 +6,14 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
   query ExperimentWindowPulls($query: String!, $cursor: String) {
     search(query: $query, type: ISSUE, first: 50, after: $cursor) {
       issueCount pageInfo { hasNextPage endCursor }
-      nodes { ... on PullRequest { number title mergedAt url author { login }
+      nodes { ... on PullRequest { number title mergedAt headRefOid url author { login }
         labels(first: 50) { nodes { name } }
         files(first: 50) { nodes { path } }
-        closingIssuesReferences(first: 50) { nodes { parent { number } } pageInfo { hasNextPage } }
+        timelineItems(first: 100, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+          pageInfo { hasNextPage }
+          nodes { __typename ... on RemovedFromMergeQueueEvent { createdAt reason beforeCommit { oid } } }
+        }
+        closingIssuesReferences(first: 50) { nodes { number title labels(first: 50) { nodes { name } } parent { number } } pageInfo { hasNextPage } }
       } }
     }
   }
@@ -49,29 +53,51 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
       variables = %{"owner" => owner, "name" => name}
       dates = range.start <> ".." <> range.end
       pulls = "repo:#{repo} is:pr is:merged base:#{sources["base_branch"]} merged:#{dates}"
-      incidents = "repo:#{repo} is:issue created:<=#{range.end} label:" <> Enum.map_join(sources["incident_labels"], ",", &Jason.encode!/1)
+      incidents = "repo:#{repo} is:issue created:#{dates} label:" <> Enum.map_join(sources["incident_labels"], ",", &Jason.encode!/1)
 
       reads = [
         {"pulls", fn -> pages(request, token, @pulls, %{"query" => pulls}, ["search"]) end},
         {"releases", fn -> pages(request, token, @releases, variables, ["repository", "releases"]) end},
         {"tags", fn -> pages(request, token, @tags, variables, ["repository", "refs"]) end},
         {"incidents", fn -> if sources["incident_labels"] == [], do: {:ok, []}, else: pages(request, token, @incidents, %{"query" => incidents}, ["search"]) end},
-        {"runs", fn -> runs(request, token, repo, sources["base_branch"], range) end}
+        {"runs", fn -> runs(request, token, repo, nil, range) end}
       ]
 
-      Enum.reduce(reads, {%{}, []}, &collect_source/2)
-      |> then(fn {data, missing} -> {data, Enum.uniq(missing)} end)
+      {data, missing} = Enum.reduce(reads, {%{}, []}, &collect_source/2)
+      {data, missing} = if is_list(data["runs"]), do: collect_source({"jobs", fn -> jobs(request, token, repo, data["runs"]) end}, {data, missing}), else: {data, missing}
+      {data, Enum.uniq(missing)}
     else
       _error -> {%{}, ["github"]}
     end
   end
 
+  @doc false
+  @spec workflow_runs(String.t(), String.t(), map(), keyword()) :: {:ok, [map()]} | {:partial, [map()]} | {:error, term()}
+  def workflow_runs(repo, branch, range, opts \\ []) do
+    with {:ok, token} <- Transport.require_token(opts) do
+      runs(Keyword.get(opts, :request_fun, &Transport.default_request_fun/1), token, repo, branch, range)
+    end
+  end
+
   defp collect_source({source, read}, {data, missing}) do
     case read_source(read) do
-      {:ok, rows} -> {Map.put(data, source, rows), missing}
-      {:partial, rows} -> {Map.put(data, source, rows), ["github" | missing]}
-      {:error, _reason} -> {data, ["github" | missing]}
+      {:ok, rows} ->
+        partial? = source == "pulls" and Enum.any?(rows, &incomplete_pull_timeline?/1)
+        data = Map.put(data, source, rows)
+        data = if partial?, do: Map.put(data, source <> "_partial", true), else: data
+        {data, if(partial?, do: ["github" | missing], else: missing)}
+
+      {:partial, rows} ->
+        {data |> Map.put(source, rows) |> Map.put(source <> "_partial", true), ["github" | missing]}
+
+      {:error, _reason} ->
+        {data, ["github" | missing]}
     end
+  end
+
+  defp incomplete_pull_timeline?(pull) do
+    get_in(pull, ["timelineItems", "pageInfo", "hasNextPage"]) == true or
+      get_in(pull, ["closingIssuesReferences", "pageInfo", "hasNextPage"]) == true
   end
 
   defp read_source(read) do
@@ -104,7 +130,7 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
   end
 
   defp runs(request, token, repo, branch, range, page \\ 1, rows \\ []) do
-    params = URI.encode_query(%{branch: branch, created: range.start <> ".." <> range.end, per_page: 100, page: page})
+    params = %{created: range.start <> ".." <> range.end, per_page: 100, page: page} |> maybe_branch(branch) |> URI.encode_query()
     req = %{method: :get, url: Transport.base_url() <> "/repos/#{repo}/actions/runs?" <> params, token: token, caller: "experiment_window_events"}
 
     case request.(req) do
@@ -120,5 +146,26 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
       _error ->
         if rows == [], do: {:error, :github_unavailable}, else: {:partial, rows}
     end
+  end
+
+  defp maybe_branch(params, branch) when is_binary(branch) and branch != "", do: Map.put(params, :branch, branch)
+  defp maybe_branch(params, _branch), do: params
+
+  defp jobs(request, token, repo, runs) do
+    samples = Enum.take(runs, 20)
+
+    {rows, failed?} =
+      Enum.reduce(samples, {[], false}, fn run, {rows, failed?} ->
+        req = %{method: :get, url: Transport.base_url() <> "/repos/#{repo}/actions/runs/#{run["id"]}/jobs?per_page=100", token: token, caller: "experiment_window_events"}
+
+        case request.(req) do
+          {:ok, %{status: 200, body: %{"jobs" => jobs}}} when is_list(jobs) -> {rows ++ jobs, failed?}
+          _ -> {rows, true}
+        end
+      end)
+
+    if failed? or length(runs) > length(samples), do: {:partial, rows}, else: {:ok, rows}
+  rescue
+    _error -> {:error, :github_unavailable}
   end
 end
