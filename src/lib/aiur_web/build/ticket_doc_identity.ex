@@ -14,6 +14,8 @@ defmodule AiurWeb.Build.TicketDocIdentity do
     end
   end
 
+  defp history_identity(_id, %{status: :unsupported}, _opts), do: :no_identity
+
   defp history_identity(id, snapshot, opts) do
     rows = Keyword.get(opts, :history_fun, &History.rows/1).([String.to_integer(id)])
 
@@ -22,6 +24,7 @@ defmodule AiurWeb.Build.TicketDocIdentity do
          {:ok, identity} <- TrackerIdentity.from_github(%{"node_id" => node_id, "number" => String.to_integer(id)}, repo, repo) do
       {:ok, identity}
     else
+      {:error, _reason} -> {:error, :identity_lookup_unavailable}
       _ -> missing(snapshot)
     end
   end
