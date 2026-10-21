@@ -30,7 +30,7 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
     {"ci_stability", "ci_queue_wait", "duration", "ms", ["ci_jobs"]},
     {"ci_stability", "feature_merge_share", "bucketed", "share", ["work_kind"]},
     {"ci_stability", "innocent_dequeues", "count", "merged PRs", ["pulls"]},
-    {"ci_stability", "flaky_failure_rate", "rate", "share", ["flake_evidence", "ci_jobs"]},
+    {"ci_stability", "flaky_failure_rate", "rate", "share", ["flake_evidence", "ci_jobs", "ci_runs"]},
     {"ci_stability", "flake_issues_filed", "bucketed", "issues/day", ["flake_issues"]}
   ]
 
@@ -96,7 +96,9 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed do
     end
   end
 
-  defp evaluate(%{requires: ["ci_runs"]} = _metric, %{ci_runs_status: :unavailable}, _window), do: Common.unavailable(:github_unavailable)
+  defp evaluate(%{requires: ["ci_runs"]}, %{ci_runs_status: :unavailable}, _window), do: Common.unavailable(:github_unavailable)
+  defp evaluate(%{id: "flaky_failure_rate"}, %{ci_runs_status: :unavailable}, _window), do: Common.unavailable(:github_unavailable)
+
   defp evaluate(%{id: "flaky_failure_rate"}, %{flake_evidence: nil}, _window), do: Common.unavailable(:landing_watch_journal_unavailable)
   defp evaluate(%{id: "flaky_failure_rate"}, %{ci_jobs: nil}, _window), do: Common.unavailable(:github_unavailable)
   defp evaluate(%{requires: ["ci_jobs"]}, %{ci_jobs: nil}, _window), do: Common.unavailable(:github_unavailable)

@@ -77,6 +77,29 @@ defmodule Aiur.RunTelemetry.WindowEventSourcesTest do
     assert data["runs_partial"]
   end
 
+  test "merged pull searches are sliced by day" do
+    parent = self()
+
+    request = fn req ->
+      send(parent, {:request, req})
+      {:ok, %{status: 200, body: %{"data" => %{"search" => %{"nodes" => [], "pageInfo" => %{"hasNextPage" => false}, "issueCount" => 0}}}}}
+    end
+
+    sources = %{"base_branch" => "main", "include_sources" => ["pulls"]}
+    assert {%{"pulls" => []}, []} = RunTelemetry.window_event_sources("owner/repo", sources, @range, token: "test-gh-token", request_fun: request)
+
+    queries =
+      for _ <- 1..3 do
+        assert_receive {:request, req}, 1_000
+        assert req.caller == "experiment_window_events"
+        assert req.body["query"] =~ "closingIssuesReferences(first: 5)"
+        req.body["variables"]["query"]
+      end
+
+    expected = Enum.map(~w(2026-10-08 2026-10-09 2026-10-10), &("repo:owner/repo is:pr is:merged base:main merged:" <> &1))
+    assert Enum.sort(queries) == Enum.sort(expected)
+  end
+
   test "job detail samples a bounded number per workflow, event, and day" do
     parent = self()
 

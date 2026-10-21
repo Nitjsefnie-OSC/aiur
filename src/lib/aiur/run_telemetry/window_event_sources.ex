@@ -14,7 +14,7 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
           pageInfo { hasNextPage }
           nodes { __typename ... on RemovedFromMergeQueueEvent { createdAt reason beforeCommit { oid } } }
         }
-        closingIssuesReferences(first: 50) { nodes { number title labels(first: 20) { nodes { name } } parent { number } } pageInfo { hasNextPage } }
+        closingIssuesReferences(first: 5) { nodes { number title labels(first: 20) { nodes { name } } parent { number } } pageInfo { hasNextPage } }
       } }
     }
   }
@@ -53,13 +53,12 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
       request = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
       variables = %{"owner" => owner, "name" => name}
       dates = range.start <> ".." <> range.end
-      pulls = "repo:#{repo} is:pr is:merged base:#{sources["base_branch"]} merged:#{dates}"
       incidents = "repo:#{repo} is:issue created:<=#{range.end} label:" <> Enum.map_join(sources["incident_labels"] || [], ",", &Jason.encode!/1)
       flake_issues = "repo:#{repo} is:issue created:#{dates} label:" <> Enum.map_join(sources["flake_issue_labels"] || [], ",", &Jason.encode!/1)
       include = Map.get(sources, "include_sources", default_sources(sources))
 
       reads = [
-        {"pulls", fn -> pages(request, token, @pulls, %{"query" => pulls}, ["search"]) end},
+        {"pulls", fn -> pulls(request, token, repo, sources["base_branch"], range) end},
         {"releases", fn -> pages(request, token, @releases, variables, ["repository", "releases"]) end},
         {"tags", fn -> pages(request, token, @tags, variables, ["repository", "refs"]) end},
         {"incidents", fn -> if sources["incident_labels"] == [], do: {:ok, []}, else: pages(request, token, @incidents, %{"query" => incidents}, ["search"]) end},
@@ -109,6 +108,32 @@ defmodule Aiur.RunTelemetry.WindowEventSources do
   defp incomplete_pull_timeline?(pull) do
     get_in(pull, ["timelineItems", "pageInfo", "hasNextPage"]) == true or
       get_in(pull, ["closingIssuesReferences", "pageInfo", "hasNextPage"]) == true
+  end
+
+  defp pulls(request, token, repo, branch, range) do
+    query_days = for day <- days(range), do: "repo:#{repo} is:pr is:merged base:#{branch} merged:#{Date.to_iso8601(day)}"
+
+    {rows, partial?} =
+      Enum.reduce(query_days, {[], false}, fn query, {rows, partial?} ->
+        case pages(request, token, @pulls, %{"query" => query}, ["search"]) do
+          {:ok, page_rows} -> {rows ++ page_rows, partial?}
+          {:partial, page_rows} -> {rows ++ page_rows, true}
+          {:error, _reason} -> {rows, true}
+        end
+      end)
+
+    if partial?, do: {:partial, rows}, else: {:ok, rows}
+  end
+
+  defp days(range) do
+    with {:ok, start_at, _} <- DateTime.from_iso8601(range.start),
+         {:ok, end_at, _} <- DateTime.from_iso8601(range.end) do
+      last_day = end_at |> DateTime.add(-1, :second) |> DateTime.to_date()
+      first_day = DateTime.to_date(start_at)
+      if Date.compare(last_day, first_day) == :lt, do: [], else: Enum.to_list(Date.range(first_day, last_day))
+    else
+      _ -> []
+    end
   end
 
   defp read_source(read) do

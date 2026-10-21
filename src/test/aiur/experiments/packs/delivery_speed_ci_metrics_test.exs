@@ -106,9 +106,10 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedCiMetricsTest do
     ]
 
     evidence = [%{"job" => "test (1/2)", "run_url" => "https://github.com/o/r/actions/runs/91", "red_on_main" => true, "job_failure_set_complete" => true, "touched" => false}]
+    runs = [%{"id" => 91, "event" => "merge_group"}, %{"id" => 92, "event" => "merge_group"}]
 
     assert {[%{value: 0.5, attrs: %{"innocent_failed_test_jobs" => 1, "failed_test_jobs" => 2}}], 0} =
-             Periods.observations("flaky_failure_rate", %{ci_jobs: jobs, flake_evidence: evidence}, window())
+             Periods.observations("flaky_failure_rate", %{ci_jobs: jobs, ci_runs: runs, flake_evidence: evidence}, window())
   end
 
   test "flaky failure rate excludes jobs with incomplete or mixed failure evidence" do
@@ -117,8 +118,21 @@ defmodule Aiur.Experiments.Packs.DeliverySpeedCiMetricsTest do
     mixed_failure = Map.put(base_failure, "red_on_main", false)
 
     assert {[%{value: value, attrs: %{"innocent_failed_test_jobs" => 0, "failed_test_jobs" => 1}}], 0} =
-             Periods.observations("flaky_failure_rate", %{ci_jobs: jobs, flake_evidence: [base_failure, mixed_failure]}, window())
+             Periods.observations("flaky_failure_rate", %{ci_jobs: jobs, ci_runs: [%{"id" => 91, "event" => "merge_group"}], flake_evidence: [base_failure, mixed_failure]}, window())
 
     assert_in_delta value, 0.0, 1.0e-12
+  end
+
+  test "pull request failed jobs do not enter the merge-group flaky denominator" do
+    jobs = [
+      %{"id" => 1, "run_id" => 91, "name" => "test", "conclusion" => "failure", "completed_at" => timestamp(12)},
+      %{"id" => 2, "run_id" => 92, "name" => "test", "conclusion" => "failure", "completed_at" => timestamp(13)}
+    ]
+
+    evidence = [%{"job" => "test", "run_url" => "https://github.com/o/r/actions/runs/92", "red_on_main" => true, "job_failure_set_complete" => true, "touched" => false}]
+    runs = [%{"id" => 91, "event" => "pull_request"}, %{"id" => 92, "event" => "merge_group"}]
+
+    assert {[%{value: 1.0, attrs: %{"innocent_failed_test_jobs" => 1, "failed_test_jobs" => 1}}], 0} =
+             Periods.observations("flaky_failure_rate", %{ci_jobs: jobs, ci_runs: runs, flake_evidence: evidence}, window())
   end
 end

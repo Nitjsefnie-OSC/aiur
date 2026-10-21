@@ -7,7 +7,10 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
 
   @spec observations(String.t(), map(), map()) :: {[Observation.t()], non_neg_integer()}
   def observations("flake_issues_filed", data, window), do: flake_issues(Map.get(data, :flake_issues, []), window)
-  def observations("flaky_failure_rate", data, window), do: flaky_failure_rate(Map.get(data, :ci_jobs, []), Map.get(data, :flake_evidence, []), window)
+
+  def observations("flaky_failure_rate", data, window),
+    do: flaky_failure_rate(Map.get(data, :ci_jobs, []), Map.get(data, :flake_evidence, []), Map.get(data, :ci_runs, []), window)
+
   def observations("ci_queue_wait", data, window), do: queue_wait(Map.get(data, :ci_jobs, []), window)
   def observations("feature_merge_share", data, window), do: feature_merge_share(Map.get(data, :github_pulls, []), window)
   def observations("innocent_dequeues", data, window), do: innocent_dequeues(Map.get(data, :github_pulls, []), window)
@@ -26,8 +29,14 @@ defmodule Aiur.Experiments.Packs.DeliverySpeed.Periods do
     {rows, map_size(buckets) - length(rows)}
   end
 
-  defp flaky_failure_rate(jobs, evidence, window) do
-    failed = Enum.filter(jobs, &(String.contains?(String.downcase(&1["name"] || ""), "test") and &1["conclusion"] == "failure" and Common.in_window?(Common.timestamp(&1["completed_at"]), window)))
+  defp flaky_failure_rate(jobs, evidence, runs, window) do
+    merge_groups = runs |> Enum.filter(&(&1["event"] == "merge_group")) |> MapSet.new(&to_string(&1["id"]))
+
+    failed =
+      Enum.filter(jobs, fn job ->
+        String.contains?(String.downcase(job["name"] || ""), "test") and job["conclusion"] == "failure" and
+          MapSet.member?(merge_groups, to_string(job["run_id"])) and Common.in_window?(Common.timestamp(job["completed_at"]), window)
+      end)
 
     rows =
       failed
