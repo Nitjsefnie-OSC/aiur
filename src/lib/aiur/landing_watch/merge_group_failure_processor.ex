@@ -260,8 +260,12 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
     _ = record_blame(run, prs, failure, if(repeat == [], do: :innocent_requeued, else: :repeat_ejected), opts)
 
     case MergeGroupRequeue.requeue_group_prs(first, observations, run, reason, opts) do
-      :ok -> rework_repeat_prs(repeat, observations, failure, run, opts)
-      {:error, _} = error -> error
+      :ok ->
+        with :ok <- record_requeued_heads(first, observations, opts),
+             do: rework_repeat_prs(repeat, observations, failure, run, opts)
+
+      {:error, _} = error ->
+        error
     end
   end
 
@@ -272,14 +276,29 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
   defp repeat_head?(number, observations, opts) do
     case Enum.find(observations, &(&1.number == number)) do
       %{head: head} when is_binary(head) ->
-        case Journal.record_merge_group_blame_attempt(number, head, opts) do
-          {:ok, count} -> count > 1
+        case Journal.merge_group_blame_attempts(number, head, opts) do
+          {:ok, count} -> count >= 1
           _ -> false
         end
 
       _ ->
         false
     end
+  end
+
+  defp record_requeued_heads(prs, observations, opts) do
+    Enum.reduce_while(prs, :ok, fn number, :ok ->
+      case Enum.find(observations, &(&1.number == number)) do
+        %{head: head} when is_binary(head) ->
+          case Journal.record_merge_group_blame_attempt(number, head, opts) do
+            {:ok, _count} -> {:cont, :ok}
+            {:error, _} = error -> {:halt, error}
+          end
+
+        _ ->
+          {:cont, :ok}
+      end
+    end)
   end
 
   defp rework_repeat_prs([], _observations, _failure, _run, _opts), do: :ok

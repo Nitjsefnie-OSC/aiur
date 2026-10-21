@@ -221,6 +221,13 @@ defmodule Aiur.LandingWatch.Journal do
     end)
   end
 
+  @spec merge_group_blame_attempts(pos_integer(), String.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def merge_group_blame_attempts(pr, head, opts \\ []) when is_integer(pr) and is_binary(head) do
+    with {:ok, state} <- state(opts) do
+      {:ok, get_in(state, ["merge_group_blame_attempts", key(pr, head)]) || 0}
+    end
+  end
+
   @spec failure_observations(keyword()) :: {:ok, [map()]} | {:error, term()}
   def failure_observations(opts \\ []) do
     with {:ok, state} <- state(opts), do: {:ok, Map.get(state, "failure_observations", [])}
