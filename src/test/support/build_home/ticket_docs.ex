@@ -32,7 +32,7 @@ defmodule Aiur.TestSupport.BuildHome.TicketDocs do
          %{"body_md" => body, "author" => author} <- docs[id],
          {:ok, data} <- FixtureSource.full(dataset: dataset),
          now = DateTime.from_unix!(data["now"], :millisecond),
-         {:ok, snapshot} <- Normalizer.snapshot(identity, raw(row, identity, body, author), now: now) do
+         {:ok, snapshot} <- Normalizer.snapshot(identity, raw(row, identity, body, author), now: now, relationships: %{nodes: [], truncated?: false}) do
       {:ok, %State{identity: identity, generation: 1, health: :healthy, detail: snapshot, last_success_at: now, last_attempt_at: now}}
     else
       _ -> {:error, :fixture_doc_unavailable}

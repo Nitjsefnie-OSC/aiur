@@ -66,13 +66,13 @@ defmodule AiurWeb.Build.TicketDoc do
              do: request(identity)
 
       socket = assign(socket, doc_id: id, doc_identity: identity)
-      {:reply, present(id, validate_identity(result, identity)), socket}
+      {:reply, Payload.scrub(present(id, validate_identity(result, identity))), socket}
     else
-      {:reply, present(id, {:error, :invalid_identity}), socket}
+      {:reply, Payload.scrub(present(id, {:error, :invalid_identity})), socket}
     end
   end
 
-  defp open_identity(socket, id, result), do: {:reply, present(id, result), socket}
+  defp open_identity(socket, id, result), do: {:reply, Payload.scrub(present(id, result)), socket}
 
   @spec close(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def close(socket) do
@@ -93,7 +93,7 @@ defmodule AiurWeb.Build.TicketDoc do
   @spec live_identity(String.t(), keyword()) :: {:ok, TrackerIdentity.t()} | :no_identity | {:error, term()}
   defdelegate live_identity(id, opts), to: TicketDocIdentity
 
-  defp push(socket, result), do: Phoenix.LiveView.push_event(socket, "build-ticket-doc", present(socket.assigns.doc_id, result))
+  defp push(socket, result), do: Phoenix.LiveView.push_event(socket, "build-ticket-doc", Payload.scrub(present(socket.assigns.doc_id, result)))
   defp request(identity), do: call(:ticket_detail_request_fun, &TicketDetailCoordinator.request/1, identity)
   defp subscribe(identity), do: Phoenix.PubSub.subscribe(Aiur.PubSub, TicketDetailCoordinator.topic(identity))
   defp unsubscribe(identity), do: Phoenix.PubSub.unsubscribe(Aiur.PubSub, TicketDetailCoordinator.topic(identity))
