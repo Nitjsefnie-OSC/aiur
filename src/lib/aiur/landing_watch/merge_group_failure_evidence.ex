@@ -121,7 +121,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
 
   defp known_flaky_patterns(opts) do
     path = Keyword.get(opts, :known_flaky_tests_path, ".github/known-flaky-tests.txt")
-    path = if Path.type(path) == :absolute, do: path, else: Path.join(Keyword.get(opts, :repo_root, Aiur.Codeowners.repo_root()), path)
+    path = if Path.type(path) == :absolute, do: path, else: Path.join(repository_root(opts), path)
 
     case File.read(path) do
       {:ok, contents} ->
@@ -137,6 +137,21 @@ defmodule Aiur.LandingWatch.MergeGroupFailureEvidence do
       {:error, reason} ->
         Logger.warning("known flaky test list unavailable path=#{path} reason=#{inspect(reason)}")
         []
+    end
+  end
+
+  defp repository_root(opts) do
+    case Keyword.get(opts, :repo_root) || System.get_env("AIUR_REPO_ROOT") do
+      root when is_binary(root) -> Path.expand(root)
+      _ -> find_repository_root(File.cwd!())
+    end
+  end
+
+  defp find_repository_root(path) do
+    cond do
+      File.dir?(Path.join(path, ".github")) -> path
+      File.dir?(Path.join(Path.dirname(path), ".github")) -> Path.dirname(path)
+      true -> path
     end
   end
 
