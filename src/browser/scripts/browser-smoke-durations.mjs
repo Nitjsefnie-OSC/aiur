@@ -16,6 +16,8 @@ export const recordedSeconds = {
   'test:build-home-chains-parity': 127,
   // Job 118131038510 (shard 2/9): 28.7s.
   'test:browser-suite -- build-home-chains-states': 29,
+  // Local complete run for the new Fit endpoint check took 17s; reserve 25s for fixture variance.
+  'test:browser-suite -- build-home-chains-fit-endpoints': 25,
   // Governed core commands (2026-10-18): 31 cases in 518s; 32 cases on 2ed995a67 in 445s.
   // Keep the slower observed bound; wall timings include fixture startup and build-gate wait.
   'test:build-home-gantt': 518,
