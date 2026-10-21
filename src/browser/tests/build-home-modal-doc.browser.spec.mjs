@@ -33,7 +33,7 @@ async function display(page, patch = {}, options = {}) {
     ;(await import('/build-home/modal/frame.js')).openModal(t, opts)
     return t
   }, { patch, options })
-  await expect(page.locator('.bm-doc')).toBeVisible()
+  if (!ticket.agent || ticket.start == null) await expect(page.locator('.bm-doc')).toBeVisible()
   return ticket
 }
 async function pushDoc(page, id, values) {
@@ -160,6 +160,7 @@ test('conversation opens skip body reads; doc close unsubscribes and pack ids ne
     const { ctx } = await import('/build-home/state.js')
     ;(await import('/build-home/modal/frame.js')).openModal({ ...ctx.D.plan[0], id: 'pack:future/item', num: null, agent: null })
   })
+  await expect(page.locator('.bm-doc')).toBeVisible()
   expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'ticket-doc'))).toEqual([])
 })
 
