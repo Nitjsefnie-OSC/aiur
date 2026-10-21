@@ -15,7 +15,7 @@ defmodule Aiur.TestQuarantineTest do
     assert {:error, {:invalid_quarantine_entry, 2}} = TestQuarantine.parse("# valid comment\nnot a valid row\n")
   end
 
-  test "the checked-in quarantine list parses with sorted rows and ticket provenance" do
+  test "the checked-in quarantine list parses with sorted rows, provenance, and active exclusions" do
     test_root = Path.join(File.cwd!(), "test")
     path = Path.join(test_root, "quarantine.txt")
     assert {:ok, entries} = TestQuarantine.read(path)
@@ -28,6 +28,9 @@ defmodule Aiur.TestQuarantineTest do
     test_modules = test_root |> Path.join("**/*_test.exs") |> Path.wildcard() |> test_module_names()
 
     assert Enum.all?(entries, &MapSet.member?(test_modules, &1.module))
+    assert Enum.all?(TestQuarantine.filters(entries), &(&1 in ExUnit.configuration()[:exclude]))
+    assert TestQuarantine.filters([]) == []
+    refute Enum.any?(entries, &(&1.module == "Aiur.ExperimentsCLITest" and &1.name == "create freezes the baseline and reports its window, count and coverage"))
   end
 
   test "filters exclude synthetic plain, described, and special-character test names" do
@@ -60,6 +63,7 @@ defmodule Aiur.TestQuarantineTest do
 
     assert Enum.all?(TestQuarantine.filters(entries), &(&1 in configured_exclusions))
     assert TestQuarantine.filters([]) == []
+    refute {:test, :"test create freezes the baseline and reports its window, count and coverage"} in configured_exclusions
   end
 
   defp test_module_names(files) do
