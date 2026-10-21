@@ -15,7 +15,7 @@ defmodule Aiur.TestQuarantineTest do
     assert {:error, {:invalid_quarantine_entry, 2}} = TestQuarantine.parse("# valid comment\nnot a valid row\n")
   end
 
-  test "the checked-in quarantine list parses and excludes its exact entries" do
+  test "the checked-in quarantine list parses, excludes its entries, and releases the fixed experiment test" do
     test_root = Path.join(File.cwd!(), "test")
     path = Path.join(test_root, "quarantine.txt")
     assert {:ok, entries} = TestQuarantine.read(path)
@@ -29,7 +29,9 @@ defmodule Aiur.TestQuarantineTest do
 
     assert Enum.all?(entries, &MapSet.member?(test_modules, &1.module))
 
-    assert {:excluded, "due to test filter"} =
+    refute Enum.any?(entries, &(&1.module == "Aiur.ExperimentsCLITest" and &1.name == "create freezes the baseline and reports its window, count and coverage"))
+
+    assert :ok =
              ExUnit.Filters.eval(
                [],
                TestQuarantine.filters(entries),
@@ -53,8 +55,8 @@ defmodule Aiur.TestQuarantineTest do
     assert {:excluded, "due to test filter"} = ExUnit.Filters.eval([], TestQuarantine.filters(entries), tags, :test)
   end
 
-  test "the blocking ExUnit run config excludes a listed test by its exact name" do
-    assert {:test, :"test create freezes the baseline and reports its window, count and coverage"} in ExUnit.configuration()[:exclude]
+  test "the fixed experiment test is not excluded from the blocking ExUnit run" do
+    refute {:test, :"test create freezes the baseline and reports its window, count and coverage"} in ExUnit.configuration()[:exclude]
   end
 
   defp test_module_names(files) do
