@@ -80,6 +80,7 @@ defmodule AiurWeb.Build.TicketDocTest do
     assert TicketDoc.present("12", state(detail, :stale, %Failure{kind: :timeout})).reason == "timeout"
   end
 
+  # Future regression guard; not counted as coverage of the new document producer.
   test "body HTML and document pushes have one production owner" do
     root = Path.expand("../../../lib", __DIR__)
     owners = for path <- Path.wildcard(root <> "/**/*.ex"), String.contains?(File.read!(path), ["body_html", "\"build-ticket-doc\""]), do: Path.relative_to(path, root)

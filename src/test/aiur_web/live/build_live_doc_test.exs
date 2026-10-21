@@ -159,6 +159,7 @@ defmodule AiurWeb.BuildLiveDocTest do
     end
   end
 
+  # Future regression guard; not counted as coverage of the new document producer.
   test "opening a ticket does not request its doc" do
     view = open_view()
     id = row()["id"]
