@@ -185,6 +185,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStripTest do
 
     assert html =~ "remaining unknown"
     assert html =~ ~s(style="width:50%")
+    assert html =~ "50% left"
     refute html =~ ~s(style="width:100%")
     assert html =~ "2500/5000 left"
     assert html =~ "remaining unknown"

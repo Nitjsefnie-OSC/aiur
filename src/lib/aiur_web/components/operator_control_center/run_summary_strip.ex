@@ -94,7 +94,7 @@ defmodule AiurWeb.OperatorControlCenter.RunSummaryStrip do
           <div :for={window <- @windows} class="rs-limit">
             <span class="rs-limit-label" title={github_window_explanation(window)}>{github_window_label(window)}</span>
             <div class={["rs-meter", is_nil(github_percent(window)) && "is-unknown"]}>
-              <i :if={is_number(github_percent(window))} class={meter_class(100 - github_percent(window), 80, 90)} style={"width:#{github_percent(window)}%"}></i>
+              <i :if={is_number(github_percent(window))} class={meter_class(100 - github_percent(window), 80, 90)} style={"width:#{100 - github_percent(window)}%"}></i>
             </div>
                 <span class="rs-limit-meta rs-limit-meta-wide">{github_window_meta(window, @now)}</span>
                 <span class="rs-limit-meta rs-limit-meta-compact">{github_window_compact_meta(window, @now)}</span>
