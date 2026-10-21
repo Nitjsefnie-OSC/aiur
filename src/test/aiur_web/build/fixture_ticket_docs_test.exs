@@ -27,6 +27,7 @@ defmodule AiurWeb.Build.FixtureTicketDocsTest do
     end
   end
 
+  # Future regression guard; not counted as coverage of the new document producer.
   test "fixture doc does not invent an identity or read an arbitrary dataset path" do
     assert FixtureSource.ticket_doc_identity("missing", dataset: "live") == {:error, :not_found}
     assert TicketDocs.request(%TrackerIdentity{provider_id: "build-fixture:../live:351"}) == {:error, :fixture_doc_unavailable}

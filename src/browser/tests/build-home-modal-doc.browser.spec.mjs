@@ -15,7 +15,7 @@ test.beforeEach(async ({ page }, info) => {
   await expect.poll(() => page.evaluate(async () => (await import('/build-home/state.js')).ctx.D?.all.length)).toBeGreaterThan(0)
 })
 async function display(page, patch = {}, options = {}) {
-  return page.evaluate(async ({ patch, options }) => {
+  const ticket = await page.evaluate(async ({ patch, options }) => {
     const { ctx } = await import('/build-home/state.js')
     const t = { ...(patch.sec === 'nq' ? ctx.D.nq[0] : ctx.D.plan[0]), agent: null, ...patch }
     window.docCalls = []
@@ -33,6 +33,8 @@ async function display(page, patch = {}, options = {}) {
     ;(await import('/build-home/modal/frame.js')).openModal(t, opts)
     return t
   }, { patch, options })
+  await expect(page.locator('.bm-doc')).toBeVisible()
+  return ticket
 }
 async function pushDoc(page, id, values) {
   await page.evaluate(doc => window.dispatchEvent(new CustomEvent('phx:build-ticket-doc', { detail: { v: 1, kind: 'doc', ...doc } })), { id, ...values })
