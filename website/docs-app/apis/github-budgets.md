@@ -23,12 +23,7 @@ broker. Requests retain independent deadlines while sharing a transaction.
 Expired work is rolled back before commit, with 50 ms reserved for commit and
 reply delivery. A longer OS or disk stall can exceed this finite margin.
 
-Sustained broker timeouts raise one
-`system.github.budget_broker_unavailable` attention with the elapsed duration;
-`system.github.budget_broker_unavailable.resolved` clears it when the timeout
-rate recovers. During migration, the former `system.github.budget_broker_degraded`
-topic remains available as a non-attention compatibility event, and its
-`.resolved` event clears any persisted attention from older runs.
+Sustained broker timeouts raise one `system.github.budget_broker_unavailable` attention with elapsed duration; `system.github.budget_broker_unavailable.resolved` clears it on recovery, while the previous `system.github.budget_broker_degraded` topic remains as a non-attention compatibility event and its `.resolved` event clears persisted attentions from older runs.
 
 | Budget | Unit | Where to read it |
 | --- | --- | --- |
