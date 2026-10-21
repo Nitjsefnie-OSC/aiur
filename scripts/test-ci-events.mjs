@@ -23,7 +23,7 @@ function selected(event, full, dialyzer = false, payload = { pull_request: {} })
     needs: { changes, 'pre-handoff': { result: changes.result } },
   });
   const changesRuns = run(condition(jobs.get('changes')), {});
-  const changes = changesRuns ? { result: 'success', outputs: { full_ci: String(full), dialyzer: String(dialyzer) } } : { result: 'skipped', outputs: {} };
+  const changes = changesRuns ? { result: 'success', outputs: { full_ci: String(full), dialyzer: String(dialyzer), browser_smoke: String(event === 'merge_group') } } : { result: 'skipped', outputs: {} };
   // Every other job needs changes, so a skipped changes skips it unless a status function overrides that.
   return [...jobs].filter(([id, body]) => id === 'changes' ? changesRuns
     : (changesRuns || /always\(\)|cancelled\(\)/.test(condition(body) ?? '')) && run(condition(body), changes)).map(([id]) => id);
@@ -71,6 +71,7 @@ assert.ok(jobs.get('ci-gate').includes("github.event_name != 'schedule'"), 'sche
 assert.ok(jobs.get('affected-tests').includes("github.event_name == 'merge_group'"), 'merge queue also runs the time-bomb guard');
 assert.ok(jobs.get('changes').includes('affected_paths_b64: "${{ steps.classify.outputs.affected_paths_b64 }}"'));
 assert.ok(jobs.get('changes').includes('dialyzer: "${{ steps.classify.outputs.dialyzer }}"'));
+assert.ok(jobs.get('changes').includes('browser_smoke: "${{ steps.classify.outputs.browser_smoke }}"'));
 assert.ok(jobs.get('affected-tests').includes('AIUR_CI_CHANGED_PATHS_B64: ${{ needs.changes.outputs.affected_paths_b64 }}'));
 for (const job of [...fullJobs.filter((job) => job !== 'quarantine'), ...fastJobs.filter((job) => job !== 'ci-gate')]) {
   assert.ok(jobs.get('ci-gate').includes(job), `gate needs ${job}`);
@@ -78,7 +79,7 @@ for (const job of [...fullJobs.filter((job) => job !== 'quarantine'), ...fastJob
 function gate(event, full, dialyzer, failedJob, result = 'failure', dialyzerOutput = String(dialyzer)) {
   const needs = Object.fromEntries([...jobs.keys()].map((job) => [job, { result: 'skipped' }]));
   for (const job of selected(event, full, dialyzer)) needs[job].result = 'success';
-  needs.changes.outputs = { full_ci: String(full), dialyzer: dialyzerOutput };
+  needs.changes.outputs = { full_ci: String(full), dialyzer: dialyzerOutput, browser_smoke: String(event === 'merge_group') };
   if (failedJob) needs[failedJob].result = result;
   return spawnSync('python3', ['scripts/check-ci-gate.py'], {
     encoding: 'utf8', env: { ...process.env, EVENT_NAME: event, NEEDS_JSON: JSON.stringify(needs) },
@@ -87,7 +88,7 @@ function gate(event, full, dialyzer, failedJob, result = 'failure', dialyzerOutp
 for (const [event, full, required] of [
   ['pull_request', false, fastJobs.filter((job) => job !== 'ci-gate')],
   ['merge_group', true, ['changes', 'workflow-security', 'lint', 'affected-tests', ...fullJobs]],
-  ['pull_request', true, ['changes', 'workflow-security', 'lint', 'soak', ...fullJobs]],
+  ['pull_request', true, ['changes', 'workflow-security', 'lint', 'soak', ...fullJobs.filter((job) => job !== 'browser')]],
 ]) {
   assert.equal(gate(event, full, false).status, 0, `${event} passes with selected set successful`);
   for (const job of required) {
@@ -119,6 +120,7 @@ for (const event of ['merge_group', 'workflow_dispatch']) assert.ok(!selected(ev
 assert.ok(jobs.get('soak').includes('uses: ./.github/workflows/soak.yml'));
 const soak = readFileSync(new URL('../.github/workflows/soak.yml', import.meta.url), 'utf8');
 assert.ok(/^on:\n  workflow_call:$/m.test(soak), 'soak runs only when ci.yml calls it');
+assert.ok(soak.includes('bash ../scripts/install-ci-zsh.sh'), 'soak uses the shared resilient zsh installer');
 assert.ok(soak.includes('python3 scripts/ci-soak.py select HEAD^1 >> "$GITHUB_OUTPUT"'), 'soak selects against the PR merge base');
 assert.ok(soak.includes('SOAK_TESTS: ${{ needs.select.outputs.soak_tests }}'), 'paths reach the runner through env, not shell');
 assert.ok(soak.includes('SOAK_SPECS: ${{ needs.select.outputs.soak_specs }}'));
@@ -138,6 +140,7 @@ const affectedTimeout = Number(affected.match(/^    timeout-minutes: (\d+)$/m)?.
 assert.equal(affectedTimeout, 25, 'the job allows the bounded merge-queue time-bomb rerun');
 assert.ok(affected.includes('run-ci-affected-tests.sh'), 'affected-tests delegates setup and base selection to its helper');
 const affectedRunner = readFileSync(new URL('../scripts/run-ci-affected-tests.sh', import.meta.url), 'utf8');
+assert.ok(affectedRunner.includes('bash ../scripts/install-ci-zsh.sh'), 'affected-tests uses the shared resilient zsh installer');
 assert.ok(affectedRunner.includes('git rev-parse HEAD^1'), 'affected-tests uses the PR merge base, not a stale event payload');
 assert.ok(affectedRunner.includes('affected-tests merge base: $PR_BASE'), 'affected-tests logs the base used for selection');
 assert.ok(affectedRunner.includes('affected-tests dependency setup duration: $((SECONDS - started))s'),
