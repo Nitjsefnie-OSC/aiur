@@ -67,7 +67,7 @@ for draft in true false; do
   grep -Fxq 'dialyzer=true' "$test_dir/out"
   expect 'browser_smoke=false docs_only=true full_ci=false' pull_request "$draft" '[{"filename":"website/docs-app/guide/a.md"}]'
   grep -Fxq 'dialyzer=false' "$test_dir/out"
-  expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":".github/workflows/ci.yml"}]'
+  expect 'browser_smoke=true docs_only=false full_ci=true' pull_request "$draft" '[{"filename":".github/workflows/ci.yml"}]'
   expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"src/mix.lock"}]'
   expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"mix.lock"}]'
   expect 'browser_smoke=false docs_only=false full_ci=true' pull_request "$draft" '[{"filename":"website/new.md","previous_filename":"src/mix.exs"}]'
@@ -81,10 +81,13 @@ done
 for path in src/browser/tests/example.browser.spec.mjs src/lib/aiur_web/router.ex src/priv/static/js/app.js; do
   expect 'browser_smoke=true docs_only=false full_ci=false' pull_request false "[{\"filename\":\"$path\"}]"
 done
+for path in .github/workflows/ci.yml scripts/check-ci-gate.py scripts/ci-policy.rb scripts/classify-ci-changes.sh; do
+  expect 'browser_smoke=true docs_only=false full_ci=true' pull_request false "[{\"filename\":\"$path\"}]"
+done
 expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/orchestrator.ex"}]'
 expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.exs"}]'
 grep -Fxq 'dialyzer=false' "$test_dir/out"
-for path in scripts/check-ci-gate.py scripts/classify-ci-changes.sh scripts/ci-policy.rb scripts/ci-test-selection.exs scripts/run-ci-affected-tests.py src/lib/aiur/affected_tests.ex src/lib/mix/tasks/aiur.affected_tests.ex; do
+for path in scripts/ci-test-selection.exs scripts/run-ci-affected-tests.py src/lib/aiur/affected_tests.ex src/lib/mix/tasks/aiur.affected_tests.ex; do
   expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false "[{\"filename\":\"$path\"}]"
 done
 for event in push workflow_dispatch; do
