@@ -209,8 +209,12 @@ defmodule Aiur.Orchestrator.Dispatcher.Candidates do
   defp validate_from_cached_dependencies(issue, timeout_error) do
     case Tracker.cached_blocked_by(%{issue | blocked_by: []}) do
       {:ok, %Issue{} = cached} ->
-        Logger.info("Using fresh cached dependency evidence after GitHub budget broker timeout: #{State.issue_context(issue)}")
-        {:validated, issue, HoldDecline.observe({:ok, cached})}
+        if DispatchPolicy.candidate_issue?(cached, DispatchPolicy.active_state_set(), DispatchPolicy.terminal_state_set()) do
+          Logger.info("Using fresh cached dependency evidence after GitHub budget broker timeout: #{State.issue_context(issue)}")
+          {:validated, cached, HoldDecline.observe({:ok, cached})}
+        else
+          {:skip, cached}
+        end
 
       {:error, _cache_miss_or_stale} ->
         timeout_error

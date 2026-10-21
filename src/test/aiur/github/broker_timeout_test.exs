@@ -17,6 +17,7 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
   @retry_topic "system.github.budget_broker_retry"
   @degraded_topic "system.github.budget_broker_unavailable"
   @resolved_topic "system.github.budget_broker_unavailable.resolved"
+  @legacy_resolved_topic "system.github.budget_broker_degraded.resolved"
 
   setup do
     parent = self()
@@ -65,6 +66,8 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     check(4_000)
 
     assert_receive {:emitted, @degraded_topic, opts}, 1000
+    assert_receive {:emitted, @legacy_resolved_topic, legacy_opts}, 1000
+    assert legacy_opts[:needs_attention] == false
     assert opts[:message] =~ "3s"
     assert opts[:needs_attention] == true
 
@@ -89,6 +92,8 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     check(1_601_000)
 
     assert_receive {:emitted, @degraded_topic, opts}, 1000
+    assert_receive {:emitted, @legacy_resolved_topic, legacy_opts}, 1000
+    assert legacy_opts[:needs_attention] == false
     assert opts[:needs_attention] == true
     assert opts[:severity] == "warning"
     assert opts[:reason] =~ "sustained"

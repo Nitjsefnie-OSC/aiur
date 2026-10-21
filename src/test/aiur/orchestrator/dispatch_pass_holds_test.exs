@@ -118,7 +118,7 @@ defmodule Aiur.Orchestrator.DispatchPassHoldsTest do
       Dispatcher.choose_issues(%State{snapshot_key: self(), max_concurrent_agents: 1, effective_concurrent_agents: 1}, tickets,
         issue_fetcher: fn [_id] ->
           assert :timeout = BudgetBroker.command(server, broker, [], System.monotonic_time(:millisecond) + 100)
-          {:error, :github_budget_broker_timeout}
+          {:error, {:github, :local_hold, %{reason: :github_budget_broker_timeout}}}
         end,
         runner: fn _issue, _, _ -> :ok end
       )

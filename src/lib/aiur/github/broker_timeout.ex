@@ -41,6 +41,7 @@ defmodule Aiur.GitHub.BrokerTimeout do
   alias Aiur.Config.Schema.Agent, as: AgentConfig
 
   @retry_topic "system.github.budget_broker_retry"
+  @legacy_resolution_topic "system.github.budget_broker_degraded.resolved"
   @degraded_topic "system.github.budget_broker_unavailable"
   @resolution_topic "system.github.budget_broker_unavailable.resolved"
 
@@ -141,6 +142,10 @@ defmodule Aiur.GitHub.BrokerTimeout do
     emit_fun = Keyword.get(opts, :emit_fun, &Signal.alert/2)
 
     state = %__MODULE__{check_interval_ms: check_interval_ms, emit_fun: emit_fun}
+    # Clear a persisted attention emitted by versions that used the old topic.
+    # AlertFeed suppresses duplicate resolutions, so this is a one-time
+    # migration signal even if the daemon restarts repeatedly.
+    safe_emit(fn -> emit_legacy_resolved(state) end)
     {:ok, maybe_schedule_check(state)}
   end
 
@@ -238,6 +243,15 @@ defmodule Aiur.GitHub.BrokerTimeout do
     state.emit_fun.(@resolution_topic,
       message: "GitHub budget broker timeout rate recovered; retries back below threshold",
       reason: "Budget broker retry rate dropped back below threshold",
+      severity: "info",
+      needs_attention: false
+    )
+  end
+
+  defp emit_legacy_resolved(state) do
+    state.emit_fun.(@legacy_resolution_topic,
+      message: "GitHub budget broker alert topic migrated",
+      reason: "Clearing the previous broker degraded attention topic",
       severity: "info",
       needs_attention: false
     )
