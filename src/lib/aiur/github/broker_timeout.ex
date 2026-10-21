@@ -227,8 +227,8 @@ defmodule Aiur.GitHub.BrokerTimeout do
     elapsed_s = div(now_ms - since_ms, 1_000)
 
     state.emit_fun.(@degraded_topic,
-      message: "GitHub budget broker has been degraded for #{elapsed_s}s (#{length(state.events)} timeouts in the window)",
-      reason: "Budget broker retry rate sustained above threshold for #{elapsed_s}s",
+      message: "GitHub budget broker has been unavailable for #{elapsed_s}s (#{length(state.events)} timeouts in the window)",
+      reason: "Budget broker timeout rate sustained above threshold for #{elapsed_s}s",
       severity: "warning",
       needs_attention: true
     )
