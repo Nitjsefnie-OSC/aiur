@@ -38,17 +38,22 @@ defmodule AiurWeb.ChatRedirectTest do
   end
 
   test "missing repository returns unavailable rather than guessing" do
-    conn = build_conn() |> put_private(:aiur_configured_repo, fn -> {:error, :missing_configured_repository} end) |> get("/chat/owner/repo/7")
+    conn = configured() |> put_private(:aiur_configured_repo, fn -> {:error, :missing_configured_repository} end) |> get("/chat/owner/repo/7")
     assert html_response(conn, 503) =~ "The configured repository cannot be read."
     assert get_resp_header(conn, "location") == []
   end
 
   test "future regression guard: chat redirect is protected by dashboard authentication" do
     Phoenix.Config.put(Endpoint, :dashboard_auth_required, true)
-    conn = configured() |> put_private(:aiur_dashboard_credentials, {"operator", "secret"}) |> get("/chat/owner/repo/7")
+    conn = configured() |> delete_req_header("authorization") |> get("/chat/owner/repo/7")
     assert response(conn, 401)
     assert get_resp_header(conn, "location") == []
   end
 
-  defp configured, do: build_conn() |> put_private(:aiur_configured_repo, fn -> {:ok, {"owner", "repo"}} end)
+  defp configured do
+    build_conn()
+    |> put_private(:aiur_dashboard_credentials, {"operator", "secret"})
+    |> put_req_header("authorization", "Basic " <> Base.encode64("operator:secret"))
+    |> put_private(:aiur_configured_repo, fn -> {:ok, {"owner", "repo"}} end)
+  end
 end

@@ -17,14 +17,14 @@ defmodule AiurWeb.BuildLiveCutoverTest do
     {:ok, view, _} = live(build_conn(), "/units")
     assert has_element?(view, ".units-card")
     refute has_element?(view, ".sidenav-nav [aria-current=page]")
-    view |> element("button[phx-click=select-no-units-filters]") |> render_click()
+    render_click(view, "select-no-units-filters", %{})
     assert_patch(view, "/units?v=1&scope=none")
     refute has_element?(view, ~s(a[href="/"] .snav-c))
   end
 
   test "legacy Units filters canonicalize on home" do
-    {:ok, view, _} = live(build_conn(), "/?v=1&scope=unfinished&conditions=active")
-    assert_patch(view, "/?astate=active")
+    assert {:error, {:live_redirect, %{to: "/?astate=active"}}} = live(build_conn(), "/?v=1&scope=unfinished&conditions=active")
+    {:ok, view, _} = live(build_conn(), "/?astate=active")
     assert has_element?(view, "#build-root")
   end
 
