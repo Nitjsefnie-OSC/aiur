@@ -1,7 +1,8 @@
 defmodule Aiur.LandingWatch.LandingReconciliation do
   @moduledoc false
 
-  alias Aiur.LandingWatch.{MergeGroups, MergeQueueWatchdog}
+  alias Aiur.GitHub.CiReadiness
+  alias Aiur.LandingWatch.{Classifier, LocalRead, MergeGroups, MergeQueueWatchdog}
 
   @spec process([map()], keyword(), ([map()], keyword() -> term())) :: :ok | {:error, term()}
   def process(observations, opts, process_all_fun) do
@@ -37,9 +38,9 @@ defmodule Aiur.LandingWatch.LandingReconciliation do
   end
 
   defp poll_required_checks(observations, opts) do
-    if Enum.any?(observations, fn observation -> Aiur.LandingWatch.Classifier.approved_at_head?(Map.get(observation, :raw, %{})) end) do
-      required_checks = Keyword.get(opts, :required_checks_fun, &Aiur.GitHub.CiReadiness.fetch_required_checks/1)
-      Keyword.put(opts, :required_checks_snapshot, Aiur.LandingWatch.LocalRead.run(required_checks, [opts], opts))
+    if Enum.any?(observations, fn observation -> Classifier.approved_at_head?(Map.get(observation, :raw, %{})) end) do
+      required_checks = Keyword.get(opts, :required_checks_fun, &CiReadiness.fetch_required_checks/1)
+      Keyword.put(opts, :required_checks_snapshot, LocalRead.run(required_checks, [opts], opts))
     else
       opts
     end
