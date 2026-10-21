@@ -16,7 +16,7 @@ defmodule Aiur.GitHub.BrokerTimeout do
     the persisted alert ledger without having been watching at the time (that is
     precisely what was missing when #2457 was filed). It is `needs_attention:
     false`, because the individual retry is uninteresting.
-  * **`system.github.budget_broker_unavailable`** — emitted exactly once, after a
+  * **`system.github.budget_broker_degraded`** — emitted exactly once, after a
     dwell, when the retry rate stays elevated. The unit of interest is "the
     broker has been degraded for N minutes", not "a request retried". A single
     isolated timeout never crosses the threshold and produces nothing; the
@@ -41,10 +41,8 @@ defmodule Aiur.GitHub.BrokerTimeout do
   alias Aiur.Config.Schema.Agent, as: AgentConfig
 
   @retry_topic "system.github.budget_broker_retry"
-  @legacy_degraded_topic "system.github.budget_broker_degraded"
-  @legacy_resolution_topic "system.github.budget_broker_degraded.resolved"
-  @degraded_topic "system.github.budget_broker_unavailable"
-  @resolution_topic "system.github.budget_broker_unavailable.resolved"
+  @degraded_topic "system.github.budget_broker_degraded"
+  @resolution_topic "system.github.budget_broker_degraded.resolved"
 
   # How often the monitor re-evaluates the sliding-window rate and dwell. The
   # dwell itself is config; this is only the granularity at which it is checked.
@@ -143,10 +141,6 @@ defmodule Aiur.GitHub.BrokerTimeout do
     emit_fun = Keyword.get(opts, :emit_fun, &Signal.alert/2)
 
     state = %__MODULE__{check_interval_ms: check_interval_ms, emit_fun: emit_fun}
-    # Clear a persisted attention emitted by versions that used the old topic.
-    # AlertFeed suppresses duplicate resolutions, so this is a one-time
-    # migration signal even if the daemon restarts repeatedly.
-    safe_emit(fn -> emit_legacy_resolved(state) end)
     {:ok, maybe_schedule_check(state)}
   end
 
@@ -232,8 +226,6 @@ defmodule Aiur.GitHub.BrokerTimeout do
   defp emit_degraded(state, since_ms, now_ms) do
     elapsed_s = div(now_ms - since_ms, 1_000)
 
-    safe_emit(fn -> emit_legacy_compatibility(state, elapsed_s) end)
-
     state.emit_fun.(@degraded_topic,
       message: "GitHub budget broker has been unavailable for #{elapsed_s}s (#{length(state.events)} timeouts in the window)",
       reason: "Budget broker timeout rate sustained above threshold for #{elapsed_s}s",
@@ -243,29 +235,9 @@ defmodule Aiur.GitHub.BrokerTimeout do
   end
 
   defp emit_resolved(state) do
-    safe_emit(fn -> emit_legacy_resolved(state) end)
-
     state.emit_fun.(@resolution_topic,
       message: "GitHub budget broker timeout rate recovered; retries back below threshold",
       reason: "Budget broker retry rate dropped back below threshold",
-      severity: "info",
-      needs_attention: false
-    )
-  end
-
-  defp emit_legacy_compatibility(state, elapsed_s) do
-    state.emit_fun.(@legacy_degraded_topic,
-      message: "GitHub budget broker has been unavailable for #{elapsed_s}s (compatibility event)",
-      reason: "Compatibility event for subscribers to the previous broker alert topic",
-      severity: "info",
-      needs_attention: false
-    )
-  end
-
-  defp emit_legacy_resolved(state) do
-    state.emit_fun.(@legacy_resolution_topic,
-      message: "GitHub budget broker alert topic migrated",
-      reason: "Clearing the previous broker degraded attention topic",
       severity: "info",
       needs_attention: false
     )

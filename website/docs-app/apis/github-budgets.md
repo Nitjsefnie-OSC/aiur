@@ -8,7 +8,7 @@ The request pacer may refuse a read as `:shared_budget` before GitHub. Dispatch 
 
 A broker admission waits up to five seconds (1.5 seconds on the Orchestrator process) for transient shared-lease saturation before returning a **local hold**: Aiur backs off, keeps the claim, and keeps attempt counters. The network request deadline starts after admission.
 
-Each broker round trip keeps its own 1.5-second bound, so a slow broker reports `github_budget_broker_timeout` rather than waiting out the admission window.
+Broker commands have a 1.5-second round-trip deadline; admission may wait up to 1.5 seconds in the Orchestrator and 5 seconds for other clients. These bounds keep an overloaded ledger from holding callers indefinitely; timeout handling preserves fresh cached dependency decisions.
 
 Main-watch polling, and the base-branch fixer it drives, may hold one lease above the in-flight caps. Cooldowns, hourly ceilings and pacing still apply to it.
 
@@ -21,9 +21,14 @@ Landing-watch observation and per-PR reads, plus issue-provenance timeline reads
 Resident broker exits also back off as local holds; the next call restarts the
 broker. Requests retain independent deadlines while sharing a transaction.
 Expired work is rolled back before commit, with 50 ms reserved for commit and
-reply delivery. A longer OS or disk stall can exceed this finite margin.
+reply delivery. WAL auto-checkpointing is disabled on the request connection;
+passive checkpoints run on a background thread so checkpoint I/O does not hold
+the serialized request loop. One-minute measurements report latency by broker
+command type, including Python queue wait, SQLite lock wait, command execution,
+and commit. They also report the latest completed checkpoint duration and frame
+counts.
 
-Sustained timeouts raise one `system.github.budget_broker_unavailable` attention with duration; its `.resolved` clears it on recovery, while old `system.github.budget_broker_degraded` remains a non-attention compatibility event whose `.resolved` clears older attentions.
+Sustained timeouts raise one `system.github.budget_broker_degraded` attention with duration; its `.resolved` clears it on recovery.
 
 | Budget | Unit | Where to read it |
 | --- | --- | --- |
@@ -33,8 +38,9 @@ Sustained timeouts raise one `system.github.budget_broker_unavailable` attention
 | Secondary limit | Temporary abuse-control backoff | A separate Units row while the backoff is active. |
 | Issue dependencies / sub-issues | Route-specific REST windows | Separate `core:issue_dependencies` and `core:sub_issues` observations in the quota snapshot; excluded from primary Core and dispatch. |
 
-Broker command summaries include mailbox, Python queue, SQLite open, lock-wait
-and transaction latency so the slow stage can be identified.
+Broker command summaries include mailbox, Python queue, SQLite open, lock-wait,
+SQL execution, and commit latency by request type so the slow stage can be
+identified. Checkpoint duration and frame counts are reported separately.
 
 Anonymous reads — a public `CODEOWNERS` fetch when no token is configured, for
 instance — bill GitHub's 60/hour unauthenticated per-IP allowance rather than
