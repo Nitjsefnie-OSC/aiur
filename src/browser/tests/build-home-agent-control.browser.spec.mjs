@@ -11,6 +11,12 @@ test.beforeEach(async ({ page }, info) => {
   }))
 })
 const pause = page => page.locator('#tk-head [data-a="pause"]')
+async function tokenColor(page, token) {
+  return page.evaluate(token => {
+    const probe = document.createElement('span'); probe.style.color = 'var(' + token + ')'; document.body.append(probe)
+    const color = getComputedStyle(probe).color; probe.remove(); return color
+  }, token)
+}
 async function capture(page, name) {
   await test.info().attach(name, { body: await page.locator('#tk-head .bm-agent').screenshot(), contentType: 'image/png' })
 }
@@ -75,6 +81,7 @@ test('expiry permits retry, same-row diffs preserve control and error feedback',
   await pause(page).click()
   await lifecycle(page, row.id, 'pause', 'expired')
   await expect(pause(page)).toHaveClass(/bad/)
+  await expect(pause(page)).toHaveCSS('color', await tokenColor(page, '--block-ink'))
   await capture(page, 'expired')
   await expect(pause(page)).toHaveAttribute('title', 'Pause timed out — retry')
   await expect(pause(page)).not.toHaveAttribute('aria-disabled')
@@ -85,6 +92,7 @@ test('expiry permits retry, same-row diffs preserve control and error feedback',
   await pause(page).click()
   await lifecycle(page, row.id, 'pause', 'rejected', 'stale_generation')
   await expect(pause(page)).toHaveClass(/warn/)
+  await expect(pause(page)).toHaveCSS('color', await tokenColor(page, '--attn-ink'))
   await expect(pause(page)).toHaveAttribute('title', 'Unit changed generation — pause canceled')
   await capture(page, 'stale-generation-warning')
 })
