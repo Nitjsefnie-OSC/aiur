@@ -128,48 +128,25 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
       when state in ["ci-wait", "human-review"] and rework in ["rework", "agent:rework"] do
     case ReworkFindings.fetch(issue.identifier, opts) do
       {:ok, %{number: number, head: head, review_head: nil}} ->
-        case ReworkFindings.latest_feedback_comment(number, nil, opts) do
-          {:ok, %{body: body, updated_at: commented_at}} ->
-            comment_handoff_blocker(issue, state, workspace, head, body, commented_at)
-
-          {:ok, %{"body" => body, "updated_at" => commented_at}} ->
-            comment_handoff_blocker(issue, state, workspace, head, body, commented_at)
-
-          {:ok, nil} ->
-            {:allow, []}
-
-          {:error, reason} ->
-            {:refused, :rework_findings_unaddressed, "Cannot hand ticket #{issue.identifier} back to #{state}: trusted PR comments could not be checked (#{inspect(reason)}). Retry the handoff."}
-        end
+        no_review_comment_blocker(issue, state, workspace, head, number, opts)
 
       {:ok, %{review_head: review_head, head: head, findings: findings} = review} when is_binary(review_head) ->
         {commits, files} = ReworkFindings.branch_changes(workspace, review_head, head)
         # evidence_blockers already held the body to the current head, so an edit after the review is a body fix (#4944).
         body_edited? = commits == [] and ReworkFindings.body_edited_since?(review.number, review.review_at, opts)
 
-        case ReworkFindings.latest_feedback_comment(review.number, review.review_at, opts) do
-          {:ok, %{body: body, updated_at: commented_at}} ->
-            if ReworkFindings.commit_after_comment?(workspace, head, commented_at) do
-              validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
-            else
-              {:refused, :rework_findings_unaddressed,
-               "Cannot hand ticket #{issue.identifier} back to #{state}: the latest trusted PR comment requests changes, but no new non-merge commit has been pushed after it. Address the comment, push a commit, then hand off. Comment: #{String.slice(body, 0, 240)}"}
-            end
-
-          {:ok, %{"body" => body, "updated_at" => commented_at}} ->
-            if ReworkFindings.commit_after_comment?(workspace, head, commented_at) do
-              validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
-            else
-              {:refused, :rework_findings_unaddressed,
-               "Cannot hand ticket #{issue.identifier} back to #{state}: the latest trusted PR comment requests changes, but no new non-merge commit has been pushed after it. Address the comment, push a commit, then hand off. Comment: #{String.slice(body, 0, 240)}"}
-            end
-
-          {:ok, nil} ->
-            validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
-
-          {:error, reason} ->
-            {:refused, :rework_findings_unaddressed, "Cannot hand ticket #{issue.identifier} back to #{state}: trusted PR comments could not be checked (#{inspect(reason)}). Retry the handoff."}
-        end
+        review_comment_blocker(%{
+          issue: issue,
+          state: state,
+          workspace: workspace,
+          head: head,
+          review: review,
+          findings: findings,
+          commits: commits,
+          files: files,
+          body_edited?: body_edited?,
+          opts: opts
+        })
 
       {:ok, _no_blocking_review} ->
         {:allow, []}
@@ -180,6 +157,47 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
   end
 
   def findings_blockers(_issue, _state, _workspace, _opts), do: {:allow, []}
+
+  defp no_review_comment_blocker(issue, state, workspace, head, number, opts) do
+    case ReworkFindings.latest_feedback_comment(number, nil, opts) do
+      {:ok, comment} when is_map(comment) ->
+        comment_handoff_blocker(issue, state, workspace, head, comment_body(comment), comment_timestamp(comment))
+
+      {:ok, nil} ->
+        {:allow, []}
+
+      {:error, reason} ->
+        unreadable_comments(issue, state, reason)
+    end
+  end
+
+  defp review_comment_blocker(context) do
+    %{issue: issue, state: state, workspace: workspace, head: head, review: review, opts: opts} = context
+
+    case ReworkFindings.latest_feedback_comment(review.number, review.review_at, opts) do
+      {:ok, comment} when is_map(comment) ->
+        comment_handoff_blocker(issue, state, workspace, head, comment_body(comment), comment_timestamp(comment))
+        |> continue_review_validation(context)
+
+      {:ok, nil} ->
+        validate_review_findings(context)
+
+      {:error, reason} ->
+        unreadable_comments(issue, state, reason)
+    end
+  end
+
+  defp continue_review_validation({:allow, []}, context), do: validate_review_findings(context)
+
+  defp continue_review_validation(refusal, _context), do: refusal
+
+  defp validate_review_findings(context) do
+    %{issue: issue, state: state, findings: findings, review: review, commits: commits, files: files, body_edited?: body_edited?, opts: opts} = context
+    validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts)
+  end
+
+  defp unreadable_comments(issue, state, reason),
+    do: {:refused, :rework_findings_unaddressed, "Cannot hand ticket #{issue.identifier} back to #{state}: trusted PR comments could not be checked (#{inspect(reason)}). Retry the handoff."}
 
   defp validate_review_findings(issue, state, findings, review, commits, files, body_edited?, opts) do
     case ReworkFindings.validate(findings, Keyword.get(opts, :review_findings), commits, files, body_edited?) do
@@ -200,6 +218,11 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
        "Cannot hand ticket #{issue.identifier} back to #{state}: the latest trusted PR comment requests changes, but no new non-merge commit has been pushed after it. Address the comment, push a commit, then hand off. Comment: #{String.slice(body, 0, 240)}"}
     end
   end
+
+  defp comment_body(comment), do: Map.get(comment, "body") || Map.get(comment, :body) || ""
+
+  defp comment_timestamp(comment),
+    do: Map.get(comment, "updated_at") || Map.get(comment, :updated_at) || Map.get(comment, "created_at") || Map.get(comment, :created_at)
 
   # The re-review reads the worker's answers from this ticket comment; a failed post does not undo the handback.
   defp report_checklist(_issue, [], _opts, result), do: result

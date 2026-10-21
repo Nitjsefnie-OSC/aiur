@@ -92,18 +92,21 @@ defmodule Aiur.AgentRunner.ReworkFindings do
   def latest_feedback_comment(number, review_at, opts \\ []) do
     fetch_comments = Keyword.get(opts, :pr_issue_comments_fetcher, &default_pr_issue_comments/1)
 
-    with {:ok, comments} when is_list(comments) <- fetch_comments.(number) do
-      latest =
-        comments
-        |> Enum.filter(&trusted_comment?(&1, review_at))
-        |> Enum.max_by(&comment_timestamp/1, fn -> nil end)
+    case fetch_comments.(number) do
+      {:ok, comments} when is_list(comments) ->
+        latest =
+          comments
+          |> Enum.filter(&trusted_comment?(&1, review_at))
+          |> Enum.max_by(&comment_timestamp/1, fn -> nil end)
 
-      comment = if latest && change_request_comment?(field(latest, "body")), do: latest, else: nil
+        comment = if latest && change_request_comment?(field(latest, "body")), do: latest, else: nil
+        {:ok, comment}
 
-      {:ok, comment}
-    else
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, :invalid_comment_response}
+      {:error, reason} ->
+        {:error, reason}
+
+      _invalid_response ->
+        {:error, :invalid_comment_response}
     end
   end
 

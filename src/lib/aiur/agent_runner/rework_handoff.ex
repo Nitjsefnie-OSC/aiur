@@ -44,11 +44,15 @@ defmodule Aiur.AgentRunner.ReworkHandoff do
       {:refused, reason, message} ->
         {:error, {:rework_handoff_evidence_refused, reason, message}}
 
-      _ ->
+      :allow ->
         case ReworkHandoffGuard.findings_blockers(issue, state, turn_context[:workspace], turn_context.opts) do
           {:refused, reason, message} -> {:error, {:rework_handoff_evidence_refused, reason, message}}
-          _ -> write_state(issue, turn_context, state)
+          {:allow, _findings} -> write_state(issue, turn_context, state)
+          unexpected -> {:error, {:rework_handoff_findings_check_failed, unexpected}}
         end
+
+      unexpected ->
+        {:error, {:rework_handoff_evidence_check_failed, unexpected}}
     end
   end
 
