@@ -1009,7 +1009,7 @@
       { name: "Mistral", mono: "M", hue: 45, session: sw([6], "2h 15m", "5h"), weekly: sw([19], "2d 6h", "7d") },
     ],
   };
-  const tone = (p) => p <= 10 ? " max" : p <= 20 ? " hi" : "", apiTone = (p) => p <= 10 ? " max" : p <= 20 ? " hi" : "";
+  const tone = (p) => p <= 5 ? " max" : p <= 20 ? " hi" : "", apiTone = (p) => p <= 10 ? " max" : p <= 20 ? " hi" : "";
   const avg = (a) => Math.round(a.reduce((s, p) => s + p, 0) / a.length);
   const bar = (acc, cls, api = false) => '<span class="ax-bar' + (cls ? " " + cls : "") + '">' + acc.map((p) => '<span class="ax-seg"><i class="' + (p ? "" : "z") + (api ? apiTone(p) : tone(p)) + '" style="width:' + p + '%"></i></span>').join("") + "</span>";
   const tipA = (head, rows) => esc(JSON.stringify([head, rows]));
