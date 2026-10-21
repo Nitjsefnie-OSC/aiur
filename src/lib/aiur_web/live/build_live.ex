@@ -5,7 +5,7 @@ defmodule AiurWeb.BuildLive do
 
   require Logger
 
-  alias AiurWeb.Build.{Controls, DataSource, Protocol, Read, Ticket, URLState, UsageUpdates}
+  alias AiurWeb.Build.{Controls, Conversation, DataSource, Protocol, Read, Ticket, URLState, UsageUpdates}
   alias AiurWeb.BuildOrder.Runtime
   alias AiurWeb.OperatorControlCenter.{AwaitingCommands, DashboardShell, NavState, RouteRegistry}
   alias AiurWeb.Presenter
@@ -21,6 +21,7 @@ defmodule AiurWeb.BuildLive do
       socket
       |> Protocol.init()
       |> Controls.init()
+      |> Conversation.init()
       |> DashboardShell.mount()
       |> UsageUpdates.init(connected)
       |> AwaitingCommands.mount(connected)
@@ -100,13 +101,16 @@ defmodule AiurWeb.BuildLive do
 
   def handle_info({:control_lifecycle, payload}, socket) when is_map(payload), do: {:noreply, Controls.lifecycle(socket, payload)}
 
-  def handle_info(:fleet_changed, socket), do: {:noreply, DashboardShell.refresh_pause(socket)}
+  def handle_info(:fleet_changed, socket), do: {:noreply, socket |> DashboardShell.refresh_pause() |> Conversation.info(:fleet_changed)}
   def handle_info({AiurWeb.FinancialData, :updated, _} = message, socket), do: {:noreply, UsageUpdates.queue(socket, message)}
   def handle_info(:build_usage_flush, socket), do: {:noreply, UsageUpdates.flush(socket)}
   def handle_info(tick, socket) when tick in [:build_usage_github_tick, :build_usage_elevenlabs_tick], do: {:noreply, UsageUpdates.tick(socket, tick)}
 
   def handle_info({:decision_changed, _id, _version}, socket), do: {:noreply, AwaitingCommands.refresh(socket)}
   def handle_info(:awaiting_commands_tick, socket), do: {:noreply, AwaitingCommands.tick(socket)}
+  def handle_info({:build_conversation_poll, _token} = message, socket), do: {:noreply, Conversation.info(socket, message)}
+  def handle_info({:live_conversation_changed, _snapshot} = message, socket), do: {:noreply, Conversation.info(socket, message)}
+  def handle_info({:live_conversation_restarted, _epoch, _now} = message, socket), do: {:noreply, Conversation.info(socket, message)}
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
@@ -117,7 +121,9 @@ defmodule AiurWeb.BuildLive do
   def handle_event("request-unit-control", params, socket), do: Controls.request(socket, params)
   def handle_event("open-conversation", params, socket), do: Controls.open_conversation(socket, params)
   def handle_event("open-ticket", params, socket), do: Ticket.open(socket, params)
-  def handle_event("close-ticket", _params, socket), do: {:noreply, assign(socket, :open_ticket, nil)}
+  def handle_event("close-ticket", _params, socket), do: {:noreply, socket |> Conversation.clear() |> assign(:open_ticket, nil)}
+  def handle_event("conversation-page", params, socket), do: Conversation.page(socket, params)
+  def handle_event("conversation-close", params, socket), do: Conversation.close(socket, params)
   def handle_event("load-earlier", params, socket), do: Protocol.earlier(socket, params, source_opts(socket))
   def handle_event("usage-watch-start", _params, socket), do: {:noreply, UsageUpdates.watch(socket, :start)}
   def handle_event("usage-watch-stop", _params, socket), do: {:noreply, UsageUpdates.watch(socket, :stop)}
