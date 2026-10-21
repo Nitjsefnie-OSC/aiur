@@ -1,5 +1,5 @@
 Code.require_file("../support/browser_harness/fixture_endpoint_start.ex", __DIR__)
-for file <- ~w(earlier_control fixture_source fixture_conversation_source index_parts index_seed), do: Code.require_file("../support/build_home/#{file}.ex", __DIR__)
+for file <- ~w(earlier_control fixture_source fixture_conversation_source ticket_docs index_parts index_seed), do: Code.require_file("../support/build_home/#{file}.ex", __DIR__)
 Code.require_file("../support/build_home/usage_fixtures.ex", __DIR__)
 Code.require_file("../support/browser_harness/fixtures.ex", __DIR__)
 Code.require_file("../support/test_cleanup.ex", __DIR__)
@@ -169,7 +169,7 @@ defmodule Aiur.BrowserHarness.FixtureServer do
     Application.put_env(:aiur, :build_order_data_source, Aiur.BrowserHarness.BuildOrderDataSource)
     endpoint_overrides = AiurWeb.EndpointConfig.overrides_table()
     if :ets.whereis(endpoint_overrides) == :undefined, do: :ets.new(endpoint_overrides, [:named_table, :public, :set])
-    configure_forwarded_dashboard() |> FixtureSource.configure_usage()
+    configure_forwarded_dashboard() |> FixtureSource.configure_usage() |> Aiur.TestSupport.BuildHome.TicketDocs.configure()
     ExperimentsFixture.prepare("empty")
 
     {:ok, _} =
