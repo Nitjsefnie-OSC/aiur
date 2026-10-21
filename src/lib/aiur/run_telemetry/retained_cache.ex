@@ -61,9 +61,27 @@ defmodule Aiur.RunTelemetry.RetainedCache do
   end
 
   @doc false
+  @spec invalidate_identity(pid()) :: :ok
+  def invalidate_identity(notify) when is_pid(notify) do
+    GenServer.call(__MODULE__, {:invalidate_identity, notify}, :infinity)
+    :ok
+  end
+
+  @doc false
   @spec warm_identity_async() :: :ok
   def warm_identity_async do
     Task.start(fn -> warm_identity() end)
+    :ok
+  end
+
+  @doc false
+  @spec warm_identity_async(pid()) :: :ok
+  def warm_identity_async(notify) when is_pid(notify) do
+    Task.start(fn ->
+      warm_identity()
+      send(notify, :retained_identity_warmed)
+    end)
+
     :ok
   end
 
@@ -100,12 +118,13 @@ defmodule Aiur.RunTelemetry.RetainedCache do
   end
 
   defp summary_directories_identity(current_boot) do
-    Summaries.summary_boot_ids()
-    |> Enum.reject(&(&1 == current_boot))
-    |> Enum.map(fn boot ->
-      path = Summaries.run_summary_path(boot) |> Path.dirname()
-      {boot, file_identity(path)}
-    end)
+    boots = Summaries.summary_boot_ids() |> Enum.reject(&(&1 == current_boot))
+
+    {boots,
+     Enum.map(boots, fn boot ->
+       path = Summaries.run_summary_path(boot) |> Path.dirname()
+       {boot, file_identity(path), file_identity(Summaries.run_summary_path(boot))}
+     end)}
   end
 
   defp ensure_started do
@@ -179,6 +198,12 @@ defmodule Aiur.RunTelemetry.RetainedCache do
   def handle_call(:invalidate_identity, _from, state) do
     :ets.delete_all_objects(@identity_table)
     warm_identity_async()
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:invalidate_identity, notify}, _from, state) do
+    :ets.delete_all_objects(@identity_table)
+    warm_identity_async(notify)
     {:reply, :ok, state}
   end
 

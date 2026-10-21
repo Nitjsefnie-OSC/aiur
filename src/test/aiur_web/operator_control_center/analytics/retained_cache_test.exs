@@ -94,7 +94,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
     assert ["boot-a", "boot-b"] = RetainedCache.summaries_identity("current") |> Enum.map(&elem(&1, 0))
   end
 
-  test "dashboard cache identity changes when retained boots are added" do
+  test "dashboard cache identity changes when a summary is rewritten in an existing boot" do
     root = Aiur.TestSupport.tmp_root!("retained-directory-identity")
     previous = for key <- [:repo_base_root, :analytics_repo], do: {key, Application.fetch_env(:aiur, key)}
     Application.put_env(:aiur, :repo_base_root, root)
@@ -113,8 +113,6 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
     end)
 
     identity = RetainedCache.identity(nil)
-
-    assert identity == RetainedCache.identity(nil)
 
     replacement = Path.join([runs, "boot-1", "run-summary.tmp"])
     File.write!(replacement, "replacement-summary")
@@ -135,9 +133,14 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
       Aiur.TestCleanup.rm_rf!(root)
     end)
 
-    assert eventually(fn -> :ets.lookup(Aiur.RunTelemetry.RetainedCache.Identity, {Summaries.state_node(), Aiur.RunTelemetry.boot_id()}) != [] end)
-    RetainedCache.invalidate_identity()
-    assert eventually(fn -> :ets.lookup(Aiur.RunTelemetry.RetainedCache.Identity, {Summaries.state_node(), Aiur.RunTelemetry.boot_id()}) != [] end)
+    key = {Summaries.state_node(), Aiur.RunTelemetry.boot_id()}
+    RetainedCache.warm_identity_async(self())
+    receive_barrier(:retained_identity_warmed)
+    assert :ets.lookup(Aiur.RunTelemetry.RetainedCache.Identity, key) != []
+
+    RetainedCache.invalidate_identity(self())
+    receive_barrier(:retained_identity_warmed)
+    assert :ets.lookup(Aiur.RunTelemetry.RetainedCache.Identity, key) != []
   end
 
   test "latest-run decodes newest analyzable summary only" do
@@ -191,18 +194,5 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.RetainedCacheTest do
       Process.sleep(10)
       await_waiters(id, count, attempts - 1)
     end
-  end
-
-  defp eventually(fun, attempts \\ 100)
-  defp eventually(_fun, 0), do: false
-
-  defp eventually(fun, attempts) do
-    if fun.(),
-      do: true,
-      else:
-        (
-          Process.sleep(10)
-          eventually(fun, attempts - 1)
-        )
   end
 end

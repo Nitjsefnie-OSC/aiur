@@ -113,8 +113,6 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.ExecutorWakeInbox,
     Aiur.ExecutorListener,
     AiurWeb.ControlCenterCache,
-    Aiur.RunTelemetry.RetainedCache,
-    AiurWeb.OperatorControlCenter.Analytics.Prewarmer,
     AiurWeb.FinancialData.Supervisor,
     {Aiur.HttpServer, dashboard_pages?: true},
     Aiur.Opencode.TokenRegistry,
@@ -147,7 +145,9 @@ defmodule Aiur.BuildOrder.ComponentTest do
     Aiur.Experiments.Analyst,
     Aiur.Experiments.AnalystTrigger,
     Aiur.LandingWatch.QuarantineLifter,
-    AiurWeb.Build.IndexSupervisor
+    AiurWeb.Build.IndexSupervisor,
+    Aiur.RunTelemetry.RetainedCache,
+    AiurWeb.OperatorControlCenter.Analytics.Prewarmer
   ]
 
   setup do

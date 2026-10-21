@@ -279,7 +279,9 @@ defmodule Aiur.Application.Children do
         landing_watch_children() ++
         executor_sweep_children() ++
         Aiur.Experiments.window_children(recording?) ++
-        quarantine_lifter_children() ++ List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
+        quarantine_lifter_children() ++
+        List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor)) ++
+        List.wrap(if(dashboard?, do: [Aiur.RunTelemetry.RetainedCache, AiurWeb.OperatorControlCenter.Analytics.Prewarmer]))
     )
   end
 
@@ -307,8 +309,6 @@ defmodule Aiur.Application.Children do
   defp dashboard_children(dashboard?, dashboard_pages?, tailscale_funnel?) do
     [
       if(dashboard?, do: AiurWeb.ControlCenterCache),
-      if(dashboard?, do: Aiur.RunTelemetry.RetainedCache),
-      if(dashboard?, do: AiurWeb.OperatorControlCenter.Analytics.Prewarmer),
       if(dashboard?, do: AiurWeb.FinancialData.Supervisor),
       if(dashboard?, do: {Aiur.HttpServer, dashboard_pages?: dashboard_pages?}),
       if(dashboard? and tailscale_funnel?, do: Aiur.TailscaleFunnel)
