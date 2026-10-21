@@ -12,3 +12,4 @@ Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads ope
 Aiur.PerClassCadenceTest	*	#5605
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
 AiurWeb.ZeroFetchPageOpenTest	*	#5605
+Aiur.LandingWatch.MergeGroupFailureRequeueTest	the fifth group requeue in fifteen minutes is not enqueued	#5633
