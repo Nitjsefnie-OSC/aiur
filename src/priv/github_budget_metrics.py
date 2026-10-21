@@ -13,9 +13,13 @@ CHECKPOINT_RESULTS = None
 CHECKPOINT_LOCK = None
 CHECKPOINT_THREAD = None
 CHECKPOINT_ACTIVE = None
+CHECKPOINT_STARTED_NS = None
 LAST_SUCCESSFUL_CHECKPOINT_NS = None
+LAST_OBSERVED_WAL_FRAMES = 0
+LAST_FALLBACK_ATTEMPT_NS = None
 FALLBACK_LOGGED = False
 WAL_FRAME_LIMIT = 10_000
+FALLBACK_RETRY_NS = 60_000_000_000
 
 
 class SessionConnection:
@@ -60,7 +64,7 @@ def checkpoint_status(db):
         wal_size = os.path.getsize(wal_path)
     except OSError:
         wal_size = 0
-    last = LAST_SUCCESSFUL_CHECKPOINT_NS
+    last = LAST_SUCCESSFUL_CHECKPOINT_NS or CHECKPOINT_STARTED_NS
     age_ms = None if last is None else max((time.monotonic_ns() - last) / 1_000_000, 0)
     return {
         "sqlite_wal_size_bytes": wal_size,
@@ -84,17 +88,16 @@ def stale_checkpoint(status):
 
 
 def recover_checkpoint_if_needed(db, conn):
-    global FALLBACK_LOGGED, LAST_SUCCESSFUL_CHECKPOINT_NS
+    global FALLBACK_LOGGED, LAST_FALLBACK_ATTEMPT_NS, LAST_OBSERVED_WAL_FRAMES, LAST_SUCCESSFUL_CHECKPOINT_NS
     if CHECKPOINT_REQUESTS is None:
         return checkpoint_status(db)
     status = checkpoint_status(db)
     dead_worker = CHECKPOINT_THREAD is None or not CHECKPOINT_THREAD.is_alive()
-    try:
-        page_size = conn.execute("PRAGMA page_size").fetchone()[0]
-        frames = max((status["sqlite_wal_size_bytes"] - 32) // (page_size + 24), 0)
-    except sqlite3.Error:
-        frames = 0
+    frames = LAST_OBSERVED_WAL_FRAMES
     if not dead_worker and frames <= WAL_FRAME_LIMIT and not stale_checkpoint(status):
+        return status
+    now_ns = time.monotonic_ns()
+    if LAST_FALLBACK_ATTEMPT_NS is not None and now_ns - LAST_FALLBACK_ATTEMPT_NS < FALLBACK_RETRY_NS:
         return status
     if dead_worker:
         while True:
@@ -105,10 +108,15 @@ def recover_checkpoint_if_needed(db, conn):
     elif not CHECKPOINT_REQUESTS.empty() or (CHECKPOINT_ACTIVE is not None and CHECKPOINT_ACTIVE.is_set()):
         return status
     try:
+        LAST_FALLBACK_ATTEMPT_NS = now_ns
         conn.execute("PRAGMA busy_timeout = 50")
         busy, total, checkpointed = conn.execute("PRAGMA wal_checkpoint(RESTART)").fetchone()
         if busy == 0 and checkpointed >= total:
             LAST_SUCCESSFUL_CHECKPOINT_NS = time.monotonic_ns()
+            LAST_OBSERVED_WAL_FRAMES = 0
+            LAST_FALLBACK_ATTEMPT_NS = None
+            if dead_worker:
+                start_checkpoint_worker()
         if not FALLBACK_LOGGED:
             print("budget broker checkpoint worker fallback checkpoint ran", file=sys.stderr)
             FALLBACK_LOGGED = True
@@ -118,7 +126,8 @@ def recover_checkpoint_if_needed(db, conn):
 
 
 def start_checkpoint_worker():
-    global CHECKPOINT_REQUESTS, CHECKPOINT_RESULTS, CHECKPOINT_LOCK, CHECKPOINT_THREAD, CHECKPOINT_ACTIVE, LAST_SUCCESSFUL_CHECKPOINT_NS
+    global CHECKPOINT_REQUESTS, CHECKPOINT_RESULTS, CHECKPOINT_LOCK, CHECKPOINT_THREAD, CHECKPOINT_ACTIVE, CHECKPOINT_STARTED_NS
+    CHECKPOINT_STARTED_NS = time.monotonic_ns()
     CHECKPOINT_REQUESTS = queue.Queue(maxsize=1)
     CHECKPOINT_RESULTS = {}
     CHECKPOINT_LOCK = threading.Lock()
@@ -141,6 +150,8 @@ def start_checkpoint_worker():
                     "sqlite_wal_frames": frames,
                     "sqlite_checkpointed_frames": checkpointed,
                 }
+                global LAST_OBSERVED_WAL_FRAMES
+                LAST_OBSERVED_WAL_FRAMES = frames
                 if busy == 0 and checkpointed >= frames:
                     LAST_SUCCESSFUL_CHECKPOINT_NS = time.monotonic_ns()
             except sqlite3.Error:

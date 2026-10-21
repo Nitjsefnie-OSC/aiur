@@ -97,12 +97,8 @@ defmodule Aiur.GitHub.BudgetBroker do
       summary = summarize_stats(state.stats)
       Logger.info("GitHub budget broker one-minute measurements=#{inspect(summary)}")
       :telemetry.execute([:aiur, :github, :budget_broker, :window], Map.delete(summary, :by_command_type), %{})
-    end
 
-    if Enum.any?(state.stats, fn {_outcome, measurements} -> measurements[:sqlite_checkpoint_stale] end) do
-      BrokerTimeout.record_checkpoint_degraded()
-    else
-      BrokerTimeout.record_checkpoint_recovered()
+      report_checkpoint_state(state.stats)
     end
 
     Process.send_after(self(), :report_stats, :timer.minutes(1))
@@ -115,6 +111,14 @@ defmodule Aiur.GitHub.BudgetBroker do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp report_checkpoint_state(stats) do
+    if Enum.any?(stats, fn {_outcome, measurements} -> measurements[:sqlite_checkpoint_stale] end) do
+      BrokerTimeout.record_checkpoint_degraded()
+    else
+      BrokerTimeout.record_checkpoint_recovered()
+    end
+  end
 
   defp reply_line(line, state) do
     case Jason.decode(line) do
