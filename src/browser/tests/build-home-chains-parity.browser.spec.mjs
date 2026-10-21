@@ -105,11 +105,11 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
     await check('P3 Fit URL', async () => expect(productFit.url).toEqual(designFit.url))
     await check('P3 zoom label', async () => { expect(productFit.zoom).toBeTruthy(); expect(productFit.zoom).toEqual(designFit.zoom) })
     await check('P3 scroll', async () => expect(Math.abs(productFit.scroll - designFit.scroll)).toBeLessThanOrEqual(1))
-    // Kevin approved only the settled tab x at 1440 (#3152, 2026-10-19).
+    // Kevin approved settled arrows and the 1440 tab x (#3152, 2026-10-21).
     // Keep native design execution and compare every tab pixel at a common x.
-    let tabPosition
+    const fitStyles = []
     if (cell.viewport.width === 1440) {
-      const entry = pair.allowlist.find(entry => entry.id === 'chain-fit-lock-tab-x-1440')
+      const entry = pair.allowlist.find(entry => entry.id === 'chain-fit-settled')
       expect(entry.approval.status).toBe('approved')
       const positioned = await pair.product.evaluate(id => {
         const card = document.querySelector(`.bd-card[data-id="${id}"]`).getBoundingClientRect()
@@ -118,10 +118,17 @@ for (const cell of cells) test(`P1–P4 chain pixel parity ${cell.viewport.width
       }, root.id)
       expect(positioned.actual).toBeCloseTo(positioned.expected, 1)
       const left = await pair.design.locator('.bd-lt').evaluate(el => el.style.left)
-      tabPosition = await pair.product.addStyleTag({ content: `.bd-lt { left: ${left} !important; }` })
+      fitStyles.push(await pair.product.addStyleTag({ content: `.bd-lt { left: ${left} !important; }` }))
+    }
+    if (cell.viewport.width > 390) {
+      expect(pair.allowlist.find(entry => entry.id === 'chain-fit-settled').approval.status).toBe('approved')
+      // Capture-only approved paint exclusion: never reorder/replay reference code.
+      for (const page of [pair.design, pair.product]) fitStyles.push(await page.addStyleTag({
+        content: '.bd-edges .bd-e, .bd-edges .bd-ea { visibility: hidden !important; }',
+      }))
     }
     try { await pixels(pair, 'P3-chain-fit', '.bd-vpw') }
-    finally { await tabPosition?.evaluate(el => el.remove()) }
+    finally { for (const style of fitStyles) await style.evaluate(el => el.remove()) }
   } finally {
     if (!pair.design.isClosed()) await pair.design.evaluate(() => window.referenceFitRestore?.())
     await pair.close()

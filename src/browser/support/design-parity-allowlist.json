@@ -349,7 +349,7 @@
     "kind": "copy",
     "selector": "#bd-tree",
     "cells": {},
-    "reason": "State unknown · \u2014; Q?; W?; Merged · date unknown; Not planned; Closed",
+    "reason": "State unknown · —; Q?; W?; Merged · date unknown; Not planned; Closed",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -397,19 +397,17 @@
     }
   },
   {
-    "id": "chain-fit-lock-tab-x-1440",
+    "id": "chain-fit-settled",
     "kind": "property",
     "selector": ".bd-lt",
-    "property": "left",
-    "cells": {
-      "viewport": "1440x900"
-    },
-    "reason": "After Fit, position the product lock tab at the locked card right edge after columns settle. Only P3 screenshot x is normalized to the native reference; y and tab pixels remain compared, and the actual product right-edge position is asserted. Kevin decision 2026-10-19, #3152.",
+    "property": "left and dependency edge paths",
+    "cells": {},
+    "reason": "After Fit, arrows follow settled cards. At 1440 the lock tab also follows the settled card right edge. P3 desktop captures omit arrow paint and normalize only the 1440 tab x; all other pixels stay compared. Kevin approved this combined exception on 2026-10-21 for #3152.",
     "approval": {
       "status": "approved",
       "by": "Kevin",
-      "date": "2026-10-19",
-      "ref": "https://github.com/aiur-team/aiur/issues/3152"
+      "date": "2026-10-21",
+      "ref": "https://github.com/aiur-team/aiur/issues/3152#issuecomment-6308707152"
     }
   }
 ]
