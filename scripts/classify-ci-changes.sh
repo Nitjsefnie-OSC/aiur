@@ -42,8 +42,13 @@ if [[ "${EVENT_NAME}" == pull_request ]] && grep -qx 'full_ci=false' "$scratch/c
     printf 'full_ci=true\ndocs_only=false\n' > "$scratch/classification"
     selection=full
   fi
-  # Mix prints compile output before the selector's one result line on a cold _build.
-  selection="${selection##*$'\n'}"
+  # Mix compile output can interleave with the selector's result on a cold _build.
+  selection="$(printf '%s\n' "$selection" | grep -E '^(full|scoped:[0-9]+)$' | tail -n 1 || true)"
+  if [[ -z "$selection" ]]; then
+    printf '::warning::affected test selection returned no recognized result; forcing full CI\n' >&2
+    printf 'full_ci=true\ndocs_only=false\n' > "$scratch/classification"
+    selection=full
+  fi
   case "$selection" in
     full) printf 'full_ci=true\ndocs_only=false\n' > "$scratch/classification" ;;
     scoped:*)

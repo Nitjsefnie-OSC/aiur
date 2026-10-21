@@ -59,6 +59,10 @@ if [[ -n "${TEST_SELECTOR:-}" ]]; then
 else
   echo scoped:1
 fi
+if [[ "${TEST_SELECTOR_TRAILING_COMPILE:-false}" == true ]]; then
+  echo '==> file_system'
+  echo 'Compiling 7 files (.ex)'
+fi
 STUB
 chmod +x "$test_dir/bin/mix"
 classify() {
@@ -66,6 +70,7 @@ classify() {
   : > "$test_dir/summary"
   EVENT_NAME="$1" TEST_DRAFT="$2" TEST_FILES="$3" TEST_LABELS="${4:-[]}" \
     TEST_SELECTOR="${5:-scoped:1}" TEST_OVERSIZED_PATHS="${6:-false}" TEST_FAIL_SELECTOR="${7:-false}" \
+    TEST_SELECTOR_TRAILING_COMPILE="${8:-false}" \
     REPO=o/r PR_NUMBER=7 \
     GITHUB_WORKSPACE="$test_dir/workspace" \
     GITHUB_OUTPUT="$test_dir/out" GITHUB_STEP_SUMMARY="$test_dir/summary" MIX_BIN="$test_dir/bin/mix" \
@@ -122,6 +127,7 @@ TEST_FILE_CAP=true expect 'browser_smoke=false docs_only=false full_ci=true' pul
 expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[]' '[]' '' true
 expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:401
 expect 'browser_smoke=false docs_only=false full_ci=false' pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' '[]' scoped:400
+expect 'browser_smoke=false docs_only=false full_ci=true' pull_request false '[{"filename":"scripts/ci-soak.py"}]' '[]' full false false true
 classify pull_request false '[{"filename":"src/lib/aiur/config.ex"}]' >/dev/null
 grep -Fxq 'scoped:1' "$test_dir/summary"
 classify pull_request false '[{"filename":"src/test/aiur/config_test.exs"},{"filename":"src/lib/aiur/config.ex"}]' >/dev/null
