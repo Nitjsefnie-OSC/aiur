@@ -6,6 +6,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Runtime do
 
   alias Aiur.PollCadence
   alias Aiur.RunTelemetry.RetainedCache
+  alias Aiur.RunTelemetry.Summaries
   alias AiurWeb.OperatorControlCenter.Analytics.Presenter
   alias AiurWeb.OperatorControlCenter.{AwaitingCommands, DashboardShell}
 
@@ -13,6 +14,8 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Runtime do
 
   @load_timeout_ms 15_000
   @load_tick_ms 1_000
+  @persistent_model_file "latest-run-model.term"
+  @persistent_model_limit 8 * 1024 * 1024
 
   @spec load(Phoenix.LiveView.Socket.t(), keyword(), (-> map())) :: Phoenix.LiveView.Socket.t()
   def load(socket, scope_opts, rtk_loader) do
@@ -22,14 +25,7 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Runtime do
     Process.send_after(self(), {:analytics_load_tick, token}, @load_tick_ms)
     Process.send_after(self(), {:analytics_load_timeout, token}, timeout_ms)
 
-    opts =
-      [
-        range: socket.assigns.range,
-        session: if(socket.assigns.range == :full, do: :cross, else: :current),
-        telemetry_file: Application.get_env(:aiur, :analytics_telemetry_file),
-        orchestrator: AiurWeb.EndpointConfig.get(:orchestrator) || Aiur.Orchestrator,
-        snapshot_timeout_ms: PollCadence.snapshot_tolerance_ms(AiurWeb.EndpointConfig.get(:snapshot_timeout_ms) || 15_000)
-      ] ++ scope_opts
+    opts = analytics_opts(socket.assigns.range, scope_opts)
 
     {cached, cache_key} = cached_model(opts)
 
@@ -53,6 +49,13 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Runtime do
 
     socket = if cached, do: assign(socket, :analytics_refreshing?, true), else: socket
     start_async(socket, :analytics_model, fn -> {Presenter.load(opts), rtk_loader.()} end)
+  end
+
+  @doc false
+  @spec prewarm() :: :ok
+  def prewarm do
+    opts = analytics_opts(:run, [])
+    cache_result(cache_key(opts), Presenter.load(opts))
   end
 
   @spec handle_info(term(), Phoenix.LiveView.Socket.t()) :: {:noreply, Phoenix.LiveView.Socket.t()}
@@ -88,16 +91,82 @@ defmodule AiurWeb.OperatorControlCenter.Analytics.Runtime do
   @spec cache_result(term(), {:ok, Presenter.model()} | {:unavailable, atom()}) :: :ok
   def cache_result(_key, {:unavailable, _reason}), do: :ok
 
-  def cache_result(key, {:ok, model}), do: RetainedCache.put(@cache_table, key, model, max_entries: 8, max_value_bytes: 8 * 1024 * 1024)
+  def cache_result(key, {:ok, model}) do
+    RetainedCache.put(@cache_table, key, model, max_entries: 8, max_value_bytes: @persistent_model_limit)
+    persist_model(key, model)
+  end
 
   defp cached_model(opts) do
     key = cache_key(opts)
-    {RetainedCache.lookup(@cache_table, key), key}
+
+    cached = RetainedCache.lookup(@cache_table, key) || load_persisted_model(key)
+    if cached, do: RetainedCache.put(@cache_table, key, cached, max_value_bytes: @persistent_model_limit)
+    {cached, key}
   end
 
   defp cache_key(opts) do
     {Keyword.get(opts, :session, :current), Keyword.get(opts, :build_order), Keyword.get(opts, :tickets), Keyword.get(opts, :cache_identity)}
   end
+
+  defp analytics_opts(range, scope_opts) do
+    [
+      range: range,
+      session: if(range == :full, do: :cross, else: :current),
+      telemetry_file: Application.get_env(:aiur, :analytics_telemetry_file),
+      orchestrator: AiurWeb.EndpointConfig.get(:orchestrator) || Aiur.Orchestrator,
+      snapshot_timeout_ms: PollCadence.snapshot_tolerance_ms(AiurWeb.EndpointConfig.get(:snapshot_timeout_ms) || 15_000)
+    ] ++ scope_opts
+  end
+
+  defp persist_model({:current, nil, nil, nil}, model) do
+    path = Path.join(Summaries.analytics_dir(), @persistent_model_file)
+    temporary = path <> ".#{System.unique_integer([:positive])}.tmp"
+    binary = :erlang.term_to_binary(model, [:compressed])
+
+    if byte_size(binary) <= @persistent_model_limit do
+      write_model(path, temporary, binary)
+    end
+
+    :ok
+  rescue
+    _error -> :ok
+  end
+
+  defp persist_model(_key, _model), do: :ok
+
+  defp write_model(path, temporary, binary) do
+    File.mkdir_p!(Path.dirname(path))
+    File.write!(temporary, binary, [:binary, :exclusive])
+    File.rename!(temporary, path)
+    File.chmod(path, 0o600)
+  after
+    File.rm(temporary)
+  end
+
+  defp load_persisted_model({:current, nil, nil, nil}) do
+    path = Path.join(Summaries.analytics_dir(), @persistent_model_file)
+
+    with {:ok, stat} when stat.size <= @persistent_model_limit <- File.stat(path),
+         {:ok, binary} <- File.read(path) do
+      decoded_model = :erlang.binary_to_term(binary, [:safe])
+
+      case decoded_model do
+        %{actors: actors, source_observed_at: observed_at, source_boot_id: boot_id}
+        when is_list(actors) and (is_binary(observed_at) or is_nil(observed_at)) and
+               (is_binary(boot_id) or is_nil(boot_id)) ->
+          decoded_model
+
+        _invalid ->
+          nil
+      end
+    else
+      _other -> nil
+    end
+  rescue
+    _error -> nil
+  end
+
+  defp load_persisted_model(_key), do: nil
 
   defp source_info(model) do
     observed_at = parse_observed_at(model.source_observed_at)
