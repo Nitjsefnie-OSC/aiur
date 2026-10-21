@@ -6,6 +6,10 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
+  // #3166 local run (2026-10-21): six control cases 36.6s; four parity cells 133.1s.
+  // Include startup margin; refresh these provisional bounds from the first CI shard log.
+  'test:browser-suite -- build-home-agent-control': 50,
+  'test:browser-suite -- build-home-agent-control-parity': 160,
   // #3156 local harness (2026-10-20): functional 19.3s, parity 1.2m, motion 15.0s.
   // Round up for fixture startup; refresh these provisional bounds from the first CI suite log.
   'test:build-modal': 25,
