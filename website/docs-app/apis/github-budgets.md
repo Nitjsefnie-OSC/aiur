@@ -23,8 +23,11 @@ broker. Requests retain independent deadlines while sharing a transaction.
 Expired work is rolled back before commit, with 50 ms reserved for commit and
 reply delivery. A longer OS or disk stall can exceed this finite margin.
 
-Sustained broker retry pressure still appears as
-`system.github.budget_broker_degraded`; reduce host load or SQLite contention.
+Sustained broker timeouts raise one
+`system.github.budget_broker_unavailable` attention with the elapsed duration;
+`system.github.budget_broker_unavailable.resolved` clears it when the timeout
+rate recovers. Broker command summaries include mailbox, Python queue, SQLite
+open, lock-wait and transaction latency so the slow stage can be identified.
 
 | Budget | Unit | Where to read it |
 | --- | --- | --- |

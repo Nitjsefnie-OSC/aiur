@@ -2,7 +2,7 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
   @moduledoc """
   #2464: the budget-broker-timeout retry rate is a first-class signal — a
   queryable `system.github.budget_broker_retry` event per backoff, and exactly
-  one dwelled `system.github.budget_broker_degraded` alert for a sustained rate.
+  one dwelled `system.github.budget_broker_unavailable` alert for a sustained rate.
 
   The monitor's own periodic timer is disabled for the test instance
   (`check_interval_ms: 0`); the dwell and window are driven with fake monotonic
@@ -15,8 +15,8 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
 
   @name :broker_timeout_test
   @retry_topic "system.github.budget_broker_retry"
-  @degraded_topic "system.github.budget_broker_degraded"
-  @resolved_topic "system.github.budget_broker_degraded.resolved"
+  @degraded_topic "system.github.budget_broker_unavailable"
+  @resolved_topic "system.github.budget_broker_unavailable.resolved"
 
   setup do
     parent = self()
@@ -65,6 +65,7 @@ defmodule Aiur.GitHub.BrokerTimeoutTest do
     check(4_000)
 
     assert_receive {:emitted, @degraded_topic, opts}, 1000
+    assert opts[:message] =~ "3s"
     assert opts[:needs_attention] == true
 
     # The same retries leave the configured ten-second window while they would

@@ -16,7 +16,7 @@ defmodule Aiur.GitHub.BrokerTimeout do
     the persisted alert ledger without having been watching at the time (that is
     precisely what was missing when #2457 was filed). It is `needs_attention:
     false`, because the individual retry is uninteresting.
-  * **`system.github.budget_broker_degraded`** — emitted exactly once, after a
+  * **`system.github.budget_broker_unavailable`** — emitted exactly once, after a
     dwell, when the retry rate stays elevated. The unit of interest is "the
     broker has been degraded for N minutes", not "a request retried". A single
     isolated timeout never crosses the threshold and produces nothing; the
@@ -41,8 +41,8 @@ defmodule Aiur.GitHub.BrokerTimeout do
   alias Aiur.Config.Schema.Agent, as: AgentConfig
 
   @retry_topic "system.github.budget_broker_retry"
-  @degraded_topic "system.github.budget_broker_degraded"
-  @resolution_topic "system.github.budget_broker_degraded.resolved"
+  @degraded_topic "system.github.budget_broker_unavailable"
+  @resolution_topic "system.github.budget_broker_unavailable.resolved"
 
   # How often the monitor re-evaluates the sliding-window rate and dwell. The
   # dwell itself is config; this is only the granularity at which it is checked.
@@ -227,8 +227,8 @@ defmodule Aiur.GitHub.BrokerTimeout do
     elapsed_s = div(now_ms - since_ms, 1_000)
 
     state.emit_fun.(@degraded_topic,
-      message: "GitHub budget broker has been degraded for #{elapsed_s}s (#{length(state.events)} timeouts in the window)",
-      reason: "Budget broker retry rate sustained above threshold for #{elapsed_s}s",
+      message: "GitHub budget broker has been unavailable for #{elapsed_s}s (#{length(state.events)} timeouts in the window)",
+      reason: "Budget broker timeout rate sustained above threshold for #{elapsed_s}s",
       severity: "warning",
       needs_attention: true
     )

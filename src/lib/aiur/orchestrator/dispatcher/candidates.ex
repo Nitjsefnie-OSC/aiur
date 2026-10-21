@@ -186,10 +186,36 @@ defmodule Aiur.Orchestrator.Dispatcher.Candidates do
     hydrator = Keyword.get(opts, :blocked_by_hydrator, &default_blocked_by_hydrator/1)
 
     case Launch.revalidate_issue_for_dispatch(issue, fetcher, DispatchPolicy.terminal_state_set(), opts) do
-      {:ok, refreshed} -> {:validated, refreshed, HoldDecline.observe(Tracker.with_transient_retry(fn -> hydrator.(refreshed) end, opts))}
-      other -> other
+      {:ok, refreshed} ->
+        {:validated, refreshed, HoldDecline.observe(Tracker.with_transient_retry(fn -> hydrator.(refreshed) end, opts))}
+
+      {:error, reason} = error ->
+        if broker_timeout?(reason), do: validate_from_cached_dependencies(issue, error), else: error
+
+      other ->
+        other
     end
   end
+
+  # The candidate list was just confirmed by the tracker poll. If the local
+  # budget broker times out on the redundant per-issue refresh, a fresh
+  # cache-only dependency read is still enough to keep a known-ready candidate
+  # moving. Missing or stale cache remains fail-closed; do not turn an
+  # arbitrary tracker error into permission to dispatch.
+  defp validate_from_cached_dependencies(issue, timeout_error) do
+    case Tracker.cached_blocked_by(%{issue | blocked_by: []}) do
+      {:ok, %Issue{} = cached} ->
+        Logger.info("Using fresh cached dependency evidence after GitHub budget broker timeout: #{State.issue_context(issue)}")
+        {:validated, issue, HoldDecline.observe({:ok, cached})}
+
+      {:error, _cache_miss_or_stale} ->
+        timeout_error
+    end
+  end
+
+  defp broker_timeout?(:github_budget_broker_timeout), do: true
+  defp broker_timeout?({:github, kind, %{reason: :github_budget_broker_timeout}}) when kind in [:timeout, :local_hold], do: true
+  defp broker_timeout?(_reason), do: false
 
   defp apply_current_dispatch_validation(current, expected, issue, attempt, host, opts, result) do
     next =

@@ -257,7 +257,7 @@ defmodule Aiur.Config.CapacitySettings do
 
   @doc """
   How long the degraded budget-broker retry rate must persist before the single
-  `system.github.budget_broker_degraded` alert raises (#2464, dwell per
+  `system.github.budget_broker_unavailable` alert raises (#2464, dwell per
   #2434/#2449).
   """
   @spec budget_broker_degraded_alert_after_seconds() :: pos_integer()
