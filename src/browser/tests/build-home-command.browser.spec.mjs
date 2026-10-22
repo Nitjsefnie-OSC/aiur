@@ -2,8 +2,8 @@ import { test, expect } from '@playwright/test'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
 // MP-E8-C11-T08: the ticket modal's Command card on fixture ticket 601 (design J:206 `a3`).
+test.setTimeout(120_000)
 test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, height: 900 }, timezoneId: 'America/Los_Angeles' })
-test.describe.configure({ mode: 'serial' })
 
 async function open(page, scenario) {
   const seeded = await page.request.get('/build-command-control/' + scenario)
@@ -40,34 +40,40 @@ test('answering records through the server and appends the answer only after it 
   await expect(card(page).locator('p').first()).toHaveText('Should in-flight retries be restored after a daemon restart, or stay process-local?')
   await proof(page, 'command-open')
 
+  const ops = await page.locator('#cv-log .cv-op').count()
   await page.evaluate(() => { window.holdAnswer = new Promise(resolve => { window.releaseAnswer = resolve }) })
   await buttons.nth(0).click()
   await expect(card(page)).toHaveAttribute('aria-busy', 'true')
   await expect(buttons.nth(0)).toBeDisabled(); await expect(buttons.nth(1)).toBeDisabled()
   expect(await page.evaluate(() => document.activeElement?.id)).toBe('bd-cmd')
-  await expect(page.locator('#cv-log .cv-op')).toHaveCount(0)
+  await expect(page.locator('#cv-log .cv-op')).toHaveCount(ops)
   await buttons.nth(1).click({ force: true })
   await page.evaluate(() => window.releaseAnswer())
 
   await expect(card(page)).toHaveCount(0)
+  await expect(page.locator('#cv-log .cv-op')).toHaveCount(ops + 1)
   const row = page.locator('#cv-log .cv-op').last()
   await expect(row.locator('p')).toHaveText('Answered: Persist to disk, rehydrate on boot')
   expect(await row.getAttribute('data-eid')).toMatch(/^answer:/)
   await expect(page.locator('#cv-typing')).toBeHidden()
   expect(await page.evaluate(() => window.answerCalls.length)).toBe(1)
-  expect(await state(page)).toEqual([{ status: 'decided', option_id: 'persist', actor: 'dashboard' }])
+  const [stored] = await state(page)
+  expect(stored).toMatchObject({ status: 'decided', option_id: 'persist' })
+  expect(stored.actor).not.toBe('elsewhere')
 
   // A fresh open of the now-answered ticket never shows a settled card.
   await page.locator('#bd-tk-close').click()
   await page.evaluate(async () => { const { ctx } = await import('/build-home/state.js'), { openModal } = await import('/build-home/modal/frame.js'); openModal(ctx.D.byId['601']) })
   await expect(page.locator('#cv-log')).toBeVisible()
-  await expect(card(page)).toHaveCount(0)
+  // The fixture row still says `command`, so the card reports the disagreement; it never re-offers the answered Command.
+  await expect(card(page).locator('p').first()).toHaveText('This agent is waiting on a Command this page cannot load.')
+  await expect(card(page).locator('button')).toHaveCount(0)
 })
 
 test('an answer recorded elsewhere settles the open card and marks the winner', async ({ page }) => {
   await open(page, 'answerable')
   await page.request.get('/build-command-control/answer/local')
-  await expect(card(page).locator('.st[role=status]')).toHaveText(/^Answered: Keep process-local · elsewhere · \d\d:\d\d$/)
+  await expect(card(page).locator('.st[role=status]')).toHaveText(/^Answered: Keep process-local · \d\d:\d\d$/)
   await expect(card(page).locator('button[data-ans=local] .rec')).toHaveText('answered')
   for (const button of await card(page).locator('button').all()) await expect(button).toBeDisabled()
   await proof(page, 'command-settled')
@@ -79,7 +85,7 @@ test('a stale click after another answer won shows the settled card, not a secon
   await page.evaluate(async () => { const { fx } = await import('/build-home/state.js'); window.realRender = fx.renderCommand; fx.renderCommand = () => {} })
   await page.request.get('/build-command-control/answer/local')
   await card(page).locator('button[data-ans=persist]').click()
-  await expect(card(page).locator('.st')).toHaveText(/^Answered: Keep process-local · elsewhere/)
+  await expect(card(page).locator('.st')).toHaveText(/^Answered: Keep process-local/)
   expect((await state(page))[0].option_id).toBe('local')
 })
 

@@ -164,7 +164,7 @@ defmodule AiurWeb.Build.CommandCard do
 
   defp settled_text(%{decision_status: status} = row) when status in @answered do
     case row.answer do
-      %{} = answer -> {"answered", answer_text(row, answer) <> actor_suffix(answer)}
+      %{} = answer -> {"answered", answer_text(row, answer)}
       nil -> {"answered", "Answered"}
     end
   end
@@ -182,9 +182,6 @@ defmodule AiurWeb.Build.CommandCard do
   end
 
   defp answer_text(_row, _answer), do: "Answered"
-
-  defp actor_suffix(%{actor: %{id: id}}) when is_binary(id) and id != "", do: " · " <> id
-  defp actor_suffix(_answer), do: ""
 
   defp millis(%DateTime{} = at), do: DateTime.to_unix(at, :millisecond)
   defp millis(_unknown), do: nil

@@ -77,8 +77,7 @@ defmodule AiurWeb.Build.CommandCardTest do
       assert Enum.map(options, &{&1.id, &1.recommended}) == [{"persist", false}, {"local", true}]
       assert hd(options).title == "Survives a restart"
 
-      none = row(CommandStore.request!(store, "601", recommendation: nil))
-      assert %{options: options} = CommandCard.payload({:open, none}, nil, @context)
+      assert %{options: options} = CommandCard.payload({:open, %{local | recommendation: nil}}, nil, @context)
       refute Enum.any?(options, & &1.recommended)
     end
 
@@ -96,7 +95,7 @@ defmodule AiurWeb.Build.CommandCardTest do
       end
     end
 
-    test "an answer with no actor or time leaves both out instead of inventing them", %{store: store} do
+    test "an answer with no time leaves it out instead of inventing one", %{store: store} do
       base = row(CommandStore.request!(store, "601"))
       answer = %{selected_option_id: "local", custom_response: nil, actor: nil, accepted_at: nil, action_id: "act"}
       card = CommandCard.payload({:settled, %{base | decision_status: :decided, answer: answer}}, base.decision_id, @context)
@@ -130,7 +129,8 @@ defmodule AiurWeb.Build.CommandCardTest do
 
       socket = DecisionCommands.record_answer(socket(open, nil), decision.decision_id, %{"choice" => "option:persist"}, &CommandCard.reload/1)
       assert {%{status: "settled", card: %{state: "settled", option_id: "local", text: text}}, _socket} = CommandCard.reply(socket, decision.decision_id)
-      assert text == "Answered: Keep process-local · elsewhere"
+      # The presented actor carries only its kind, so no operator name is shown.
+      assert text == "Answered: Keep process-local"
       assert {:ok, %{answer: %{selected_option_id: "local"}}} = DecisionStore.get(decision.decision_id, store)
     end
 

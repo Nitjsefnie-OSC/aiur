@@ -51,8 +51,6 @@ defmodule Aiur.TestSupport.BuildHome.CommandStore do
       "recommendation" => Keyword.get(opts, :recommendation, %{"option_id" => "persist", "reason" => "Restarts are routine"})
     }
 
-    request = if request["recommendation"] == nil, do: Map.delete(request, "recommendation"), else: request
-
     assert {:ok, %{decision: decision}} =
              DecisionStore.request(
                request,
