@@ -35,34 +35,32 @@ defmodule Aiur.Events.GithubFirehoseTest do
       :ok = Exchange.subscribe("ticket.5605.pr.merged")
 
       stub = fn %{url: url} ->
-        cond do
-          String.contains?(url, "/pulls/5606/commits") ->
-            {:error, :offline}
-
-          true ->
-            {:ok,
-             %{
-               status: 200,
-               headers: [{"ETag", ~s("new-etag")}],
-               body: [
-                 %{
-                   "id" => "commit-only-reference-merge",
-                   "type" => "PullRequestEvent",
-                   "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
-                   "actor" => %{"login" => "carol"},
-                   "repo" => %{"name" => "owner/repo"},
-                   "payload" => %{
-                     "action" => "merged",
-                     "pull_request" => %{
-                       "number" => 5606,
-                       "body" => "Maintenance change",
-                       "merged" => true,
-                       "head" => %{"ref" => "aiur/5605-fix", "sha" => String.duplicate("c", 40)}
-                     }
+        if String.contains?(url, "/pulls/5606/commits") do
+          {:error, :offline}
+        else
+          {:ok,
+           %{
+             status: 200,
+             headers: [{"ETag", ~s("new-etag")}],
+             body: [
+               %{
+                 "id" => "commit-only-reference-merge",
+                 "type" => "PullRequestEvent",
+                 "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
+                 "actor" => %{"login" => "carol"},
+                 "repo" => %{"name" => "owner/repo"},
+                 "payload" => %{
+                   "action" => "merged",
+                   "pull_request" => %{
+                     "number" => 5606,
+                     "body" => "Maintenance change",
+                     "merged" => true,
+                     "head" => %{"ref" => "aiur/5605-fix", "sha" => String.duplicate("c", 40)}
                    }
                  }
-               ]
-             }}
+               }
+             ]
+           }}
         end
       end
 
