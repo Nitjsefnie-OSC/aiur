@@ -99,17 +99,24 @@ defmodule Aiur.Orchestrator.RateLimitFallback.DecideTest do
       assert RateLimitFallback.decide(%{entry | paused_at: DateTime.add(now, -600, :second)}, issue, opts) == :engage
     end
 
-    test "uses the issue complexity route when it differs from the limited backend" do
+    # The incident shape: the session ran on claude, then an operator routed
+    # this complexity to codex, so the issue now resolves to codex.
+    test "uses the complexity route added after a pause on the backend the session actually ran" do
       now = DateTime.utc_now()
-      issue = %Issue{id: "1", identifier: "repo#1", labels: ["complexity:4"]}
-      entry = %{control: %{status: :paused}, paused_reason: :usage_limit_exhausted, paused_at: DateTime.add(now, -600, :second)}
+      issue = %Issue{id: "1", identifier: "repo#1", labels: ["complexity:4"], selected_backend: "codex"}
+
+      entry = %{
+        control: %{status: :paused},
+        paused_reason: :usage_limit_exhausted,
+        paused_at: DateTime.add(now, -600, :second),
+        session_execution: %{backend: "claude"}
+      }
 
       assert RateLimitFallback.decide(entry, issue,
                primary_backend: "codex",
-               fallback_backend: nil,
+               fallback_backend: "claude",
                routing_backend: "codex",
-               current_backend: "claude",
-               state: %{"backends" => %{}},
+               state: %{"backends" => %{"claude" => %{"limited" => true}}},
                now: now
              ) == :engage
     end
