@@ -1,14 +1,43 @@
 defmodule Aiur.ExecutorSweep.CacheFreshness do
   @moduledoc false
 
+  @runner_queue_bound 10
+  @actions_status_url "https://www.githubstatus.com/#components"
+
   @spec stale_merge_groups(map(), DateTime.t(), pos_integer(), pos_integer()) :: [map()]
   def stale_merge_groups(snapshot, now, stale_minutes, max_age_ms) do
-    snapshot
-    |> Map.get(:merge_groups, [])
-    |> Enum.flat_map(fn group ->
-      age = cache_age(snapshot, value(group, :id, nil))
-      stale_merge_group(group, age, now, stale_minutes, max_age_ms)
-    end)
+    groups = Map.get(snapshot, :merge_groups, [])
+    queued = Enum.filter(groups, &(value(&1, :state, "") == "queued"))
+    running_count = Enum.count(groups, &(value(&1, :state, "") == "in_progress"))
+    oldest_queued_age = queued |> Enum.map(&group_age(&1, now)) |> Enum.max(fn -> 0 end)
+
+    if queued != [] and (length(queued) > @runner_queue_bound or oldest_queued_age >= stale_minutes * 60_000) do
+      [runner_starvation(queued, running_count, oldest_queued_age, snapshot, max_age_ms)]
+    else
+      Enum.flat_map(groups, fn group ->
+        age = cache_age(snapshot, value(group, :id, nil))
+        stale_merge_group(group, age, now, stale_minutes, max_age_ms)
+      end)
+    end
+  end
+
+  defp runner_starvation(queued, running_count, oldest_age, snapshot, max_age_ms) do
+    cache_ages = Enum.map(queued, &cache_age(snapshot, value(&1, :id, nil)))
+    verified? = Enum.all?(cache_ages, &(is_integer(&1) and &1 <= max_age_ms))
+    verification = if verified?, do: "verified", else: "unverified"
+
+    %{
+      kind: "runner_starvation",
+      priority: 2,
+      age_ms: oldest_age,
+      queued_runs: length(queued),
+      running_runs: running_count,
+      status_url: @actions_status_url,
+      verification: verification,
+      action: "Check GitHub Actions component status and runner availability; #{verification} queue evidence.",
+      message:
+        "GitHub runner starvation: #{length(queued)} merge-group runs queued, #{running_count} running; oldest queued #{duration(oldest_age)}. GitHub Actions status: #{@actions_status_url} (#{verification})."
+    }
   end
 
   defp stale_merge_group(group, cache_age_ms, now, stale_minutes, max_age_ms) do
