@@ -138,7 +138,7 @@ defmodule Aiur.Events.GithubFirehose do
 
       result = %{
         etag: if(retry_enrichment?, do: Keyword.get(opts, :etag), else: etag),
-        last_event_id: if(retry_enrichment?, do: processed.retry_after_id, else: newest_event_id(events) || last_event_id),
+        last_event_id: if(retry_enrichment?, do: processed.last_processed_id, else: newest_event_id(events) || last_event_id),
         count: processed.count,
         poll_interval: poll_interval,
         pages_fetched: pages_fetched,
@@ -231,20 +231,21 @@ defmodule Aiur.Events.GithubFirehose do
 
   defp process_events(events, opts, fallback_event_id) do
     events
-    |> Enum.with_index()
+    |> Enum.reverse()
     |> Enum.reduce_while(
-      %{count: 0, persistence_errors: [], persistence_attempted?: false, retry_after_id: nil, retry_enrichment?: false},
-      fn {original_event, index}, acc ->
+      %{count: 0, persistence_errors: [], persistence_attempted?: false, last_processed_id: fallback_event_id, retry_enrichment?: false},
+      fn original_event, acc ->
         event = enrich_merged_event(original_event, opts)
         persistence_result = persist_recent_merge(event, opts)
         publish_result = publish_one(event, opts)
-        {retry_enrichment?, retry_after_id} = retry_after_id(event, events, index, fallback_event_id)
+        retry_enrichment? = retry_enrichment?(event)
+        event_id = Map.get(original_event, "id")
 
         next = %{
           count: acc.count + if(match?({:ok, _, _}, publish_result), do: 1, else: 0),
           persistence_errors: maybe_add_persistence_error(acc.persistence_errors, persistence_result),
           persistence_attempted?: acc.persistence_attempted? or persistence_attempted?(persistence_result),
-          retry_after_id: (retry_enrichment? && retry_after_id) || acc.retry_after_id,
+          last_processed_id: if(retry_enrichment?, do: acc.last_processed_id, else: event_id || acc.last_processed_id),
           retry_enrichment?: acc.retry_enrichment? or retry_enrichment?
         }
 
@@ -278,21 +279,11 @@ defmodule Aiur.Events.GithubFirehose do
 
   defp enrich_merged_event(event, _opts), do: event
 
-  defp retry_after_id(event, events, index, fallback_event_id) do
+  defp retry_enrichment?(event) do
     pr = get_in(event, ["payload", "pull_request"])
 
-    if is_map(pr) and Map.get(pr, "commit_messages_unavailable") == true and
-         Map.get(pr, "commit_messages_permanent") != true do
-      cursor =
-        case Enum.at(events, index + 1) do
-          %{"id" => id} when is_binary(id) -> id
-          _ -> fallback_event_id
-        end
-
-      {true, cursor}
-    else
-      {false, nil}
-    end
+    is_map(pr) and Map.get(pr, "commit_messages_unavailable") == true and
+      Map.get(pr, "commit_messages_permanent") != true
   end
 
   defp persist_recent_merge(event, opts) do

@@ -29,6 +29,37 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
   end
 
   describe "poll/1" do
+    test "a closing keyword on a non-ticket branch routes an opened PR" do
+      :ok = Exchange.subscribe("ticket.5605.pr.opened")
+
+      stub = fn _ ->
+        {:ok,
+         %{
+           status: 200,
+           headers: [{"ETag", ~s("closing-open")}],
+           body: [
+             %{
+               "id" => "closing-open",
+               "type" => "PullRequestEvent",
+               "actor" => %{"login" => "carol"},
+               "repo" => %{"name" => "owner/repo"},
+               "payload" => %{
+                 "action" => "opened",
+                 "pull_request" => %{
+                   "number" => 5606,
+                   "body" => "Closes #5605",
+                   "head" => %{"ref" => "executor/patch", "sha" => String.duplicate("e", 40)}
+                 }
+               }
+             }
+           ]
+         }}
+      end
+
+      assert {:ok, %{count: 1}} = GithubFirehose.poll(request_fun: stub)
+      assert_receive {:event, %{topic: "ticket.5605.pr.opened"}}, 500
+    end
+
     test "a failed commit lookup on a ticket branch leaves the event pending for retry" do
       :ok = Exchange.subscribe("ticket.42.pr.opened")
       :ok = Exchange.subscribe("ticket.43.pr.opened")
@@ -81,8 +112,8 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
                )
 
       refute_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 100
-      assert_receive {:event, %{topic: "ticket.42.pr.opened"}}, 500
-      refute_receive {:event, %{topic: "ticket.43.pr.opened"}}, 100
+      assert_receive {:event, %{topic: "ticket.43.pr.opened"}}, 500
+      refute_receive {:event, %{topic: "ticket.42.pr.opened"}}, 100
     end
 
     test "a permanently oversized commit list advances the cursor without ticket attribution" do
