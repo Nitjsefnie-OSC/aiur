@@ -67,6 +67,16 @@ defmodule Aiur.Orchestrator.TicketTransitionTest do
     assert log =~ "expected=\"todo\""
   end
 
+  test "worker writers cannot close a ticket without merge provenance" do
+    for writer <- [:agent_tool, :turn_loop] do
+      assert {:error, :worker_cannot_mark_ticket_done} =
+               TicketTransition.write_state("7", "done", writer: writer, tracker: Client)
+
+      refute_received {:memory_tracker_state_update, "7", "done"}
+      refute_received {:adapter_state, "7", "done", _}
+    end
+  end
+
   test "none expectation and replay preserve adapter semantics" do
     Application.put_env(:aiur, :memory_tracker_issues, [%Issue{id: "7", state: ""}])
     assert :ok = TicketTransition.write_state("7", "todo", writer: :build_queue, expected_state: :none)

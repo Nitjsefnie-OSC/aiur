@@ -94,14 +94,58 @@ defmodule Aiur.Orchestrator.WorkspaceCleanup do
     guard = fn -> new_run_lease_guard(ticket, known_generation) end
     opts = [ticket: ticket, terminal?: true, destroy_guard: guard]
 
+    case guard.() do
+      :ok ->
+        archive_and_remove_workspace(ticket, workspace_identifier, worker_host, opts)
+
+      skipped ->
+        skipped
+    end
+  end
+
+  defp archive_and_remove_workspace(ticket, workspace_identifier, worker_host, opts) do
+    case archive_workspace_logs(workspace_identifier, worker_host) do
+      :ok ->
+        remove_workspace(ticket, workspace_identifier, worker_host, opts)
+
+      {:error, reason} ->
+        Logger.warning("Kept closed ticket's workspace because transcript archive failed ticket=#{ticket} workspace=#{workspace_identifier} reason=#{inspect(reason)}")
+        {:error, {:transcript_archive_failed, reason}}
+    end
+  end
+
+  defp remove_workspace(ticket, workspace_identifier, worker_host, opts) do
     case Workspace.remove_issue_workspaces(workspace_identifier, worker_host, opts) do
       {:skipped, :live_lease} = skipped ->
         Logger.warning("Kept closed ticket's workspace: a new run claimed it during the cleanup; the save and its notices are kept ticket=#{ticket} workspace=#{workspace_identifier}")
-
         skipped
 
       _removed ->
         WipPreservation.expire_notices(Layout.safe_identifier(workspace_identifier))
+    end
+  end
+
+  defp archive_workspace_logs(identifier, worker_host) do
+    with nil <- worker_host,
+         {:ok, workspace} <- Layout.workspace_path_for_issue(Layout.safe_identifier(identifier), worker_host),
+         source <- Path.join(workspace, "logs"),
+         true <- File.dir?(source) do
+      archive_root = Path.join(Config.settings!().workspace.root, "closed-ticket-logs")
+      archive = Path.join([archive_root, Layout.safe_identifier(identifier), Integer.to_string(System.system_time(:millisecond))])
+
+      with :ok <- File.mkdir_p(Path.dirname(archive)),
+           do: copy_logs(source, archive)
+    else
+      worker when is_binary(worker) -> {:error, :remote_transcript_archive_unsupported}
+      false -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp copy_logs(source, destination) do
+    case File.cp_r(source, destination) do
+      {:ok, _files} -> :ok
+      {:error, reason, _file} -> {:error, reason}
     end
   end
 
