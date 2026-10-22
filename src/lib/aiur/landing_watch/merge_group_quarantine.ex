@@ -1,17 +1,20 @@
 defmodule Aiur.LandingWatch.MergeGroupQuarantine do
-  @moduledoc """
-  Quarantines a flaky test: one that failed in two merge groups whose PRs did not touch it,
-  or in base-branch CI and then passed there (`QuarantineEvidence`), within 24 hours.
-
-  Failures are recorded in the landing journal first; quarantine decisions are then made
-  from the journal alone, so a GitHub error on one poll is retried on a later one, with
-  bounded backoff (`QuarantineRetry`), without re-reading CI. A qualifying test gets a fix
-  ticket (`FlakeRecorder`), an auto-merging quarantine PR (`QuarantinePR`), and the approved
-  PRs its failures dropped are requeued. OrchestratorGuard failures only feed one fix ticket.
-  """
+  @moduledoc "Quarantines flaky tests from merge-group and base-branch evidence."
 
   alias Aiur.GitHub.{CIRecovery, PullRequests}
-  alias Aiur.LandingWatch.{FlakeFilingGate, FlakeRecorder, Journal, MergeGroupRequeue, QuarantineAnnotations, QuarantineEvidence, QuarantinePR, QuarantineRetry}
+
+  alias Aiur.LandingWatch.{
+    FlakeFilingGate,
+    FlakeRecorder,
+    Journal,
+    MergeGroupQuarantineBlame,
+    MergeGroupRequeue,
+    QuarantineAnnotations,
+    QuarantineEvidence,
+    QuarantinePR,
+    QuarantineRetry
+  }
+
   alias Aiur.MainWatch
   alias Aiur.TestQuarantine.Detector
 
@@ -23,7 +26,13 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
 
     try do
       history = Keyword.get(opts, :main_history_fun, &main_history/0).()
-      group_opts = opts |> Keyword.put(:changed_paths_cache, cache) |> Keyword.put(:red_on_main, QuarantineEvidence.red_on_main(history))
+
+      group_opts =
+        opts
+        |> Keyword.put(:changed_paths_cache, cache)
+        |> Keyword.put(:red_on_main, QuarantineEvidence.red_on_main(history))
+        |> MergeGroupQuarantineBlame.put_recent_main_paths(base, opts, Enum.filter(runs, &eligible_run?/1))
+
       group = runs |> Enum.filter(&eligible_run?/1) |> first_error(&claim_and_process_run(&1, base, group_opts))
       main = record_main_failures(history, opts)
       quarantine = quarantine_candidates(history, observations, base, opts)
@@ -53,7 +62,6 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     end
   end
 
-  # One failure must not hold back the rest; report the first error after trying all.
   defp first_error(items, fun) do
     Enum.reduce(items, :ok, fn item, first ->
       result = fun.(item)
@@ -100,13 +108,15 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
          {:ok, at_ms} <- run_time(run),
          {:ok, jobs} <- Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2).(run["id"], opts),
          {:ok, found} <- QuarantineAnnotations.from_jobs(jobs, opts),
+         {:ok, pr_caused?} <- MergeGroupQuarantineBlame.pr_caused_failure?(run, prs, jobs, opts),
          :ok <- record_guards(found.guards, run, opts) do
       tests = Enum.filter(found.tests, &is_binary(&1.path))
 
-      case Enum.uniq_by(tests, & &1.module) do
-        [_] -> first_error(tests, &record_observations(&1, run, prs, at_ms, opts))
-        [] -> :ok
-        _modules -> record_cascade(tests, run, prs, opts)
+      case {pr_caused?, Enum.uniq_by(tests, & &1.module)} do
+        {true, _} -> :ok
+        {false, [_]} -> first_error(tests, &record_observations(&1, run, prs, at_ms, opts))
+        {false, []} -> :ok
+        {false, _modules} -> record_cascade(tests, run, prs, opts)
       end
     else
       [] -> :ok
@@ -114,9 +124,6 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     end
   end
 
-  # A shard attempt with failures in multiple modules can contain setup/leaked-state
-  # cascades. File one diagnostic ticket for the module with the most failures (ties
-  # keep log/annotation order), and do not turn any of that attempt into quarantine evidence.
   defp record_cascade(tests, run, prs, opts) do
     {primary, cascades} = primary_module(tests)
 
@@ -160,7 +167,6 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     {primary, cascades}
   end
 
-  # The guard names the last test to finish, not the cause, so it files evidence on one ticket only.
   defp record_guards(guards, run, opts) do
     recorder = Keyword.get(opts, :flake_recorder, &FlakeRecorder.record/4)
     guards |> Enum.uniq() |> first_error(&recorder.(&1, run, [], Keyword.delete(opts, :issue_recorded_fun)))
@@ -218,8 +224,6 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     end
   end
 
-  # Base-branch failures come from the main watcher's digest. Each new red commit costs one
-  # read of its changed files and one annotation read per failed check, once.
   defp record_main_failures(history, opts) do
     now = System.system_time(:millisecond)
 
@@ -361,14 +365,23 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     if Map.has_key?(done, skip_claim) do
       :ok
     else
-      case FlakeFilingGate.decide(failure(latest), run(latest), latest["at_ms"], rows, base, opts) do
-        :file -> file_ticket_then_quarantine(candidate, latest, opts)
-        {:skip, _reason} -> Journal.claim_flake(skip_claim, opts) |> claim_result()
+      case QuarantinePR.already_quarantined?(candidate.identity, opts) do
+        {:ok, true} -> Journal.claim_flake(skip_claim, opts) |> claim_result()
+        {:ok, false} -> file_if_eligible(candidate, latest, rows, base, skip_claim, opts)
+        {:error, _} = error -> error
       end
     end
   end
 
-  defp quarantine(candidate, ticket, _done, _rows, _observations, _base, opts), do: open_quarantine(candidate, ticket, opts)
+  defp quarantine(candidate, ticket, _done, _rows, _observations, _base, opts),
+    do: open_quarantine(candidate, ticket, opts)
+
+  defp file_if_eligible(candidate, latest, rows, base, skip_claim, opts) do
+    case FlakeFilingGate.decide(failure(latest), run(latest), latest["at_ms"], rows, base, opts) do
+      :file -> file_ticket_then_quarantine(candidate, latest, opts)
+      {:skip, _reason} -> Journal.claim_flake(skip_claim, opts) |> claim_result()
+    end
+  end
 
   defp file_ticket_then_quarantine(candidate, latest, opts) do
     remember = fn ticket -> Journal.put_flake_ticket(candidate.identity, ticket, opts) end
@@ -402,7 +415,6 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     end
   end
 
-  # The claim is the retry trigger: released, a later poll opens the PR again.
   defp release_flake_claim(claim, error, opts) do
     case Journal.release_flake(claim, opts) do
       :ok -> error
@@ -410,7 +422,6 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     end
   end
 
-  # Requeues run as their own step after the PR opens, so a failure retries only the requeue.
   defp retry_requeues(observations, opts) do
     with {:ok, state} <- Journal.state(opts) do
       now = QuarantineRetry.now(opts)

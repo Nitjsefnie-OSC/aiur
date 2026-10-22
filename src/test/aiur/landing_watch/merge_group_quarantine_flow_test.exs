@@ -155,6 +155,9 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineFlowTest do
       token: "test-gh-token",
       journal_path: journal,
       main_history_fun: fn -> [] end,
+      quarantine_list_fun: fn -> {:ok, ""} end,
+      recent_main_failure_paths_fun: fn _, _ -> {:ok, []} end,
+      job_log_fun: fn _, _ -> {:ok, ""} end,
       request_fun: fn %{method: :get, url: url} ->
         cond do
           url =~ "/commits?" -> {:ok, %{status: 200, body: [%{"sha" => "fixsha"}]}}
