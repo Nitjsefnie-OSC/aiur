@@ -323,15 +323,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
 
       rows =
         Map.new(rows, fn
-          {row_key, value} when is_binary(row_key) ->
-            if String.starts_with?(row_key, "#{number}:") do
-              {row_key, clear_row_timer(value)}
-            else
-              {row_key, value}
-            end
-
-          pair ->
-            pair
+          pair -> clear_row_timer_for_number(pair, number)
         end)
 
       {:ok, Map.put(state, "unmergeable_queue_entries", rows)}
@@ -345,6 +337,16 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     do: %{"since" => nil, "first_seen_ms" => nil, "attempts" => 0}
 
   defp clear_row_timer(value), do: value
+
+  defp clear_row_timer_for_number({row_key, value}, number) when is_binary(row_key) do
+    if String.starts_with?(row_key, "#{number}:") do
+      {row_key, clear_row_timer(value)}
+    else
+      {row_key, value}
+    end
+  end
+
+  defp clear_row_timer_for_number(pair, _number), do: pair
 
   defp mark_gave_up_alerted(number, head, opts) do
     key = "#{number}:#{head}"
