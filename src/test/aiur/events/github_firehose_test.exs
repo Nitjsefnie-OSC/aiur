@@ -274,6 +274,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
     # `pr.opened` becomes one `📤 opened a PR` row per poll cycle.
     test "PullRequestEvent action=opened is deduped across polls by (repo, pr_number, head_sha)" do
       :ok = Exchange.subscribe("ticket.55.pr.opened")
+      :ok = Exchange.subscribe("ticket.5605.pr.opened")
 
       event = %{
         "type" => "PullRequestEvent",
@@ -283,6 +284,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
           "action" => "opened",
           "pull_request" => %{
             "number" => 901,
+            "body" => "Refs #5605",
             "head" => %{"ref" => "aiur/55", "sha" => "deadbeef"}
           }
         }
@@ -297,6 +299,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
       # Publisher should drop it via the dedup window.
       assert {:ok, %{count: 0}} = GithubFirehose.poll(request_fun: stub)
       refute_receive {:event, %{topic: "ticket.55.pr.opened"}}, 200
+      refute_receive {:event, %{topic: "ticket.5605.pr.opened"}}, 100
     end
 
     test "drops events for untracked tickets when tracked_fn rejects", %{ticket: ticket} do
