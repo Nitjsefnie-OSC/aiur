@@ -119,6 +119,7 @@ A handback to `ci-wait` or `human-review` must answer the latest blocking
 review. This applies while that review has numbered items, even if the worker
 moved the ticket to `in-progress` first. Every numbered item in the review becomes an
 entry in the rework prompt's checklist, whether or not it names a `file:line`.
+
 The agent passes one `review_findings` answer per item: `fixed` with a commit,
 or `disputed` with evidence. An item that names no file may instead be `fixed`
 by a PR body edit made after the review.
