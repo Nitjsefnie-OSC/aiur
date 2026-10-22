@@ -405,10 +405,12 @@ defmodule Aiur.Regression.OrchestratorBlockingHttp.CommentFanoutTest do
     end
 
     test "drops a straggler from a poll the listener is no longer waiting for" do
-      cursor = %Cursor{since: %{"57" => "2026-06-24T11:00:00Z"}}
+      since = DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.to_iso8601()
+      cursor = %Cursor{since: %{"57" => since}}
       :sys.replace_state(Comments, &%{&1 | cursor: cursor})
       send(Comments, {:github_comments_polled, make_ref(), {:error, :boom}})
       assert comment_cursor() == cursor
+      assert comment_cursor().since["57"] == since
       refute_receive {:github_listener_outcome, :comments, _outcome}, 100
     end
   end
