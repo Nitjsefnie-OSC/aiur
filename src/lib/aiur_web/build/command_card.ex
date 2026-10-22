@@ -10,7 +10,6 @@ defmodule AiurWeb.Build.CommandCard do
   """
   import Phoenix.Component, only: [assign: 2]
   import Phoenix.LiveView, only: [push_event: 3]
-  alias AiurWeb.EndpointConfig
   alias AiurWeb.OperatorControlCenter.DecisionCommands
 
   @read_only "Read-only dashboard"
@@ -49,7 +48,7 @@ defmodule AiurWeb.Build.CommandCard do
   def reload(%{assigns: %{command_card: %{} = state}} = socket) do
     shown = socket.assigns.selected_decision_id
     read = read(state.ticket, shown)
-    card = payload(read, shown, %{agent_state: state.agent_state, writable: writable?(socket)})
+    card = payload(read, shown, %{agent_state: state.agent_state, writable: socket.assigns[:writable] == true})
 
     {selected, selected_id} =
       case read do
@@ -185,10 +184,6 @@ defmodule AiurWeb.Build.CommandCard do
 
   defp millis(%DateTime{} = at), do: DateTime.to_unix(at, :millisecond)
   defp millis(_unknown), do: nil
-
-  @doc "The writable gate re-checked on the server for every answer (EC-12)."
-  @spec writable?(Phoenix.LiveView.Socket.t()) :: boolean()
-  def writable?(socket), do: socket.assigns[:writable] == true and EndpointConfig.get(:dashboard_writable) == true
 
   defp push(%{assigns: %{command_card: %{ticket: ticket, card: card}}} = socket),
     do: push_event(socket, "modal:command", %{ticket: ticket, card: card})

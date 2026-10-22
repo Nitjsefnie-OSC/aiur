@@ -7,6 +7,7 @@ defmodule AiurWeb.BuildLive do
 
   alias AiurWeb.Build.{CommandCard, Conversation, DataSource, Protocol, Read, Ticket, URLState, UsageUpdates}
   alias AiurWeb.BuildOrder.Runtime
+  alias AiurWeb.EndpointConfig
   alias AiurWeb.OperatorControlCenter.{AwaitingCommands, DashboardShell, DecisionCommands, NavState, RouteRegistry}
   alias AiurWeb.Presenter
 
@@ -122,7 +123,7 @@ defmodule AiurWeb.BuildLive do
   def handle_event("conversation-close", params, socket), do: socket |> Conversation.close(params) |> command_card(params)
 
   def handle_event("answer-decision", %{"decision_id" => id, "answer" => %{"choice" => "option:" <> _} = form}, socket) when is_binary(id) do
-    if CommandCard.writable?(socket) do
+    if writable?(socket) do
       socket = DecisionCommands.record_answer(socket, id, form, &CommandCard.reload/1)
       {reply, socket} = CommandCard.reply(socket, id)
       {:reply, reply, socket}
@@ -155,6 +156,9 @@ defmodule AiurWeb.BuildLive do
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   defp source_opts(socket), do: Read.source_opts(socket)
+
+  # Every answer re-checks the endpoint gate, not just the mount-time assign (EC-12).
+  defp writable?(socket), do: socket.assigns.writable == true and EndpointConfig.get(:dashboard_writable) == true
 
   # The card follows the pinned conversation: loaded on its first view, cleared when it closes.
   defp command_card({:reply, reply, socket}, params) do
