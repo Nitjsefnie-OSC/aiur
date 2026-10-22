@@ -428,4 +428,8 @@ defmodule Aiur.Events.GithubFirehose do
     do: Aiur.Events.GithubFirehose.PullRequest.translate(event, opts)
 
   defp translate(_event, _opts), do: nil
+
+  defp merged_pull_request_event?("merged", _merged), do: true
+  defp merged_pull_request_event?("closed", true), do: true
+  defp merged_pull_request_event?(_action, _merged), do: false
 end
