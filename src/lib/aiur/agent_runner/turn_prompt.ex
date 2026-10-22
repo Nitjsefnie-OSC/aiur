@@ -1,3 +1,4 @@
+# Cohesion: this module composes first-turn and continuation prompts from shared guidance helpers.
 defmodule Aiur.AgentRunner.TurnPrompt do
   @moduledoc false
 
