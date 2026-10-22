@@ -1,3 +1,5 @@
+# Keep checks in one suite so ordering, unknown-source handling, and the shared snapshot
+# fixture are exercised together across the Executor's unified health sweep.
 defmodule Aiur.ExecutorSweep.ChecksTest do
   use ExUnit.Case, async: true
 
