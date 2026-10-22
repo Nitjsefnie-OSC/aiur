@@ -333,7 +333,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
 
   defp candidates(rows, history, now) do
     recent = Enum.filter(rows, &recent?(&1["at_ms"], now))
-    recent = Enum.reject(recent, &(&1["red_on_main"] == true or &1["touched"] == true))
+    recent = Enum.reject(recent, &(&1["touched"] == true or (&1["source"] != "base" and &1["red_on_main"] == true)))
     main = recent |> Enum.filter(&(&1["source"] == "base" and &1["touched"] != true)) |> Enum.map(& &1["identity"])
 
     repeated =
