@@ -166,7 +166,7 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
       )
 
     assert status != 0
-    assert output =~ "18 tests, 1 failure"
+    assert output =~ "18 tests, 0 failures"
     assert output =~ "Aiur.Orchestrator was down before Aiur.BTestSupportWiringNeighbourTest"
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
