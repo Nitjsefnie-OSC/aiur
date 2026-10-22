@@ -111,7 +111,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     parent = self()
     now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
     first_seen = now - 21 * 60_000
-    failure_path = "test/aiur/changed_test.exs"
+    failure_path = "src/test/aiur/changed_test.exs"
 
     run = %{
       "id" => 904,
@@ -131,7 +131,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
       end,
       recent_main_failure_paths: [failure_path],
       known_failure_patterns: ["known flaky failure"],
-      job_log_fun: fn _, _ -> {:ok, "mix test #{failure_path}:9 known flaky failure"} end,
+      job_log_fun: fn _, _ -> {:ok, "1) test changed (Aiur.ChangedTest)\n   #{failure_path}:9"} end,
       changed_paths_fun: fn _, _ -> {:ok, [failure_path]} end,
       request_fun: fn _ -> flunk("a PR-caused failure must not be dequeued or enqueued") end
     ]
@@ -297,10 +297,10 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
         send(parent, :stale_jobs_read)
         {:ok, [%{"id" => 911, "name" => "tests", "conclusion" => "failure"}]}
       end,
-      recent_main_failure_paths: ["test/aiur/flaky_test.exs"],
-      job_log_fun: fn _, _ -> {:ok, "mix test test/aiur/flaky_test.exs:10 known failure"} end,
+      recent_main_failure_paths: ["src/test/aiur/flaky_test.exs"],
+      job_log_fun: fn _, _ -> {:ok, "1) test flaky (Aiur.FlakyTest)\n   src/test/aiur/flaky_test.exs:10"} end,
       changed_paths_fun: fn _, _ -> {:ok, []} end,
-      known_failure_patterns: ["known failure"],
+      known_failure_patterns: [],
       request_fun: fn _ -> flunk("stale evidence must not authorize recovery") end
     ]
 
