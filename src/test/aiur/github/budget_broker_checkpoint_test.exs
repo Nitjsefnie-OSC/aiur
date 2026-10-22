@@ -4,7 +4,7 @@ defmodule Aiur.GitHub.BudgetBrokerCheckpointTelemetryTest do
   alias Aiur.GitHub.{Budget, BudgetBroker}
   alias Aiur.TestSupport.Isolation
 
-  test "checkpoint timings are retained after a broker command", %{test: test} do
+  test "checkpoint age and WAL size are retained after a broker command", %{test: test} do
     root = Aiur.TestSupport.tmp_root!("budget-broker-checkpoint")
     server = start_supervised!({BudgetBroker, name: Module.concat(__MODULE__, test)})
     opts = [state_dir: root, stagger_ms: 0, broker_server: server, enabled?: true]
@@ -18,7 +18,8 @@ defmodule Aiur.GitHub.BudgetBrokerCheckpointTelemetryTest do
     end)
 
     assert Enum.any?(:sys.get_state(server).stats, fn {_outcome, measurements} ->
-             is_number(measurements.sqlite_checkpoint_ms)
+             is_number(measurements[:sqlite_checkpoint_age_ms]) and
+               is_integer(measurements[:sqlite_wal_size_bytes])
            end)
   end
 end
