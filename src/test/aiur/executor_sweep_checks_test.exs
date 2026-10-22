@@ -302,6 +302,15 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     assert message =~ "oldest ticket #1800"
   end
 
+  test "queued build membership does not count as an extra state label" do
+    tickets =
+      for state <- ~w(todo in-progress ci-wait human-review rework merging done error cancelled canceled) do
+        %{number: 2000, labels: ["agent:queued", "agent:#{state}"]}
+      end
+
+    refute Enum.any?(Checks.all(%{tickets: tickets}, ~U[2026-10-22 18:00:00Z]), &(&1.kind == "invalid_state_labels"))
+  end
+
   test "summarizes a stale triage backlog in one finding with its count and oldest ticket" do
     snapshot = %{
       open_tickets: %Aiur.OpenTicketSource.Snapshot{

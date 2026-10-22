@@ -5,12 +5,22 @@ defmodule Aiur.ExecutorSweep.StateLabels do
   dispatches them, so their missing state label is expected.
   """
 
-  @state_labels ~w(todo in-progress ci-wait human-review rework error done)
+  alias Aiur.GitHub.Config
+  alias Aiur.GitHub.Labels
 
   @doc "Takes tickets with agent-prefix-stripped `labels`; returns zero or one finding."
   @spec findings([map()]) :: [map()]
   def findings(tickets) do
-    case for(ticket <- tickets, not excluded?(ticket.labels), states = Enum.filter(ticket.labels, &(&1 in @state_labels)), length(states) != 1, do: {ticket, states}) do
+    prefix = Config.label_prefix()
+    state_labels = Labels.state_labels(prefix) |> Enum.map(&String.replace_prefix(&1, prefix <> ":", ""))
+
+    case for(
+           ticket <- tickets,
+           not excluded?(ticket.labels),
+           states = Enum.filter(ticket.labels, &(&1 in state_labels)),
+           length(states) != 1,
+           do: {ticket, states}
+         ) do
       [] ->
         []
 
