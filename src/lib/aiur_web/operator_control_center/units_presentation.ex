@@ -3,6 +3,7 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresentation do
 
   alias Aiur.CodingAgent
   alias Aiur.CodingAgent.Models
+  alias Aiur.GitHub.{Config, Labels}
   alias AiurWeb.OperatorControlCenter.UnitsControlPolicy
 
   @spec present(map(), DateTime.t() | nil) :: %{unit: map(), latest: map(), command: map()}
@@ -37,6 +38,46 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresentation do
   end
 
   def latest(_row, now), do: latest(%{}, now)
+
+  @doc "Returns the persisted workflow label for a Units row."
+  @spec workflow_state_label(map()) :: String.t() | nil
+  def workflow_state_label(row) when is_map(row) do
+    prefix = Config.label_prefix()
+
+    case Enum.filter(Labels.present_runtime_labels(Map.get(row, :labels), prefix), &(&1 in Labels.state_labels(prefix))) do
+      [label | _] ->
+        label
+
+      [] ->
+        case Map.get(row, :tracker_state) do
+          state when is_binary(state) and state != "" -> "#{prefix}:#{state}"
+          _state -> nil
+        end
+    end
+  end
+
+  def workflow_state_label(_row), do: nil
+
+  @doc "Returns the exact tracker label for a known runtime reason, if present."
+  @spec reason_label(map()) :: String.t() | nil
+  def reason_label(row) when is_map(row) do
+    prefix = Config.label_prefix()
+
+    suffix =
+      Labels.runtime_reason_modifier(get_in(row, [:reasons, :pause])) ||
+        Labels.runtime_reason_modifier(get_in(row, [:reasons, :waiting]))
+
+    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
+    reason_labels = Labels.present_reason_modifier_labels(List.wrap(Map.get(row, :labels)) ++ inferred, prefix)
+
+    cond do
+      reason_labels != [] -> Enum.join(reason_labels, ",")
+      is_binary(suffix) -> prefix <> ":" <> suffix
+      true -> nil
+    end
+  end
+
+  def reason_label(_row), do: nil
 
   @doc """
   Renders an age in seconds as a short operator label.

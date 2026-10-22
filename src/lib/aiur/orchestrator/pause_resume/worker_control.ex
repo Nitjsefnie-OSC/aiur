@@ -3,6 +3,8 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
   Applies worker-reported control state and rejections to the running entry.
   """
 
+  alias Aiur.GitHub.Config, as: GitHubConfig
+  alias Aiur.GitHub.Labels
   alias Aiur.Orchestrator.ControlLifecycle
   alias Aiur.Orchestrator.Dispatcher
   alias Aiur.Orchestrator.DurationCapRelease
@@ -17,6 +19,8 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
   alias Aiur.Orchestrator.PushRouting
   alias Aiur.Orchestrator.State
   alias Aiur.Orchestrator.StatusReport
+  alias Aiur.Orchestrator.TicketTransition
+  alias Aiur.Orchestrator.TrackerTasks
   require Logger
 
   @doc false
@@ -102,6 +106,7 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
     state = finalize_applied_resume(state, issue_id, request)
     state = maybe_auto_resume_spurious_worker_pause(state, updated_running_entry, status)
     state = DurationCapRelease.maybe_release(state, updated_running_entry, status)
+    state = sync_pause_reason_label(state, running_entry, previous_status, previous_pause_reason, status, pause_reason)
     StatusReport.notify_dashboard(state)
     {:noreply, state}
   end
@@ -417,4 +422,51 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
   end
 
   defp pending_pause_reason(_running_entry, _request), do: nil
+
+  defp sync_pause_reason_label(state, running_entry, previous_status, previous_reason, status, reason) do
+    previous_modifier = if previous_status == :paused, do: pause_reason_modifier(previous_reason), else: nil
+    current_modifier = if status == :paused, do: pause_reason_modifier(reason), else: nil
+
+    if previous_modifier == current_modifier, do: state, else: schedule_pause_reason_label(state, running_entry, previous_modifier, current_modifier)
+  end
+
+  defp schedule_pause_reason_label(state, running_entry, previous_modifier, current_modifier) do
+    issue = Map.get(running_entry, :issue)
+    identifier = Map.get(issue || %{}, :identifier) || Map.get(issue || %{}, :id)
+
+    if is_binary(identifier) do
+      TrackerTasks.run(
+        state,
+        {:runtime_reason_labels, identifier},
+        fn -> write_pause_reason_labels(identifier, previous_modifier, current_modifier, Map.get(running_entry, :tracker_label_writer)) end,
+        &log_pause_reason_label_result/2
+      )
+    else
+      state
+    end
+  end
+
+  defp write_pause_reason_labels(identifier, previous_modifier, current_modifier, writer) do
+    case maybe_write_pause_reason_label(identifier, :add, current_modifier, writer) do
+      :ok -> maybe_write_pause_reason_label(identifier, :remove, previous_modifier, writer)
+      error -> error
+    end
+  end
+
+  defp maybe_write_pause_reason_label(_identifier, _action, nil, _writer), do: :ok
+
+  defp maybe_write_pause_reason_label(identifier, action, modifier, writer) when is_function(writer, 3),
+    do: writer.(identifier, action, "#{GitHubConfig.label_prefix()}:#{modifier}")
+
+  defp maybe_write_pause_reason_label(identifier, action, modifier, _writer),
+    do: TicketTransition.write_reason_modifier(identifier, action, modifier, writer: :worker_control)
+
+  defp log_pause_reason_label_result(state, :ok), do: state
+
+  defp log_pause_reason_label_result(state, {:error, reason}) do
+    Logger.warning("runtime pause reason label update failed: reason=#{inspect(reason)}")
+    state
+  end
+
+  defp pause_reason_modifier(reason), do: Labels.runtime_reason_modifier(reason)
 end

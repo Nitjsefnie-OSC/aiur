@@ -2,6 +2,8 @@ defmodule Aiur.Orchestrator.StatusCLI.StatusTable do
   @moduledoc false
   alias Aiur.Config
   alias Aiur.ControlCLI.DispatchAccount
+  alias Aiur.GitHub.Config, as: GitHubConfig
+  alias Aiur.GitHub.Labels
   alias Aiur.Orchestrator.StatusObservation
   alias Aiur.Orchestrator.StatusReason
   alias Aiur.Orchestrator.WaitingReason
@@ -51,8 +53,19 @@ defmodule Aiur.Orchestrator.StatusCLI.StatusTable do
   defp status_reason_detail(%{reason: reason}) when not is_nil(reason), do: StatusReason.render(reason)
   defp status_reason_detail(_status), do: nil
 
-  defp status_state_label(%{work_state: work_state}) when work_state in [:starting, :retrying], do: to_string(work_state)
-  defp status_state_label(status), do: to_string(status.state)
+  defp status_state_label(status) do
+    suffix = Labels.runtime_reason_modifier(Map.get(status, :pause_reason)) || Labels.runtime_reason_modifier(Map.get(status, :waiting_reason))
+    prefix = GitHubConfig.label_prefix()
+    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
+    labels = Labels.present_runtime_labels(List.wrap(Map.get(status, :labels)) ++ inferred, prefix)
+
+    cond do
+      labels != [] -> Enum.join(labels, ",")
+      Map.get(status, :work_state) == :starting -> "#{prefix}:in-progress"
+      Map.get(status, :work_state) == :retrying -> "#{prefix}:retrying"
+      true -> to_string(status.state)
+    end
+  end
 
   defp last_failure_detail(%{last_failure_at: %DateTime{} = at}), do: "last_failure_at=#{DateTime.to_iso8601(at)}"
   defp last_failure_detail(_status), do: nil

@@ -85,6 +85,7 @@ defmodule AiurWeb.Build.IndexReader do
 
     %{
       identity: identity,
+      labels: Map.get(summary, :labels, []),
       runtime: %{bucket: bucket, work_state: Map.get(summary, :work_state, :working)},
       reasons: %{waiting: waiting, pause: Map.get(summary, :pause_reason)},
       timestamps: %{started_at: Map.get(summary, :started_at)},

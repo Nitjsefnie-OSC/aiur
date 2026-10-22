@@ -1,6 +1,7 @@
 defmodule Aiur.Orchestrator.TicketTransitionTest do
   use Aiur.TestSupport
   import ExUnit.CaptureLog
+  alias Aiur.GitHub.Labels
   alias Aiur.{Issue, TicketMarkers, Tracker, Workflow}
   alias Aiur.LandingWatch.Journal
   alias Aiur.Orchestrator.{PauseResume, TicketTransition}
@@ -65,6 +66,38 @@ defmodule Aiur.Orchestrator.TicketTransitionTest do
     assert meta == %{issue_id: "7", identifier: "T-7", action: :state, to: "in-progress", expected: "todo", writer: :retry_engine, outcome: :ok}
     assert log =~ "writer=retry_engine outcome=:ok"
     assert log =~ "expected=\"todo\""
+  end
+
+  test "write_state adds the reason label before removing the previous reason" do
+    Application.put_env(:aiur, :memory_tracker_issues, [%Issue{id: "7", identifier: "7", state: "todo", labels: ["agent:ci-red", "agent:paused"]}])
+
+    assert :ok =
+             TicketTransition.write_state("7", "ci-wait",
+               writer: :ci_lifecycle,
+               reason_modifiers: ["merge-queued"]
+             )
+
+    assert_received {:memory_tracker_state_update, "7", "ci-wait"}
+    assert_received {:memory_tracker_add_label, "7", "agent:merge-queued"}
+    assert_received {:memory_tracker_remove_label, "7", "agent:ci-red"}
+
+    assert {:ok, [%Issue{labels: labels}]} =
+             Tracker.fetch_issue_states_by_ids(["7"])
+
+    assert labels == ["agent:paused"]
+  end
+
+  test "every canonical reason modifier can be added and cleared without changing the workflow state" do
+    modifiers = Labels.reason_modifier_suffixes()
+
+    for suffix <- modifiers do
+      label = "agent:" <> suffix
+      assert :ok = TicketTransition.write_reason_modifier("7", :add, suffix, writer: :issue_sync, tracker: Client)
+      assert_received {:adapter_marker, :add, "7", ^label}
+
+      assert :ok = TicketTransition.write_reason_modifier("7", :remove, suffix, writer: :issue_sync, tracker: Client)
+      assert_received {:adapter_marker, :remove, "7", ^label}
+    end
   end
 
   test "none expectation and replay preserve adapter semantics" do

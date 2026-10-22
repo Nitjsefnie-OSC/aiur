@@ -27,7 +27,7 @@ defmodule AiurWeb.Build.PayloadSchema do
           object(%{
             "model" => nullable(:model),
             "name" => nullable({:short_string, 64}),
-            "state" => nullable(enum(~w(active error retrying retries command paused parked))),
+            "state" => nullable(enum(~w(active error retrying retries command paused parked merge-queued ci-red body-fix paused-usage-limit paused-decision paused-agent blocked handed-off))),
             "effort" => nullable(enum(~w(none minimal low medium high xhigh max)))
           })
         ),

@@ -43,7 +43,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.TransitionsTest do
       sync_recorder(recorder)
 
       assert_received {:recorded, 1, {:tracker_update, ^identifier, "ci-wait", [expected_state: "human-review"]}}
-      assert_received {:recorded, 2, {:pause_agent, request_id, _generation}}
+      assert_received {:recorded, _position, {:pause_agent, request_id, _generation}}
       assert is_integer(request_id)
 
       entry = Map.fetch!(next.running, identifier)

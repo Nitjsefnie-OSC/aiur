@@ -11,6 +11,11 @@ defmodule AiurWeb.Build.NowRowsTest do
       {row(%{runtime: %{bucket: :running, work_state: :error}}), "error"},
       {row(%{runtime: %{bucket: :running, work_state: :paused}, open_command_count: 2}), "command"},
       {row(%{reasons: %{pause: :ci_wait}}), "parked"},
+      {row(%{reasons: %{pause: :usage_limit_exhausted}}), "paused-usage-limit"},
+      {row(%{reasons: %{waiting: :waiting_for_dependency}}), "blocked"},
+      {row(%{reasons: %{waiting: :waiting_for_human}}), "paused-decision"},
+      {row(%{reasons: %{pause: :agent_pause_request}}), "paused-agent"},
+      {row(%{labels: ["agent:ci-wait", "agent:ci-red"]}), "ci-red"},
       {row(%{reasons: %{pause: :operator_pause}}), "paused"},
       {row(%{open_command_count: nil}), "active"},
       {row(%{runtime: %{bucket: :running, work_state: :deactivated}}), nil}
@@ -24,25 +29,32 @@ defmodule AiurWeb.Build.NowRowsTest do
   end
 
   test "policy stuck reasons beat command and paused; retry backoff stays distinct from failure" do
-    for waiting <- [:tracker_unavailable, :backing_off, :unresponsive] do
+    for waiting <- [:tracker_unavailable, :unresponsive] do
       assert facts(row(%{reasons: %{waiting: waiting, pause: :operator_pause}, open_command_count: 1})).agent.state == "error"
     end
+
+    assert facts(row(%{reasons: %{waiting: :backing_off, pause: :operator_pause}, open_command_count: 1})).agent.state == "retrying"
 
     retrying = facts(row(%{runtime: %{bucket: :retrying, work_state: :retrying}}))
     assert retrying.agent.state == "retrying"
     assert retrying.status == "queued"
-    assert facts(row(%{reasons: %{waiting: :waiting_for_human}})).agent.state == "command"
+    assert facts(row(%{reasons: %{waiting: :waiting_for_human}})).agent.state == "paused-decision"
     assert facts(row(%{runtime: %{bucket: :running, work_state: :starting}})).agent.state == "active"
   end
 
   test "parked reasons use the orchestrator predicate; cooperative pauses stay paused" do
-    for reason <- [:ci_wait, :blocker_dependency, :max_agent_duration, :usage_limit_exhausted, :github_budget_hold] do
+    for reason <- [:ci_wait, :max_agent_duration, :github_budget_hold] do
       assert facts(row(%{reasons: %{pause: reason}})).agent.state == "parked"
     end
 
-    for reason <- [:operator_pause, :global_pause, :label_override, :agent_pause_request] do
+    assert facts(row(%{reasons: %{pause: :blocker_dependency}})).agent.state == "blocked"
+    assert facts(row(%{reasons: %{pause: :usage_limit_exhausted}})).agent.state == "paused-usage-limit"
+
+    for reason <- [:operator_pause, :global_pause, :label_override] do
       assert facts(row(%{reasons: %{pause: reason}})).agent.state == "paused"
     end
+
+    assert facts(row(%{reasons: %{pause: :agent_pause_request}})).agent.state == "paused-agent"
 
     assert facts(row(%{runtime: %{bucket: :running, work_state: :sleeping}})).agent.state == "paused"
   end

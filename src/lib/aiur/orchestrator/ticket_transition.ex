@@ -10,6 +10,7 @@ defmodule Aiur.Orchestrator.TicketTransition do
   """
 
   require Logger
+  alias Aiur.GitHub.{Config, Labels}
   alias Aiur.LandingWatch.Journal
   alias Aiur.Orchestrator.{AgentTeardown, CiLifecycle, Effect, HumanReview, PauseResume, RetryEngine, State}
   alias Aiur.Tracker
@@ -41,11 +42,50 @@ defmodule Aiur.Orchestrator.TicketTransition do
     true = is_atom(writer) and not is_nil(writer)
     tracker = Keyword.get(opts, :tracker, Tracker)
 
-    adapter_opts = Keyword.drop(opts, [:writer, :identifier, :tracker])
+    adapter_opts = Keyword.drop(opts, [:writer, :identifier, :tracker, :reason_modifiers, :label_prefix])
     result = with_writer(writer, fn -> tracker.update_issue_state(issue_id, to_state, adapter_opts) end)
 
     record(issue_id, :state, to_state, writer, opts, result)
+
+    if result == :ok and Keyword.has_key?(opts, :reason_modifiers) do
+      case write_reason_modifiers(issue_id, opts[:reason_modifiers], opts) do
+        :ok -> :ok
+        {:error, reason} -> Logger.warning("ticket reason label update failed: issue_id=#{issue_id} reason=#{inspect(reason)}")
+      end
+    end
+
     result
+  end
+
+  @doc "Writes the canonical set of runtime reason labels alongside the workflow state."
+  @spec write_reason_modifiers(String.t(), [String.t()], keyword()) :: :ok | {:error, term()}
+  def write_reason_modifiers(issue_id, suffixes, opts) when is_binary(issue_id) and is_list(suffixes) do
+    writer = Keyword.fetch!(opts, :writer)
+    true = is_atom(writer) and not is_nil(writer)
+    tracker = Keyword.get(opts, :tracker, Tracker)
+    prefix = Keyword.get(opts, :label_prefix, Config.label_prefix())
+
+    desired = Enum.uniq(suffixes)
+
+    if Enum.any?(desired, &(not Labels.reason_modifier_suffix?(&1))) do
+      {:error, {:invalid_reason_modifiers, desired}}
+    else
+      current = Labels.reason_modifier_labels(prefix)
+      desired_labels = Enum.map(desired, &"#{prefix}:#{&1}")
+
+      write_reason_modifier_labels(issue_id, desired_labels, current -- desired_labels, tracker, writer, opts)
+    end
+  end
+
+  @doc "Adds or removes one known runtime reason label without changing the workflow state."
+  @spec write_reason_modifier(String.t(), :add | :remove, String.t(), keyword()) :: :ok | {:error, term()}
+  def write_reason_modifier(issue_id, action, suffix, opts) when action in [:add, :remove] do
+    if Labels.reason_modifier_suffix?(suffix) do
+      prefix = Keyword.get(opts, :label_prefix, Config.label_prefix())
+      write_marker(issue_id, action, "#{prefix}:#{suffix}", opts)
+    else
+      {:error, {:invalid_reason_modifier, suffix}}
+    end
   end
 
   @spec write_marker(String.t(), :add | :remove, String.t(), keyword()) :: :ok | {:error, term()}
@@ -72,6 +112,24 @@ defmodule Aiur.Orchestrator.TicketTransition do
   end
 
   defp maybe_record_pause_writer(_issue_id, _action, _label, _writer, _result, _opts), do: :ok
+
+  defp write_reason_modifier_labels(issue_id, additions, removals, tracker, writer, opts) do
+    marker_opts = Keyword.put(opts, :writer, writer) |> Keyword.put(:tracker, tracker)
+
+    case write_markers(issue_id, :add, additions, marker_opts) do
+      :ok -> write_markers(issue_id, :remove, removals, marker_opts)
+      error -> error
+    end
+  end
+
+  defp write_markers(issue_id, action, labels, opts) do
+    Enum.reduce_while(labels, :ok, fn label, :ok ->
+      case write_marker(issue_id, action, label, opts) do
+        :ok -> {:cont, :ok}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+  end
 
   @spec write_comment(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
   def write_comment(issue_id, body, opts) do

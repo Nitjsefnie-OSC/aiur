@@ -35,6 +35,33 @@ defmodule Aiur.GitHub.LabelsTest do
       assert Labels.marker_suffix?("rate-limit-fallback")
     end
 
+    test "seeds the complete runtime states and keeps modifiers orthogonal" do
+      expected_modifiers = ~w(merge-queued ci-red body-fix paused-usage-limit paused-decision paused-agent retrying blocked handed-off)
+      labels = Labels.label_set("agent", ["codex"])
+
+      assert Labels.state_suffixes() ==
+               ~w(todo in-progress ci-wait human-review rework merging done error cancelled canceled)
+
+      assert Enum.all?(expected_modifiers, &(("agent:" <> &1) in Labels.reason_modifier_labels("agent")))
+      assert Enum.all?(expected_modifiers, &(("agent:" <> &1) in labels))
+      assert Enum.all?(expected_modifiers, &Labels.reason_modifier_suffix?/1)
+      assert Enum.all?(expected_modifiers, &Labels.marker_suffix?/1)
+      assert Enum.all?(expected_modifiers, &(("agent:" <> &1) not in Labels.state_labels("agent")))
+      assert Enum.all?(expected_modifiers, fn suffix -> Labels.describe("agent:" <> suffix) != suffix end)
+      assert Labels.present_runtime_labels(["AGENT:CI-WAIT", "Agent:ci-red", "agent:watch"], "agent") == ["agent:ci-wait", "agent:ci-red"]
+      assert Enum.all?(Labels.marker_labels("agent"), &(&1 in labels))
+      assert Labels.runtime_reason_modifier(:usage_limit_exhausted) == "paused-usage-limit"
+      assert Labels.runtime_reason_modifier(:waiting_for_human) == "paused-decision"
+      assert Labels.runtime_reason_modifier(:agent_pause_request) == "paused-agent"
+      assert Labels.runtime_reason_modifier(:backing_off) == "retrying"
+      assert Labels.runtime_reason_modifier(:waiting_for_dependency) == "blocked"
+      assert Labels.runtime_reason_modifier(:merge_queue) == "merge-queued"
+      assert Labels.runtime_reason_modifier(:ci_red) == "ci-red"
+      assert Labels.runtime_reason_modifier(:body_fix) == "body-fix"
+      assert Labels.runtime_reason_modifier(:handed_off) == "handed-off"
+      assert Labels.runtime_reason_modifier(:workspace_ownership_waiting) == "handed-off"
+    end
+
     test "label_set/2 seeds the queued marker" do
       assert "aiur:queued" in Labels.label_set("aiur", ["claude"])
       assert "aiur:queued" in Labels.marker_labels("aiur")
