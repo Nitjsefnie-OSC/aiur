@@ -12,6 +12,7 @@ defmodule Aiur.RecentMerge do
   """
 
   alias Aiur.RecentMerge.ClosingReferences
+  alias Aiur.RecentMerge.CommitMessages
   alias Aiur.{SecretRedactor, TicketBranch}
 
   @schema_version 1
@@ -423,28 +424,16 @@ defmodule Aiur.RecentMerge do
   end
 
   defp normalized_commit_messages(messages) when is_list(messages) do
-    messages
-    |> Enum.take(100)
-    |> Enum.reduce_while({:ok, []}, fn message, {:ok, acc} ->
-      case optional_text(message, 500, :commit_message) do
-        {:ok, nil} ->
-          {:cont, {:ok, acc}}
-
-        {:ok, text} ->
-          retained = ClosingReferences.preserve(text, ClosingReferences.references(message), 500)
-          {:cont, {:ok, [retained | acc]}}
-
-        {:error, reason} ->
-          {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, values} -> {:ok, Enum.reverse(values)}
-      error -> error
-    end
+    CommitMessages.normalize(messages, &normalize_commit_message/1)
   end
 
   defp normalized_commit_messages(_), do: {:error, {:commit_messages, :invalid_type}}
+
+  defp normalize_commit_message(message) do
+    with {:ok, text} <- optional_text(message, 500, :commit_message) do
+      {:ok, ClosingReferences.preserve(text, ClosingReferences.references(message), 500)}
+    end
+  end
 
   defp required_text(value, max, field) do
     case optional_text(value, max, field) do
