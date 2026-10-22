@@ -287,16 +287,14 @@ defmodule Aiur.BuildOrder.History.FeederTest do
 
     feeder(ctx,
       graphql_fun: fn _, _, _, _, _ ->
-        send(owner, :catch_up_started)
+        send(owner, {:catch_up_started, self()})
         Aiur.TestSupport.receive_barrier({:crash_catch_up, ^owner})
         exit(:query_crashed)
       end
     )
 
-    assert_receive :catch_up_started, 5_000
+    assert_receive {:catch_up_started, task}, 5_000
     assert Feeder.catch_up_status().status == :running
-    task = Enum.find(Task.Supervisor.children(@tasks), fn pid -> Process.info(pid, :dictionary) end)
-    assert is_pid(task)
     ref = Process.monitor(task)
     send(task, {:crash_catch_up, self()})
     Aiur.TestSupport.receive_barrier({:DOWN, ^ref, :process, ^task, :query_crashed})
