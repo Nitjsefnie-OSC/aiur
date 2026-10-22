@@ -134,7 +134,7 @@ defmodule Aiur.Events.GithubFirehose do
       pending_events = pages |> events_since_watermark(last_event_id)
       processed = process_events(pending_events, opts, last_event_id)
       pages_fetched = length(pages)
-      retry_enrichment? = is_binary(processed.retry_after_id)
+      retry_enrichment? = processed.retry_enrichment?
 
       result = %{
         etag: if(retry_enrichment?, do: Keyword.get(opts, :etag), else: etag),
@@ -233,21 +233,22 @@ defmodule Aiur.Events.GithubFirehose do
     events
     |> Enum.with_index()
     |> Enum.reduce_while(
-      %{count: 0, persistence_errors: [], persistence_attempted?: false, retry_after_id: nil},
+      %{count: 0, persistence_errors: [], persistence_attempted?: false, retry_after_id: nil, retry_enrichment?: false},
       fn {original_event, index}, acc ->
         event = enrich_merged_event(original_event, opts)
         persistence_result = persist_recent_merge(event, opts)
         publish_result = publish_one(event, opts)
-        retry_after_id = retry_after_id(event, events, index, fallback_event_id)
+        {retry_enrichment?, retry_after_id} = retry_after_id(event, events, index, fallback_event_id)
 
         next = %{
           count: acc.count + if(match?({:ok, _, _}, publish_result), do: 1, else: 0),
           persistence_errors: maybe_add_persistence_error(acc.persistence_errors, persistence_result),
           persistence_attempted?: acc.persistence_attempted? or persistence_attempted?(persistence_result),
-          retry_after_id: retry_after_id || acc.retry_after_id
+          retry_after_id: (retry_enrichment? && retry_after_id) || acc.retry_after_id,
+          retry_enrichment?: acc.retry_enrichment? or retry_enrichment?
         }
 
-        if retry_after_id, do: {:halt, next}, else: {:cont, next}
+        if retry_enrichment?, do: {:halt, next}, else: {:cont, next}
       end
     )
   end
@@ -282,10 +283,15 @@ defmodule Aiur.Events.GithubFirehose do
 
     if is_map(pr) and Map.get(pr, "commit_messages_unavailable") == true and
          Map.get(pr, "commit_messages_permanent") != true do
-      case Enum.at(events, index + 1) do
-        %{"id" => id} when is_binary(id) -> id
-        _ -> fallback_event_id
-      end
+      cursor =
+        case Enum.at(events, index + 1) do
+          %{"id" => id} when is_binary(id) -> id
+          _ -> fallback_event_id
+        end
+
+      {true, cursor}
+    else
+      {false, nil}
     end
   end
 
