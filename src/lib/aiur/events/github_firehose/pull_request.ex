@@ -59,9 +59,10 @@ defmodule Aiur.Events.GithubFirehose.PullRequest do
   defp pull_request_target(pr, head_ref, repo_name, action, merged?) do
     branch_id = Aiur.TicketBranch.ticket_id(head_ref)
     {closing_ids, linked_ids} = pr_issue_links(pr, repo_name)
+    commit_messages_unavailable? = get_in(pr, ["commit_messages_unavailable"]) == true
+    linked_ids = if commit_messages_unavailable?, do: [], else: linked_ids
 
-    with false <- merged? and get_in(pr, ["commit_messages_unavailable"]) == true,
-         id when is_binary(id) <-
+    with id when is_binary(id) <-
            if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id),
          topic when is_binary(topic) <- pr_topic(id, action, Map.get(pr, "merged")) do
       {id, topic}

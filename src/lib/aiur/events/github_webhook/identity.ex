@@ -13,7 +13,10 @@ defmodule Aiur.Events.GithubWebhook.Identity do
     pr_number = if is_map(pr), do: Map.get(pr, "number")
 
     if is_map(pr) and is_integer(pr_number) do
-      commit_ticket = if Keyword.get(opts, :allow_commit_messages, false), do: List.first(linked_ticket_identifiers(pr))
+      commit_ticket =
+        if Keyword.get(opts, :allow_commit_messages, false) and
+             Map.get(pr, "commit_messages_unavailable", false) != true,
+           do: List.first(linked_ticket_identifiers(pr))
 
       case ticket_from_head_ref(pr) || ticket_from_pr_body(Map.get(pr, "body")) || commit_ticket do
         nil -> {:drop, {:unresolved_ticket, "pull_request", pr_number}}

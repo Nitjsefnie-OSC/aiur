@@ -100,7 +100,7 @@ defmodule Aiur.Events.GithubWebhookTest do
       assert opts[:issue_number] == "5605"
     end
 
-    test "a merged ticket branch is not attributed when commit evidence cannot be fetched" do
+    test "a Refs-only merge is dropped when commit evidence cannot be fetched" do
       ReadCache.reset()
 
       delivery = %{
@@ -109,13 +109,54 @@ defmodule Aiur.Events.GithubWebhookTest do
         "pull_request" => %{
           "number" => 904,
           "merged" => true,
-          "body" => "",
-          "head" => %{"ref" => "aiur/5606-quarantine", "sha" => "badcafe"}
+          "body" => "Refs #5606",
+          "head" => %{"ref" => "executor/quarantine", "sha" => "badcafe"}
         }
       }
 
-      assert {:drop, {:commit_messages_unavailable, 904}} =
+      assert {:drop, {:unresolved_ticket, "pull_request", 904}} =
                Normalizer.normalize("pull_request", delivery, repo: @repo, request_fun: fn _ -> {:error, :offline} end)
+    end
+
+    test "a ticket branch remains a valid merged PR link when commit evidence cannot be fetched" do
+      ReadCache.reset()
+
+      delivery = %{
+        "action" => "closed",
+        "repository" => %{"full_name" => @repo},
+        "pull_request" => %{
+          "number" => 908,
+          "merged" => true,
+          "body" => "",
+          "head" => %{"ref" => "aiur/5606-fix", "sha" => "badcafe"}
+        }
+      }
+
+      assert {:publish, [{"ticket.5606.pr.merged", _event, opts}]} =
+               Normalizer.normalize("pull_request", delivery, repo: @repo, request_fun: fn _ -> {:error, :offline} end)
+
+      assert opts[:issue_number] == "5606"
+    end
+
+    test "a body closing link still publishes when commit evidence cannot be fetched" do
+      ReadCache.reset()
+
+      delivery = %{
+        "action" => "closed",
+        "repository" => %{"full_name" => @repo},
+        "pull_request" => %{
+          "number" => 907,
+          "merged" => true,
+          "body" => "Closes #5605",
+          "head" => %{"ref" => "executor/patch", "sha" => "badcafe"}
+        }
+      }
+
+      assert {:publish, triples} =
+               Normalizer.normalize("pull_request", delivery, repo: @repo, request_fun: fn _ -> {:error, :offline} end)
+
+      assert Enum.map(triples, &elem(&1, 0)) == ["ticket.5605.pr.merged"]
+      assert Enum.map(triples, fn {_topic, _event, opts} -> opts[:issue_number] end) == ["5605"]
     end
 
     test "Refs does not wake a ticket for an opened or ready PR" do

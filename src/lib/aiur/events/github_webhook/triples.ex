@@ -292,14 +292,20 @@ defmodule Aiur.Events.GithubWebhook.Triples do
 
     targets =
       if merged? do
-        Enum.uniq([branch_id | linked_ids] |> Enum.reject(&is_nil/1))
+        ids =
+          if Map.get(pr, "commit_messages_unavailable", false) do
+            RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_from_pr(pr))
+          else
+            linked_ids
+          end
+
+        Enum.uniq([branch_id | ids] |> Enum.reject(&is_nil/1))
       else
         closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_from_pr(pr))
         Enum.uniq([branch_id | closing_ids] |> Enum.reject(&is_nil/1))
       end
 
-    with false <- merged? and Map.get(pr, "commit_messages_unavailable", false),
-         {:ok, target, _pr_number} <- Identity.pull_request_identity(payload, allow_commit_messages: merged?),
+    with {:ok, target, _pr_number} <- Identity.pull_request_identity(payload, allow_commit_messages: merged?),
          topic when is_binary(topic) <- pr_topic(target, action, merged?) do
       publish_opts = [
         actor: actor,
@@ -331,7 +337,6 @@ defmodule Aiur.Events.GithubWebhook.Triples do
     else
       {:drop, _reason} = drop -> drop
       {:error, _reason} = error -> error
-      true -> {:drop, {:commit_messages_unavailable, pr_number}}
       nil -> {:drop, {:uninteresting_action, "pull_request", action}}
     end
   end

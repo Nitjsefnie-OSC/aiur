@@ -31,28 +31,78 @@ defmodule Aiur.Events.GithubFirehoseTest do
   end
 
   describe "poll/1" do
-    test "a closing keyword routes a merged PR from a non-ticket branch" do
+    test "a failed commit lookup leaves the event cursor unchanged for retry" do
       :ok = Exchange.subscribe("ticket.5605.pr.merged")
 
-      stub = fn _ ->
-        {:ok,
-         %{
-           status: 200,
-           headers: [{"ETag", ~s("close-merge")}],
-           body: [
+      stub = fn %{url: url} ->
+        cond do
+          String.contains?(url, "/pulls/5606/commits") ->
+            {:error, :offline}
+
+          true ->
+            {:ok,
              %{
-               "id" => "close-merge",
-               "type" => "PullRequestEvent",
-               "created_at" => "2026-07-12T17:59:00Z",
-               "actor" => %{"login" => "carol"},
-               "repo" => %{"name" => "owner/repo"},
-               "payload" => %{
-                 "action" => "merged",
-                 "pull_request" => %{"number" => 5606, "body" => "Closes #5605", "merged" => true, "commit_messages" => [], "head" => %{"ref" => "executor/patch", "sha" => String.duplicate("b", 40)}}
+               status: 200,
+               headers: [{"ETag", ~s("new-etag")}],
+               body: [
+                 %{
+                   "id" => "refs-only-merge",
+                   "type" => "PullRequestEvent",
+                   "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
+                   "actor" => %{"login" => "carol"},
+                   "repo" => %{"name" => "owner/repo"},
+                   "payload" => %{
+                     "action" => "merged",
+                     "pull_request" => %{
+                       "number" => 5606,
+                       "body" => "Refs #5605",
+                       "merged" => true,
+                       "head" => %{"ref" => "executor/quarantine", "sha" => String.duplicate("c", 40)}
+                     }
+                   }
+                 }
+               ]
+             }}
+        end
+      end
+
+      assert {:ok, %{count: 0, etag: "previous-etag", last_event_id: "previous-event"}} =
+               GithubFirehose.poll(
+                 request_fun: stub,
+                 etag: "previous-etag",
+                 last_event_id: "previous-event",
+                 boot_time: DateTime.add(DateTime.utc_now(), -3600, :second) |> DateTime.to_unix()
+               )
+
+      refute_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 100
+    end
+
+    test "a closing keyword routes a merged PR when commit evidence cannot be fetched" do
+      :ok = Exchange.subscribe("ticket.5605.pr.merged")
+
+      stub = fn %{url: url} ->
+        if String.contains?(url, "/pulls/5606/commits") do
+          {:error, :offline}
+        else
+          {:ok,
+           %{
+             status: 200,
+             headers: [{"ETag", ~s("close-merge")}],
+             body: [
+               %{
+                 "id" => "close-merge",
+                 "type" => "PullRequestEvent",
+                 "created_at" => "2026-07-12T17:59:00Z",
+                 "actor" => %{"login" => "carol"},
+                 "repo" => %{"name" => "owner/repo"},
+                 "payload" => %{
+                   "action" => "merged",
+                   "pull_request" => %{"number" => 5606, "body" => "Closes #5605", "merged" => true, "head" => %{"ref" => "executor/patch", "sha" => String.duplicate("b", 40)}}
+                 }
                }
-             }
-           ]
-         }}
+             ]
+           }}
+        end
       end
 
       assert {:ok, %{count: 1}} = GithubFirehose.poll(request_fun: stub, boot_time: ~U[2026-07-12 18:00:00Z] |> DateTime.to_unix())

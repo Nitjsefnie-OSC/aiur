@@ -133,10 +133,11 @@ defmodule Aiur.Events.GithubFirehose do
            fetch_backfill_pages(events, last_event_id, opts) do
       processed = pages |> events_since_watermark(last_event_id) |> process_events(opts)
       pages_fetched = length(pages)
+      retry_enrichment? = processed.commit_messages_unavailable?
 
       result = %{
-        etag: etag,
-        last_event_id: newest_event_id(events) || last_event_id,
+        etag: if(retry_enrichment?, do: Keyword.get(opts, :etag), else: etag),
+        last_event_id: if(retry_enrichment?, do: last_event_id, else: newest_event_id(events) || last_event_id),
         count: processed.count,
         poll_interval: poll_interval,
         pages_fetched: pages_fetched,
@@ -230,7 +231,7 @@ defmodule Aiur.Events.GithubFirehose do
   defp process_events(events, opts) do
     Enum.reduce(
       events,
-      %{count: 0, persistence_errors: [], persistence_attempted?: false},
+      %{count: 0, persistence_errors: [], persistence_attempted?: false, commit_messages_unavailable?: false},
       fn original_event, acc ->
         event = enrich_merged_event(original_event, opts)
         persistence_result = persist_recent_merge(event, opts)
@@ -239,7 +240,8 @@ defmodule Aiur.Events.GithubFirehose do
         %{
           count: acc.count + if(match?({:ok, _, _}, publish_result), do: 1, else: 0),
           persistence_errors: maybe_add_persistence_error(acc.persistence_errors, persistence_result),
-          persistence_attempted?: acc.persistence_attempted? or persistence_attempted?(persistence_result)
+          persistence_attempted?: acc.persistence_attempted? or persistence_attempted?(persistence_result),
+          commit_messages_unavailable?: acc.commit_messages_unavailable? or get_in(event, ["payload", "pull_request", "commit_messages_unavailable"]) == true
         }
       end
     )
@@ -263,13 +265,9 @@ defmodule Aiur.Events.GithubFirehose do
   defp enrich_merged_event(event, _opts), do: event
 
   defp persist_recent_merge(event, opts) do
-    if get_in(event, ["payload", "pull_request", "commit_messages_unavailable"]) == true do
-      :not_merge
-    else
-      event
-      |> RecentMerge.from_github_event(recent_merge_options(event, opts))
-      |> persist_recent_merge_result(event, opts)
-    end
+    event
+    |> RecentMerge.from_github_event(recent_merge_options(event, opts))
+    |> persist_recent_merge_result(event, opts)
   end
 
   defp recent_merge_options(event, opts) do
