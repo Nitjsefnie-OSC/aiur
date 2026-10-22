@@ -62,7 +62,8 @@ defmodule AiurWeb.Build.IndexReader do
     running_by_identifier = Map.new(running, &{Map.get(&1, :identifier), &1})
 
     Enum.map(statuses, fn status ->
-      now_row(status, Map.get(running_by_identifier, Map.get(status, :identifier), %{}))
+      identifier = Map.get(status, :identifier)
+      now_row(status, Map.get(running_by_identifier, identifier))
     end)
     |> Enum.reject(&is_nil/1)
   end
@@ -70,10 +71,10 @@ defmodule AiurWeb.Build.IndexReader do
   defp producer_rows(%{rows: rows}) when is_map(rows), do: Map.values(rows)
   defp producer_rows(_), do: []
 
-  defp now_row(%{identifier: _identifier, state: :running} = summary, running), do: now_row(summary, running, :running)
-  defp now_row(%{identifier: _identifier, work_state: :retrying} = summary, running), do: now_row(summary, running, :retrying)
+  defp now_row(%{identifier: _identifier, state: :running} = summary, running) when is_map(running), do: now_row(summary, running, :running)
+  defp now_row(%{identifier: _identifier, work_state: :retrying} = summary, running) when is_map(running), do: now_row(summary, running, :retrying)
 
-  defp now_row(%{identifier: _identifier, state: :paused, session_id: session} = summary, running) when is_binary(session),
+  defp now_row(%{identifier: _identifier, state: :paused, session_id: session} = summary, running) when is_binary(session) and is_map(running),
     do: now_row(summary, running, :running)
 
   defp now_row(_summary, _running), do: nil
