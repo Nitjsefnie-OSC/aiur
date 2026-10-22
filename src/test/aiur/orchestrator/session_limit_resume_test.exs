@@ -1,10 +1,13 @@
 defmodule Aiur.Orchestrator.SessionLimitResumeTest do
   use Aiur.TestSupport
 
+  alias Aiur.Events.Exchange
   alias Aiur.{Issue, TrackerIdentity}
   alias Aiur.Orchestrator.{ControlLifecycle, PauseResume, RateLimitFallback, State}
 
   test "pending resumes leave the transition allowance for other tickets and honour delayed acknowledgments" do
+    :ok = Exchange.subscribe("ticket.1.agent.stalled.resolved")
+    on_exit(fn -> Exchange.unsubscribe("ticket.1.agent.stalled.resolved") end)
     running = Map.new(["1", "2"], &{&1, paused_entry(&1)})
     state = %State{running: running, max_concurrent_agents: 4}
     opts = [primary_backend: "claude", fallback_backend: nil, current_backend: "claude", state: %{"backends" => %{}}]
@@ -40,6 +43,7 @@ defmodule Aiur.Orchestrator.SessionLimitResumeTest do
 
     assert RateLimitFallback.reconcile(final, opts) == final
     refute_received {:resume_agent, _, _}
+    assert_received {:event, %{topic: "ticket.1.agent.stalled.resolved"}}
   end
 
   defp paused_entry(id) do
