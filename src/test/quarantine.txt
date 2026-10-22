@@ -13,6 +13,7 @@ Aiur.Orchestrator.MergeTransitionTest	*	#5655
 Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads open decisions without calling the per-ticket store	#4463
 Aiur.PerClassCadenceTest	*	#5605
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
+Aiur.TestSupport.OrchestratorGuardTest	the ExUnit wiring reports setup restarts and fails leaks from both case templates	#5581
 Aiur.Workspace.Ownership.RetentionOrderTest	persists a changed retention cause after a failed reboot audit	#5741
 Aiur.Workspace.ProvisionerTest	bulk workspace creation caps external POSIX after_create child builds	#5743
 AiurWeb.ZeroFetchPageOpenTest	*	#5605
