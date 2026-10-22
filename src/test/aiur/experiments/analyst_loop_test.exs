@@ -139,6 +139,8 @@ defmodule Aiur.Experiments.AnalystLoopTest do
     end)
   end
 
+  # Four experiment-stats runs (one per stats read and report submission) take 42-62s on a loaded host.
+  @tag timeout: 180_000
   test "analyst loop: events, pre-registration, report and rejection paths" do
     id = "fixture-feature"
     spec = create(id)
@@ -198,8 +200,21 @@ defmodule Aiur.Experiments.AnalystLoopTest do
 
   # U2: the real page renders the stored report: sections in order, label chips with n and CI, one confounder row per event.
   defp page_check(id) do
-    {:ok, _view, html} = live(build_conn(), "/experiments/#{id}")
-    [report] = html |> Floki.parse_document!() |> Floki.find("#exp-report")
+    # The page turns a failed read into an empty state and logs the cause only to the log file (#5742).
+    {{:ok, _view, html}, log} = ExUnit.CaptureLog.with_log(fn -> live(build_conn(), "/experiments/#{id}") end)
+    doc = Floki.parse_document!(html)
+
+    report =
+      case Floki.find(doc, "#exp-report") do
+        [report] ->
+          report
+
+        found ->
+          reasons = doc |> Floki.find("[data-empty-reason]") |> Enum.flat_map(&Floki.attribute(&1, "data-empty-reason"))
+          page = doc |> Floki.find("#experiments-page") |> Floki.text(sep: " ") |> String.slice(0, 500)
+          flunk("expected one #exp-report, found #{length(found)}; empty states #{inspect(reasons)}: #{page}\nlog:\n#{log}")
+      end
+
     text = Floki.text(report, sep: "\n")
 
     headings = ~w(Summary Pre-registration) ++ ["Design and sample", "Results", "Confounders reviewed", "Sensitivity analyses", "Threats to validity", "Recommendation", "Reproduce"]
