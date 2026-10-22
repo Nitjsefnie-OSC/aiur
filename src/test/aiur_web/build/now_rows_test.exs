@@ -35,6 +35,16 @@ defmodule AiurWeb.Build.NowRowsTest do
     assert facts(row(%{runtime: %{bucket: :running, work_state: :starting}})).agent.state == "active"
   end
 
+  test "starting row still labelled todo renders queued and is excluded from Now membership" do
+    starting = row(%{runtime: %{bucket: :running, work_state: :starting}})
+
+    projected = NowRows.build(catalog([starting]), repository: @repo, todo_ids: MapSet.new(["1"]))
+    assert projected.rows == %{}
+
+    unlabelled = NowRows.build(catalog([starting]), repository: @repo, todo_ids: MapSet.new())
+    assert unlabelled.rows["1"].agent.state == "active"
+  end
+
   test "parked reasons use the orchestrator predicate; cooperative pauses stay paused" do
     for reason <- [:ci_wait, :blocker_dependency, :max_agent_duration, :usage_limit_exhausted, :github_budget_hold] do
       assert facts(row(%{reasons: %{pause: reason}})).agent.state == "parked"

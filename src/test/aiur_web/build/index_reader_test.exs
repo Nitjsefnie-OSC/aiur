@@ -84,13 +84,6 @@ defmodule AiurWeb.Build.IndexReaderTest do
     {:ok, identity} =
       Aiur.TrackerIdentity.from_github(%{"node_id" => "I_kwDOExample20", "number" => 20}, {"aiur-team", "aiur"}, {"aiur-team", "aiur"})
 
-    snapshot = %{
-      statuses: [%{identifier: "20", tracker_identity: identity, state: :running, work_state: :idle, open_decision_count: 0}],
-      running: []
-    }
-
-    server = start_supervised!({UnpublishedFleetServer, snapshot})
-
     open_server =
       start_supervised!(
         {OpenTicketServer,
@@ -104,8 +97,23 @@ defmodule AiurWeb.Build.IndexReaderTest do
     read =
       IndexReader.read(:all, parts(),
         repository_fun: fn -> {:ok, {"aiur-team", "aiur"}} end,
-        units_fun: fn -> %{status: :empty, snapshot: %{rows: []}} end,
-        orchestrator: server,
+        units_fun: fn ->
+          %{
+            status: :ready,
+            snapshot: %{
+              rows: [
+                %{
+                  identity: identity,
+                  terminal?: false,
+                  replacement_boundary?: false,
+                  runtime: %{bucket: :running, work_state: :starting},
+                  reasons: %{},
+                  open_command_count: 0
+                }
+              ]
+            }
+          }
+        end,
         running_rows_fun: &Freshness.read_running_rows/1,
         open_server: open_server
       )
@@ -115,6 +123,28 @@ defmodule AiurWeb.Build.IndexReaderTest do
     assert {:ok, index} = assemble(read)
     assert index.all["20"].sec == "plan"
     assert index.all["20"].status == "queued"
+  end
+
+  test "retry status without an allocated running record stays out of the running band" do
+    {:ok, identity} =
+      Aiur.TrackerIdentity.from_github(%{"node_id" => "I_kwDOExample21", "number" => 21}, {"aiur-team", "aiur"}, {"aiur-team", "aiur"})
+
+    snapshot = %{
+      statuses: [%{identifier: "21", tracker_identity: identity, state: :paused, work_state: :retrying}],
+      running: []
+    }
+
+    server = start_supervised!({UnpublishedFleetServer, snapshot})
+
+    read =
+      IndexReader.read(:all, parts(),
+        repository_fun: fn -> {:ok, {"aiur-team", "aiur"}} end,
+        units_fun: fn -> %{status: :empty, snapshot: %{rows: []}} end,
+        orchestrator: server,
+        running_rows_fun: &Freshness.read_running_rows/1
+      )
+
+    assert read.now.rows == %{}
   end
 
   test "unavailable running snapshot is a typed unavailable source" do
