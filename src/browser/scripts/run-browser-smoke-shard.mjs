@@ -8,7 +8,7 @@ import { shardCommands } from './browser-suites.mjs';
 // The key count is the shard count: it must match the browser matrix in .github/workflows/ci.yml.
 // Balanced by recorded durations (browser-smoke-durations.mjs); check-browser-smoke-shards.mjs keeps each shard under 75% of budgetMs.
 export const shards = {
-  1: ["test:build-home-columns","test:quota-panel","test:palette","test:build-home-chains-unit"],
+  1: ["test:cutover-nav-parity","test:build-home-columns","test:quota-panel","test:palette","test:build-home-chains-unit"],
   2: ["test:build-home-band-parity","test:build-home-usage","test:build-home","test:build-home-span","test:build-home-offline","test:home-css-ci","test:build-home-edges-unit","test:command-history","test:build-home-layout","test:time-brush"],
   3: ["test:build-home-tools","test:build-home-render","test:shell-parity","test:build-order","check:build-home-fixtures","test:ticket-context","test:command-answer"],
   4: ["test:build-home-motion","test:design-parity","test:shell","test:smoke","test:meter-row","test:models-panel","test:build-modal-motion"],
