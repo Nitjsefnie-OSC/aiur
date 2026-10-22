@@ -96,10 +96,10 @@ test('whole days, forward union, feature locks and compact dependencies', async 
 
 test('feature lanes lock and unsorted stays last; flow clears headers', async ({ page }) => {
   const result = await page.evaluate(() => {
-    S.feature = Object.keys(ctx.D.features)[0]
-    const featureEpics = ctx.D.features[S.feature].epics
+    // Pick a feature with at least one own-epic lane: compact mode also shows unlocked dependent lanes.
+    S.feature = Object.keys(ctx.D.features).find(f => { S.feature = f; return cols.visibleCols().some(k => ctx.D.features[f].epics.includes(k)) }) ?? null
     cols.applyCols(cols.visibleCols(), true)
-    const locks = featureEpics.map(k => ctx.laneEls.get(k)?.classList.contains('lock') && !!ctx.laneEls.get(k)?.querySelector('em svg'))
+    const locks = (ctx.D.features[S.feature]?.epics ?? []).filter(k => ctx.laneEls.has(k)).map(k => ctx.laneEls.get(k).classList.contains('lock') && !!ctx.laneEls.get(k).querySelector('em svg'))
     S.feature = null; cols.applyCols(['bugs', 'unsorted'], true)
     const unsorted = ctx.laneEls.get('unsorted')
     const cls = unsorted.className, label = unsorted.querySelector('span').textContent
