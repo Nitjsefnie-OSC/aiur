@@ -63,17 +63,10 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   def linked_ticket_identifiers(pr) do
     repository = get_in(pr, ["base", "repo", "full_name"])
     body = Map.get(pr, "body")
-    body_ids = RecentMerge.linked_issue_identifiers_in_text(body, repository)
-
-    commit_ids =
-      pr
-      |> Map.get("commit_messages", [])
-      |> Enum.flat_map(fn message ->
-        RecentMerge.linked_issue_identifiers_in_text(message, repository) ++
-          List.wrap(ticket_from_commit_message(message))
-      end)
-
-    Enum.uniq(body_ids ++ commit_ids)
+    commit_messages = Map.get(pr, "commit_messages", [])
+    linked_ids = RecentMerge.linked_issue_identifiers(struct(RecentMerge, summary: body, repository: repository, commit_messages: commit_messages))
+    fallback_ids = Enum.flat_map(commit_messages, &List.wrap(ticket_from_commit_message(&1)))
+    Enum.uniq(linked_ids ++ fallback_ids)
   end
 
   @spec ticket_identifier(term()) :: String.t() | nil

@@ -153,12 +153,6 @@ defmodule Aiur.RecentMerge do
     ClosingReferences.referenced_identifiers_in_body(body, repository)
   end
 
-  @doc "Returns same-repository issue identifiers linked from arbitrary text."
-  @spec linked_issue_identifiers_in_text(String.t() | nil, String.t() | nil) :: [String.t()]
-  def linked_issue_identifiers_in_text(text, repository \\ nil) do
-    ClosingReferences.linked_identifiers_in_text(text, repository)
-  end
-
   @doc "Returns linked issue identifiers from the PR body and its commit messages."
   @spec linked_issue_identifiers(t()) :: [String.t()]
   def linked_issue_identifiers(%__MODULE__{} = merge) do

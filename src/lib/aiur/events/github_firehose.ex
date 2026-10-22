@@ -246,7 +246,13 @@ defmodule Aiur.Events.GithubFirehose do
 
   defp enrich_merged_event(%{"type" => "PullRequestEvent", "payload" => %{"pull_request" => %{"number" => number} = pr} = payload} = event, opts)
        when is_integer(number) do
-    body_links = RecentMerge.linked_issue_identifiers_in_text(Map.get(pr, "body"), get_in(event, ["repo", "name"]))
+    body_links =
+      RecentMerge.linked_issue_identifiers(
+        struct(RecentMerge,
+          summary: Map.get(pr, "body"),
+          repository: get_in(event, ["repo", "name"])
+        )
+      )
 
     if merged_pull_request_event?(Map.get(payload, "action"), Map.get(pr, "merged")) and body_links == [] do
       case PullRequests.fetch_pull_request_commits(number, Keyword.take(opts, [:request_fun])) do
@@ -427,12 +433,18 @@ defmodule Aiur.Events.GithubFirehose do
     merged? = merged_pull_request_event?(action, Map.get(pr, "merged"))
 
     closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_name)
-    body_ids = RecentMerge.linked_issue_identifiers_in_text(Map.get(pr, "body"), repo_name)
     commit_messages = Map.get(pr, "commit_messages", [])
     commit_closing_ids = Enum.flat_map(commit_messages, &RecentMerge.closing_issue_identifiers_in_body(&1, repo_name))
-    commit_ids = Enum.flat_map(commit_messages, &RecentMerge.linked_issue_identifiers_in_text(&1, repo_name))
     closing_ids = Enum.uniq(closing_ids ++ commit_closing_ids)
-    linked_ids = Enum.uniq(body_ids ++ commit_ids)
+
+    linked_ids =
+      RecentMerge.linked_issue_identifiers(
+        struct(RecentMerge,
+          summary: Map.get(pr, "body"),
+          repository: repo_name,
+          commit_messages: commit_messages
+        )
+      )
 
     branch_id = Aiur.TicketBranch.ticket_id(head_ref)
 
