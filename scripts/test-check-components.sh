@@ -237,7 +237,7 @@ if not selected or 'real_tree_passes' in selected:
     ran.add('real_tree_passes')
     result = subprocess.run([sys.executable, str(checker), '--rules', 'ownership'], text=True, capture_output=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert '25 sections, 7 fields, 80 env vars, 28 state paths owned once' in result.stdout
+    assert '26 sections, 7 fields, 80 env vars, 28 state paths owned once' in result.stdout
     print('PASS: real_tree_passes')
 if not selected or 'malformed_json_exits_2' in selected:
     ran.add('malformed_json_exits_2')
@@ -491,7 +491,7 @@ if with_elixir and (not selected or 'component_debt_reports_both_directions' in 
     ran.add('component_debt_reports_both_directions')
 assert not selected - ran, f'unknown/unexecuted cases: {selected - ran}'
 PY
-python3 "$repo_root/scripts/test-components-seam-merge.py"
+python3 "$repo_root/scripts/test-components-seam-merge.py" && python3 "$repo_root/scripts/test-component-state-files.py" "$repo_root"
 if [[ " $* " == *" --with-elixir "* ]]; then
   python3 "$repo_root/scripts/test-components-seams.py"
   python3 "$repo_root/scripts/test-pr-lifecycle-components.py"

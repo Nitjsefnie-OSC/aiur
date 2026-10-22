@@ -49,8 +49,9 @@ test('card open, header identity, notices, focus trap and all close paths', asyn
     expect(await page.evaluate(() => document.body.style.overflow)).toBe('hidden')
     await page.locator('#bm-title').click()
     await expect(page.locator('#tk-backdrop')).toHaveClass(/\bshow\b/)
+    await expect(page.locator('#cv-log [data-k]')).not.toHaveCount(0)
     await page.locator('#bm-title').focus(); await page.keyboard.press('Shift+Tab')
-    await expect(page.locator('#bd-tk-close')).toBeFocused()
+    await expect(page.locator('#tk-modal a[href]:visible, #tk-modal button:not([disabled]):visible').last()).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(page.locator('#tk-head a').first()).toBeFocused()
     if (close === 'button') await page.locator('#bd-tk-close').click()
@@ -84,6 +85,71 @@ test('focused cards open once with Enter and Space through the mounted hook', as
   expect(await calls(page)).toEqual(Array.from({ length: 2 }, () => [
     { event: 'open-ticket', payload: { id: t.id, loaded: true } }, { event: 'close-ticket', payload: {} },
   ]).flat())
+})
+
+test('B17: closing a deep-linked ticket returns to the page without an origin', async ({ page }) => {
+  await open(page)
+  const t = await row(page)
+  await open(page, 'live', '?ticket=' + t.id)
+  await expect(page.locator('#bm-title')).toHaveText('#' + t.num + t.title)
+  await expect(page.locator('#bm-title')).toBeFocused()
+  await page.locator('#bd-tk-close').click()
+  await expect(page.locator('#tk-backdrop')).not.toHaveClass(/\bshow\b/)
+  await expect(page).not.toHaveURL(/ticket=/)
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).toBe('BODY')
+})
+
+test('mounted hook owns card click and restores its origin after close', async ({ page }) => {
+  await open(page); await installSpy(page)
+  const t = await row(page), card = page.locator('.bd-card[data-id="' + t.id + '"]').first()
+  await card.scrollIntoViewIfNeeded(); await card.click()
+  await expect(page.locator('#bm-title')).toHaveText('#' + t.num + t.title)
+  expect(await calls(page)).toEqual([{ event: 'open-ticket', payload: { id: t.id, loaded: true } }])
+  await page.locator('#bd-tk-close').click()
+  await expect(card).toBeFocused()
+  expect(await calls(page)).toEqual([
+    { event: 'open-ticket', payload: { id: t.id, loaded: true } },
+    { event: 'close-ticket', payload: {} },
+  ])
+})
+
+test('mounted hook owns keyboard card open and close', async ({ page }) => {
+  await open(page); await installSpy(page)
+  const t = await row(page), card = page.locator('.bd-card[data-id="' + t.id + '"]').first()
+  await card.focus(); await page.keyboard.press('Enter')
+  await expect(page.locator('#bm-title')).toHaveText('#' + t.num + t.title)
+  await expect(page.locator('#bm-title')).toBeFocused()
+  expect(await calls(page)).toEqual([{ event: 'open-ticket', payload: { id: t.id, loaded: true } }])
+  await page.keyboard.press('Escape')
+  await expect(page.locator('#tk-backdrop')).not.toHaveClass(/\bshow\b/)
+  await expect(card).toBeFocused()
+})
+
+test('mounted hook owns deep-link open and close without direct frame calls', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.modalCalls = []
+    const observe = () => {
+      const hook = window.liveSocket?.main?.getHook(document.querySelector('#build-root'))
+      if (!hook || hook.__modalCallsObserved) return false
+      const pushEvent = hook.pushEvent.bind(hook)
+      hook.pushEvent = (event, payload) => {
+        if (event === 'open-ticket' || event === 'close-ticket') window.modalCalls.push({ event, payload })
+        return pushEvent(event, payload)
+      }
+      hook.__modalCallsObserved = true
+      return true
+    }
+    const timer = setInterval(() => { if (observe()) clearInterval(timer) }, 0)
+  })
+  await open(page, 'live', '?ticket=1')
+  await expect(page.locator('#tk-backdrop')).toHaveClass(/\bshow\b/)
+  await page.locator('#bd-tk-close').click()
+  await expect(page.locator('#tk-backdrop')).not.toHaveClass(/\bshow\b/)
+  await expect(page).not.toHaveURL(/ticket=/)
+  expect(await calls(page)).toEqual([
+    { event: 'open-ticket', payload: { id: '1' } },
+    { event: 'close-ticket', payload: {} },
+  ])
 })
 
 test('deep links open loaded and older history rows; unknown and malformed links stay distinct', async ({ page }) => {
@@ -244,7 +310,13 @@ test('copy success, fallback and failure reflect the actual clipboard outcome', 
 
 test('applied diffs refresh metadata and retire removed rows without rerendering the body', async ({ page }) => {
   await open(page); const t = await row(page); await display(page, t)
-  await page.locator('[data-a="link"]').focus()
+  // Opening the modal schedules its initial title focus on the next frame.
+  // Let that settle before focusing the action whose focus must survive a diff.
+  await expect(page.locator('#bm-title')).toBeFocused()
+  const copy = page.locator('[data-a="link"]')
+  await copy.focus()
+  await expect(copy).toBeFocused()
+  await page.evaluate(() => { window.copyButtonBeforeDiff = document.querySelector('[data-a="link"]') })
   await page.evaluate(async t => {
     const { ctx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
     receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now: ctx.snap.now,
@@ -252,7 +324,11 @@ test('applied diffs refresh metadata and retire removed rows without rerendering
   }, t)
   await expect(page.locator('#bm-pct')).toHaveText('61%')
   expect(await page.locator('.bm-st').evaluate(el => el.style.getPropertyValue('--ph'))).toBe('105')
-  await expect(page.locator('[data-a="link"]')).toBeFocused()
+  await expect.poll(() => page.evaluate(() => ({
+    sameNode: window.copyButtonBeforeDiff === document.querySelector('[data-a="link"]'),
+    activeAction: document.activeElement?.dataset?.a ?? null,
+  }))).toEqual({ sameNode: false, activeAction: 'link' })
+  await expect(copy).toBeFocused()
   await page.evaluate(async id => {
     const { ctx } = await import('/build-home/state.js'), { receive } = await import('/build-home/hook.js')
     receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now: ctx.snap.now, upsert: [], remove: [id], set: {} })

@@ -12,14 +12,13 @@ defmodule AiurWeb.DashboardLive do
   alias Aiur.BuildOrder.TicketHistory.Snapshot, as: TicketHistorySnapshot
   alias Aiur.BuildOrder.TicketHistoryProvider
   alias Aiur.Conversation.History, as: ConversationHistory
-  alias Aiur.GitHub.Quota, as: GitHubQuota
   alias Aiur.ProviderMeterRefresh
   alias Aiur.TrackerIdentity
   alias Aiur.Usage.GroupedScopes
   alias Aiur.Usage.GroupedScopes.Scope
   alias Aiur.UsageAggregate
   alias AiurWeb.BuildOrder.TicketContextPresenter
-  alias AiurWeb.DashboardLive.{Controls, Summaries, UnitsPanel}
+  alias AiurWeb.DashboardLive.{Controls, GitHubQuotaSnapshot, Summaries, UnitsPanel}
   alias AiurWeb.EndpointConfig
   alias AiurWeb.FinancialData
   alias AiurWeb.FinancialDataAccess
@@ -164,7 +163,7 @@ defmodule AiurWeb.DashboardLive do
 
     {:noreply,
      socket
-     |> assign(:decision_filter, filter)
+     |> assign(%{units_base_path: if(conversation_route?, do: "/units", else: URI.parse(uri).path), decision_filter: filter})
      |> assign(:table_sort, UnitsPanel.normalize_table_sort(params["sort"]))
      |> assign(:current_route, RouteRegistry.current_route(Map.get(socket.assigns, :live_action)))
      |> assign(:conversation_from_route?, conversation_route?)
@@ -772,7 +771,7 @@ defmodule AiurWeb.DashboardLive do
       routes={RouteRegistry.routes(@payload.analytics)}
       tracker_kind={tracker_kind()}
       agent_kind={agent_kind()}
-      nav_counts={UnitsPanel.nav_counts(@units_view, @retained_counts)}
+      nav_counts={AiurWeb.OperatorControlCenter.AwaitingCommands.nav_counts(@retained_counts || %{})}
       nav_collapsed={@nav_collapsed}
       globally_paused={Controls.global_pause_state(@payload)}
       writable={@writable}
@@ -2192,7 +2191,7 @@ defmodule AiurWeb.DashboardLive do
   defp schedule_github_quota_tick, do: Process.send_after(self(), :github_quota_tick, @github_quota_tick_ms)
   defp schedule_elevenlabs_quota_tick, do: Process.send_after(self(), :elevenlabs_quota_tick, @elevenlabs_quota_tick_ms)
 
-  defp github_quota_snapshot, do: GitHubQuota.snapshot()
+  defp github_quota_snapshot, do: GitHubQuotaSnapshot.read()
 
   defp elevenlabs_quota_snapshot, do: Aiur.Voice.quota_snapshot()
 
