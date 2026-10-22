@@ -208,7 +208,7 @@ To recover saved work by hand, run the `restore_commands` of `manifest.json` in 
 
 ## Build history commands
 
-See [feature and epic commands](/reference/build-history-commands) for local collections, membership, provenance and original-scope baselines.
+See [feature, epic and history export commands](/reference/build-history-commands) for local collections, membership, provenance, original-scope baselines, and `aiur history export`.
 
 ## Dashboard page commands
 
