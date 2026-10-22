@@ -2,7 +2,14 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogEvidence do
   @moduledoc false
 
   alias Aiur.GitHub.CIRecovery
-  alias Aiur.LandingWatch.{Journal, LocalRead, MergeFailureClassifier, MergeGroupFailureProcessor, MergeQueueFailureEvidence}
+
+  alias Aiur.LandingWatch.{
+    Journal,
+    LocalRead,
+    MergeFailureClassifier,
+    MergeGroupFailureProcessor,
+    MergeQueueFailureEvidence
+  }
 
   @failed_conclusions ["failure", "cancelled", "timed_out", "startup_failure"]
   @spec classify(map(), keyword()) :: {:ok, map()} | {:skip, term()} | {:error, term()}
@@ -19,40 +26,84 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogEvidence do
 
     case Journal.state(opts) do
       {:ok, state} ->
-        classify_candidates(candidates, state, observation, observations, runs, base, since_ms, opts)
+        classify_candidates(
+          candidates,
+          state,
+          observation,
+          observations,
+          runs,
+          base,
+          since_ms,
+          opts
+        )
 
       {:error, _} = error ->
         error
     end
   end
 
-  defp classify_candidates([], _state, _observation, _observations, _runs, _base, _since_ms, _opts),
-    do: {:skip, :no_completed_failed_merge_group}
+  defp classify_candidates(
+         [],
+         _state,
+         _observation,
+         _observations,
+         _runs,
+         _base,
+         _since_ms,
+         _opts
+       ),
+       do: {:skip, :no_completed_failed_merge_group}
 
-  defp classify_candidates(candidates, state, observation, observations, runs, base, since_ms, opts) do
+  defp classify_candidates(
+         candidates,
+         state,
+         observation,
+         observations,
+         runs,
+         base,
+         since_ms,
+         opts
+       ) do
     key = "#{observation.number}:#{observation.head}"
-    cached = get_in(state, ["unmergeable_queue_entries", key, "classified_merge_group_runs"]) || %{}
+
+    cached =
+      get_in(state, ["unmergeable_queue_entries", key, "classified_merge_group_runs"]) || %{}
 
     {updated_cache, changed?} =
       Enum.reduce(candidates, {cached, false}, fn run, {cache, changed?} ->
         cache_key = Integer.to_string(run["id"])
 
-        if Map.has_key?(cache, cache_key) do
-          {cache, changed?}
-        else
-          record = classify_run(run, observation, observations, base, opts)
-          {Map.put(cache, cache_key, record), true}
-        end
+        cache_candidate(cache, changed?, cache_key, run, observation, observations, base, opts)
       end)
 
     case persist_cache(key, updated_cache, changed?, opts) do
       :ok ->
         latest = List.last(candidates)
-        record = Map.fetch!(updated_cache, Integer.to_string(latest["id"]))
-        render_record(record, latest, observation, observations, runs, base, since_ms)
+
+        case Map.fetch(updated_cache, Integer.to_string(latest["id"])) do
+          {:ok, record} ->
+            render_record(record, latest, observation, observations, runs, base, since_ms)
+
+          :error ->
+            {:skip, :merge_group_evidence_unavailable}
+        end
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  defp cache_candidate(cache, changed?, key, run, observation, observations, base, opts) do
+    case Map.fetch(cache, key) do
+      {:ok, _record} -> {cache, changed?}
+      :error -> cache_fresh_run(cache, changed?, key, run, observation, observations, base, opts)
+    end
+  end
+
+  defp cache_fresh_run(cache, changed?, key, run, observation, observations, base, opts) do
+    case classify_run(run, observation, observations, base, opts) do
+      {:ok, record} -> {Map.put(cache, key, record), true}
+      {:retry, _reason} -> {cache, changed?}
     end
   end
 
@@ -66,30 +117,40 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogEvidence do
     prs = MergeQueueFailureEvidence.run_pr_numbers(run["head_branch"], base)
     related_observations = Enum.filter(observations, &(&1.number in prs))
 
-    with {:ok, jobs} <- LocalRead.run(Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2), [run["id"], opts], opts),
+    with {:ok, jobs} <-
+           LocalRead.run(
+             Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2),
+             [run["id"], opts],
+             opts
+           ),
          {:ok, {classification, failure}} <-
            MergeFailureClassifier.classify(
              run,
              jobs,
              related_observations,
-             Keyword.get(opts, :failure_classifier_options_fun, &MergeGroupFailureProcessor.classifier_options/4).(
+             Keyword.get(
+               opts,
+               :failure_classifier_options_fun,
+               &MergeGroupFailureProcessor.classifier_options/4
+             ).(
                run,
                prs,
                jobs,
                opts
              )
            ) do
-      record(classification, failure, run["id"])
+      {:ok, record(classification, failure, run["id"])}
     else
-      {:error, reason} -> %{"verdict" => "skip", "reason" => inspect(reason), "run_id" => run["id"]}
-      other -> %{"verdict" => "skip", "reason" => inspect(other), "run_id" => run["id"]}
+      {:error, reason} -> {:retry, reason}
+      other -> {:retry, other}
     end
   end
 
   defp record(:pr_caused, _failure, run_id),
     do: %{"verdict" => "skip", "reason" => "pr_caused_merge_group_failure", "run_id" => run_id}
 
-  defp record(classification, failure, run_id) when classification in [:infra, :inherited, :known_non_pr] do
+  defp record(classification, failure, run_id)
+       when classification in [:infra, :inherited, :known_non_pr] do
     log = if is_map(failure), do: failure[:log], else: ""
 
     %{
@@ -100,8 +161,8 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogEvidence do
     }
   end
 
-  defp record(_classification, _failure, run_id),
-    do: %{"verdict" => "skip", "reason" => "merge_group_failure_not_proven_innocent", "run_id" => run_id}
+  defp record(_classification, _failure, _run_id),
+    do: raise(ArgumentError, "merge-group failure classification is not definitive")
 
   defp persist_cache(_key, _cache, false, _opts), do: :ok
 
@@ -114,18 +175,41 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogEvidence do
     end)
   end
 
-  defp render_record(%{"verdict" => "ok"} = record, _run, observation, observations, runs, base, since_ms) do
+  defp render_record(
+         %{"verdict" => "ok"} = record,
+         _run,
+         observation,
+         observations,
+         runs,
+         base,
+         since_ms
+       ) do
     {:ok,
      %{
        classification: classification(record["classification"]),
        failing_tests: record["failing_tests"] || [],
-       rebuilt_groups: MergeQueueFailureEvidence.rebuilt_group_count(runs, observation, observations, base, since_ms),
+       rebuilt_groups:
+         MergeQueueFailureEvidence.rebuilt_group_count(
+           runs,
+           observation,
+           observations,
+           base,
+           since_ms
+         ),
        run_id: record["run_id"]
      }}
   end
 
-  defp render_record(%{"reason" => "pr_caused_merge_group_failure"}, _run, _observation, _observations, _runs, _base, _since),
-    do: {:skip, :pr_caused_merge_group_failure}
+  defp render_record(
+         %{"reason" => "pr_caused_merge_group_failure"},
+         _run,
+         _observation,
+         _observations,
+         _runs,
+         _base,
+         _since
+       ),
+       do: {:skip, :pr_caused_merge_group_failure}
 
   defp render_record(_record, _run, _observation, _observations, _runs, _base, _since),
     do: {:skip, :cached_merge_group_evidence_unavailable}

@@ -1,7 +1,13 @@
 defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
   use ExUnit.Case, async: true
 
-  alias Aiur.LandingWatch.{Journal, LandingReconciliation, MergeGroupFailureProcessor, MergeQueueFailureEvidence, MergeQueueWatchdog}
+  alias Aiur.LandingWatch.{
+    Journal,
+    LandingReconciliation,
+    MergeGroupFailureProcessor,
+    MergeQueueFailureEvidence,
+    MergeQueueWatchdog
+  }
 
   test "landing reconciliation passes prepared flake evidence to the watchdog" do
     parent = self()
@@ -14,8 +20,11 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
       hold_rework: true,
       merge_group_runs: [run],
       jobs_fun: fn _, _ -> {:ok, []} end,
+      changed_paths_fun: fn _, _ -> {:ok, []} end,
       recent_main_failure_paths_fun: fn _, _ -> {:ok, ["test/aiur/flaky_test.exs"]} end,
-      known_failure_patterns_fun: fn -> {:ok, [%{"title" => "known flaky signature", "body" => "known flaky signature"}]} end,
+      known_failure_patterns_fun: fn ->
+        {:ok, [%{"title" => "known flaky signature", "body" => "known flaky signature"}]}
+      end,
       queue_reconcile_fun: fn observations, reconcile_opts ->
         reconcile_opts[:merge_group_evidence_fun].([run], observations, reconcile_opts)
 
@@ -27,7 +36,11 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
         )
       end,
       merge_queue_watchdog_fun: fn _, watchdog_opts ->
-        send(parent, {:prepared_evidence, watchdog_opts[:recent_main_failure_paths], watchdog_opts[:known_failure_patterns]})
+        send(
+          parent,
+          {:prepared_evidence, watchdog_opts[:recent_main_failure_paths], watchdog_opts[:known_failure_patterns]}
+        )
+
         :ok
       end
     ]
@@ -37,15 +50,38 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
     assert "known flaky signature" in patterns
   end
 
-  test "starts the failure-count clock at the second failed group run" do
+  test "starts the failure-count clock at the second failed group run for this head and window" do
     base = DateTime.utc_now() |> DateTime.add(-30, :minute)
     earlier = DateTime.to_iso8601(base)
     later = base |> DateTime.add(10, :minute) |> DateTime.to_iso8601()
 
-    runs = [failed_run(1, earlier, 48), failed_run(2, later, 48)]
+    head = head_ref(48)
+    runs = [failed_run(1, earlier, 48, head), failed_run(2, later, 48, head)]
 
-    assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(48, runs, "main") ==
+    assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
+             48,
+             head,
+             runs,
+             "main",
+             DateTime.from_iso8601(earlier) |> elem(1) |> DateTime.to_unix(:millisecond)
+           ) ==
              base |> DateTime.add(10, :minute) |> DateTime.to_unix(:millisecond)
+
+    assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
+             48,
+             head,
+             [failed_run(1, earlier, 48, head), failed_run(2, later, 48, head_ref(49))],
+             "main",
+             0
+           ) == nil
+
+    assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
+             48,
+             head,
+             runs,
+             "main",
+             DateTime.from_iso8601(later) |> elem(1) |> DateTime.to_unix(:millisecond)
+           ) == nil
   end
 
   test "keeps the watchdog timer through AWAITING_CHECKS and repairs when the head is unmergeable again" do
@@ -69,6 +105,10 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
       end,
       revalidate_queue_fun: fn _, _ -> :ok end,
       queue_recovery_revalidate_fun: fn _, _, _ -> :ok end,
+      alert_emitter: fn topic, attrs ->
+        send(parent, {:attention, topic, attrs})
+        :ok
+      end,
       request_fun: fn %{body: %{"query" => query}} ->
         cond do
           query =~ "dequeuePullRequest" ->
@@ -84,7 +124,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
                    "enqueuePullRequest" => %{
                      "mergeQueueEntry" => %{
                        "id" => "new-entry",
-                       "pullRequest" => %{"id" => "PR_80", "headRefOid" => "head-80"}
+                       "pullRequest" => %{"id" => "PR_80", "headRefOid" => head_ref(80)}
                      }
                    }
                  }
@@ -94,15 +134,22 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
       end
     ]
 
+    assert :ok = MergeQueueWatchdog.reconcile([waiting], Keyword.put(opts, :now_ms, started - 30 * 60_000))
     assert :ok = MergeQueueWatchdog.reconcile([waiting], opts)
     assert {:ok, waiting_state} = Journal.state(journal_path: path)
 
-    assert get_in(waiting_state, ["unmergeable_queue_entries", "80:head-80", "since"]) == started
+    assert get_in(waiting_state, ["unmergeable_queue_entries", "80:#{head_ref(80)}", "since"]) ==
+             started - 30 * 60_000
 
-    assert :ok = MergeQueueWatchdog.reconcile([unmergeable], Keyword.put(opts, :completed_merge_group_runs, []))
+    assert :ok =
+             MergeQueueWatchdog.reconcile(
+               [unmergeable],
+               Keyword.put(opts, :completed_merge_group_runs, [])
+             )
+
     assert_received :dequeued_after_recovery
     assert {:ok, state} = Journal.state(journal_path: path)
-    assert get_in(state, ["unmergeable_queue_entries", "80:head-80", "attempts"]) == 1
+    assert get_in(state, ["unmergeable_queue_entries", "80:#{head_ref(80)}", "attempts"]) == 1
   end
 
   test "commits the recovery attempt immediately after dequeue even when enqueue fails" do
@@ -117,10 +164,19 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
       token: "test-gh-token",
       now_ms: now,
       base_branch: "main",
-      completed_merge_group_runs: [failed_run(811, iso(since - 1_000), 81), failed_run(812, iso(since), 81)],
-      head_failure_fun: fn _, _ -> {:ok, %{classification: :inherited, failing_tests: [], rebuilt_groups: 0}} end,
+      completed_merge_group_runs: [
+        failed_run(811, iso(since - 1_000), 81),
+        failed_run(812, iso(since), 81)
+      ],
+      head_failure_fun: fn _, _ ->
+        {:ok, %{classification: :inherited, failing_tests: [], rebuilt_groups: 0}}
+      end,
       revalidate_queue_fun: fn _, _ -> :ok end,
       queue_recovery_revalidate_fun: fn _, _, _ -> :ok end,
+      alert_emitter: fn topic, attrs ->
+        send(parent, {:attention, topic, attrs})
+        :ok
+      end,
       request_fun: fn %{body: %{"query" => query}} ->
         cond do
           query =~ "dequeuePullRequest" ->
@@ -133,14 +189,18 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
       end
     ]
 
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, since - 5_000))
+
     assert {:error, {:github, :transport, %{reason: :enqueue_failed}}} =
              MergeQueueWatchdog.reconcile([observation], opts)
 
     assert_received :dequeued_before_enqueue_failure
     assert {:ok, state} = Journal.state(journal_path: path)
-    row = get_in(state, ["unmergeable_queue_entries", "81:head-81"])
+    row = get_in(state, ["unmergeable_queue_entries", "81:#{head_ref(81)}"])
     assert row["attempts"] == 1
     refute Map.has_key?(row, "recovery_pending")
+    assert_received {:attention, "system.pr.landing.merge_queue_recovery_enqueue_failed", attrs}
+    assert attrs[:message] =~ "PR #81"
   end
 
   test "does not recover when failure evidence cannot be fetched" do
@@ -161,14 +221,61 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
 
     assert :ok = MergeQueueWatchdog.reconcile([observation], opts)
     assert {:ok, state} = Journal.state(journal_path: path)
-    verdict = get_in(state, ["unmergeable_queue_entries", "82:head-82", "classified_merge_group_runs", "822"])
-    assert verdict["verdict"] == "skip"
+
+    verdict =
+      get_in(state, [
+        "unmergeable_queue_entries",
+        "82:#{head_ref(82)}",
+        "classified_merge_group_runs",
+        "822"
+      ])
+
+    assert is_nil(verdict)
+  end
+
+  test "still re-enqueues after the attempt journal commit fails" do
+    path = temp_journal()
+    parent = self()
+    observation = observation(83, "UNMERGEABLE", "UNKNOWN")
+    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+    since = now - 21 * 60_000
+
+    opts = [
+      journal_path: path,
+      token: "test-gh-token",
+      now_ms: now,
+      base_branch: "main",
+      completed_merge_group_runs: [failed_run(831, iso(since - 1_000), 83), failed_run(832, iso(since), 83)],
+      head_failure_fun: fn _, _ -> {:ok, %{classification: :inherited, failing_tests: [], rebuilt_groups: 0}} end,
+      revalidate_queue_fun: fn _, _ -> :ok end,
+      queue_recovery_revalidate_fun: fn _, _, _ -> :ok end,
+      recovery_attempt_commit_fun: fn _, _, _ -> {:error, :journal_write_failed} end,
+      alert_emitter: fn topic, attrs ->
+        send(parent, {:attention, topic, attrs})
+        :ok
+      end,
+      request_fun: fn %{body: %{"query" => query}} ->
+        if query =~ "enqueuePullRequest" do
+          send(parent, :enqueued_after_commit_failure)
+          {:ok, %{status: 200, body: %{"data" => %{"enqueuePullRequest" => %{"mergeQueueEntry" => %{"id" => "new", "pullRequest" => %{"id" => "PR_83", "headRefOid" => head_ref(83)}}}}}}}
+        else
+          {:ok, %{status: 200, body: %{"data" => %{"dequeuePullRequest" => %{}}}}}
+        end
+      end
+    ]
+
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, since - 5_000))
+    assert :ok = MergeQueueWatchdog.reconcile([observation], opts)
+    assert_received :enqueued_after_commit_failure
+    assert_received {:attention, "system.pr.landing.merge_queue_recovery_attempt_commit_failed", attrs}
+    message = Keyword.fetch!(attrs, :message)
+    assert message =~ "PR #83"
   end
 
   defp observation(number, state, mergeable) do
     %{
       number: number,
-      head: "head-#{number}",
+      head: head_ref(number),
       node_id: "PR_#{number}",
       draft?: false,
       review_decision: "APPROVED",
@@ -179,20 +286,28 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
     }
   end
 
-  defp failed_run(id, created_at, number) do
+  defp failed_run(id, created_at, number, head \\ nil) do
     %{
       "id" => id,
       "event" => "merge_group",
       "conclusion" => "failure",
-      "head_branch" => "gh-readonly-queue/main/pr-#{number}-head",
+      "head_branch" => "gh-readonly-queue/main/pr-#{number}-#{head || head_ref(number)}",
       "created_at" => created_at
     }
   end
 
-  defp iso(milliseconds), do: DateTime.from_unix!(milliseconds, :millisecond) |> DateTime.to_iso8601()
+  defp head_ref(number), do: String.pad_leading(Integer.to_string(number, 16), 40, "0")
+
+  defp iso(milliseconds),
+    do: DateTime.from_unix!(milliseconds, :millisecond) |> DateTime.to_iso8601()
 
   defp temp_journal do
-    path = Path.join(System.tmp_dir!(), "merge-queue-watchdog-review-#{System.unique_integer([:positive])}.json")
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "merge-queue-watchdog-review-#{System.unique_integer([:positive])}.json"
+      )
+
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(path) end)
     path
   end
