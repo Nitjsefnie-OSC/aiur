@@ -43,7 +43,6 @@ defmodule Aiur.GitHub.PullRequestCommitCacheTest do
     assert_receive {:fetched, url}, 1000
     assert url =~ "/pulls/#{number}/commits"
     wait_for_second_fetch_task(concurrent)
-    send(hd(concurrent).pid, :release_fetch)
     assert Enum.map(concurrent, &Task.await(&1, 1000)) == [{:ok, ["Refs #5605"]}, {:ok, ["Refs #5605"]}]
     assert :atomics.get(requests, 1) == 1
 
@@ -63,8 +62,8 @@ defmodule Aiur.GitHub.PullRequestCommitCacheTest do
     assert :atomics.get(requests, 1) == 2
   end
 
-  defp wait_for_second_fetch_task([_first, second]) do
-    assert_receive {:waiting, pid} when pid == second.pid, 1_000
+  defp wait_for_second_fetch_task(_concurrent) do
+    assert_receive {:waiting, pid}, 1_000
     send(pid, :release_fetch)
   end
 end

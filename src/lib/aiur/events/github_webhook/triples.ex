@@ -358,7 +358,7 @@ defmodule Aiur.Events.GithubWebhook.Triples do
     if Map.has_key?(pr, "commit_messages") do
       pr
     else
-      request_opts = Keyword.take(opts, [:request_fun])
+      request_opts = Keyword.take(opts, [:request_fun, :token])
 
       case PullRequests.fetch_pull_request_commits(number, Keyword.put(request_opts, :head_sha, get_in(pr, ["head", "sha"]))) do
         {:ok, messages} ->

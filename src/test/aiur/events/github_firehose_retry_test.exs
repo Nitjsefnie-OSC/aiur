@@ -102,7 +102,7 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
                 count: 3,
                 etag: ~s("new-etag"),
                 last_event_id: "newer-open",
-                recent_merge_persistence: :not_attempted
+                recent_merge_persistence: :ok
               }} =
                GithubFirehose.poll(
                  request_fun: stub,

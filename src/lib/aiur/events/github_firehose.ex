@@ -43,6 +43,7 @@ defmodule Aiur.Events.GithubFirehose do
   alias Aiur.GitHub.PullRequests
   alias Aiur.RunTelemetry.Lifecycle
   alias Aiur.StartTrigger.ProgressStore
+  alias Aiur.TicketBranch
 
   @repo_events_per_page 30
 
@@ -255,13 +256,15 @@ defmodule Aiur.Events.GithubFirehose do
        when is_integer(number) do
     if merged_pull_request_event?(Map.get(payload, "action"), Map.get(pr, "merged")) and
          not Map.has_key?(pr, "commit_messages") do
-      fetch_opts = Keyword.take(opts, [:request_fun]) |> Keyword.put(:head_sha, get_in(pr, ["head", "sha"]))
+      fetch_opts = Keyword.take(opts, [:request_fun, :token]) |> Keyword.put(:head_sha, get_in(pr, ["head", "sha"]))
 
       case PullRequests.fetch_pull_request_commits(number, fetch_opts) do
         {:ok, messages} ->
           put_in(event, ["payload", "pull_request", "commit_messages"], messages)
 
         {:error, :pull_request_commit_list_too_large} ->
+          Logger.warning("GithubFirehose commit list too large pr=#{number}; using available merge identity")
+
           event
           |> put_in(["payload", "pull_request", "commit_messages_unavailable"], true)
           |> put_in(["payload", "pull_request", "commit_messages_permanent"], true)
@@ -278,8 +281,9 @@ defmodule Aiur.Events.GithubFirehose do
   defp enrich_merged_event(event, _opts), do: event
 
   defp persist_recent_merge(event, opts) do
-    if commit_evidence_unavailable_without_body_closing?(event) do
-      :not_merge
+    if commit_evidence_unavailable_without_body_closing?(event) and is_nil(TicketBranch.ticket_id(get_in(event, ["payload", "pull_request", "head", "ref"]))) do
+      Logger.warning("GithubFirehose merge attribution unavailable; preserving event without ticket identity")
+      :unclassified
     else
       event
       |> RecentMerge.from_github_event(recent_merge_options(event, opts))

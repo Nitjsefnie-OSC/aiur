@@ -49,7 +49,6 @@ defmodule Aiur.StartTrigger.ProgressWritersTest do
           "merged" => true,
           "merged_at" => "2026-10-09T10:00:00Z",
           "html_url" => "https://github.com/owner/repo/pull/101",
-          "body" => "Closes ##{id}",
           "head" => %{"ref" => "aiur/#{id}-progress", "sha" => "head", "repo" => %{"full_name" => "owner/repo"}}
         }
       }
@@ -60,6 +59,7 @@ defmodule Aiur.StartTrigger.ProgressWritersTest do
                token: "test-gh-token",
                request_fun: fn request ->
                  if String.contains?(Map.get(request, :url, ""), "/pulls/101/commits") do
+                   send(self(), {:commit_request_token, request.token})
                    {:ok, %{status: 200, body: [], headers: []}}
                  else
                    {:ok, %{status: 200, body: [event], headers: []}}
@@ -68,6 +68,8 @@ defmodule Aiur.StartTrigger.ProgressWritersTest do
                recent_merge_fun: fn merge -> {:ok, %{status: :accepted, merge: merge}} end,
                boot_time: 0
              )
+
+    assert_received {:commit_request_token, "test-gh-token"}
 
     :sys.get_state(ProgressStore)
     assert %{pr_number: 101, stage: :pr_merged} = ProgressStore.lookup(id)

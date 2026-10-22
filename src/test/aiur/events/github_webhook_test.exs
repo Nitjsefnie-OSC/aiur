@@ -155,7 +155,11 @@ defmodule Aiur.Events.GithubWebhookTest do
       assert %{status: :published, published: ["ticket.5606.pr.merged"]} =
                GithubWebhook.handle_delivery("pull_request", delivery,
                  repo: @repo,
-                 request_fun: fn _ -> {:error, :offline} end
+                 token: "explicit-webhook-token",
+                 request_fun: fn request ->
+                   assert request.token == "explicit-webhook-token"
+                   {:error, :offline}
+                 end
                )
 
       assert_receive {:event, %{topic: "ticket.5606.pr.merged"}}, 500
