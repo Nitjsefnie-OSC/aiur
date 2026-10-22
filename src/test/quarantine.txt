@@ -12,3 +12,4 @@ Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads ope
 Aiur.PerClassCadenceTest	*	#5605
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
 AiurWeb.ZeroFetchPageOpenTest	*	#5605
+Aiur.LandingWatch.MergeGroupBlameTest	a failed evidence fetch logs fallback and uses legacy PR routing	#5648
