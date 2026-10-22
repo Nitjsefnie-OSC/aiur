@@ -237,6 +237,40 @@ in parallel" section owns the how, including the prompt contents that make a
 review agent useful rather than a summarizer. Raising `max-agents` while the
 queue grows makes it worse.
 
+### 2a. Measure feature work, and find one way to raise it
+
+The run exists to ship features. A fleet that is busy can still deliver none, if
+its merges are test, flake and CI fixes. On 2026-10-21 one 24-hour window had 13
+feature merges out of 71 (18%). The CI-stability plan baseline is 23.5%. Measure
+the share every pass, so a drift toward fix work is found within the hour:
+
+```bash
+bash .claude/skills/aiur-meta/scripts/feature-share.sh 24   # and 1 for the last hour
+```
+
+When the delivery-speed pack has `feature_merge_share`, read it from
+`aiur experiments` instead, and keep the script as a cross-check. Record the
+number, the window and the trend against the previous log.
+
+Then name **one concrete change that would raise the share**, and act on it
+inside the mandate. Look first at the levers that recur:
+
+- **Quarantine first, fix later.** When a test fails on the base branch and is not
+  related to the PR, quarantine it at once in a separate PR. Queue its fix ticket
+  *behind* feature work, not at the front. A flake fix at queue position 1 puts
+  the fleet on flakes.
+- **Flake tickets in the queue.** Count the open `flake` tickets ahead of the first
+  feature ticket. More than a few is the finding.
+- **One failure that ejects many PRs.** A merge-group failure on one flake ejects
+  that PR and rebuilds every group behind it. Count innocent ejections this hour.
+- **Capacity.** Is CPU pressure, runner saturation or the daemon's own CPU capping
+  the agent count? Fewer agents hits features first, because fixes jump the queue.
+- **Rework round trips.** Count the reworks this hour that only fixed the PR body
+  or a stale Tested head; each one is a full CI cycle with no feature progress.
+
+A pass that measures the share and names no change is incomplete. If no change
+is possible, say what blocks it, such as a decision only the operator can make.
+
 ## 3. Ask what can move — within your mandate
 
 **First establish the mandate, then act only inside it.** This skill is also
@@ -328,6 +362,8 @@ Write to `~/.aiur/repo/<owner>/<repo>/meta/<UTC timestamp>-<slug>.md`:
 
 - verdict per surface
 - the named bottleneck and what would shrink it
+- the feature-work share (24 h and last hour) with its trend, and the one change
+  made or proposed to raise it (section 2a)
 - what changed since the last log — resolved as well as new
 - what needs the operator, and why the Executor cannot do it
 
