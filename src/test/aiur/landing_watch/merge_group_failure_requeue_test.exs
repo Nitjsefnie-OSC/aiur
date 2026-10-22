@@ -75,7 +75,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     journal = journal_path("rate-cap")
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(journal) end)
 
-    now_ms = System.system_time(:millisecond)
+    now_ms = 1_900_000_000_000
 
     runs =
       for {id, first_pr} <- Enum.with_index(401..405, 17),
