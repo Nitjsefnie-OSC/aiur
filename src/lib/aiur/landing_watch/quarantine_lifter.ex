@@ -14,7 +14,8 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   @sweep_interval_ms :timer.hours(1)
 
   @spec start_link(keyword()) :: GenServer.on_start()
-  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+  def start_link(opts \\ []),
+    do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
 
   @spec lift(pos_integer(), keyword()) :: :ok | {:ok, :already_claimed} | {:error, term()}
   def lift(ticket, opts \\ [])
@@ -36,8 +37,11 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   def lift_closed(opts \\ []) do
     with {:ok, tickets} <- quarantined_tickets(opts) do
       case lift_expired(opts) do
-        :ok -> :ok
-        {:error, reason} -> Logger.warning("expired quarantine sweep failed reason=#{inspect(reason)}")
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("expired quarantine sweep failed reason=#{inspect(reason)}")
       end
 
       Enum.each(tickets, &lift_if_closed(&1, opts))
@@ -75,9 +79,15 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
     recent = Enum.take(runs, Keyword.get(opts, :green_runs_required, 3))
 
     cond do
-      length(recent) >= Keyword.get(opts, :green_runs_required, 3) and Enum.all?(recent, &(&1 == :success)) ->
+      length(recent) >= Keyword.get(opts, :green_runs_required, 3) and
+          Enum.all?(recent, &(&1 == :success)) ->
         ticket = String.to_integer(String.trim_leading(entry.ticket, "#"))
-        Keyword.get(opts, :quarantine_lift_fun, &lift/2).(ticket, Keyword.put(opts, :lift_reason, "after #{length(recent)} green nightly quarantine runs")) |> normalize_lift_result()
+
+        Keyword.get(opts, :quarantine_lift_fun, &lift/2).(
+          ticket,
+          Keyword.put(opts, :lift_reason, "after #{length(recent)} green nightly quarantine runs")
+        )
+        |> normalize_lift_result()
 
       Enum.any?(recent, &(&1 == :failure)) ->
         escalate_once(entry, opts)
@@ -121,7 +131,10 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
     case CIRecovery.read("/actions/runs?event=schedule&status=completed&per_page=20", opts) do
       {:ok, %{"workflow_runs" => runs}} when is_list(runs) ->
         runs
-        |> Enum.filter(&(&1["name"] == "ci" and &1["head_branch"] == "main" and is_integer(&1["id"])))
+        |> Enum.filter(
+          &(&1["name"] == "ci" and &1["head_branch"] == TrackerSettings.base_branch() and
+              is_integer(&1["id"]))
+        )
         |> Enum.reduce_while({:ok, []}, &append_nightly_result(&1, &2, opts))
 
       {:error, _} = error ->
@@ -134,13 +147,21 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
   defp append_nightly_result(run, {:ok, acc}, opts) do
     case CIRecovery.jobs(run["id"], opts) do
-      {:ok, jobs} -> {:cont, {:ok, acc ++ [Enum.find_value(jobs, :unknown, &quarantine_job_status/1)]}}
-      {:error, _} = error -> {:halt, error}
+      {:ok, jobs} ->
+        {:cont, {:ok, acc ++ [Enum.find_value(jobs, :unknown, &quarantine_job_status/1)]}}
+
+      {:error, _} = error ->
+        {:halt, error}
     end
   end
 
   defp quarantine_job_status(%{"name" => "quarantined tests (non-blocking)"} = job) do
-    failed_step? = Enum.any?(job["steps"] || [], &(&1["name"] == "Run quarantined tests" and (&1["outcome"] == "failure" or &1["conclusion"] == "failure")))
+    failed_step? =
+      Enum.any?(
+        job["steps"] || [],
+        &(&1["name"] == "Run quarantined tests" and
+            (&1["outcome"] == "failure" or &1["conclusion"] == "failure"))
+      )
 
     cond do
       failed_step? -> :failure
@@ -167,7 +188,13 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   defp add_priority_label(context, number, opts) do
     url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/issues/#{number}/labels"
 
-    case request(opts).(%{method: :post, url: url, token: context.token, caller: "quarantine_expiry_priority", body: %{"labels" => ["priority:1"]}}) do
+    case request(opts).(%{
+           method: :post,
+           url: url,
+           token: context.token,
+           caller: "quarantine_expiry_priority",
+           body: %{"labels" => ["priority:1"]}
+         }) do
       {:ok, %{status: status}} when status in [200, 201] -> :ok
       {:ok, response} -> {:error, Errors.github_status_error(response)}
       {:error, _} = error -> error
@@ -175,9 +202,15 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   end
 
   defp change_label(context, number, method, label, opts) do
-    url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/issues/#{number}/labels/#{URI.encode(label)}"
+    url =
+      "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/issues/#{number}/labels/#{URI.encode(label)}"
 
-    case request(opts).(%{method: method, url: url, token: context.token, caller: "quarantine_expiry_priority"}) do
+    case request(opts).(%{
+           method: method,
+           url: url,
+           token: context.token,
+           caller: "quarantine_expiry_priority"
+         }) do
       {:ok, %{status: status}} when status in [200, 201, 204] -> :ok
       {:ok, response} -> {:error, Errors.github_status_error(response)}
       {:error, _} = error -> error
@@ -186,9 +219,19 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
   defp lift_if_closed(ticket, opts) do
     case issue_state(ticket, opts) do
-      {:ok, "closed"} -> log_result(ticket, lift(ticket, Keyword.put(opts, :lift_reason, "now that the ticket is closed")))
-      {:ok, _open} -> :ok
-      {:error, reason} -> Logger.warning("quarantine ticket state failed ticket=#{ticket} reason=#{inspect(reason)}")
+      {:ok, "closed"} ->
+        log_result(
+          ticket,
+          lift(ticket, Keyword.put(opts, :lift_reason, "now that the ticket is closed"))
+        )
+
+      {:ok, _open} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "quarantine ticket state failed ticket=#{ticket} reason=#{inspect(reason)}"
+        )
     end
   end
 
@@ -216,7 +259,12 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
     with {:ok, context} <- context(hd(@list_paths), opts) do
       url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/issues/#{ticket}"
 
-      case request(opts).(%{method: :get, url: url, token: context.token, caller: "quarantine_lift_ticket_state"}) do
+      case request(opts).(%{
+             method: :get,
+             url: url,
+             token: context.token,
+             caller: "quarantine_lift_ticket_state"
+           }) do
         {:ok, %{status: 200, body: %{"state" => state}}} when is_binary(state) -> {:ok, state}
         {:ok, response} -> {:error, Errors.github_status_error(response)}
         {:error, _} = error -> error
@@ -243,8 +291,11 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
   def handle_info(:sweep_closed, opts) do
     case Task.Supervisor.start_child(Aiur.TaskSupervisor, fn -> lift_closed(opts) end) do
-      {:ok, _pid} -> :ok
-      {:error, reason} -> Logger.warning("quarantine closed-ticket sweep failed to start reason=#{inspect(reason)}")
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("quarantine closed-ticket sweep failed to start reason=#{inspect(reason)}")
     end
 
     schedule_sweep(opts)
@@ -255,28 +306,47 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
   defp schedule_sweep(opts) do
     case Keyword.get(opts, :sweep_interval_ms, @sweep_interval_ms) do
-      interval when is_integer(interval) and interval > 0 -> Process.send_after(self(), :sweep_closed, interval)
-      _disabled -> :ok
+      interval when is_integer(interval) and interval > 0 ->
+        Process.send_after(self(), :sweep_closed, interval)
+
+      _disabled ->
+        :ok
     end
   end
 
   defp start_lift(ticket, opts) do
-    case Task.Supervisor.start_child(Aiur.TaskSupervisor, fn -> log_result(ticket, lift(ticket, opts)) end) do
-      {:ok, _pid} -> :ok
-      {:error, reason} -> Logger.warning("quarantine lift task failed to start ticket=#{ticket} reason=#{inspect(reason)}")
+    case Task.Supervisor.start_child(Aiur.TaskSupervisor, fn ->
+           log_result(ticket, lift(ticket, opts))
+         end) do
+      {:ok, _pid} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "quarantine lift task failed to start ticket=#{ticket} reason=#{inspect(reason)}"
+        )
     end
   end
 
   defp log_result(ticket, result) do
     case result do
-      :ok -> :ok
-      {:ok, :already_claimed} -> :ok
-      {:error, reason} -> Logger.warning("quarantine lift failed ticket=#{ticket} reason=#{inspect(reason)}")
+      :ok ->
+        :ok
+
+      {:ok, :already_claimed} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("quarantine lift failed ticket=#{ticket} reason=#{inspect(reason)}")
     end
   end
 
   defp lift_claimed(ticket, claim, opts) do
-    result = Enum.reduce(@list_paths, :ok, fn path, acc -> if acc == :ok, do: fetch_list(ticket, path, opts), else: acc end)
+    result =
+      Enum.reduce(@list_paths, :ok, fn path, acc ->
+        if acc == :ok, do: fetch_list(ticket, path, opts), else: acc
+      end)
+
     if result == :ok, do: :ok, else: release_claim(claim, opts, result)
   end
 
@@ -304,14 +374,27 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   defp context(path, opts) do
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts) do
-      {:ok, %{path: path, owner: owner, repo: repo, token: token, base: Keyword.get_lazy(opts, :base_branch, &TrackerSettings.base_branch/0)}}
+      {:ok,
+       %{
+         path: path,
+         owner: owner,
+         repo: repo,
+         token: token,
+         base: Keyword.get_lazy(opts, :base_branch, &TrackerSettings.base_branch/0)
+       }}
     end
   end
 
   defp get_contents(context, opts) do
-    url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/contents/#{context.path}?ref=#{context.base}"
+    url =
+      "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/contents/#{context.path}?ref=#{context.base}"
 
-    case request(opts).(%{method: :get, url: url, token: context.token, caller: "quarantine_lift_contents"}) do
+    case request(opts).(%{
+           method: :get,
+           url: url,
+           token: context.token,
+           caller: "quarantine_lift_contents"
+         }) do
       {:ok, %{status: 200, body: %{"content" => encoded, "sha" => sha, "encoding" => "base64"}}} ->
         case Base.decode64(String.replace(encoded, ~r/\s/, "")) do
           {:ok, contents} -> {:ok, contents, sha}
@@ -331,7 +414,9 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
     lines = String.split(contents, "\n")
     retained = Enum.reject(lines, &ticket_entry?(&1, target))
 
-    if retained == lines, do: {:error, :ticket_not_quarantined}, else: {:ok, Enum.join(retained, "\n")}
+    if retained == lines,
+      do: {:error, :ticket_not_quarantined},
+      else: {:ok, Enum.join(retained, "\n")}
   end
 
   defp ticket_entry?(line, target) do
@@ -354,9 +439,15 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   end
 
   defp base_sha(context, opts) do
-    url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/git/ref/heads/#{context.base}"
+    url =
+      "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/git/ref/heads/#{context.base}"
 
-    case request(opts).(%{method: :get, url: url, token: context.token, caller: "quarantine_lift_base"}) do
+    case request(opts).(%{
+           method: :get,
+           url: url,
+           token: context.token,
+           caller: "quarantine_lift_base"
+         }) do
       {:ok, %{status: 200, body: %{"object" => %{"sha" => sha}}}} -> {:ok, sha}
       {:ok, response} -> {:error, Errors.github_status_error(response)}
       {:error, _} = error -> error
@@ -366,13 +457,40 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   defp create_branch(context, branch, sha, opts) do
     url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/git/refs"
     body = %{"ref" => "refs/heads/#{branch}", "sha" => sha}
-    expect_write(request(opts).(%{method: :post, url: url, token: context.token, caller: "quarantine_lift_branch", body: body}), [201])
+
+    expect_write(
+      request(opts).(%{
+        method: :post,
+        url: url,
+        token: context.token,
+        caller: "quarantine_lift_branch",
+        body: body
+      }),
+      [201]
+    )
   end
 
   defp update_file(context, branch, sha, contents, opts) do
-    url = "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/contents/#{context.path}"
-    body = %{"message" => "Lift fixed test quarantine", "content" => Base.encode64(contents), "branch" => branch, "sha" => sha}
-    expect_write(request(opts).(%{method: :put, url: url, token: context.token, caller: "quarantine_lift_file", body: body}), [200])
+    url =
+      "#{Transport.base_url()}/repos/#{context.owner}/#{context.repo}/contents/#{context.path}"
+
+    body = %{
+      "message" => "Lift fixed test quarantine",
+      "content" => Base.encode64(contents),
+      "branch" => branch,
+      "sha" => sha
+    }
+
+    expect_write(
+      request(opts).(%{
+        method: :put,
+        url: url,
+        token: context.token,
+        caller: "quarantine_lift_file",
+        body: body
+      }),
+      [200]
+    )
   end
 
   defp create_pr(context, branch, ticket, opts) do
@@ -380,12 +498,22 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
     body = %{
       "title" => "Lift fixed test quarantine",
-      "body" => "Removes quarantine entries tracked by ##{ticket} #{Keyword.get(opts, :lift_reason, "after the fix merged")}.",
+      "body" =>
+        "Removes quarantine entries tracked by ##{ticket} #{Keyword.get(opts, :lift_reason, "after the fix merged")}.",
       "head" => branch,
       "base" => context.base
     }
 
-    expect_write(request(opts).(%{method: :post, url: url, token: context.token, caller: "quarantine_lift_pr", body: body}), [200, 201])
+    expect_write(
+      request(opts).(%{
+        method: :post,
+        url: url,
+        token: context.token,
+        caller: "quarantine_lift_pr",
+        body: body
+      }),
+      [200, 201]
+    )
   end
 
   defp expect_write({:ok, %{status: status} = response}, accepted) do
