@@ -10,3 +10,4 @@ Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads ope
 Aiur.PerClassCadenceTest	*	#5605
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
 AiurWeb.ZeroFetchPageOpenTest	*	#5605
+Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	emit_agent_event via event_publisher closure attention events create and resolve a durable decision attention	#5676
