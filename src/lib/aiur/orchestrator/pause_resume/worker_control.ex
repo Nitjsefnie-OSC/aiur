@@ -435,7 +435,7 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
     identifier = Map.get(issue || %{}, :identifier) || Map.get(issue || %{}, :id)
 
     if is_binary(identifier) do
-      TrackerTasks.run(
+      TrackerTasks.chain(
         state,
         {:runtime_reason_labels, identifier},
         fn -> write_pause_reason_labels(identifier, previous_modifier, current_modifier, Map.get(running_entry, :tracker_label_writer)) end,

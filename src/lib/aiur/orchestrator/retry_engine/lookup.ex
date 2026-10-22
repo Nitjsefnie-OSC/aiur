@@ -21,7 +21,7 @@ defmodule Aiur.Orchestrator.RetryEngine.Lookup do
 
   @spec handle_retry_issue(State.t(), String.t(), integer(), map(), keyword()) :: {:noreply, State.t()}
   def handle_retry_issue(%State{} = state, issue_id, attempt, metadata, opts \\ []) do
-    state = sync_retrying_modifier(state, metadata, issue_id, :remove)
+    state = if metadata[:retry_label?], do: sync_retrying_modifier(state, metadata, issue_id, :remove), else: state
 
     if retry_capacity_available?(state, metadata) and not state.globally_paused do
       start_retry_poll(state, issue_id, attempt, metadata, opts)
@@ -88,7 +88,7 @@ defmodule Aiur.Orchestrator.RetryEngine.Lookup do
   defp sync_retrying_modifier(state, metadata, issue_id, action) do
     identifier = metadata[:identifier] || issue_id
 
-    TrackerTasks.run(
+    TrackerTasks.chain(
       state,
       {:runtime_reason_labels, identifier},
       fn -> TicketTransition.write_reason_modifier(identifier, action, "retrying", writer: :retry_engine) end,

@@ -149,17 +149,19 @@ defmodule Aiur.Orchestrator.RetryEngine.Scheduling do
                 # does not round-trip it — the retry path reclassifies the failure
                 # it sees at dispatch time rather than trusting stale metadata.
                 delay_type: metadata[:delay_type],
-                local_budget_hold: metadata[:local_budget_hold]
+                local_budget_hold: metadata[:local_budget_hold],
+                retry_label?: failure_retry?(metadata)
               })
         }
         |> record_hold_deferral(issue_id, identifier, metadata, now_ms)
 
-      schedule_retry_reason_label(next_state, identifier)
+      # Continuation and wait retries are routine; only a failure back-off is `agent:retrying`.
+      if failure_retry?(metadata), do: schedule_retry_reason_label(next_state, identifier), else: next_state
     end
   end
 
   defp schedule_retry_reason_label(state, identifier) do
-    TrackerTasks.run(
+    TrackerTasks.chain(
       state,
       {:runtime_reason_labels, identifier},
       fn -> TicketTransition.write_reason_modifier(identifier, :add, "retrying", writer: :retry_engine) end,
@@ -212,7 +214,8 @@ defmodule Aiur.Orchestrator.RetryEngine.Scheduling do
           priority: Map.get(retry_entry, :priority),
           issue_state: Map.get(retry_entry, :issue_state),
           terminal_membership_pending?: Map.get(retry_entry, :terminal_membership_pending?, false),
-          rework_head_sha: Map.get(retry_entry, :rework_head_sha)
+          rework_head_sha: Map.get(retry_entry, :rework_head_sha),
+          retry_label?: Map.get(retry_entry, :retry_label?, false)
         }
 
         {:ok, attempt, metadata, %{state | retry_attempts: Map.delete(state.retry_attempts, issue_id)}}

@@ -127,7 +127,7 @@ defmodule Aiur.Orchestrator.RetryEngine.WorkspaceWait do
   end
 
   defp sync_handoff_modifier(state, identifier, action) do
-    TrackerTasks.run(
+    TrackerTasks.chain(
       state,
       {:runtime_reason_labels, identifier},
       fn -> TicketTransition.write_reason_modifier(identifier, action, "handed-off", writer: :workspace_wait) end,

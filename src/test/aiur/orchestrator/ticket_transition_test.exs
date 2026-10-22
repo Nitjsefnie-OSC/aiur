@@ -68,8 +68,8 @@ defmodule Aiur.Orchestrator.TicketTransitionTest do
     assert log =~ "expected=\"todo\""
   end
 
-  test "write_state adds the reason label before removing the previous reason" do
-    Application.put_env(:aiur, :memory_tracker_issues, [%Issue{id: "7", identifier: "7", state: "todo", labels: ["agent:ci-red", "agent:paused"]}])
+  test "write_state adds the CI reason label before removing the previous CI reason" do
+    Application.put_env(:aiur, :memory_tracker_issues, [%Issue{id: "7", identifier: "7", state: "todo", labels: ["agent:ci-red", "agent:paused", "agent:blocked"]}])
 
     assert :ok =
              TicketTransition.write_state("7", "ci-wait",
@@ -84,7 +84,9 @@ defmodule Aiur.Orchestrator.TicketTransitionTest do
     assert {:ok, [%Issue{labels: labels}]} =
              Tracker.fetch_issue_states_by_ids(["7"])
 
-    assert labels == ["agent:paused"]
+    # The CI swap leaves reasons owned by other writers alone.
+    refute_received {:memory_tracker_remove_label, "7", "agent:blocked"}
+    assert labels == ["agent:paused", "agent:blocked"]
   end
 
   test "every canonical reason modifier can be added and cleared without changing the workflow state" do

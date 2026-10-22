@@ -8,6 +8,7 @@ defmodule Aiur.Orchestrator.IssueSync.Dependencies do
   alias Aiur.AgentQueue
   alias Aiur.AgentQueueStore
   alias Aiur.Alerts
+  alias Aiur.GitHub.Config
   alias Aiur.Issue
   alias Aiur.Orchestrator.AutoSubscriptions
   alias Aiur.Orchestrator.DispatchPolicy
@@ -70,11 +71,13 @@ defmodule Aiur.Orchestrator.IssueSync.Dependencies do
 
   def emit_dependency_transition_events(%State{} = state, _previous_issue, _issue, _opts), do: state
 
-  defp sync_dependency_reason_label(state, previous_issue, issue, opts) do
-    previous_open? = open_dependency?(previous_issue)
+  # Compares against the labels the tracker reported, so a restart (no previous
+  # issue) writes only where the label is wrong and a stale label heals.
+  defp sync_dependency_reason_label(state, _previous_issue, issue, opts) do
     current_open? = open_dependency?(issue)
+    labeled? = "#{Config.label_prefix()}:blocked" in Enum.map(List.wrap(issue.labels), &String.downcase/1)
 
-    if is_nil(current_open?) or previous_open? == current_open? do
+    if is_nil(current_open?) or current_open? == labeled? do
       state
     else
       schedule_dependency_reason_label(state, issue, current_open?, opts)
@@ -85,7 +88,7 @@ defmodule Aiur.Orchestrator.IssueSync.Dependencies do
     action = if current_open?, do: :add, else: :remove
     writer = Keyword.get(opts, :reason_label_writer, &write_dependency_reason_label/2)
 
-    TrackerTasks.run(
+    TrackerTasks.chain(
       state,
       {:runtime_reason_labels, issue.identifier},
       fn -> writer.(issue.identifier, action) end,

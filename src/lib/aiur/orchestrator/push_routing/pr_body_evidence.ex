@@ -110,7 +110,7 @@ defmodule Aiur.Orchestrator.PushRouting.PrBodyEvidence do
         TicketTransition.write_reason_modifier(id, action, "body-fix", writer: :pr_body_evidence)
       end)
 
-    TrackerTasks.run(state, {:runtime_reason_labels, identifier}, fn -> writer.(identifier, action) end, fn current, result ->
+    TrackerTasks.chain(state, {:runtime_reason_labels, identifier}, fn -> writer.(identifier, action) end, fn current, result ->
       case result do
         :ok ->
           current

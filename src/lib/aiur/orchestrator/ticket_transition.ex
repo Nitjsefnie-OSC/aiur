@@ -57,7 +57,9 @@ defmodule Aiur.Orchestrator.TicketTransition do
     result
   end
 
-  @doc "Writes the canonical set of runtime reason labels alongside the workflow state."
+  @ci_reason_modifiers ~w(merge-queued ci-red)
+
+  @doc "Replaces the CI-owned reason labels (merge-queued, ci-red) alongside the workflow state."
   @spec write_reason_modifiers(String.t(), [String.t()], keyword()) :: :ok | {:error, term()}
   def write_reason_modifiers(issue_id, suffixes, opts) when is_binary(issue_id) and is_list(suffixes) do
     writer = Keyword.fetch!(opts, :writer)
@@ -67,13 +69,14 @@ defmodule Aiur.Orchestrator.TicketTransition do
 
     desired = Enum.uniq(suffixes)
 
-    if Enum.any?(desired, &(not Labels.reason_modifier_suffix?(&1))) do
+    if Enum.any?(desired, &(&1 not in @ci_reason_modifiers)) do
       {:error, {:invalid_reason_modifiers, desired}}
     else
-      current = Labels.reason_modifier_labels(prefix)
+      # Only the CI-owned reasons are swapped; blocked/paused/retrying belong to other writers.
+      owned = Enum.map(@ci_reason_modifiers, &"#{prefix}:#{&1}")
       desired_labels = Enum.map(desired, &"#{prefix}:#{&1}")
 
-      write_reason_modifier_labels(issue_id, desired_labels, current -- desired_labels, tracker, writer, opts)
+      write_reason_modifier_labels(issue_id, desired_labels, owned -- desired_labels, tracker, writer, opts)
     end
   end
 
