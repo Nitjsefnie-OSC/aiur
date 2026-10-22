@@ -107,33 +107,42 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   defp track_candidate(observation, now, opts) do
     queue_state = get_in(observation, [:merge_queue_entry, "state"])
     key = "#{observation.number}:#{observation.head}"
-    first_seen = head_first_seen_ms(key, now, opts)
-    failed_since = failed_group_trigger_since(observation, first_seen, opts)
-    candidate_since = candidate_since(queue_state, failed_since, now)
 
-    case candidate_since do
-      since when is_integer(since) ->
-        reserve_candidate(observation, queue_state, since, first_seen, now, opts)
+    with {:ok, first_seen} <- ensure_head_first_seen(key, now, opts) do
+      failed_since = failed_group_trigger_since(observation, first_seen, opts)
+      candidate_since = candidate_since(queue_state, failed_since, now)
 
-      _ ->
-        :ok
+      case candidate_since do
+        since when is_integer(since) ->
+          reserve_candidate(observation, queue_state, since, first_seen, now, opts)
+
+        _ ->
+          :ok
+      end
     end
   end
 
-  defp head_first_seen_ms(key, now, opts) do
-    case Journal.state(opts) do
-      {:ok, state} ->
-        row = get_in(state, ["unmergeable_queue_entries", key])
+  defp ensure_head_first_seen(key, now, opts) do
+    Journal.update(opts, fn state ->
+      rows = Map.get(state, "unmergeable_queue_entries", %{})
 
-        case row do
-          %{"first_seen_ms" => value} when is_integer(value) -> value
-          %{"since" => value} when is_integer(value) -> value
-          _ -> now
+      existing =
+        case Map.get(rows, key) do
+          row when is_map(row) -> row
+          since when is_integer(since) -> %{"since" => since, "attempts" => 0}
+          _ -> %{"attempts" => 0}
         end
 
-      _ ->
-        now
-    end
+      first_seen =
+        case Map.get(existing, "first_seen_ms") do
+          value when is_integer(value) -> value
+          _ -> Map.get(existing, "since", now) || now
+        end
+
+      row = Map.put(existing, "first_seen_ms", first_seen)
+
+      {:ok, Map.put(state, "unmergeable_queue_entries", Map.put(rows, key, row)), first_seen}
+    end)
   end
 
   defp reserve_candidate(observation, queue_state, since, first_seen, now, opts) do
@@ -167,7 +176,6 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
 
     MergeQueueFailureEvidence.failed_group_trigger_since_ms(
       observation.number,
-      observation.head,
       runs,
       base,
       first_seen
@@ -302,9 +310,16 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
 
       rows =
         case row do
-          value when is_map(value) -> Map.put(rows, key, Map.put(value, "since", nil))
-          since when is_integer(since) -> Map.put(rows, key, %{"since" => nil, "attempts" => 0})
-          _ -> rows
+          value when is_map(value) ->
+            rows
+            |> Map.put(key, Map.put(value, "since", nil))
+            |> Map.update!(key, &Map.put(&1, "first_seen_ms", nil))
+
+          since when is_integer(since) ->
+            Map.put(rows, key, %{"since" => nil, "first_seen_ms" => nil, "attempts" => 0})
+
+          _ ->
+            rows
         end
 
       {:ok, Map.put(state, "unmergeable_queue_entries", rows)}

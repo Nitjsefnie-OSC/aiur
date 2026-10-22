@@ -50,17 +50,17 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
     assert "known flaky signature" in patterns
   end
 
-  test "starts the failure-count clock at the second failed group run for this head and window" do
+  test "starts the failure-count clock at the second failed group run in this PR head's queue window" do
     base = DateTime.utc_now() |> DateTime.add(-30, :minute)
     earlier = DateTime.to_iso8601(base)
     later = base |> DateTime.add(10, :minute) |> DateTime.to_iso8601()
 
-    head = head_ref(48)
-    runs = [failed_run(1, earlier, 48, head), failed_run(2, later, 48, head)]
+    group_ahead = String.duplicate("a", 40)
+    unrelated_group_ahead = String.duplicate("b", 40)
+    runs = [failed_run(1, earlier, 48, group_ahead), failed_run(2, later, 48, group_ahead)]
 
     assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
              48,
-             head,
              runs,
              "main",
              DateTime.from_iso8601(earlier) |> elem(1) |> DateTime.to_unix(:millisecond)
@@ -69,19 +69,24 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
 
     assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
              48,
-             head,
-             [failed_run(1, earlier, 48, head), failed_run(2, later, 48, head_ref(49))],
+             [failed_run(1, earlier, 49, group_ahead), failed_run(2, later, 49, group_ahead)],
              "main",
              0
            ) == nil
 
     assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
              48,
-             head,
              runs,
              "main",
              DateTime.from_iso8601(later) |> elem(1) |> DateTime.to_unix(:millisecond)
            ) == nil
+
+    assert MergeQueueFailureEvidence.failed_group_trigger_since_ms(
+             48,
+             [failed_run(1, earlier, 48, group_ahead), failed_run(2, later, 48, unrelated_group_ahead)],
+             "main",
+             DateTime.from_iso8601(earlier) |> elem(1) |> DateTime.to_unix(:millisecond)
+           ) == base |> DateTime.add(10, :minute) |> DateTime.to_unix(:millisecond)
   end
 
   test "keeps the watchdog timer through AWAITING_CHECKS and repairs when the head is unmergeable again" do
@@ -219,6 +224,20 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
       request_fun: fn _ -> flunk("unavailable evidence cannot authorize recovery") end
     ]
 
+    assert :ok =
+             MergeQueueWatchdog.reconcile(
+               [observation],
+               opts |> Keyword.put(:completed_merge_group_runs, []) |> Keyword.put(:now_ms, since)
+             )
+
+    assert {:ok, initial_state} = Journal.state(journal_path: path)
+
+    assert get_in(initial_state, [
+             "unmergeable_queue_entries",
+             "82:#{head_ref(82)}",
+             "first_seen_ms"
+           ]) == since
+
     assert :ok = MergeQueueWatchdog.reconcile([observation], opts)
     assert {:ok, state} = Journal.state(journal_path: path)
 
@@ -270,6 +289,61 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
     assert_received {:attention, "system.pr.landing.merge_queue_recovery_attempt_commit_failed", attrs}
     message = Keyword.fetch!(attrs, :message)
     assert message =~ "PR #83"
+  end
+
+  test "re-enqueues and alerts when post-dequeue eligibility revalidation fails" do
+    path = temp_journal()
+    parent = self()
+    observation = observation(84, "UNMERGEABLE", "UNKNOWN")
+    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+    since = now - 21 * 60_000
+
+    opts = [
+      journal_path: path,
+      token: "test-gh-token",
+      now_ms: now,
+      base_branch: "main",
+      completed_merge_group_runs: [failed_run(841, iso(since - 1_000), 84), failed_run(842, iso(since), 84)],
+      head_failure_fun: fn _, _ -> {:ok, %{classification: :inherited, failing_tests: [], rebuilt_groups: 0}} end,
+      revalidate_queue_fun: fn _, _ -> :ok end,
+      queue_recovery_revalidate_fun: fn _, _, _ -> {:error, :read_failed} end,
+      alert_emitter: fn topic, attrs ->
+        send(parent, {:attention, topic, attrs})
+        :ok
+      end,
+      request_fun: fn %{body: %{"query" => query}} ->
+        cond do
+          query =~ "dequeuePullRequest" ->
+            send(parent, :dequeued_before_revalidation_failure)
+            {:ok, %{status: 200, body: %{"data" => %{"dequeuePullRequest" => %{}}}}}
+
+          query =~ "enqueuePullRequest" ->
+            send(parent, :enqueued_after_revalidation_failure)
+
+            {:ok,
+             %{
+               status: 200,
+               body: %{
+                 "data" => %{
+                   "enqueuePullRequest" => %{
+                     "mergeQueueEntry" => %{
+                       "id" => "new-entry",
+                       "pullRequest" => %{"id" => "PR_84", "headRefOid" => head_ref(84)}
+                     }
+                   }
+                 }
+               }
+             }}
+        end
+      end
+    ]
+
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, since - 5_000))
+    assert :ok = MergeQueueWatchdog.reconcile([observation], opts)
+    assert_received :dequeued_before_revalidation_failure
+    assert_received :enqueued_after_revalidation_failure
+    assert_received {:attention, "system.pr.landing.merge_queue_recovery_revalidation_changed", attrs}
+    assert attrs[:message] =~ "PR #84"
   end
 
   defp observation(number, state, mergeable) do

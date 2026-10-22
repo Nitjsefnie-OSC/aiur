@@ -14,11 +14,11 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogRecovery do
            observation.draft? == false and observation.review_decision == "APPROVED" and
              observation.auto_merge_request == nil,
          :ok <- revalidate_queue_entry(observation, opts),
-         :ok <- dequeue(observation.node_id, opts),
-         :ok <- revalidate_eligible(%{observation | merge_queue_entry: nil}, opts) do
+         :ok <- dequeue(observation.node_id, opts) do
+      revalidation_result = revalidate_eligible(%{observation | merge_queue_entry: nil}, opts)
       commit_result = commit_dequeued_attempt(observation, opts)
 
-      enqueue_after_dequeue(observation, commit_result, opts)
+      enqueue_after_dequeue(observation, commit_result, revalidation_result, opts)
     else
       false -> {:skip, :queue_recovery_observation_ineligible}
       {:error, _} = error -> error
@@ -26,16 +26,28 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogRecovery do
     end
   end
 
-  defp enqueue_after_dequeue(observation, commit_result, opts) do
+  defp enqueue_after_dequeue(observation, commit_result, revalidation_result, opts) do
     case enqueue(observation, opts) do
       {:ok, _entry} ->
         if match?({:error, _}, commit_result), do: emit_attempt_attention(observation.number, opts)
+        if revalidation_result != :ok, do: emit_revalidation_attention(observation.number, opts)
         :ok
 
       {:error, reason} = error ->
         emit_enqueue_attention(observation.number, opts, inspect(reason))
         error
     end
+  end
+
+  defp emit_revalidation_attention(number, opts) do
+    Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2).(
+      "system.pr.landing.merge_queue_recovery_revalidation_changed",
+      central: true,
+      durable: true,
+      needs_attention: true,
+      message: "PR ##{number} was re-enqueued after its post-dequeue eligibility check changed.",
+      reason: "merge_queue_recovery_revalidation_changed"
+    )
   end
 
   defp commit_dequeued_attempt(observation, opts) do
