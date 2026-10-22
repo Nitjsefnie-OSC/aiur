@@ -155,7 +155,20 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
   end
 
   test "an approved PR in rework is not group-requeued, while a new ci-wait head is" do
-    opts = [ticket_state_fun: fn "17", _ -> {:ok, "rework"} end, approved_fun: fn _, _ -> {:ok, true} end, attribution_fun: fn _ -> {:ok, :clean} end, revalidate_fun: fn _, _, _ -> :ok end]
+    parent = self()
+
+    opts = [
+      ticket_state_fun: fn "17", _ -> {:ok, "rework"} end,
+      approved_fun: fn _, _ -> {:ok, true} end,
+      attribution_fun: fn _ -> {:ok, :clean} end,
+      revalidate_fun: fn _, _, _ -> :ok end,
+      token: "test-gh-token",
+      comment_fun: fn _, _, _ -> :ok end,
+      enqueue_fun: fn _, head, _ ->
+        send(parent, {:enqueue, head})
+        {:ok, "entry"}
+      end
+    ]
 
     pr = %{
       number: 17,
@@ -169,11 +182,13 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
       rest: %{"head" => %{"ref" => "aiur/17-work"}}
     }
 
-    refute MergeGroupRequeue.eligible_for_group_requeue?(pr, opts)
+    assert :ok = MergeGroupRequeue.requeue_group_prs([17], [pr], %{"id" => 903}, "known non-PR failure", opts)
+    refute_received {:enqueue, _}
 
     opts = Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "ci-wait"} end)
     new_pr = %{pr | head: "new-head"}
-    assert MergeGroupRequeue.eligible_for_group_requeue?(new_pr, opts)
+    assert :ok = MergeGroupRequeue.requeue_group_prs([17], [new_pr], %{"id" => 904}, "known non-PR failure", opts)
+    assert_received {:enqueue, "new-head"}
   end
 
   defp group_run(id, conclusion, prs) do

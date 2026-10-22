@@ -103,26 +103,24 @@ defmodule Aiur.LandingWatch.MergeGroupRequeue do
     end
   end
 
-  @doc false
-  @spec eligible_for_group_requeue?(map(), keyword()) :: boolean()
-  def eligible_for_group_requeue?(
-        %{number: number, head: head, merge_queue_entry: nil, auto_merge_request: nil} = pr,
-        opts
-      ) do
+  defp eligible_for_group_requeue?(
+         %{number: number, head: head, merge_queue_entry: nil, auto_merge_request: nil} = pr,
+         opts
+       ) do
     eligible_approved_pr?(pr, number, head, opts) and
       Keyword.get(opts, :revalidate_fun, &Observer.revalidate_approved_head/3).(number, head, opts) == :ok
   end
 
-  def eligible_for_group_requeue?(
-        %{number: number, head: head, node_id: node_id, merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}} = pr,
-        opts
-      ) do
+  defp eligible_for_group_requeue?(
+         %{number: number, head: head, node_id: node_id, merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}} = pr,
+         opts
+       ) do
     eligible_approved_pr?(pr, number, head, opts, false) and is_binary(node_id) and is_binary(entry) and
       pr.mergeable == "MERGEABLE" and pr.merge_state_status == "CLEAN" and
       is_nil(pr.auto_merge_request)
   end
 
-  def eligible_for_group_requeue?(_pr, _opts), do: false
+  defp eligible_for_group_requeue?(_pr, _opts), do: false
 
   defp eligible_approved_pr?(pr, number, head, opts), do: eligible_approved_pr?(pr, number, head, opts, true)
 
