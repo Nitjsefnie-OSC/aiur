@@ -340,7 +340,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     main = recent |> Enum.filter(&(&1["source"] == "base" and &1["touched"] != true)) |> Enum.map(& &1["identity"])
 
     repeated =
-      case Detector.repeated(Enum.map(recent, &observation/1), now, fn _pr -> {:ok, []} end) do
+      case Detector.repeated(Enum.map(recent, &QuarantineEvidence.observation/1), now, fn _pr -> {:ok, []} end) do
         {:ok, found} -> Enum.map(found, & &1.identity)
         _ -> []
       end
@@ -353,20 +353,8 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     |> Enum.group_by(& &1["identity"])
     |> Enum.map(fn {identity, matching} ->
       matching = Enum.sort_by(matching, & &1["at_ms"], :desc)
-      %{identity: identity, rows: matching, observations: Enum.map(matching, &observation/1)}
+      %{identity: identity, rows: matching, observations: Enum.map(matching, &QuarantineEvidence.observation/1)}
     end)
-  end
-
-  defp observation(row) do
-    %{
-      identity: row["identity"],
-      pr: row["pr"],
-      run_url: row["run_url"],
-      at_ms: row["at_ms"],
-      path: row["path"],
-      group_prs: row["group_prs"],
-      checked_paths: row["checked_paths"] || []
-    }
   end
 
   defp quarantine_with_retry(candidate, ticket, done, rows, observations, base, opts) do

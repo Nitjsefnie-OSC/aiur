@@ -22,6 +22,20 @@ defmodule Aiur.LandingWatch.QuarantineEvidence do
   def touched?(test_path, paths) when is_binary(test_path) and is_list(paths), do: test_path in paths or lib_path(test_path) in paths
   def touched?(_test_path, _paths), do: false
 
+  @doc "Projects a journal observation for candidate selection, retaining the paths checked on base commits."
+  @spec observation(map()) :: map()
+  def observation(row) do
+    %{
+      identity: row["identity"],
+      pr: row["pr"],
+      run_url: row["run_url"],
+      at_ms: row["at_ms"],
+      path: row["path"],
+      group_prs: row["group_prs"],
+      checked_paths: row["checked_paths"] || []
+    }
+  end
+
   defp lib_path("src/test/" <> rest), do: "src/lib/" <> String.replace_suffix(rest, "_test.exs", ".ex")
   defp lib_path(_path), do: nil
 
