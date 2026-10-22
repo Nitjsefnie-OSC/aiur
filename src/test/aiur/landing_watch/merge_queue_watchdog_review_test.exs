@@ -95,6 +95,10 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
     ]
 
     assert :ok = MergeQueueWatchdog.reconcile([waiting], opts)
+    assert {:ok, waiting_state} = Journal.state(journal_path: path)
+
+    assert get_in(waiting_state, ["unmergeable_queue_entries", "80:head-80", "since"]) == started
+
     assert :ok = MergeQueueWatchdog.reconcile([unmergeable], opts)
     assert_received :dequeued_after_recovery
     assert {:ok, state} = Journal.state(journal_path: path)
