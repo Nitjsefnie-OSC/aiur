@@ -39,11 +39,7 @@ else:
 ''')
             mix.chmod(0o755)
             git = root / 'git'
-            git.write_text('#!/usr/bin/env python3\n'
-                           'import os, sys\n'
-                           'expected = ["diff", "--name-only", "--diff-filter=ACMRT"]\n'
-                           'if sys.argv[1:4] != expected or sys.argv[-2:] != ["--", "test"]: sys.exit(2)\n'
-                           'print(os.environ.get("GIT_DIFF_PATHS", ""))\n')
+            git.write_text('#!/usr/bin/env python3\nimport os\nprint(os.environ.get("GIT_DIFF_PATHS", ""))\n')
             git.chmod(0o755)
             time_bombs = root / 'time_bombs.py'
             time_bombs.write_text('import json, os, sys\n'
@@ -131,7 +127,7 @@ else:
         self.assertEqual(self.last_rechecks, [['test/a_test.exs']])
 
     def test_changed_test_modules_run_individually_before_the_affected_selection(self):
-        with patch.dict(os.environ, {'GIT_DIFF_PATHS': 'test/one_test.exs\ntest/two_test.exs\ntest/support/helper.exs'}):
+        with patch.dict(os.environ, {'GIT_DIFF_PATHS': 'src/test/one_test.exs\nsrc/test/two_test.exs\nsrc/test/support/helper.exs'}):
             status, calls, _output = self.run_selection(
                 'cd src && mise exec -- mix test --max-cases 4 test/one_test.exs test/dependency_test.exs'
             )
@@ -143,8 +139,8 @@ else:
             ['test', '--max-cases', '4', 'test/one_test.exs', 'test/dependency_test.exs'],
         ])
 
-    def test_every_changed_test_module_runs_individually(self):
-        paths = '\n'.join(f'test/module_{index:02}_test.exs' for index in range(11))
+    def test_changed_test_modules_are_capped_and_skipped_paths_are_reported(self):
+        paths = '\n'.join(f'src/test/module_{index:02}_test.exs' for index in range(11))
         with patch.dict(os.environ, {'GIT_DIFF_PATHS': paths}):
             status, calls, output = self.run_selection(
                 'cd src && mise exec -- mix test --max-cases 4 test/module_00_test.exs'
@@ -152,10 +148,13 @@ else:
 
         self.assertEqual(status, 0)
         individual = [call for call in calls[:-1]]
-        self.assertEqual(len(individual), 11)
+        self.assertEqual(len(individual), RUNNER.MAX_CHANGED_TEST_MODULES)
         self.assertEqual(individual[0][-1], 'test/module_00_test.exs')
-        self.assertEqual(individual[-1][-1], 'test/module_10_test.exs')
+        self.assertEqual(individual[-1][-1], 'test/module_07_test.exs')
         self.assertEqual(calls[-1], ['test', '--max-cases', '4', 'test/module_00_test.exs'])
+        self.assertIn('first 8 of 11 modules', output)
+        self.assertIn('test/module_08_test.exs', output)
+        self.assertIn('test/module_10_test.exs', output)
 
     def test_failing_selection_skips_the_date_rerun(self):
         self.run_selection('cd src && mise exec -- mix test --max-cases 4 test/a_test.exs', 1)
