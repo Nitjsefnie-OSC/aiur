@@ -9,6 +9,7 @@ export { SNAP_T, guardTarget, settleTarget } from './band-scroll.js';
 
 const groups = [['ok', 'nr', 'active', 'running'], ['queued', 'nt', 'retrying', 'retrying'], ['bad', 'ns', 'error,retries,command', 'stuck'], ['idle', 'ni', 'paused,parked', 'paused']];
 const AGENTS_STALE_MAX_AGE_MS = 120_000;
+const AGENTS_FRESH_MAX_AGE_MS = 60_000;
 export function bandCounts(rows) {
   const result = { nr: 0, nt: 0, ns: 0, ni: 0, nu: 0 };
   for (const t of rows) {
@@ -50,7 +51,8 @@ export function bandAgentsFreshness(D, now = nowMs()) {
   if (!bandAgentsUsable(D, now) || source?.state === 'ok' || age === null) return null;
   const minutes = Math.floor(age / 60_000);
   const ageLabel = minutes === 0 ? 'under 1m ago' : `${minutes}m ago`;
-  return { text: `Stale · ${ageLabel}`, title: `Last agent observation ${fmtT(source.observed_at)}; ${ageLabel}` };
+  const freshness = age <= AGENTS_FRESH_MAX_AGE_MS ? 'Fresh' : 'Stale';
+  return { text: `${freshness} · ${ageLabel}`, title: `Last agent observation ${fmtT(source.observed_at)}; ${ageLabel}` };
 }
 function paintClock() {
   if (!ctx.life || ctx.life.disposed) return;
