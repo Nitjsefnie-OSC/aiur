@@ -8,7 +8,7 @@ The request pacer may refuse a read as `:shared_budget` before GitHub. Dispatch 
 
 A broker admission waits up to five seconds (1.5 seconds on the Orchestrator process) for transient shared-lease saturation before returning a **local hold**: Aiur backs off, keeps the claim, and keeps attempt counters. The network request deadline starts after admission.
 
-The agent `gh` guard also caps the total time spent sleeping on repeated broker `wait` replies at five seconds. If that admission bound is reached, it refuses the request with a `GitHub budget broker busy` diagnostic before `gh` starts.
+The agent `gh` guard caps repeated broker `wait` replies at five seconds and refuses an active primary or secondary quota hold immediately. It reports `GitHub budget broker busy` or the specific `GitHub quota hold` file before `gh` starts; retry after the hold expires.
 
 Broker commands have a 1.5-second round-trip deadline; admission may wait up to 1.5 seconds in the Orchestrator and 5 seconds for other clients. These bounds keep an overloaded ledger from holding callers indefinitely; timeout handling preserves fresh cached dependency decisions.
 
