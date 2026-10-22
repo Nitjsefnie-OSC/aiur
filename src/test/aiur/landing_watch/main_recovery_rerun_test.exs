@@ -5,7 +5,8 @@ defmodule Aiur.LandingWatch.MainRecoveryRerunTest do
   alias Aiur.LandingWatch.Journal
 
   @started "2026-10-14T10:00:00Z"
-  @started_ms 1_791_972_000_000
+  # Derived, not an epoch literal, so the time-bomb date shift moves it with the fixture strings.
+  @started_ms @started |> DateTime.from_iso8601() |> elem(1) |> DateTime.to_unix(:millisecond)
   @flaky_log "mix test --partitions 4\n  test/aiur/flaky_test.exs:12\n1 test, 1 failure"
 
   test "deferred recovery keeps only run IDs that started during the red interval" do
