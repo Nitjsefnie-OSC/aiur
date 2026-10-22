@@ -10,6 +10,7 @@
     "src/lib/aiur/landing_watch/merge_group_quarantine.ex",
     "src/lib/aiur/landing_watch/merge_groups.ex",
     "src/lib/aiur/landing_watch/merge_queue_watchdog.ex",
+    "src/lib/aiur/landing_watch/merge_queue_watchdog_evidence.ex",
     "src/lib/aiur/landing_watch/pr_rerun.ex",
     "src/lib/aiur/landing_watch/pr_rerun_classifier.ex",
     "src/lib/aiur/orchestrator/ci_lifecycle/outcome.ex"

@@ -2,9 +2,9 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   @moduledoc "Repairs queue entries that stay unmergeable despite a clean, ready PR."
 
   alias Aiur.Alerts
-  alias Aiur.GitHub.{CIRecovery, Transport}
+  alias Aiur.GitHub.Transport
   alias Aiur.LandingWatch.Classifier
-  alias Aiur.LandingWatch.{Journal, LocalRead, MergeFailureClassifier, MergeGroupFailureProcessor, MergeQueueFailureEvidence, MergeQueueRecoveryAttempt}
+  alias Aiur.LandingWatch.{Journal, MergeQueueFailureEvidence, MergeQueueRecoveryAttempt, MergeQueueWatchdogEvidence}
   alias Aiur.PrMerge.Queue
 
   @threshold_ms 20 * 60_000
@@ -42,21 +42,16 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
          %{
            number: number,
            head: head,
-           mergeable: "MERGEABLE",
-           merge_state_status: "CLEAN",
-           merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}
+           merge_queue_entry: %{"id" => entry, "state" => _queue_state}
          } = observation,
          now,
          opts
        )
        when is_integer(number) and is_binary(head) and is_binary(entry) do
-    key = "#{number}:#{head}"
-
-    with {:ok, row} <- reserve_first_seen(key, now, opts),
-         :ok <- maybe_repair(observation, row, now, opts) do
-      :ok
+    if tracked_observation?(observation) do
+      track_candidate(observation, now, opts)
     else
-      {:error, _} = error -> error
+      clear_first_seen(number, head, opts)
     end
   end
 
@@ -77,9 +72,53 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
           _ -> %{"attempts" => 0}
         end
 
-      row = Map.put(existing, "since", Map.get(existing, "since") || now)
+      since = existing |> Map.get("since") |> earlier_since(now)
+      row = Map.put(existing, "since", since)
       {:ok, Map.put(state, "unmergeable_queue_entries", Map.put(rows, key, row)), row}
     end)
+  end
+
+  defp earlier_since(existing, candidate) when is_integer(existing), do: min(existing, candidate)
+  defp earlier_since(_, candidate), do: candidate
+
+  defp tracked_observation?(%{merge_state_status: status, mergeable: mergeable, merge_queue_entry: %{"state" => state}}),
+    do:
+      status in ["CLEAN", "UNKNOWN"] and mergeable in ["MERGEABLE", "UNKNOWN"] and
+        state in ["UNMERGEABLE", "AWAITING_CHECKS"]
+
+  defp tracked_observation?(_), do: false
+
+  defp track_candidate(observation, now, opts) do
+    queue_state = get_in(observation, [:merge_queue_entry, "state"])
+    failed_since = failed_group_trigger_since(observation, opts)
+    candidate_since = candidate_since(queue_state, failed_since, now)
+
+    case candidate_since do
+      since when is_integer(since) -> reserve_candidate(observation, queue_state, since, now, opts)
+      _ -> :ok
+    end
+  end
+
+  defp reserve_candidate(observation, queue_state, since, now, opts) do
+    key = "#{observation.number}:#{observation.head}"
+
+    with {:ok, row} <- reserve_first_seen(key, since, opts),
+         :ok <- if(queue_state == "UNMERGEABLE", do: maybe_repair(observation, row, now, opts), else: :ok) do
+      :ok
+    else
+      {:error, _} = error -> error
+    end
+  end
+
+  defp candidate_since("UNMERGEABLE", failed_since, now) when is_integer(failed_since), do: min(failed_since, now)
+  defp candidate_since("UNMERGEABLE", _failed_since, now), do: now
+  defp candidate_since("AWAITING_CHECKS", failed_since, now) when is_integer(failed_since), do: min(failed_since, now)
+  defp candidate_since(_, _, _), do: nil
+
+  defp failed_group_trigger_since(observation, opts) do
+    runs = Keyword.get(opts, :completed_merge_group_runs, [])
+    base = Keyword.get(opts, :base_branch, Aiur.Config.base_branch())
+    MergeQueueFailureEvidence.failed_group_trigger_since_ms(observation.number, runs, base)
   end
 
   defp maybe_repair(observation, row, now, opts) do
@@ -129,15 +168,12 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   defp finish_reserved_repair(observation, failure, opts) do
     case repair(observation, opts) do
       :ok ->
-        case MergeQueueRecoveryAttempt.commit(observation.number, observation.head, opts) do
-          {:ok, _committed} ->
-            emit_attention(observation.number, observation.head, failure, opts)
-            :ok
+        emit_attention(observation.number, observation.head, failure, opts)
+        :ok
 
-          {:error, _} = error ->
-            MergeQueueRecoveryAttempt.release(observation.number, observation.head, opts)
-            error
-        end
+      {:error, {:attempt_commit_after_dequeue, _reason}} = error ->
+        log_skip(observation, :attempt_commit_after_dequeue_failed)
+        error
 
       {:skip, reason} ->
         MergeQueueRecoveryAttempt.release(observation.number, observation.head, opts)
@@ -168,76 +204,8 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
   end
 
   defp classify_observed_head_failure(observation, opts) do
-    runs = Keyword.get(opts, :completed_merge_group_runs, [])
-    base = Keyword.get(opts, :base_branch, Aiur.Config.base_branch())
-
-    since_ms = Keyword.get(opts, :unmergeable_since_ms, 0)
-
-    run =
-      runs
-      |> Enum.filter(fn item ->
-        item["conclusion"] in ["failure", "cancelled", "timed_out", "startup_failure"] and
-          is_integer(item["id"]) and observation.number in MergeQueueFailureEvidence.run_pr_numbers(item["head_branch"], base) and
-          run_in_unmergeable_window?(item, since_ms)
-      end)
-      |> Enum.max_by(&(&1["run_started_at"] || &1["created_at"] || ""), fn -> nil end)
-
-    case run do
-      nil -> {:skip, :no_completed_failed_merge_group}
-      failed_run -> classify_failed_run(failed_run, runs, observation, base, opts)
-    end
+    MergeQueueWatchdogEvidence.classify(observation, opts)
   end
-
-  defp run_in_unmergeable_window?(run, since_ms) do
-    started_at = parse_time(run["run_started_at"] || run["created_at"])
-    since = if is_integer(since_ms), do: DateTime.from_unix!(since_ms, :millisecond), else: DateTime.from_unix!(0)
-    DateTime.compare(started_at, since) in [:eq, :gt]
-  end
-
-  defp classify_failed_run(run, runs, observation, base, opts) do
-    prs = MergeQueueFailureEvidence.run_pr_numbers(run["head_branch"], base)
-    observations = Keyword.get(opts, :all_observations, [observation])
-
-    with {:ok, jobs} <- LocalRead.run(Keyword.get(opts, :jobs_fun, &CIRecovery.jobs/2), [run["id"], opts], opts),
-         {:ok, {classification, failure}} <-
-           MergeFailureClassifier.classify(
-             run,
-             jobs,
-             Enum.filter(observations, &(&1.number in prs)),
-             Keyword.get(opts, :failure_classifier_options_fun, &MergeGroupFailureProcessor.classifier_options/4).(
-               run,
-               prs,
-               jobs,
-               opts
-             )
-           ) do
-      case classification do
-        :pr_caused ->
-          {:skip, :pr_caused_merge_group_failure}
-
-        kind when kind in [:infra, :inherited, :known_non_pr] ->
-          {:ok,
-           %{
-             classification: kind,
-             failing_tests: failure |> then(&if(&1, do: &1.log, else: "")) |> MergeQueueFailureEvidence.test_names(),
-             rebuilt_groups: MergeQueueFailureEvidence.rebuilt_group_count(runs, run, prs, base, Keyword.get(opts, :unmergeable_since_ms, 0)),
-             run_id: run["id"]
-           }}
-      end
-    else
-      {:error, reason} -> {:skip, {:merge_group_evidence_unavailable, reason}}
-      other -> {:skip, {:merge_group_evidence_unavailable, other}}
-    end
-  end
-
-  defp parse_time(value) when is_binary(value) do
-    case DateTime.from_iso8601(value) do
-      {:ok, time, _} -> time
-      _ -> DateTime.from_unix!(0)
-    end
-  end
-
-  defp parse_time(_), do: DateTime.from_unix!(0)
 
   defp row_since(%{"since" => since}) when is_integer(since), do: since
   defp row_since(since) when is_integer(since), do: since
@@ -296,6 +264,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
              observation.auto_merge_request == nil,
          :ok <- revalidate_queue_entry(observation, opts),
          :ok <- dequeue(observation.node_id, opts),
+         :ok <- commit_dequeued_attempt(observation, opts),
          :ok <- revalidate_eligible(%{observation | merge_queue_entry: nil}, opts),
          {:ok, _entry} <- enqueue(observation, opts) do
       :ok
@@ -303,6 +272,13 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
       false -> {:skip, :queue_recovery_observation_ineligible}
       {:error, _} = error -> error
       _ -> {:skip, :queue_recovery_precondition_changed}
+    end
+  end
+
+  defp commit_dequeued_attempt(observation, opts) do
+    case MergeQueueRecoveryAttempt.commit(observation.number, observation.head, opts) do
+      {:ok, _committed} -> :ok
+      {:error, reason} -> {:error, {:attempt_commit_after_dequeue, reason}}
     end
   end
 
@@ -446,7 +422,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     rebuilt = failure.rebuilt_groups
 
     message =
-      "Merge queue entry for PR ##{number} stayed UNMERGEABLE for over 20 minutes and was re-enqueued once. Failing tests: #{tests_text}. Earlier merge-group runs containing this PR: #{rebuilt}."
+      "Merge queue entry for PR ##{number} stayed UNMERGEABLE or had repeated failed merge-group runs for over 20 minutes and was re-enqueued once. Failing tests: #{tests_text}. Rebuilt groups behind this queue head: #{rebuilt}."
 
     Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2).(
       "system.pr.landing.merge_queue_recovered",

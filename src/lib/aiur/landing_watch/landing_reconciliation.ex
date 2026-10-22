@@ -13,11 +13,16 @@ defmodule Aiur.LandingWatch.LandingReconciliation do
 
     reconcile_opts =
       Keyword.put(opts, :merge_group_evidence_fun, fn runs, fresh_observations, classifier_opts ->
-        send(evidence_owner, {:merge_group_evidence, evidence_ref, %{runs: runs, observations: fresh_observations, classifier_opts: classifier_opts}})
+        if Keyword.get(classifier_opts, :merge_group_failure_evidence_prepared, false) do
+          send(evidence_owner, {:merge_group_evidence, evidence_ref, %{runs: runs, observations: fresh_observations, classifier_opts: classifier_opts}})
+        end
+
         :ok
       end)
 
     reconcile = Keyword.get(opts, :queue_reconcile_fun, &MergeGroups.cancel_stale/2).(observations, reconcile_opts)
+    # MergeGroups invokes the callback after MergeGroupFailureProcessor has prepared
+    # main-branch and flake evidence; do not consume its earlier, incomplete form.
     evidence = read_evidence(evidence_ref)
 
     watchdog_opts =

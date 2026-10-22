@@ -37,6 +37,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureProcessor do
 
   defp prepare_failure_evidence(opts, base) do
     opts
+    |> Keyword.put(:merge_group_failure_evidence_prepared, true)
     |> Keyword.put(
       :recent_main_failure_paths,
       MergeGroupFailureEvidence.recent_main_paths(base, opts)
