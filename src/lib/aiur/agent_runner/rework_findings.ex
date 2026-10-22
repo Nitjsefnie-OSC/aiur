@@ -41,11 +41,18 @@ defmodule Aiur.AgentRunner.ReworkFindings do
   defp item(line) do
     case Regex.run(@item, line) do
       [_, id, text] ->
-        {file, line_no} = with([_, file, line_no] <- Regex.run(@location, text), do: {file, line_no}, else: (_ -> {nil, nil}))
+        {file, line_no} = text_location(text)
         [%{id: id, file: file, line: line_no, ask: ask(text)}]
 
       nil ->
         []
+    end
+  end
+
+  defp text_location(text) do
+    case Regex.run(@location, text) do
+      [_, file, line_no] -> {file, line_no}
+      _ -> {nil, nil}
     end
   end
 
