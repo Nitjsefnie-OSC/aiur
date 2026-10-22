@@ -1,6 +1,7 @@
 # Module, full ExUnit test name (describe prefix included, as failures print it), and tracking ticket. Tabs delimit fields.
 Aiur.AgentGitHubGuard.GraphqlAndPagination2Test	a broker failure refuses the real gh command	#4463
 Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	*	#5674
+Aiur.ElevenLabs.RealtimeTest	the session stops with its owner so a connection cannot outlive the hold	#5873
 Aiur.Experiments.AnalystLoopTest	analyst loop: events, pre-registration, report and rejection paths	#5742
 Aiur.GitHub.MonotonicDepositTest	*	#5605
 Aiur.LandingWatch.MainRecoveryRerunTest	*	#5605
