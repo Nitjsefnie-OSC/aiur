@@ -1,7 +1,7 @@
 defmodule Aiur.LandingWatch.MergeGroupRequeue do
   @moduledoc "Safely requeues approved PRs after non-PR merge-group failures."
   alias Aiur.GitHub.{Client, Transport}
-  alias Aiur.LandingWatch.{Attribution, Classifier, Journal, Observer}
+  alias Aiur.LandingWatch.{Attribution, Classifier, Journal, Observer, TicketLookup}
   alias Aiur.PrMerge.Queue
 
   @spec requeue_group_prs([pos_integer()], [map()], map(), String.t(), keyword()) :: :ok | {:error, term()}
@@ -103,28 +103,41 @@ defmodule Aiur.LandingWatch.MergeGroupRequeue do
     end
   end
 
-  defp eligible_for_group_requeue?(
-         %{number: number, head: head, merge_queue_entry: nil, auto_merge_request: nil} = pr,
-         opts
-       ) do
+  @doc false
+  @spec eligible_for_group_requeue?(map(), keyword()) :: boolean()
+  def eligible_for_group_requeue?(
+        %{number: number, head: head, merge_queue_entry: nil, auto_merge_request: nil} = pr,
+        opts
+      ) do
     eligible_approved_pr?(pr, number, head, opts) and
       Keyword.get(opts, :revalidate_fun, &Observer.revalidate_approved_head/3).(number, head, opts) == :ok
   end
 
-  defp eligible_for_group_requeue?(
-         %{number: number, head: head, node_id: node_id, merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}} = pr,
-         opts
-       ) do
-    eligible_approved_pr?(pr, number, head, opts) and is_binary(node_id) and is_binary(entry) and
+  def eligible_for_group_requeue?(
+        %{number: number, head: head, node_id: node_id, merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}} = pr,
+        opts
+      ) do
+    eligible_approved_pr?(pr, number, head, opts, false) and is_binary(node_id) and is_binary(entry) and
       pr.mergeable == "MERGEABLE" and pr.merge_state_status == "CLEAN" and
       is_nil(pr.auto_merge_request)
   end
 
-  defp eligible_for_group_requeue?(_pr, _opts), do: false
+  def eligible_for_group_requeue?(_pr, _opts), do: false
 
-  defp eligible_approved_pr?(pr, number, head, opts) do
+  defp eligible_approved_pr?(pr, number, head, opts), do: eligible_approved_pr?(pr, number, head, opts, true)
+
+  defp eligible_approved_pr?(pr, number, head, opts, check_ticket?) do
     pr.draft? == false and pr.review_decision == "APPROVED" and is_binary(head) and
-      is_binary(pr.node_id) and approved?(number, opts) and attributed_cleanly?(pr, opts)
+      is_binary(pr.node_id) and (not check_ticket? or ticket_can_land?(pr, opts)) and approved?(number, opts) and attributed_cleanly?(pr, opts)
+  end
+
+  defp ticket_can_land?(%{merge_queue_entry: %{"state" => "UNMERGEABLE"}}, _opts), do: true
+
+  defp ticket_can_land?(pr, opts) do
+    case TicketLookup.fetch(pr, opts) do
+      {:ok, _issue, state, paused?, held?} when state in ["human-review", "ci-wait", "merging"] -> not paused? and not held?
+      _ -> false
+    end
   end
 
   defp approved?(number, opts), do: Keyword.get(opts, :approved_fun, fn _, _ -> {:ok, true} end).(number, opts) == {:ok, true}

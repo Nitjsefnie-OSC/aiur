@@ -254,6 +254,22 @@ defmodule Aiur.LandingWatch.Journal do
     end
   end
 
+  @doc "Holds a PR head after a PR-caused merge-group failure."
+  @spec hold_merge_group_head(pos_integer(), String.t(), keyword()) :: :ok | {:error, term()}
+  def hold_merge_group_head(pr, head, opts \\ []) when is_integer(pr) and is_binary(head) do
+    update(opts, fn state ->
+      holds = Map.get(state, "merge_group_head_holds", %{})
+      {:ok, Map.put(state, "merge_group_head_holds", Map.put(holds, key(pr, head), true))}
+    end)
+  end
+
+  @spec merge_group_head_held?(pos_integer(), String.t(), keyword()) :: {:ok, boolean()} | {:error, term()}
+  def merge_group_head_held?(pr, head, opts \\ []) when is_integer(pr) and is_binary(head) do
+    with {:ok, state} <- state(opts) do
+      {:ok, get_in(state, ["merge_group_head_holds", key(pr, head)]) == true}
+    end
+  end
+
   @spec failure_observations(keyword()) :: {:ok, [map()]} | {:error, term()}
   def failure_observations(opts \\ []) do
     with {:ok, state} <- state(opts), do: {:ok, Map.get(state, "failure_observations", [])}
@@ -301,6 +317,7 @@ defmodule Aiur.LandingWatch.Journal do
              "merge_group_run_failures",
              "quarantine_merge_group_runs",
              "merge_group_requeues",
+             "merge_group_head_holds",
              "ci_merges"
            ] or
              MapSet.member?(retained, entry_key)

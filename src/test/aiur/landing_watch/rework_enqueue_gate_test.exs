@@ -3,6 +3,7 @@ defmodule Aiur.LandingWatch.ReworkEnqueueGateTest do
 
   alias Aiur.Issue
   alias Aiur.LandingWatch
+  alias Aiur.LandingWatch.Journal
   alias Aiur.Orchestrator.{StartupClaimReconciler.Observation, State}
 
   @green %{"id" => 60, "name" => "ci gate", "status" => "completed", "conclusion" => "success", "check_suite" => %{"id" => 101}}
@@ -31,6 +32,13 @@ defmodule Aiur.LandingWatch.ReworkEnqueueGateTest do
 
     refute_received {:enqueued, "old-head"}
     assert_received {:enqueued, "new-head"}
+  end
+
+  test "a PR-caused merge-group failure holds that head until a new head arrives" do
+    path = journal_path()
+    assert :ok = Journal.hold_merge_group_head(17, "held-head", journal_path: path)
+    assert {:ok, true} = Journal.merge_group_head_held?(17, "held-head", journal_path: path)
+    assert {:ok, false} = Journal.merge_group_head_held?(17, "new-head", journal_path: path)
   end
 
   test "a gating label wins over a review label whichever order GitHub lists them" do

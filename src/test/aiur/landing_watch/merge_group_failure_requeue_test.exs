@@ -1,7 +1,7 @@
 defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
   use ExUnit.Case, async: true
 
-  alias Aiur.LandingWatch.MergeGroups
+  alias Aiur.LandingWatch.{Journal, MergeGroupRequeue, MergeGroups}
 
   test "a recorded known non-PR failure re-enqueues the dropped approved PR once" do
     parent = self()
@@ -54,6 +54,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
       end,
       changed_paths_fun: fn _, _ -> {:ok, ["src/lib/changed.ex"]} end,
       approved_fun: fn _, _ -> {:ok, true} end,
+      ticket_state_fun: fn "17", _ -> {:ok, "ci-wait"} end,
       revalidate_fun: fn _, _, _ -> :ok end,
       attribution_fun: fn _ -> {:ok, :clean} end,
       comment_fun: fn _, _, _ -> :ok end,
@@ -109,6 +110,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
         {:ok, [%{"id" => 12, "name" => "ci gate", "conclusion" => "failure"}]}
       end,
       approved_fun: fn _, _ -> {:ok, true} end,
+      ticket_state_fun: fn issue, _ -> {:ok, if(issue == "17", do: "rework", else: "ci-wait")} end,
       revalidate_fun: fn _, _, _ -> :ok end,
       attribution_fun: fn _ -> {:ok, :clean} end,
       comment_fun: fn _, _, _ -> :ok end,
@@ -132,6 +134,35 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     hour = div(now_ms, 3_600_000) * 3_600_000
     hour_key = DateTime.from_unix!(hour, :millisecond) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
     assert {:ok, %{^hour_key => 4}} = journal_counts(journal)
+  end
+
+  test "a PR-caused failure holds its current head while a new head is unheld" do
+    journal = journal_path("ticket-state")
+    assert :ok = Journal.hold_merge_group_head(17, "old-head", journal_path: journal)
+    assert {:ok, true} = Journal.merge_group_head_held?(17, "old-head", journal_path: journal)
+    assert {:ok, false} = Journal.merge_group_head_held?(17, "new-head", journal_path: journal)
+  end
+
+  test "an approved PR in rework is not group-requeued, while a new ci-wait head is" do
+    opts = [ticket_state_fun: fn "17", _ -> {:ok, "rework"} end, approved_fun: fn _, _ -> {:ok, true} end, attribution_fun: fn _ -> {:ok, :clean} end, revalidate_fun: fn _, _, _ -> :ok end]
+
+    pr = %{
+      number: 17,
+      base: "main",
+      head: "old-head",
+      node_id: "PR_17",
+      draft?: false,
+      review_decision: "APPROVED",
+      merge_queue_entry: nil,
+      auto_merge_request: nil,
+      rest: %{"head" => %{"ref" => "aiur/17-work"}}
+    }
+
+    refute MergeGroupRequeue.eligible_for_group_requeue?(pr, opts)
+
+    opts = Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "ci-wait"} end)
+    new_pr = %{pr | head: "new-head"}
+    assert MergeGroupRequeue.eligible_for_group_requeue?(new_pr, opts)
   end
 
   defp group_run(id, conclusion, prs) do
