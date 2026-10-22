@@ -139,8 +139,6 @@ defmodule Aiur.Experiments.AnalystLoopTest do
     end)
   end
 
-  # Four experiment-stats runs (one per stats read and report submission) take 42-62s on a loaded host.
-  @tag timeout: 180_000
   test "analyst loop: events, pre-registration, report and rejection paths" do
     id = "fixture-feature"
     spec = create(id)
