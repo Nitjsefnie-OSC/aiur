@@ -434,25 +434,21 @@ defmodule Aiur.Events.GithubFirehose do
     pr_number = Map.get(pr, "number")
     merged? = merged_pull_request_event?(action, Map.get(pr, "merged"))
 
-    branch_id = Aiur.TicketBranch.ticket_id(head_ref)
-    {closing_ids, linked_ids} = pr_issue_links(pr, repo_name)
+    case pull_request_target(pr, head_ref, repo_name, action, merged?) do
+      {id, topic} ->
+        publish_opts = [
+          actor: actor,
+          issue_number: id,
+          bypass_contamination: merged?,
+          dedup_key: pr_dedup_key(repo_name, pr_number, action, head_sha, id, merged?)
+        ]
 
-    with false <- merged? and get_in(pr, ["commit_messages_unavailable"]) == true,
-         id when is_binary(id) <-
-           if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id),
-         topic when is_binary(topic) <- pr_topic(id, action, Map.get(pr, "merged")) do
-      publish_opts = [
-        actor: actor,
-        issue_number: id,
-        bypass_contamination: merged?,
-        dedup_key: pr_dedup_key(repo_name, pr_number, action, head_sha, id, merged?)
-      ]
+        payload = %{action: action, pr: pr, timestamp: Map.get(event, "created_at"), repository: repo_name}
+        payload = if merged?, do: Map.put(payload, :post_deploy_checks, PostDeployChecks.from_pr_body(Map.get(pr, "body"))), else: payload
+        {topic, payload, publish_opts}
 
-      payload = %{action: action, pr: pr, timestamp: Map.get(event, "created_at"), repository: repo_name}
-      payload = if merged?, do: Map.put(payload, :post_deploy_checks, PostDeployChecks.from_pr_body(Map.get(pr, "body"))), else: payload
-      {topic, payload, publish_opts}
-    else
-      _ -> nil
+      nil ->
+        nil
     end
   end
 
@@ -476,6 +472,20 @@ defmodule Aiur.Events.GithubFirehose do
       )
 
     {closing_ids, linked_ids}
+  end
+
+  defp pull_request_target(pr, head_ref, repo_name, action, merged?) do
+    branch_id = Aiur.TicketBranch.ticket_id(head_ref)
+    {closing_ids, linked_ids} = pr_issue_links(pr, repo_name)
+
+    with false <- merged? and get_in(pr, ["commit_messages_unavailable"]) == true,
+         id when is_binary(id) <-
+           if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id),
+         topic when is_binary(topic) <- pr_topic(id, action, Map.get(pr, "merged")) do
+      {id, topic}
+    else
+      _ -> nil
+    end
   end
 
   defp pr_topic(id, "opened", _merged), do: "ticket.#{id}.pr.opened"
