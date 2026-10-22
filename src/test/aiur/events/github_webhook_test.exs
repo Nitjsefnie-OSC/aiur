@@ -118,7 +118,7 @@ defmodule Aiur.Events.GithubWebhookTest do
                Normalizer.normalize("pull_request", delivery, repo: @repo, request_fun: fn _ -> {:error, :offline} end)
     end
 
-    test "a ticket branch remains a valid merged PR link when commit evidence cannot be fetched" do
+    test "a ticket branch does not identify a merged PR when commit evidence cannot be fetched" do
       ReadCache.reset()
 
       delivery = %{
@@ -132,10 +132,8 @@ defmodule Aiur.Events.GithubWebhookTest do
         }
       }
 
-      assert {:publish, [{"ticket.5606.pr.merged", _event, opts}]} =
+      assert {:publish, []} =
                Normalizer.normalize("pull_request", delivery, repo: @repo, request_fun: fn _ -> {:error, :offline} end)
-
-      assert opts[:issue_number] == "5606"
     end
 
     test "a body closing link still publishes when commit evidence cannot be fetched" do

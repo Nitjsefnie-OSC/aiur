@@ -31,7 +31,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
   end
 
   describe "poll/1" do
-    test "a failed commit lookup leaves the event cursor unchanged for retry" do
+    test "a failed commit lookup on a ticket branch leaves the event pending for retry" do
       :ok = Exchange.subscribe("ticket.5605.pr.merged")
 
       stub = fn %{url: url} ->
@@ -46,7 +46,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                headers: [{"ETag", ~s("new-etag")}],
                body: [
                  %{
-                   "id" => "refs-only-merge",
+                   "id" => "commit-only-reference-merge",
                    "type" => "PullRequestEvent",
                    "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
                    "actor" => %{"login" => "carol"},
@@ -55,9 +55,9 @@ defmodule Aiur.Events.GithubFirehoseTest do
                      "action" => "merged",
                      "pull_request" => %{
                        "number" => 5606,
-                       "body" => "Refs #5605",
+                       "body" => "Maintenance change",
                        "merged" => true,
-                       "head" => %{"ref" => "executor/quarantine", "sha" => String.duplicate("c", 40)}
+                       "head" => %{"ref" => "aiur/5605-fix", "sha" => String.duplicate("c", 40)}
                      }
                    }
                  }
@@ -66,7 +66,13 @@ defmodule Aiur.Events.GithubFirehoseTest do
         end
       end
 
-      assert {:ok, %{count: 0, etag: "previous-etag", last_event_id: "previous-event"}} =
+      assert {:ok,
+              %{
+                count: 0,
+                etag: "previous-etag",
+                last_event_id: "previous-event",
+                recent_merge_persistence: :not_attempted
+              }} =
                GithubFirehose.poll(
                  request_fun: stub,
                  etag: "previous-etag",

@@ -265,9 +265,20 @@ defmodule Aiur.Events.GithubFirehose do
   defp enrich_merged_event(event, _opts), do: event
 
   defp persist_recent_merge(event, opts) do
-    event
-    |> RecentMerge.from_github_event(recent_merge_options(event, opts))
-    |> persist_recent_merge_result(event, opts)
+    if commit_evidence_unavailable_without_body_closing?(event) do
+      :not_merge
+    else
+      event
+      |> RecentMerge.from_github_event(recent_merge_options(event, opts))
+      |> persist_recent_merge_result(event, opts)
+    end
+  end
+
+  defp commit_evidence_unavailable_without_body_closing?(event) do
+    pr = get_in(event, ["payload", "pull_request"])
+
+    is_map(pr) and Map.get(pr, "commit_messages_unavailable") == true and
+      RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), get_in(event, ["repo", "name"])) == []
   end
 
   defp recent_merge_options(event, opts) do

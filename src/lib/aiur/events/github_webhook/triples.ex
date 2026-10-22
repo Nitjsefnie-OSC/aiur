@@ -299,6 +299,7 @@ defmodule Aiur.Events.GithubWebhook.Triples do
             linked_ids
           end
 
+        branch_id = if Map.get(pr, "commit_messages_unavailable", false), do: nil, else: branch_id
         Enum.uniq([branch_id | ids] |> Enum.reject(&is_nil/1))
       else
         closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_from_pr(pr))
