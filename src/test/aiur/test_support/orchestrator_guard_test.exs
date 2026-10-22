@@ -141,20 +141,19 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
   test "the ExUnit wiring reports setup restarts and fails leaks from both case templates" do
     src_dir = Path.expand("../../..", __DIR__)
     mix = System.find_executable("mix") || flunk("mix executable not found")
+    completion_file = Path.join(System.tmp_dir!(), "orchestrator-guard-#{System.pid()}-#{System.unique_integer([:positive])}")
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(completion_file) end)
 
-    task =
-      Task.async(fn ->
-        System.cmd(mix, ["test", "--seed", "0", "--max-cases", "8", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
-          cd: src_dir,
-          stderr_to_stdout: true,
-          env: [{"AIUR_RUN_ORCHESTRATOR_GUARD_PROBES", "1"}]
-        )
-      end)
-
-    assert {:ok, {output, status}} = Task.yield(task, :infinity)
+    {output, status} =
+      System.cmd(mix, ["test", "--seed", "0", "--max-cases", "8", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
+        cd: src_dir,
+        stderr_to_stdout: true,
+        env: [{"AIUR_RUN_ORCHESTRATOR_GUARD_PROBES", "1"}, {"AIUR_ORCHESTRATOR_GUARD_COMPLETION_FILE", completion_file}]
+      )
 
     assert status != 0
     assert output =~ "18 tests, 4 failures"
+    assert File.read!(completion_file) == "Aiur.YTestSupportStandInProbeTest: test leaves a stand-in holding the name"
     assert output =~ "Aiur.Orchestrator was down before Aiur.BTestSupportWiringNeighbourTest"
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
