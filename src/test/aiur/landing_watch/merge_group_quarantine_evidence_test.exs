@@ -364,7 +364,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineEvidenceTest do
       annotations_fun: fn _id, _opts -> {:ok, [%{"title" => "aiur-test-failure", "annotation_level" => "failure", "path" => @reaper_path, "message" => "new-failure :: " <> @reaper}]} end,
       flake_recorder: fn failure, run, [], recorder_opts ->
         send(parent, {:flake_ticket, "#{failure.module} :: #{failure.name}", run["id"]})
-        recorder_opts[:issue_recorded_fun].(5200)
+        if is_function(recorder_opts[:issue_recorded_fun], 1), do: recorder_opts[:issue_recorded_fun].(5200), else: :ok
       end,
       quarantine_pr_fun: fn candidate, ticket, _opts ->
         send(parent, {:quarantine_pr, ticket, candidate})
