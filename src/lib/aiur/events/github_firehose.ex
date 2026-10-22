@@ -456,6 +456,8 @@ defmodule Aiur.Events.GithubFirehose do
     end
   end
 
+  defp translate(_event, _opts), do: nil
+
   defp pr_issue_links(pr, repo_name) do
     commit_messages = Map.get(pr, "commit_messages", [])
 
@@ -475,8 +477,6 @@ defmodule Aiur.Events.GithubFirehose do
 
     {closing_ids, linked_ids}
   end
-
-  defp translate(_event, _opts), do: nil
 
   defp pr_topic(id, "opened", _merged), do: "ticket.#{id}.pr.opened"
   defp pr_topic(id, "ready_for_review", _merged), do: "ticket.#{id}.pr.ready_for_review"
