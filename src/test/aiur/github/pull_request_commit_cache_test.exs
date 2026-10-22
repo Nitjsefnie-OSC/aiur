@@ -25,8 +25,14 @@ defmodule Aiur.GitHub.PullRequestCommitCacheTest do
     first_fetch = fn request ->
       :atomics.add(requests, 1, 1)
       send(parent, {:fetched, request.url})
-      Process.sleep(20)
-      {:ok, %{status: 200, body: [%{"commit" => %{"message" => "Refs #5605"}}], headers: []}}
+      send(parent, {:waiting, self()})
+
+      receive do
+        :release_fetch ->
+          {:ok, %{status: 200, body: [%{"commit" => %{"message" => "Refs #5605"}}], headers: []}}
+      after
+        1_000 -> flunk("the test must release the blocked commit fetch")
+      end
     end
 
     concurrent =
@@ -34,18 +40,31 @@ defmodule Aiur.GitHub.PullRequestCommitCacheTest do
         Task.async(fn -> PullRequests.fetch_pull_request_commits(number, request_fun: first_fetch, head_sha: "head-one") end)
       end
 
-    assert Enum.map(concurrent, &Task.await(&1, 1000)) == [{:ok, ["Refs #5605"]}, {:ok, ["Refs #5605"]}]
-    assert :atomics.get(requests, 1) == 1
     assert_receive {:fetched, url}, 1000
     assert url =~ "/pulls/#{number}/commits"
+    wait_for_second_fetch_task(concurrent)
+    send(hd(concurrent).pid, :release_fetch)
+    assert Enum.map(concurrent, &Task.await(&1, 1000)) == [{:ok, ["Refs #5605"]}, {:ok, ["Refs #5605"]}]
+    assert :atomics.get(requests, 1) == 1
 
     assert {:ok, ["Refs #5605"]} =
              PullRequests.fetch_pull_request_commits(number, request_fun: fn _ -> flunk("same head must use cached commit messages") end, head_sha: "head-one")
 
+    second_head_fetch = fn request ->
+      :atomics.add(requests, 1, 1)
+      send(parent, {:fetched, request.url})
+      {:ok, %{status: 200, body: [%{"commit" => %{"message" => "Refs #5605"}}], headers: []}}
+    end
+
     assert {:ok, ["Refs #5605"]} =
-             PullRequests.fetch_pull_request_commits(number, request_fun: first_fetch, head_sha: "head-two")
+             PullRequests.fetch_pull_request_commits(number, request_fun: second_head_fetch, head_sha: "head-two")
 
     assert_receive {:fetched, _url}, 1000
     assert :atomics.get(requests, 1) == 2
+  end
+
+  defp wait_for_second_fetch_task([_first, second]) do
+    assert_receive {:waiting, pid} when pid == second.pid, 1_000
+    send(pid, :release_fetch)
   end
 end

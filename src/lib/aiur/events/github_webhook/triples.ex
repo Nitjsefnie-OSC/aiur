@@ -1,4 +1,6 @@
 defmodule Aiur.Events.GithubWebhook.Triples do
+  require Logger
+
   @moduledoc """
   The `{topic, payload, publish_opts}` triples a webhook delivery publishes,
   and the comment and review shapes it stores.
@@ -299,7 +301,6 @@ defmodule Aiur.Events.GithubWebhook.Triples do
             linked_ids
           end
 
-        branch_id = if Map.get(pr, "commit_messages_unavailable", false), do: nil, else: branch_id
         Enum.uniq([branch_id | ids] |> Enum.reject(&is_nil/1))
       else
         closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_from_pr(pr))
@@ -360,8 +361,12 @@ defmodule Aiur.Events.GithubWebhook.Triples do
       request_opts = Keyword.take(opts, [:request_fun])
 
       case PullRequests.fetch_pull_request_commits(number, Keyword.put(request_opts, :head_sha, get_in(pr, ["head", "sha"]))) do
-        {:ok, messages} -> Map.put(pr, "commit_messages", messages)
-        _ -> Map.put(pr, "commit_messages_unavailable", true)
+        {:ok, messages} ->
+          Map.put(pr, "commit_messages", messages)
+
+        {:error, reason} ->
+          Logger.warning("GithubWebhook commit messages unavailable pr=#{number}: #{inspect(reason)}")
+          Map.put(pr, "commit_messages_unavailable", true)
       end
     end
   end

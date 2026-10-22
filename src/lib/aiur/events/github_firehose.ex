@@ -134,11 +134,10 @@ defmodule Aiur.Events.GithubFirehose do
       pending_events = pages |> events_since_watermark(last_event_id)
       processed = process_events(pending_events, opts, last_event_id)
       pages_fetched = length(pages)
-      retry_enrichment? = processed.retry_enrichment?
 
       result = %{
-        etag: if(retry_enrichment?, do: Keyword.get(opts, :etag), else: etag),
-        last_event_id: if(retry_enrichment?, do: processed.last_processed_id, else: newest_event_id(events) || last_event_id),
+        etag: etag,
+        last_event_id: newest_event_id(events) || last_event_id,
         count: processed.count,
         poll_interval: poll_interval,
         pages_fetched: pages_fetched,
@@ -233,23 +232,21 @@ defmodule Aiur.Events.GithubFirehose do
     events
     |> Enum.reverse()
     |> Enum.reduce_while(
-      %{count: 0, persistence_errors: [], persistence_attempted?: false, last_processed_id: fallback_event_id, retry_enrichment?: false},
+      %{count: 0, persistence_errors: [], persistence_attempted?: false, last_processed_id: fallback_event_id},
       fn original_event, acc ->
         event = enrich_merged_event(original_event, opts)
         persistence_result = persist_recent_merge(event, opts)
         publish_result = publish_one(event, opts)
-        retry_enrichment? = retry_enrichment?(event)
         event_id = Map.get(original_event, "id")
 
         next = %{
           count: acc.count + if(match?({:ok, _, _}, publish_result), do: 1, else: 0),
           persistence_errors: maybe_add_persistence_error(acc.persistence_errors, persistence_result),
           persistence_attempted?: acc.persistence_attempted? or persistence_attempted?(persistence_result),
-          last_processed_id: if(retry_enrichment?, do: acc.last_processed_id, else: event_id || acc.last_processed_id),
-          retry_enrichment?: acc.retry_enrichment? or retry_enrichment?
+          last_processed_id: event_id || acc.last_processed_id
         }
 
-        if retry_enrichment?, do: {:halt, next}, else: {:cont, next}
+        {:cont, next}
       end
     )
   end
@@ -269,7 +266,8 @@ defmodule Aiur.Events.GithubFirehose do
           |> put_in(["payload", "pull_request", "commit_messages_unavailable"], true)
           |> put_in(["payload", "pull_request", "commit_messages_permanent"], true)
 
-        _ ->
+        {:error, reason} ->
+          Logger.warning("GithubFirehose commit messages unavailable pr=#{number}: #{inspect(reason)}")
           put_in(event, ["payload", "pull_request", "commit_messages_unavailable"], true)
       end
     else
@@ -278,13 +276,6 @@ defmodule Aiur.Events.GithubFirehose do
   end
 
   defp enrich_merged_event(event, _opts), do: event
-
-  defp retry_enrichment?(event) do
-    pr = get_in(event, ["payload", "pull_request"])
-
-    is_map(pr) and Map.get(pr, "commit_messages_unavailable") == true and
-      Map.get(pr, "commit_messages_permanent") != true
-  end
 
   defp persist_recent_merge(event, opts) do
     if commit_evidence_unavailable_without_body_closing?(event) do

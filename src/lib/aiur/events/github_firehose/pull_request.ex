@@ -61,7 +61,6 @@ defmodule Aiur.Events.GithubFirehose.PullRequest do
     {closing_ids, linked_ids} = pr_issue_links(pr, repo_name)
     commit_messages_unavailable? = get_in(pr, ["commit_messages_unavailable"]) == true
     linked_ids = if commit_messages_unavailable?, do: [], else: linked_ids
-    branch_id = if merged? and commit_messages_unavailable?, do: nil, else: branch_id
 
     with id when is_binary(id) <-
            if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id || List.first(closing_ids)),

@@ -60,7 +60,7 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
       assert_receive {:event, %{topic: "ticket.5605.pr.opened"}}, 500
     end
 
-    test "a failed commit lookup on a ticket branch leaves the event pending for retry" do
+    test "a failed commit lookup preserves branch attribution and advances the cursor" do
       :ok = Exchange.subscribe("ticket.42.pr.opened")
       :ok = Exchange.subscribe("ticket.43.pr.opened")
       :ok = Exchange.subscribe("ticket.5605.pr.merged")
@@ -99,9 +99,9 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
 
       assert {:ok,
               %{
-                count: 1,
-                etag: "previous-etag",
-                last_event_id: "older-open",
+                count: 3,
+                etag: ~s("new-etag"),
+                last_event_id: "newer-open",
                 recent_merge_persistence: :not_attempted
               }} =
                GithubFirehose.poll(
@@ -111,9 +111,9 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
                  boot_time: DateTime.add(DateTime.utc_now(), -3600, :second) |> DateTime.to_unix()
                )
 
-      refute_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 100
+      assert_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 500
       assert_receive {:event, %{topic: "ticket.43.pr.opened"}}, 500
-      refute_receive {:event, %{topic: "ticket.42.pr.opened"}}, 100
+      assert_receive {:event, %{topic: "ticket.42.pr.opened"}}, 500
     end
 
     test "a permanently oversized commit list advances the cursor without ticket attribution" do
@@ -153,11 +153,11 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
         end
       end
 
-      assert {:ok, %{count: 0, last_event_id: "permanent-overflow", etag: ~s("permanent-overflow")}} =
+      assert {:ok, %{count: 1, last_event_id: "permanent-overflow", etag: ~s("permanent-overflow")}} =
                GithubFirehose.poll(request_fun: stub)
 
       assert :atomics.get(page_count, 1) == 100
-      refute_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 100
+      assert_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 500
     end
 
     test "a closing keyword routes a merged PR when commit evidence cannot be fetched" do

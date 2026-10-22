@@ -49,6 +49,7 @@ defmodule Aiur.StartTrigger.ProgressWritersTest do
           "merged" => true,
           "merged_at" => "2026-10-09T10:00:00Z",
           "html_url" => "https://github.com/owner/repo/pull/101",
+          "body" => "Closes ##{id}",
           "head" => %{"ref" => "aiur/#{id}-progress", "sha" => "head", "repo" => %{"full_name" => "owner/repo"}}
         }
       }
@@ -57,7 +58,13 @@ defmodule Aiur.StartTrigger.ProgressWritersTest do
     assert {:ok, _result} =
              GithubFirehose.poll(
                token: "test-gh-token",
-               request_fun: fn _request -> {:ok, %{status: 200, body: [event], headers: []}} end,
+               request_fun: fn request ->
+                 if String.contains?(Map.get(request, :url, ""), "/pulls/101/commits") do
+                   {:ok, %{status: 200, body: [], headers: []}}
+                 else
+                   {:ok, %{status: 200, body: [event], headers: []}}
+                 end
+               end,
                recent_merge_fun: fn merge -> {:ok, %{status: :accepted, merge: merge}} end,
                boot_time: 0
              )
