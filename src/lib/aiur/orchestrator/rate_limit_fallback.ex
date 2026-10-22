@@ -33,6 +33,7 @@ defmodule Aiur.Orchestrator.RateLimitFallback do
 
   @marker_label_suffix "rate-limit-fallback"
   @minimum_fallback_dwell_seconds 60
+  @paused_fallback_wait_seconds 600
   @max_transitions_per_tick 1
   @recovery_pause_reason :rate_limit_fallback_recovery
 
@@ -86,17 +87,43 @@ defmodule Aiur.Orchestrator.RateLimitFallback do
   end
 
   defp usage_limited_on_primary?(running_entry, issue, opts) do
-    fallback_backend = fallback_backend(opts)
-    primary_backend = primary_backend(opts)
     current_backend = Keyword.get_lazy(opts, :current_backend, fn -> CodingAgent.backend_for(issue) end)
+    fallback_backend = fallback_backend_for(issue, current_backend, opts)
 
     State.paused_running_entry?(running_entry) and
       Map.get(running_entry, :paused_reason) == :usage_limit_exhausted and
-      is_binary(fallback_backend) and fallback_backend in CodingAgent.known_backends() and
-      fallback_backend != current_backend and
-      ModelAvailability.available?(fallback_backend, opts) and
+      paused_fallback_wait_elapsed?(running_entry, opts) and
+      fallback_target_available?(fallback_backend, current_backend, issue, opts)
+  end
+
+  defp fallback_target_available?(fallback_backend, current_backend, issue, opts) do
+    is_binary(fallback_backend) and fallback_backend in CodingAgent.known_backends() and
+      fallback_backend != current_backend and ModelAvailability.available?(fallback_backend, opts) and
       is_nil(CodingAgent.override_backend(issue)) and
-      current_backend == primary_backend
+      (current_backend == primary_backend(opts) or routing_fallback?(issue, current_backend, opts))
+  end
+
+  defp routing_fallback?(issue, current_backend, opts) do
+    route = Keyword.get_lazy(opts, :routing_backend, fn -> CodingAgent.routing_backend(issue) end)
+    is_binary(route) and route != current_backend
+  end
+
+  defp fallback_backend_for(issue, current_backend, opts) do
+    route = Keyword.get_lazy(opts, :routing_backend, fn -> CodingAgent.routing_backend(issue) end)
+    if is_binary(route) and route != current_backend, do: route, else: fallback_backend(opts)
+  end
+
+  defp paused_fallback_wait_elapsed?(entry, opts) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    wait_seconds = Keyword.get(opts, :paused_fallback_wait_seconds, @paused_fallback_wait_seconds)
+
+    case Map.get(entry, :paused_at) do
+      %DateTime{} = paused_at ->
+        DateTime.diff(now, paused_at, :second) >= wait_seconds
+
+      _ ->
+        true
+    end
   end
 
   defp recovery_ready?(running_entry, opts) do
@@ -287,7 +314,8 @@ defmodule Aiur.Orchestrator.RateLimitFallback do
   end
 
   defp apply_decision(state, running_entry, issue, :engage, opts) do
-    fallback_backend = fallback_backend(opts)
+    current_backend = Keyword.get_lazy(opts, :current_backend, fn -> CodingAgent.backend_for(issue) end)
+    fallback_backend = fallback_backend_for(issue, current_backend, opts)
     marker_label = Keyword.get_lazy(opts, :marker_label, &marker_label/0)
     relabeled = engage_issue(issue, fallback_backend, marker_label)
     context = Redispatch.transition_context(state, running_entry, issue, relabeled, opts)

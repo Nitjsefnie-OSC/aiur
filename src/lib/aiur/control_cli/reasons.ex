@@ -38,6 +38,9 @@ defmodule Aiur.ControlCLI.Reasons do
   def format_reason({:optimistic_share, %{running: running, cap: cap}}),
     do: "optimistic share full (#{running}/#{cap})"
 
+  def format_reason({:max_concurrent_agents_reached, paused_holds}) when is_integer(paused_holds) and paused_holds > 0,
+    do: "max concurrent agents reached; paused entries hold #{paused_holds} #{if(paused_holds == 1, do: "slot", else: "slots")}"
+
   def format_reason({:blocked_on_decision, %{decision_ids: [_ | _] = ids}}),
     do: "ticket is held by open blocking decision #{Enum.join(ids, ", ")}; answer it (see `aiurdev commands`), then resume"
 

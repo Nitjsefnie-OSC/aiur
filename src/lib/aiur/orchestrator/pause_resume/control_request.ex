@@ -86,7 +86,7 @@ defmodule Aiur.Orchestrator.PauseResume.ControlRequest do
     if Map.get(running_entry, :control, %{}) |> Map.get(:status, :working) == :paused do
       cond do
         not Slots.resume_fleet_slot_available?(state, running_entry) ->
-          {{:error, :max_concurrent_agents_reached}, state}
+          {{:error, paused_capacity_reason(state)}, state}
 
         not DispatchPolicy.state_slots_available?(Map.get(running_entry, :issue), state) ->
           {{:error, :max_concurrent_agents_reached}, state}
@@ -113,6 +113,13 @@ defmodule Aiur.Orchestrator.PauseResume.ControlRequest do
         requester,
         request_id
       )
+    end
+  end
+
+  defp paused_capacity_reason(state) do
+    case State.reserved_paused_running_count(state.running) do
+      count when count > 0 -> {:max_concurrent_agents_reached, count}
+      _ -> :max_concurrent_agents_reached
     end
   end
 

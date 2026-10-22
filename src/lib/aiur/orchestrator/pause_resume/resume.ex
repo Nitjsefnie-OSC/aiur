@@ -262,7 +262,7 @@ defmodule Aiur.Orchestrator.PauseResume.Resume do
   end
 
   @doc false
-  @spec resume_paused_issue_preflight(State.t(), map()) :: :ok | {:error, :max_concurrent_agents_reached}
+  @spec resume_paused_issue_preflight(State.t(), map()) :: :ok | {:error, term()}
   def resume_paused_issue_preflight(%State{} = state, running_entry) do
     cond do
       # A worker still working under its own pending input pause holds its
@@ -276,7 +276,7 @@ defmodule Aiur.Orchestrator.PauseResume.Resume do
       # pauses already fill the cap (for example, after CI-wait capacity was
       # filled by other work).
       not Slots.resume_fleet_slot_available?(state, running_entry) ->
-        {:error, :max_concurrent_agents_reached}
+        {:error, paused_capacity_reason(state)}
 
       not DispatchPolicy.state_slots_available?(Map.get(running_entry, :issue), state) ->
         {:error, :max_concurrent_agents_reached}
@@ -286,6 +286,13 @@ defmodule Aiur.Orchestrator.PauseResume.Resume do
 
       true ->
         :ok
+    end
+  end
+
+  defp paused_capacity_reason(state) do
+    case State.reserved_paused_running_count(state.running) do
+      count when count > 0 -> {:max_concurrent_agents_reached, count}
+      _ -> :max_concurrent_agents_reached
     end
   end
 

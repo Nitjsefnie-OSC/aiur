@@ -54,7 +54,11 @@ defmodule Aiur.Orchestrator.PauseResume.DeclineReason do
   def resume_decline_reason(:queue_set_order, issue, state, _opts), do: QueueSetSlots.waiting(issue.id, state)
   def resume_decline_reason(:optimistic_share, _issue, state, _opts), do: {:optimistic_share, OptimisticSlots.status(state)}
   def resume_decline_reason(:worker_capacity, _issue, _state, _opts), do: :no_worker_capacity
-  def resume_decline_reason(:fleet_capacity, _issue, _state, _opts), do: :max_concurrent_agents_reached
+
+  def resume_decline_reason(:fleet_capacity, _issue, state, _opts) do
+    held = State.reserved_paused_running_count(state.running)
+    if held > 0, do: {:max_concurrent_agents_reached, held}, else: :max_concurrent_agents_reached
+  end
 
   def resume_decline_reason(reason, issue, _state, _opts) do
     Logger.warning("Resume declined with an untranslated dispatch reason: issue_id=#{inspect(Map.get(issue || %{}, :id))} reason=#{inspect(reason)}")

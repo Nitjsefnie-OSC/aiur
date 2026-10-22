@@ -77,10 +77,41 @@ defmodule Aiur.Orchestrator.RateLimitFallback.DecideTest do
     end
 
     test "engages when a codex-backed entry pauses on usage_limit_exhausted" do
-      entry = %{control: %{status: :paused}, paused_reason: :usage_limit_exhausted}
+      now = DateTime.utc_now()
+      entry = %{control: %{status: :paused}, paused_reason: :usage_limit_exhausted, paused_at: DateTime.add(now, -600, :second)}
       issue = %Issue{id: "1", identifier: "repo#1", labels: []}
 
-      assert RateLimitFallback.decide(entry, issue, primary_backend: "codex", fallback_backend: "claude", current_backend: "codex") == :engage
+      assert RateLimitFallback.decide(entry, issue,
+               primary_backend: "codex",
+               fallback_backend: "claude",
+               current_backend: "codex",
+               now: now
+             ) == :engage
+    end
+
+    test "waits ten minutes before routing a paused primary agent to fallback" do
+      now = DateTime.utc_now()
+      issue = %Issue{id: "1", identifier: "repo#1", labels: []}
+      entry = %{control: %{status: :paused}, paused_reason: :usage_limit_exhausted, paused_at: DateTime.add(now, -599, :second)}
+      opts = [primary_backend: "codex", fallback_backend: "claude", current_backend: "codex", now: now]
+
+      assert RateLimitFallback.decide(entry, issue, opts) == :noop
+      assert RateLimitFallback.decide(%{entry | paused_at: DateTime.add(now, -600, :second)}, issue, opts) == :engage
+    end
+
+    test "uses the issue complexity route when it differs from the limited backend" do
+      now = DateTime.utc_now()
+      issue = %Issue{id: "1", identifier: "repo#1", labels: ["complexity:4"]}
+      entry = %{control: %{status: :paused}, paused_reason: :usage_limit_exhausted, paused_at: DateTime.add(now, -600, :second)}
+
+      assert RateLimitFallback.decide(entry, issue,
+               primary_backend: "codex",
+               fallback_backend: nil,
+               routing_backend: "codex",
+               current_backend: "claude",
+               state: %{"backends" => %{}},
+               now: now
+             ) == :engage
     end
 
     test "does not engage when the issue already carries an explicit override, even if it resolves to codex" do

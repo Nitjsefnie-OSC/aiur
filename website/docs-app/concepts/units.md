@@ -6,6 +6,11 @@ A Unit is one agent run working one ticket while it is active, paused, or waitin
 
 The Units page is dashboard `/` and CLI `aiur units`.
 
+Paused agents remain listed, but only pauses that reserve capacity count as
+occupied slots. Provider usage-limit pauses release their slot while waiting
+for fallback or the provider reset; the paused row remains visible in the
+fleet table.
+
 <img src="/images/dashboard/units-dark.png" alt="Desktop Units fleet table with synthetic active, blocked, retrying, and review tickets">
 
 | Column or control | Meaning |
