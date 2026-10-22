@@ -90,6 +90,12 @@ PY
 budget_acquire() {
   [ "$budget_enabled" -eq 1 ] || return 0
 
+  # Admission is deliberately bounded independently of the outer governed-gh
+  # deadline. A saturated lease table or cache claim must not consume the
+  # entire call budget before `gh` even starts.
+  budget_waited_ms=0
+  budget_wait_limit_ms=5000
+
   # Free endpoints (the shared EndpointPolicy table marks only `rate_limit`
   # non-billable) are still admitted and leased for ordering, but their
   # admission row must be recorded non-billable so the ledger never reports
@@ -218,13 +224,25 @@ budget_acquire() {
         # An actor-ceiling hold is `wait actor <ms>`; the `actor` token is the
         # Elixir side's cue for the hold reason and is not part of the delay.
         budget_wait_ms=${budget_wait_ms#actor }
+        if [ "$budget_waited_ms" -ge "$budget_wait_limit_ms" ]; then
+          printf 'aiur: GitHub budget broker busy; admission wait exceeded %sms\n' "$budget_wait_limit_ms" >&2
+          return 75
+        fi
+        budget_remaining_ms=$((budget_wait_limit_ms - budget_waited_ms))
+        case "$budget_wait_ms" in
+          ''|*[!0-9]*) ;;
+          *) [ "$budget_wait_ms" -le "$budget_remaining_ms" ] || budget_wait_ms=$budget_remaining_ms ;;
+        esac
         if ! budget_sleep_ms "$budget_wait_ms"; then
           printf '%s\n' 'aiur: GitHub budget broker returned an invalid or unusable wait response' >&2
           return 75
         fi
         case "$budget_wait_ms" in
           ''|*[!0-9]*) ;;
-          *) cache_claim_waited_ms=$((cache_claim_waited_ms + budget_wait_ms)) ;;
+          *)
+            budget_waited_ms=$((budget_waited_ms + budget_wait_ms))
+            cache_claim_waited_ms=$((cache_claim_waited_ms + budget_wait_ms))
+            ;;
         esac
         # Patience spent. The leader may have died between claiming the resource
         # and answering for it, and a follower that waits forever on a dead

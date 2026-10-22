@@ -39,6 +39,24 @@ defmodule Aiur.AgentGitHubGuard.DeadlineTest do
     assert process_gone?(child_pid)
   end
 
+  test "repeated broker wait responses fail at the admission bound before gh runs", context do
+    broker = Path.join(context.workspace, "always-waits.py")
+    File.write!(broker, "print('wait 1000')\n")
+    File.chmod!(broker, 0o700)
+    started_at = System.monotonic_time(:millisecond)
+
+    assert {output, 75} =
+             run_guard(context, ["api", "rate_limit"],
+               AIUR_GITHUB_BUDGET_ROOT: Path.join(context.state_path, "busy-budget"),
+               AIUR_GITHUB_BUDGET_KEY: String.duplicate("b", 64),
+               AIUR_GITHUB_BUDGET_BROKER: broker
+             )
+
+    assert output =~ "GitHub budget broker busy; admission wait exceeded 5000ms"
+    assert System.monotonic_time(:millisecond) - started_at < 8_000
+    refute File.exists?(context.calls)
+  end
+
   test "the deadline also kills descendants that start their own session", context do
     broker = Path.join(context.workspace, "nested-never-answers.py")
     child_pid_file = Path.join(context.workspace, "nested-child.pid")
