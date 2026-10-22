@@ -4,6 +4,8 @@ defmodule Aiur.MainWatch.GitHub do
   alias Aiur.Events.GithubCIPoller.Evaluation
   alias Aiur.GitHub.{AppCredentials, AppToken, Config, Errors, PullRequests, Transport}
 
+  @active_statuses ["queued", "in_progress", "waiting", "requested", "pending"]
+
   @spec poll(String.t(), [String.t()], keyword()) :: {:ok, map()} | {:error, term()}
   def poll(branch, workflows, opts \\ []) do
     poll_once(branch, workflows, opts)
@@ -196,8 +198,9 @@ defmodule Aiur.MainWatch.GitHub do
     with {:ok, push_runs} <- runs_page(url, token, dates, opts),
          {:ok, queue_runs} <- runs_page(queue_url, token, dates, opts) do
       runs = Enum.filter(push_runs, &(&1["event"] == "push" and &1["head_branch"] == branch and (workflows == [] or &1["name"] in workflows)))
-      merge_groups = Enum.filter(queue_runs, &(&1["event"] == "merge_group" and &1["head_sha"] in commits and queue_run?(&1, branch, workflows)))
-      {:ok, {runs |> Enum.filter(&watched?(&1, commits, branch, workflows)) |> sort_normalized(), sort_normalized(merge_groups)}}
+      active_merge_groups = Enum.filter(queue_runs, &(&1["event"] == "merge_group" and queue_run?(&1, branch, workflows) and &1["status"] in @active_statuses))
+      completed_merge_groups = Enum.filter(queue_runs, &(&1["event"] == "merge_group" and &1["head_sha"] in commits and queue_run?(&1, branch, workflows)))
+      {:ok, {runs |> Enum.filter(&watched?(&1, commits, branch, workflows)) |> sort_normalized(), sort_normalized(active_merge_groups ++ completed_merge_groups)}}
     end
   end
 
