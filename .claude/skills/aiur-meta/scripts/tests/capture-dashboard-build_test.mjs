@@ -11,7 +11,7 @@ function buildSnapshot(overrides = {}) {
 }
 
 test('the dashboard capture inventory includes the /build home page', () => {
-  assert.deepEqual(PAGES.map(([, route]) => route), ['/', '/commands', '/build-orders', '/build', '/analytics'])
+  assert.deepEqual(PAGES.map(([, route]) => route), ['/', '/commands', '/build', '/analytics'])
 })
 
 test('an unavailable build timeline is an attention finding', () => {

@@ -327,7 +327,6 @@ function pageLabel(name) {
   return {
     units: 'Units',
     commands: 'Commands',
-    'build-orders': 'Build Order',
     analytics: 'Analytics'
   }[name] || name
 }

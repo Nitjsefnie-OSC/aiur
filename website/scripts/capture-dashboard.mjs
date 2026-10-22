@@ -26,14 +26,6 @@ const surfaces = [
   // Tickets backlog panel below it.
   { name: "units", path: "/units", selector: ".dashboard-shell", clipHeight: 1700, marker: "example/ex-142", modelMeters: true },
   { name: "commands", path: "/commands", selector: ".dashboard-shell", clipHeight: 1250, marker: "dec-example-blocking", modelMeters: false },
-  {
-    name: "build-orders",
-    path: "/build-orders/4200",
-    selector: ".dashboard-shell",
-    clipHeight: 1400,
-    marker: "Example App launch",
-    modelMeters: false,
-  },
   { name: "streamdeck", path: "/streamdeck", selector: ".dashboard-shell", clipHeight: 900, marker: "EX-142", modelMeters: false },
 ];
 
