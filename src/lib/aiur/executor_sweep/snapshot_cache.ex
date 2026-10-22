@@ -84,7 +84,7 @@ defmodule Aiur.ExecutorSweep.SnapshotCache do
       queue_order_declared?: declared_order?,
       merge_groups:
         Enum.map(value(main_watch, :merge_groups, []), fn run ->
-          %{id: value(run, :id, nil), name: "run #{value(run, :id, "?")}", state: value(run, :status, "unknown"), started_at: value(run, :started_at, nil)}
+          %{id: value(run, :id, nil), name: "run #{value(run, :id, "?")}", state: value(run, :status, "unknown"), started_at: value(run, :started_at, nil), head_branch: value(run, :head_branch, nil)}
         end),
       # Main's per-commit check results; a PR red is caused_by_pr only if its base passed (#5119).
       base_checks:
