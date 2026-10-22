@@ -108,7 +108,7 @@ defmodule Aiur.GitHub.Transport do
   members had different visibility would need the credential in the cache key.
   """
   @spec default_request_fun(map()) :: {:ok, map()} | {:error, term()}
-  def default_request_fun(req), do: TestScope.run(req, &do_request/1)
+  def default_request_fun(req), do: Settings.with_request(fn -> TestScope.run(req, &do_request/1) end)
 
   defp do_request(%{method: :get, url: url, token: token} = req) do
     headers =
