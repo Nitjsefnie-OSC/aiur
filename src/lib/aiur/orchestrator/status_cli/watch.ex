@@ -64,7 +64,7 @@ defmodule Aiur.Orchestrator.StatusCLI.Watch do
 
   defp watch_state(status) do
     prefix = GitHubConfig.label_prefix()
-    labels = watch_runtime_labels(status, prefix)
+    labels = Labels.runtime_labels(Map.get(status, :labels), [Map.get(status, :pause_reason), Map.get(status, :waiting_reason)], prefix)
 
     cond do
       labels != [] -> Enum.join(labels, ",")
@@ -73,12 +73,6 @@ defmodule Aiur.Orchestrator.StatusCLI.Watch do
       Map.get(status, :work_state) == :retrying -> "#{prefix}:retrying"
       true -> to_string(status[:tracker_state] || status[:state] || "")
     end
-  end
-
-  defp watch_runtime_labels(status, prefix) do
-    suffix = Labels.runtime_reason_modifier(Map.get(status, :pause_reason)) || Labels.runtime_reason_modifier(Map.get(status, :waiting_reason))
-    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
-    Labels.present_runtime_labels(List.wrap(Map.get(status, :labels)) ++ inferred, prefix)
   end
 
   defp watch_activity(%{tracker_paused: paused, reason: reason})

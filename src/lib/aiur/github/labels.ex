@@ -104,11 +104,21 @@ defmodule Aiur.GitHub.Labels do
 
   def present_runtime_labels(_labels, _prefix), do: []
 
-  @spec present_reason_modifier_labels(term(), String.t()) :: [String.t()]
-  def present_reason_modifier_labels(labels, prefix) do
-    state_set = MapSet.new(state_labels(prefix))
-    present_runtime_labels(labels, prefix) |> Enum.reject(&MapSet.member?(state_set, &1))
+  @doc """
+  The tracker's runtime labels plus the reason label for each live runtime
+  cause (pause or waiting reason), in vocabulary order. Every surface renders
+  this list verbatim, so a cause the tracker has not caught up with yet still
+  shows its own label rather than a local word.
+  """
+  @spec runtime_labels(term(), [term()], String.t()) :: [String.t()]
+  def runtime_labels(labels, causes, prefix) do
+    inferred = causes |> Enum.map(&runtime_reason_modifier/1) |> Enum.reject(&is_nil/1) |> Enum.map(&"#{prefix}:#{&1}")
+    present_runtime_labels(List.wrap(labels) ++ inferred, prefix)
   end
+
+  @doc "`runtime_labels/3` without the workflow state label."
+  @spec runtime_reason_labels(term(), [term()], String.t()) :: [String.t()]
+  def runtime_reason_labels(labels, causes, prefix), do: runtime_labels(labels, causes, prefix) -- state_labels(prefix)
 
   @doc "Whether a bare suffix names a known orthogonal runtime reason."
   @spec reason_modifier_suffix?(term()) :: boolean()

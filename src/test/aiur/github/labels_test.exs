@@ -62,6 +62,14 @@ defmodule Aiur.GitHub.LabelsTest do
       assert Labels.runtime_reason_modifier(:workspace_ownership_waiting) == "handed-off"
     end
 
+    test "runtime_labels/3 merges tracker labels with live causes in vocabulary order" do
+      assert Labels.runtime_labels(["aiur:blocked", "aiur:ci-wait", "flake"], [:usage_limit_exhausted, nil, :operator_pause], "aiur") ==
+               ["aiur:ci-wait", "aiur:paused-usage-limit", "aiur:blocked"]
+
+      assert Labels.runtime_reason_labels(["aiur:ci-wait"], [:waiting_for_human], "aiur") == ["aiur:paused-decision"]
+      assert Labels.runtime_labels(nil, [], "aiur") == []
+    end
+
     # Fails when a new persisted pause reason appears without a label to show it.
     test "every persisted pause reason has a label" do
       shown_by_existing_label = %{

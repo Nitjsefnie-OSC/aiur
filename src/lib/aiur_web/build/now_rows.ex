@@ -141,10 +141,12 @@ defmodule AiurWeb.Build.NowRows do
   defp error?(row), do: retrying?(row) or get_in(row, [:runtime, :work_state]) == :error or UnitsPolicy.condition?(:stuck, row)
 
   defp runtime_reason_state(row) do
-    case UnitsPresentation.reason_label(row) do
-      "agent:" <> suffix -> suffix
-      _ -> nil
-    end
+    # The first reason label's suffix, whatever the configured prefix.
+    with label when is_binary(label) <- UnitsPresentation.reason_label(row),
+         [first | _] <- String.split(label, ","),
+         [_prefix, suffix] <- String.split(first, ":", parts: 2),
+         do: suffix,
+         else: (_ -> nil)
   end
 
   defp status(row) do

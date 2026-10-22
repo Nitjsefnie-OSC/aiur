@@ -70,17 +70,9 @@ defmodule Aiur.Orchestrator.StatusCLI.AgentsTable do
   end
 
   defp reason_label(agent) do
-    prefix = Config.label_prefix()
-    suffix = Labels.runtime_reason_modifier(Map.get(agent, :pause_reason)) || Labels.runtime_reason_modifier(Map.get(agent, :waiting_reason))
-    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
-    labels = Labels.present_runtime_labels(List.wrap(Map.get(agent, :labels)) ++ inferred, prefix)
-
-    case labels do
-      [_ | _] ->
-        Enum.join(labels, ",")
-
-      [] ->
-        if suffix, do: prefix <> ":" <> suffix
+    case Labels.runtime_labels(Map.get(agent, :labels), [Map.get(agent, :pause_reason), Map.get(agent, :waiting_reason)], Config.label_prefix()) do
+      [] -> nil
+      labels -> Enum.join(labels, ",")
     end
   end
 

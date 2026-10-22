@@ -54,10 +54,8 @@ defmodule Aiur.Orchestrator.StatusCLI.StatusTable do
   defp status_reason_detail(_status), do: nil
 
   defp status_state_label(status) do
-    suffix = Labels.runtime_reason_modifier(Map.get(status, :pause_reason)) || Labels.runtime_reason_modifier(Map.get(status, :waiting_reason))
     prefix = GitHubConfig.label_prefix()
-    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
-    labels = Labels.present_runtime_labels(List.wrap(Map.get(status, :labels)) ++ inferred, prefix)
+    labels = Labels.runtime_labels(Map.get(status, :labels), [Map.get(status, :pause_reason), Map.get(status, :waiting_reason)], prefix)
 
     cond do
       labels != [] -> Enum.join(labels, ",")

@@ -61,19 +61,9 @@ defmodule AiurWeb.OperatorControlCenter.UnitsPresentation do
   @doc "Returns the exact tracker label for a known runtime reason, if present."
   @spec reason_label(map()) :: String.t() | nil
   def reason_label(row) when is_map(row) do
-    prefix = Config.label_prefix()
-
-    suffix =
-      Labels.runtime_reason_modifier(get_in(row, [:reasons, :pause])) ||
-        Labels.runtime_reason_modifier(get_in(row, [:reasons, :waiting]))
-
-    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
-    reason_labels = Labels.present_reason_modifier_labels(List.wrap(Map.get(row, :labels)) ++ inferred, prefix)
-
-    cond do
-      reason_labels != [] -> Enum.join(reason_labels, ",")
-      is_binary(suffix) -> prefix <> ":" <> suffix
-      true -> nil
+    case Labels.runtime_reason_labels(Map.get(row, :labels), [get_in(row, [:reasons, :pause]), get_in(row, [:reasons, :waiting])], Config.label_prefix()) do
+      [] -> nil
+      labels -> Enum.join(labels, ",")
     end
   end
 

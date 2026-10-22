@@ -372,19 +372,9 @@ defmodule AiurWeb.OperatorControlCenter.BuildOrderGridModel do
   end
 
   defp runtime_reason_word(execution) do
-    prefix = Config.label_prefix()
-
-    suffix =
-      Labels.runtime_reason_modifier(Map.get(execution, :pause_reason)) ||
-        Labels.runtime_reason_modifier(Map.get(execution, :waiting_reason))
-
-    inferred = if is_binary(suffix), do: [prefix <> ":" <> suffix], else: []
-    labels = Labels.present_runtime_labels(List.wrap(Map.get(execution, :labels)) ++ inferred, prefix)
-
-    cond do
-      labels != [] -> Enum.join(labels, ",")
-      is_binary(suffix) -> "agent:" <> suffix
-      true -> nil
+    case Labels.runtime_labels(Map.get(execution, :labels), [Map.get(execution, :pause_reason), Map.get(execution, :waiting_reason)], Config.label_prefix()) do
+      [] -> nil
+      labels -> Enum.join(labels, ",")
     end
   end
 
