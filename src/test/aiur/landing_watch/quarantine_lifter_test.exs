@@ -134,6 +134,40 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
     assert_received {:label, :delete, "https://api.github.com/repos/test-org/test-repo/issues/900/labels/priority:2", nil}
   end
 
+  test "nightly quarantine results treat a failed step conclusion as failure" do
+    request = fn %{url: url} ->
+      cond do
+        String.ends_with?(url, "/actions/runs?event=schedule&status=completed&per_page=20") ->
+          {:ok, %{status: 200, body: %{"workflow_runs" => [%{"name" => "ci", "head_branch" => "main", "id" => 7}]}}}
+
+        String.ends_with?(url, "/actions/runs/7/jobs?per_page=100") ->
+          {:ok,
+           %{
+             status: 200,
+             body: %{
+               "jobs" => [
+                 %{
+                   "name" => "quarantined tests (non-blocking)",
+                   "conclusion" => "success",
+                   "steps" => [%{"name" => "Run quarantined tests", "conclusion" => "failure"}]
+                 }
+               ]
+             }
+           }}
+
+        true ->
+          flunk("unexpected request #{url}")
+      end
+    end
+
+    assert {:ok, [:failure]} =
+             Aiur.LandingWatch.QuarantineNightlyResults.fetch(
+               base_branch: "main",
+               token: "test-gh-token",
+               request_fun: request
+             )
+  end
+
   defp response(:get, "https://api.github.com/repos/test-org/test-repo/contents/src/test/quarantine.txt?ref=main", contents),
     do: {:ok, %{status: 200, body: %{"content" => Base.encode64(contents), "sha" => "list-blob", "encoding" => "base64"}}}
 

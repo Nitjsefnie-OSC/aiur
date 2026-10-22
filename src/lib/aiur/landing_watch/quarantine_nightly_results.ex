@@ -16,7 +16,7 @@ defmodule Aiur.LandingWatch.QuarantineNightlyResults do
     case CIRecovery.read("/actions/runs?event=schedule&status=completed&per_page=20", opts) do
       {:ok, %{"workflow_runs" => runs}} when is_list(runs) ->
         runs
-        |> Enum.filter(&(&1["name"] == "ci" and &1["head_branch"] == TrackerSettings.base_branch() and is_integer(&1["id"])))
+        |> Enum.filter(&(&1["name"] == "ci" and &1["head_branch"] == TrackerSettings.base_branch(opts) and is_integer(&1["id"])))
         |> Enum.reduce_while({:ok, []}, &append_result(&1, &2, opts))
 
       {:error, _} = error ->
@@ -35,7 +35,11 @@ defmodule Aiur.LandingWatch.QuarantineNightlyResults do
   end
 
   defp job_status(%{"name" => "quarantined tests (non-blocking)"} = job) do
-    failed_step? = Enum.any?(job["steps"] || [], &(&1["name"] == "Run quarantined tests" and &1["outcome"] == "failure"))
+    failed_step? =
+      Enum.any?(job["steps"] || [], fn step ->
+        step["name"] == "Run quarantined tests" and
+          (step["outcome"] == "failure" or step["conclusion"] == "failure")
+      end)
 
     cond do
       failed_step? -> :failure
