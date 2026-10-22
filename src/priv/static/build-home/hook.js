@@ -21,6 +21,7 @@ import './states.js';
 import './list.js';
 import { controlMessage } from './modal/frame.js';
 import './modal/conversation.js';
+import './modal/composer.js';
 
 export function writeOwnData() {
   if (ctx.bdTrees != null) ctx.root.dataset.bdTrees = ctx.bdTrees;
@@ -104,6 +105,7 @@ export function createBuildHomeHook() {
       writeOwnData();
       this.handleEvent('build-ticket-control', controlMessage);
       this.handleEvent('build-conversation', msg => fx.receiveConversation(msg));
+      this.handleEvent('send-status', msg => fx.sendStatus(msg));
       this.handleEvent('build-diff', receive); this.handleEvent('build:url', onServerURL);
       showServerState(this.el.dataset); resync();
     },
