@@ -72,10 +72,20 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineFlowTest do
     test = %{identity: @live_pack, path: "src/test/aiur_web/build_order/planning_source/live_pack_progress_test.exs", classification: :new_failure}
     digest = %FailureDigest{checks: [%{name: "coverage (1/4)", url: main_run, tests: [test]}], tests: [test]}
     red = %{sha: "fb9f75853ec58c7c402947274faa1562939d5dff", completed_at: minutes_ago_ms(15), run_urls: [], digest: digest}
-    opts = journal |> opts(self()) |> Keyword.put(:main_history_fun, fn -> [red] end)
+    checked_paths = ["src/lib/aiur/unrelated_change.ex"]
+
+    opts =
+      journal
+      |> opts(self())
+      |> Keyword.put(:main_history_fun, fn -> [red] end)
+      |> Keyword.put(:commit_paths_fun, fn _sha, _opts -> {:ok, checked_paths} end)
+
     assert :ok = MergeGroupQuarantine.process_completed([], [], "main", opts)
     assert_received {:flake_ticket, @live_pack, 39_126_982_641}
     assert_received {:quarantine_pr, 5200, %{identity: @live_pack, observations: [%{run_url: ^main_run}]}}
+    assert {:ok, [observation]} = Journal.failure_observations(opts)
+    assert observation["checked_paths"] == checked_paths
+    assert observation["touched"] == false
   end
 
   test "a base failure in a test touched by that push does not quarantine", %{journal: journal} do

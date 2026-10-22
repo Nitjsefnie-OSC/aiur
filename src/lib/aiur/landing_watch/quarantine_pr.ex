@@ -235,6 +235,9 @@ defmodule Aiur.LandingWatch.QuarantinePR do
     runs =
       observations |> Enum.map(& &1.run_url) |> Enum.uniq() |> Enum.map_join("\n", &"- #{&1}")
 
+    checked_paths = observations |> Enum.flat_map(&Map.get(&1, :checked_paths, [])) |> Enum.uniq() |> Enum.sort()
+    checked = Enum.map_join(checked_paths, "\n", &"- `#{&1}`")
+
     list = ctx.path
     {skip, scope} = skip_scope(identity)
 
@@ -254,6 +257,10 @@ defmodule Aiur.LandingWatch.QuarantinePR do
     - Adds one line to `#{list}`#{expiry_description(ctx)}; blocking CI skips #{scope} and the non-blocking quarantine job still runs it nightly.
     - The landing watcher opened this PR. Failed runs:
     #{runs}
+
+    #### Base-commit paths checked
+
+    #{if checked == "", do: "No base-commit path check was used for these observations.", else: checked}
 
     #### Alternatives
 

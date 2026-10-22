@@ -14,9 +14,10 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
     observations = [
       %{
         pr: nil,
-        run_url: "https://github.com/test-org/test-repo/actions/runs/39136290707/job/117701756559"
+        run_url: "https://github.com/test-org/test-repo/actions/runs/39136290707/job/117701756559",
+        checked_paths: ["src/lib/aiur/one.ex"]
       },
-      %{pr: 5108, run_url: "https://github.com/test-org/test-repo/actions/runs/39136853814"}
+      %{pr: 5108, run_url: "https://github.com/test-org/test-repo/actions/runs/39136853814", checked_paths: ["src/lib/aiur/two.ex"]}
     ]
 
     assert {:ok, %{"number" => 901}} =
@@ -39,6 +40,9 @@ defmodule Aiur.LandingWatch.QuarantinePRTest do
     refute body["body"] =~ "Closes #4786"
     assert body["body"] =~ Enum.at(observations, 0).run_url
     assert body["body"] =~ Enum.at(observations, 1).run_url
+    assert body["body"] =~ "Base-commit paths checked"
+    assert body["body"] =~ "`src/lib/aiur/one.ex`"
+    assert body["body"] =~ "`src/lib/aiur/two.ex`"
 
     # ci gate requires the pr body check, so the generated body must pass it at the commit it opened.
     template = File.read!(Path.expand("../../../../.github/pull_request_template.md", __DIR__))

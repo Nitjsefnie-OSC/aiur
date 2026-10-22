@@ -49,14 +49,23 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
   @doc "Applies the nightly quarantine result to entries past their expiry date."
   @spec lift_expired(keyword()) :: :ok | {:error, term()}
   def lift_expired(opts \\ []) do
-    path = Keyword.get_lazy(opts, :test_quarantine_path, &test_quarantine_path/0)
     today = Keyword.get(opts, :today, Date.utc_today())
 
-    with {:ok, entries} <- TestQuarantine.read(path),
-         {:ok, runs} <- QuarantineNightlyResults.fetch(opts) do
-      entries
-      |> Enum.filter(&(Date.compare(&1.expires, today) != :gt))
-      |> Enum.reduce_while(:ok, &expire_entry_result(&1, &2, runs, opts))
+    with {:ok, contents} <- test_quarantine_contents(opts),
+         {:ok, entries} <- TestQuarantine.parse(contents) do
+      expired = Enum.filter(entries, &(Date.compare(&1.expires, today) != :gt))
+
+      if expired == [] do
+        :ok
+      else
+        process_expired_entries(expired, opts)
+      end
+    end
+  end
+
+  defp process_expired_entries(entries, opts) do
+    with {:ok, runs} <- QuarantineNightlyResults.fetch(opts) do
+      Enum.reduce_while(entries, :ok, &expire_entry_result(&1, &2, runs, opts))
     end
   end
 
@@ -67,16 +76,26 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
     end
   end
 
-  defp test_quarantine_path do
-    root_path = Path.join(File.cwd!(), "src/test/quarantine.txt")
-    if File.exists?(root_path), do: root_path, else: Path.join(File.cwd!(), "test/quarantine.txt")
+  defp test_quarantine_contents(opts) do
+    case Keyword.get(opts, :test_quarantine_contents_fun) do
+      fun when is_function(fun, 1) ->
+        fun.(opts)
+
+      _ ->
+        with {:ok, context} <- context(hd(@list_paths), opts),
+             {:ok, contents, _sha} <- get_contents(context, opts) do
+          {:ok, contents}
+        end
+    end
   end
 
   defp expire_entry(entry, runs, opts) do
-    recent = Enum.take(runs, Keyword.get(opts, :green_runs_required, 3))
+    required = Keyword.get(opts, :green_runs_required, 3)
+    identity = entry.module <> " :: " <> entry.name
+    recent = Enum.take(runs, required) |> Enum.map(&nightly_status(&1, identity, entry))
 
     cond do
-      length(recent) >= Keyword.get(opts, :green_runs_required, 3) and Enum.all?(recent, &(&1 == :success)) ->
+      length(recent) >= required and Enum.all?(recent, &(&1 == :success)) ->
         ticket = String.to_integer(String.trim_leading(entry.ticket, "#"))
         Keyword.get(opts, :quarantine_lift_fun, &lift/2).(ticket, Keyword.put(opts, :lift_reason, "after #{length(recent)} green nightly quarantine runs")) |> normalize_lift_result()
 
@@ -86,6 +105,18 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
       true ->
         :ok
     end
+  end
+
+  defp nightly_status(%{fallback: fallback, failures: failures}, identity, %{name: "*", module: module}) do
+    if Map.has_key?(failures, identity) or module_failure?(failures, module), do: :failure, else: fallback
+  end
+
+  defp nightly_status(%{fallback: fallback, failures: failures}, identity, _entry), do: if(Map.has_key?(failures, identity), do: :failure, else: fallback)
+
+  defp nightly_status(_run, _identity, _entry), do: :unknown
+
+  defp module_failure?(failures, module) do
+    Enum.any?(failures, fn {identity, result} -> result == :failure and String.starts_with?(identity, module <> " :: ") end)
   end
 
   defp normalize_lift_result(:ok), do: :ok
@@ -138,6 +169,7 @@ defmodule Aiur.LandingWatch.QuarantineLifter do
 
     case request(opts).(%{method: method, url: url, token: context.token, caller: "quarantine_expiry_priority"}) do
       {:ok, %{status: status}} when status in [200, 201, 204] -> :ok
+      {:ok, %{status: 404}} when method == :delete -> :ok
       {:ok, response} -> {:error, Errors.github_status_error(response)}
       {:error, _} = error -> error
     end

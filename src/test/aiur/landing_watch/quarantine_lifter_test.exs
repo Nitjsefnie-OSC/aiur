@@ -88,16 +88,15 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
   end
 
   test "expired quarantine lifts after three green nightly runs" do
-    path = Path.join(System.tmp_dir!(), "quarantine-expired-#{System.unique_integer([:positive])}.txt")
-    on_exit(fn -> Aiur.TestCleanup.rm_rf!(path) end)
-    File.write!(path, "Aiur.ExampleTest\tgreen again\t#900\t2026-10-20\n")
     parent = self()
 
     assert :ok =
              QuarantineLifter.lift_expired(
-               test_quarantine_path: path,
+               test_quarantine_contents_fun: fn _ -> {:ok, "Aiur.ExampleTest\tgreen again\t#900\t2026-10-20\n"} end,
                today: ~D[2026-10-21],
-               nightly_quarantine_results_fun: fn _ -> {:ok, [:success, :success, :success]} end,
+               nightly_quarantine_results_fun: fn _ ->
+                 {:ok, List.duplicate(%{fallback: :success, failures: %{}}, 3)}
+               end,
                quarantine_lift_fun: fn ticket, opts ->
                  send(parent, {:lift, ticket, opts[:lift_reason]})
                  :ok
@@ -107,12 +106,81 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
     assert_received {:lift, 900, "after 3 green nightly quarantine runs"}
   end
 
-  test "expired quarantine escalates its ticket when nightly runs still fail" do
-    path = Path.join(System.tmp_dir!(), "quarantine-failing-#{System.unique_integer([:positive])}.txt")
+  test "expired quarantine escalates only the test whose nightly annotations still fail" do
     journal = Path.join(System.tmp_dir!(), "quarantine-failing-journal-#{System.unique_integer([:positive])}.json")
-    on_exit(fn -> Aiur.TestCleanup.rm_rf!(path) end)
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(journal) end)
-    File.write!(path, "Aiur.ExampleTest\tstill failing\t#900\t2026-10-20\n")
+    parent = self()
+
+    request = fn %{method: method, url: url} = call ->
+      send(parent, {:label, method, url, Map.get(call, :body)})
+      status = if method == :delete, do: 404, else: 200
+      {:ok, %{status: status, body: []}}
+    end
+
+    assert :ok =
+             QuarantineLifter.lift_expired(
+               test_quarantine_contents_fun: fn _ ->
+                 {:ok, "Aiur.ExampleTest\tstill failing\t#900\t2026-10-20\nAiur.OtherTest\tgreen\t#901\t2026-10-20\n"}
+               end,
+               today: ~D[2026-10-21],
+               token: "test-gh-token",
+               journal_path: journal,
+               request_fun: request,
+               nightly_quarantine_results_fun: fn _ ->
+                 {:ok, [%{fallback: :success, failures: %{"Aiur.ExampleTest :: still failing" => :failure}}]}
+               end
+             )
+
+    assert_received {:label, :post, "https://api.github.com/repos/test-org/test-repo/issues/900/labels", %{"labels" => ["priority:1"]}}
+    assert_received {:label, :delete, "https://api.github.com/repos/test-org/test-repo/issues/900/labels/priority:2", nil}
+    refute_received {:label, :post, "https://api.github.com/repos/test-org/test-repo/issues/901/labels", _}
+  end
+
+  test "an unexpired quarantine entry does not query nightly results or lift" do
+    parent = self()
+
+    assert :ok =
+             QuarantineLifter.lift_expired(
+               test_quarantine_contents_fun: fn _ -> {:ok, "Aiur.ExampleTest\tstill waiting\t#900\t2026-12-31\n"} end,
+               today: ~D[2026-10-21],
+               nightly_quarantine_results_fun: fn _ ->
+                 send(parent, :nightly_results_requested)
+                 {:ok, []}
+               end,
+               quarantine_lift_fun: fn ticket, _opts ->
+                 send(parent, {:lift, ticket})
+                 :ok
+               end
+             )
+
+    refute_received :nightly_results_requested
+    refute_received {:lift, _}
+  end
+
+  test "expired entries are read from the configured base branch contents API" do
+    parent = self()
+    contents = "Aiur.ExampleTest\twaiting\t#900\t2026-10-20\n"
+
+    request = fn %{url: url} ->
+      send(parent, {:contents_read, url})
+      {:ok, %{status: 200, body: %{"content" => Base.encode64(contents), "sha" => "list-sha", "encoding" => "base64"}}}
+    end
+
+    assert :ok =
+             QuarantineLifter.lift_expired(
+               base_branch: "release",
+               token: "test-gh-token",
+               request_fun: request,
+               today: ~D[2026-10-21],
+               nightly_quarantine_results_fun: fn _ -> {:ok, []} end
+             )
+
+    assert_received {:contents_read, "https://api.github.com/repos/test-org/test-repo/contents/src/test/quarantine.txt?ref=release"}
+  end
+
+  test "two green runs and one failing run do not lift an expired entry" do
+    journal = Path.join(System.tmp_dir!(), "quarantine-two-green-#{System.unique_integer([:positive])}.json")
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(journal) end)
     parent = self()
 
     request = fn %{method: method, url: url} = call ->
@@ -120,18 +188,25 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
       {:ok, %{status: 200, body: []}}
     end
 
+    failure = %{fallback: :success, failures: %{"Aiur.ExampleTest :: still failing" => :failure}}
+    green = %{fallback: :success, failures: %{}}
+
     assert :ok =
              QuarantineLifter.lift_expired(
-               test_quarantine_path: path,
+               test_quarantine_contents_fun: fn _ -> {:ok, "Aiur.ExampleTest\tstill failing\t#900\t2026-10-20\n"} end,
                today: ~D[2026-10-21],
                token: "test-gh-token",
                journal_path: journal,
                request_fun: request,
-               nightly_quarantine_results_fun: fn _ -> {:ok, [:failure]} end
+               nightly_quarantine_results_fun: fn _ -> {:ok, [green, green, failure]} end,
+               quarantine_lift_fun: fn ticket, _opts ->
+                 send(parent, {:lift, ticket})
+                 :ok
+               end
              )
 
     assert_received {:label, :post, "https://api.github.com/repos/test-org/test-repo/issues/900/labels", %{"labels" => ["priority:1"]}}
-    assert_received {:label, :delete, "https://api.github.com/repos/test-org/test-repo/issues/900/labels/priority:2", nil}
+    refute_received {:lift, 900}
   end
 
   test "nightly quarantine results treat a failed step conclusion as failure" do
@@ -148,6 +223,7 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
                "jobs" => [
                  %{
                    "name" => "quarantined tests (non-blocking)",
+                   "check_run_id" => 7,
                    "conclusion" => "success",
                    "steps" => [%{"name" => "Run quarantined tests", "conclusion" => "failure"}]
                  }
@@ -160,11 +236,14 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
       end
     end
 
-    assert {:ok, [:failure]} =
+    assert {:ok, [%{run_id: 7, fallback: :success, failures: %{"Aiur.ExampleTest :: exact failure" => :failure}}]} =
              QuarantineNightlyResults.fetch(
                base_branch: "main",
                token: "test-gh-token",
-               request_fun: request
+               request_fun: request,
+               annotations_fun: fn 7, _ ->
+                 {:ok, [%{"title" => "aiur-test-failure", "message" => "new-failure :: Aiur.ExampleTest :: exact failure"}]}
+               end
              )
   end
 

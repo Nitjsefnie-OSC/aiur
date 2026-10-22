@@ -256,7 +256,10 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     with {:ok, :new} <- Journal.claim_flake(claim, opts),
          {:ok, paths} <- if(rows == [], do: {:ok, []}, else: commit_paths(entry.sha, opts)),
          :ok <- record_main_guards(entry, opts),
-         :ok <- rows |> Enum.map(&Map.put(&1, "touched", QuarantineEvidence.touched?(&1["path"], paths))) |> first_error(&Journal.record_failure_observation(&1, opts)) do
+         :ok <-
+           rows
+           |> Enum.map(&(&1 |> Map.put("touched", QuarantineEvidence.touched?(&1["path"], paths)) |> Map.put("checked_paths", paths)))
+           |> first_error(&Journal.record_failure_observation(&1, opts)) do
       :ok
     else
       {:ok, :already_claimed} -> :ok
@@ -355,7 +358,15 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   end
 
   defp observation(row) do
-    %{identity: row["identity"], pr: row["pr"], run_url: row["run_url"], at_ms: row["at_ms"], path: row["path"], group_prs: row["group_prs"]}
+    %{
+      identity: row["identity"],
+      pr: row["pr"],
+      run_url: row["run_url"],
+      at_ms: row["at_ms"],
+      path: row["path"],
+      group_prs: row["group_prs"],
+      checked_paths: row["checked_paths"] || []
+    }
   end
 
   defp quarantine_with_retry(candidate, ticket, done, rows, observations, base, opts) do
