@@ -16,13 +16,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
 
     try do
       history = Keyword.get(opts, :main_history_fun, &main_history/0).()
-
-      group_opts =
-        opts
-        |> Keyword.put(:changed_paths_cache, cache)
-        |> Keyword.put(:red_on_main, QuarantineEvidence.red_on_main(history))
-        |> MergeGroupQuarantineBlame.put_recent_main_paths(base, opts, Enum.filter(runs, &eligible_run?/1))
-
+      group_opts = opts |> Keyword.put(:changed_paths_cache, cache) |> Keyword.put(:red_on_main, QuarantineEvidence.red_on_main(history))
       group = runs |> Enum.filter(&eligible_run?/1) |> first_error(&claim_and_process_run(&1, base, group_opts))
       main = record_main_failures(history, opts)
       quarantine = quarantine_candidates(history, observations, base, opts)
@@ -97,7 +91,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     with prs when prs != [] <- run_prs(run, base),
          {:ok, at_ms} <- run_time(run),
          {:ok, jobs, found, evidence_complete?} <- JobEvidence.load(run["id"], opts),
-         {:ok, pr_caused?} <- MergeGroupQuarantineBlame.pr_caused_failure?(run, prs, jobs, opts),
+         pr_caused? = MergeGroupQuarantineBlame.pr_caused_failure?(run, prs, jobs, base, cached_paths_opts(opts)),
          :ok <- record_guards(found.guards, run, opts) do
       tests = Enum.filter(found.tests, &is_binary(&1.path))
 
@@ -206,6 +200,11 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
       "excerpt" => failure.excerpt,
       "group_prs" => prs
     }
+  end
+
+  defp cached_paths_opts(opts) do
+    fetch = Keyword.get(opts, :changed_paths_fun, &PullRequests.fetch_pull_request_changed_paths/2)
+    Keyword.put(opts, :changed_paths_fun, fn pr, _ -> cached_changed_paths(pr, fetch, opts) end)
   end
 
   defp cached_changed_paths(pr, changed_paths, opts) do
@@ -369,8 +368,8 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
     else
       case QuarantinePR.already_quarantined?(candidate.identity, opts) do
         {:ok, true} -> Journal.claim_flake(skip_claim, opts) |> claim_result()
-        {:ok, false} -> file_if_eligible(candidate, latest, rows, base, skip_claim, opts)
-        {:error, _} = error -> error
+        # An unreadable list falls back to filing; QuarantinePR.open re-checks it before publishing.
+        _unknown -> file_if_eligible(candidate, latest, rows, base, skip_claim, opts)
       end
     end
   end
