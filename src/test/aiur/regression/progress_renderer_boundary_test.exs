@@ -38,7 +38,6 @@ defmodule Aiur.Regression.ProgressRendererBoundaryTest do
     "aiur/build_order/root_summary.ex",
     "aiur_web/build_order/planning_source.ex",
     "aiur_web/build/now_rows.ex",
-    "aiur_web/build_queue/copy.ex",
     "aiur_web/components/operator_control_center/build_order_grid_model.ex"
   ]
 
@@ -47,7 +46,6 @@ defmodule Aiur.Regression.ProgressRendererBoundaryTest do
     "aiur/build_queue/sources/build_order.ex" => ["ProgressRenderer.json("],
     "aiur/build_order/feature_stats.ex" => ["ProgressRenderer.json("],
     "aiur_web/build/now_rows.ex" => ["ProgressRenderer.json("],
-    "aiur_web/build_queue/copy.ex" => ["ProgressRenderer.html("],
     "aiur/build_orders_cli.ex" => [
       "ProgressRenderer.terminal(",
       "ProgressRenderer.terminal(",
@@ -57,8 +55,6 @@ defmodule Aiur.Regression.ProgressRendererBoundaryTest do
       "ProgressRenderer.json(",
       "ProgressRenderer.json("
     ],
-    "aiur_web/components/operator_control_center/build_order_breakdown.ex" => ["ProgressRenderer.html("],
-    "aiur_web/components/operator_control_center/build_order_catalog.ex" => ["ProgressRenderer.html("],
     "aiur_web/components/operator_control_center/build_order_graph.ex" => ["ProgressRenderer.html("]
   }
 
@@ -96,7 +92,6 @@ defmodule Aiur.Regression.ProgressRendererBoundaryTest do
     "aiur_web/build_order/ticket_context_presenter/normalize.ex",
     "aiur_web/build_order_presenter.ex",
     "aiur_web/build_order_presenter/activity.ex",
-    "aiur_web/components/operator_control_center/build_order_breakdown.ex",
     "aiur_web/components/operator_control_center/run_summary.ex",
     "aiur_web/components/operator_control_center/run_summary_strip.ex",
     "aiur_web/components/operator_control_center/ticket_context.ex",
