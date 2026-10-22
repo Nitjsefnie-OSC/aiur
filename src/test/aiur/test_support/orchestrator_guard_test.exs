@@ -142,12 +142,16 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     src_dir = Path.expand("../../..", __DIR__)
     mix = System.find_executable("mix") || flunk("mix executable not found")
 
-    {output, status} =
-      System.cmd(mix, ["test", "--seed", "0", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
-        cd: src_dir,
-        stderr_to_stdout: true,
-        env: [{"AIUR_RUN_ORCHESTRATOR_GUARD_PROBES", "1"}]
-      )
+    task =
+      Task.async(fn ->
+        System.cmd(mix, ["test", "--seed", "0", "--max-cases", "8", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
+          cd: src_dir,
+          stderr_to_stdout: true,
+          env: [{"AIUR_RUN_ORCHESTRATOR_GUARD_PROBES", "1"}]
+        )
+      end)
+
+    assert {:ok, {output, status}} = Task.yield(task, :infinity)
 
     assert status != 0
     assert output =~ "18 tests, 4 failures"
