@@ -5,9 +5,9 @@ defmodule Aiur.GitHub.PullRequests do
 
   alias Aiur.Codeowners
   alias Aiur.GitHub.{ChangedPaths, Comments, Errors, ResourceFetch, ResourceStore, Transport}
-  alias Aiur.GitHub.ReadCache
   alias Aiur.GitHub.PullRequests.{BaseBranch, OpenPullRequests}
   alias Aiur.GitHub.PullRequests.CommitCiStatus
+  alias Aiur.GitHub.ReadCache
 
   @issue_events_page 100
 

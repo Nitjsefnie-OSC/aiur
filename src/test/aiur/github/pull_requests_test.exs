@@ -2,7 +2,6 @@ defmodule Aiur.GitHub.PullRequestsTest do
   use Aiur.TestSupport
 
   alias Aiur.GitHub.PullRequests
-  alias Aiur.GitHub.ReadCache
 
   @token_cache_key {Aiur.GitHub.Access.Token, :resolved_token}
 

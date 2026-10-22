@@ -265,30 +265,33 @@ defmodule Aiur.Events.GithubFirehose do
     if get_in(event, ["payload", "pull_request", "commit_messages_unavailable"]) == true do
       :not_merge
     else
-      live? = not GithubKeys.pre_boot_event?(event, opts)
-
-      normalize_opts = [
-        live?: live?,
-        run_id: Keyword.get(opts, :run_id, Boot.run_id()),
-        now: Keyword.get(opts, :now, DateTime.utc_now()),
-        repo: Keyword.get(opts, :repo)
-      ]
-
-      case RecentMerge.from_github_event(event, normalize_opts) do
-        :not_merge ->
-          :not_merge
-
-        {:ok, merge} ->
-          if merge.ticket_id && get_in(event, ["payload", "pull_request", "head", "repo", "full_name"]) == merge.repository,
-            do: ProgressStore.record(merge.ticket_id, %{pr_number: merge.number, stage: :pr_merged, source: :merge})
-
-          call_recent_merge_store(merge, opts)
-
-        {:error, reason} ->
-          Logger.warning("GithubFirehose recent merge skipped: #{inspect(reason)}")
-          {:malformed, reason}
-      end
+      event
+      |> RecentMerge.from_github_event(recent_merge_options(event, opts))
+      |> persist_recent_merge_result(event, opts)
     end
+  end
+
+  defp recent_merge_options(event, opts) do
+    [
+      live?: not GithubKeys.pre_boot_event?(event, opts),
+      run_id: Keyword.get(opts, :run_id, Boot.run_id()),
+      now: Keyword.get(opts, :now, DateTime.utc_now()),
+      repo: Keyword.get(opts, :repo)
+    ]
+  end
+
+  defp persist_recent_merge_result(:not_merge, _event, _opts), do: :not_merge
+
+  defp persist_recent_merge_result({:ok, merge}, event, opts) do
+    if merge.ticket_id && get_in(event, ["payload", "pull_request", "head", "repo", "full_name"]) == merge.repository,
+      do: ProgressStore.record(merge.ticket_id, %{pr_number: merge.number, stage: :pr_merged, source: :merge})
+
+    call_recent_merge_store(merge, opts)
+  end
+
+  defp persist_recent_merge_result({:error, reason}, _event, _opts) do
+    Logger.warning("GithubFirehose recent merge skipped: #{inspect(reason)}")
+    {:malformed, reason}
   end
 
   defp call_recent_merge_store(merge, opts) do
@@ -431,21 +434,8 @@ defmodule Aiur.Events.GithubFirehose do
     pr_number = Map.get(pr, "number")
     merged? = merged_pull_request_event?(action, Map.get(pr, "merged"))
 
-    closing_ids = RecentMerge.closing_issue_identifiers_in_body(Map.get(pr, "body"), repo_name)
-    commit_messages = Map.get(pr, "commit_messages", [])
-    commit_closing_ids = Enum.flat_map(commit_messages, &RecentMerge.closing_issue_identifiers_in_body(&1, repo_name))
-    closing_ids = Enum.uniq(closing_ids ++ commit_closing_ids)
-
-    linked_ids =
-      RecentMerge.linked_issue_identifiers(
-        struct(RecentMerge,
-          summary: Map.get(pr, "body"),
-          repository: repo_name,
-          commit_messages: commit_messages
-        )
-      )
-
     branch_id = Aiur.TicketBranch.ticket_id(head_ref)
+    {closing_ids, linked_ids} = pr_issue_links(pr, repo_name)
 
     with false <- merged? and get_in(pr, ["commit_messages_unavailable"]) == true,
          id when is_binary(id) <-
@@ -464,6 +454,26 @@ defmodule Aiur.Events.GithubFirehose do
     else
       _ -> nil
     end
+  end
+
+  defp pr_issue_links(pr, repo_name) do
+    commit_messages = Map.get(pr, "commit_messages", [])
+
+    closing_ids =
+      [Map.get(pr, "body") | commit_messages]
+      |> Enum.flat_map(&RecentMerge.closing_issue_identifiers_in_body(&1, repo_name))
+      |> Enum.uniq()
+
+    linked_ids =
+      RecentMerge.linked_issue_identifiers(
+        struct(RecentMerge,
+          summary: Map.get(pr, "body"),
+          repository: repo_name,
+          commit_messages: commit_messages
+        )
+      )
+
+    {closing_ids, linked_ids}
   end
 
   defp translate(_event, _opts), do: nil
