@@ -3,7 +3,7 @@ defmodule Aiur.AgentRunner.TurnCompletion do
 
   require Logger
   alias Aiur.AgentCompaction.Handoff
-  alias Aiur.AgentRunner.{NoopWait, ReworkHandoff, ReworkHandoffGuard, TurnAlerts, TurnLoop, TurnProgress}
+  alias Aiur.AgentRunner.{NoopWait, ReworkFindings, ReworkHandoff, ReworkHandoffGuard, TurnAlerts, TurnLoop, TurnProgress}
   alias Aiur.{Config, Issue}
   alias Aiur.GitHub.Client, as: GitHubClient
   alias Aiur.Orchestrator.{DispatchPolicy, ReworkGate, TicketTransition}
@@ -159,10 +159,26 @@ defmodule Aiur.AgentRunner.TurnCompletion do
 
     case stopped_agent_handoff(refreshed_issue, workspace, worker_host, opts) do
       {:handoff, state} ->
-        handoff_after_evidence_check(turn_context, refreshed_issue, state, workspace, worker_host, opts)
+        case open_review_findings(refreshed_issue, opts) do
+          [] ->
+            handoff_after_evidence_check(turn_context, refreshed_issue, state, workspace, worker_host, opts)
+
+          findings ->
+            TurnAlerts.emit_rework_findings_open_alert(refreshed_issue, workspace, worker_host, findings)
+            :none
+        end
 
       :none ->
         :none
+    end
+  end
+
+  # #5746: a run stopped by a turn cap must not hand back a review whose findings only `aiur_set_ticket_state` can
+  # verify. An unreadable review keeps the previous handback.
+  defp open_review_findings(issue, opts) do
+    case ReworkFindings.fetch(issue.identifier, opts) do
+      {:ok, %{findings: findings}} -> findings
+      {:error, _reason} -> []
     end
   end
 
