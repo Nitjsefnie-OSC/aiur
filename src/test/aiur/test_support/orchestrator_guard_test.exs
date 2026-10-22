@@ -173,8 +173,9 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
 
     assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down; last finished test: Aiur.YTestSupportStandInProbeTest: test leaves a stand-in holding the name"
 
-    assert output =~
-             "plain ExUnit tests broke Aiur.Orchestrator: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down (down), Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down), Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)"
+    assert output =~ "plain ExUnit tests broke Aiur.Orchestrator: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down (down)"
+    assert output =~ "Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down)"
+    assert output =~ "Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)"
 
     assert output =~
              ~r/plain ExUnit tests left shared runtime children down: .*Aiur.FPlainCasePubSubLeakProbeTest: test leaves the PubSub registry table down \(Aiur.PubSub unregistered\)/
