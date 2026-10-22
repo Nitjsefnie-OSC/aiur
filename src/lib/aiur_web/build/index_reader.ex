@@ -60,7 +60,7 @@ defmodule AiurWeb.Build.IndexReader do
     end
   end
 
-  defp open_todo_ids(%Aiur.OpenTicketSource.Snapshot{status: :available, tickets: tickets}, settings) when is_list(tickets) do
+  defp open_todo_ids(%{status: :available, tickets: tickets}, settings) when is_list(tickets) do
     prefix =
       case settings do
         {:ok, settings} -> settings.tracker.github.label_prefix
