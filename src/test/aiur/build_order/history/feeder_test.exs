@@ -34,8 +34,8 @@ defmodule Aiur.BuildOrder.History.FeederTest do
     start_supervised!({History, name: @store, repository: ctx.full, state_dir: ctx.dir, flush_ms: 60_000})
 
     if complete do
-      History.apply([], ctx.opts ++ [checkpoint: {:backfill, %{"started_at" => DateTime.to_iso8601(@t)}}])
-      History.mark_complete(ctx.opts)
+      assert {:ok, _result} = History.apply([], ctx.opts ++ [checkpoint: {:backfill, %{"started_at" => DateTime.to_iso8601(@t)}}])
+      assert :ok = History.mark_complete(ctx.opts)
     end
   end
 
@@ -124,6 +124,17 @@ defmodule Aiur.BuildOrder.History.FeederTest do
   defp after_feed(fun, _attempts \\ 0) do
     settle()
     assert fun.()
+  end
+
+  defp await_catch_up_processed_down(pid) do
+    state = :sys.get_state(pid)
+
+    if is_nil(state.catch_task) do
+      state
+    else
+      Process.sleep(1)
+      await_catch_up_processed_down(pid)
+    end
   end
 
   test "closed delivery batches issue and labels into one change, duplicates stay quiet", ctx do
@@ -294,12 +305,14 @@ defmodule Aiur.BuildOrder.History.FeederTest do
     )
 
     assert_receive {:catch_up_started, task}, 5_000
+    feeder_pid = Process.whereis(Feeder)
+    assert is_reference(:sys.get_state(feeder_pid).catch_task)
     assert Feeder.catch_up_status().status == :running
-    ref = Process.monitor(task)
     send(task, {:crash_catch_up, self()})
-    Aiur.TestSupport.receive_barrier({:DOWN, ^ref, :process, ^task, :query_crashed})
-    assert Feeder.catch_up_status().status == :failed
-    assert Feeder.catch_up_status().reason == {:task_down, :query_crashed}
+    state = await_catch_up_processed_down(feeder_pid)
+    assert state.catch_task == nil
+    assert state.status.status == :failed
+    assert state.status.reason == {:task_down, :query_crashed}
     stop_supervised!(Feeder)
     assert Feeder.catch_up_status() == {:error, :not_running}
   end
