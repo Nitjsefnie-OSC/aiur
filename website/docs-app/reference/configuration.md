@@ -409,10 +409,10 @@ These policy keys never grant transport access by themselves. The supervisor API
 
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-18 -->
 | --- | --- | --- | --- |
-| `server.host` | string | `127.0.0.1` | HTTP bind address. `0.0.0.0` exposes the dashboard to the LAN; there is no automatic Tailscale detection. |
-| `server.public_url` | string | nil | Public dashboard URL used for generated links and the default Host and WebSocket origin allowlists. Loopback listeners also accept tailnet hosts while they remain loopback-bound. |
 | `server.allowed_hosts` | array | derived | Additional accepted Host names; the public URL host and loopback addresses are always accepted. |
+| `server.host` | string | `127.0.0.1` | HTTP bind address. `0.0.0.0` exposes the dashboard to the LAN; there is no automatic Tailscale detection. |
 | `server.port` | integer | 0 | HTTP port; 0 selects a free OS port. |
+| `server.public_url` | string | nil | Public URL for generated links and Host/origin allowlists; loopback listeners also accept tailnet hosts. |
 | `server.tailscale_funnel` | boolean | false | Reconcile an already-enabled Tailscale Funnel HTTPS route on port 443 to the dashboard's current bound host and port at startup and every 30 seconds. Requires the Tailscale CLI and an existing Funnel route; failures raise a Build Order Funnel alert and retry. |
 
 Unset `server.host` binds `127.0.0.1` (or `AIUR_DEFAULT_DASHBOARD_HOST`); explicit config/`--host` override. `0.0.0.0` exposes LAN. Loopback permits `*.ts.net` Hosts and HTTPS origins while loopback-bound. For Tailscale, build and restart, set `server.public_url` (e.g. `https://<host>.ts.net:4001`), then restart again. `server.allowed_hosts` adds hosts.
