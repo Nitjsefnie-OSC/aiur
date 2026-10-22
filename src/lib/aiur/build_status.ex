@@ -1,5 +1,5 @@
 defmodule Aiur.BuildStatus do
-  @moduledoc """Projects the running release stamp against cached repository merges."""
+  @moduledoc "Projects the running release stamp against cached repository merges."
 
   alias Aiur.RecentMerge
 
@@ -30,7 +30,8 @@ defmodule Aiur.BuildStatus do
 
   @spec render(map()) :: String.t()
   def render(%{sha: sha, age: age, behind: behind, newest_pr: newest_pr}) do
-    behind_text = if is_integer(behind), do: "#{behind} commits behind origin/main", else: "unknown commits behind origin/main"
+    commit_label = if behind == 1, do: "commit", else: "commits"
+    behind_text = if is_integer(behind), do: "#{behind} #{commit_label} behind origin/main", else: "unknown commits behind origin/main"
     pr_text = if is_integer(newest_pr), do: " (##{newest_pr})", else: ""
     "BUILD #{sha} built #{age} ago · #{behind_text}#{pr_text}"
   end
@@ -68,10 +69,13 @@ defmodule Aiur.BuildStatus do
     :exit, _ -> :unknown
   end
 
-  defp behind_count(sha, [%RecentMerge{} | _] = merges) when is_binary(sha) do
-    commits = Enum.map(merges, & &1.merge_commit_sha)
+  defp behind_count(sha, merges) when is_binary(sha) and is_list(merges) do
+    normalized_sha = String.downcase(sha)
+    commits = Enum.map(merges, &merge_commit_sha/1)
 
-    case Enum.find_index(commits, &(&1 == sha)) do
+    found = Enum.find_index(commits, fn commit_sha -> matches_sha?(commit_sha, normalized_sha) end)
+
+    case found do
       nil -> %{count: nil, newest_pr: nil}
       index when index > 0 -> %{count: index, newest_pr: merged_pr_number(hd(merges))}
       _found -> %{count: 0, newest_pr: nil}
@@ -80,12 +84,26 @@ defmodule Aiur.BuildStatus do
 
   defp behind_count(_sha, _merges), do: %{count: nil, newest_pr: nil}
 
+  defp merge_commit_sha(%RecentMerge{merge_commit_sha: sha}), do: sha
+  defp merge_commit_sha(merge) when is_map(merge), do: Map.get(merge, :merge_commit_sha) || Map.get(merge, "merge_commit_sha")
+  defp merge_commit_sha(_merge), do: nil
+
+  defp matches_sha?(commit_sha, sha) when is_binary(commit_sha), do: String.downcase(commit_sha) == sha
+  defp matches_sha?(_commit_sha, _sha), do: false
+
   defp merged_pr_number(%RecentMerge{number: number}), do: number
-  defp merged_pr_number(%{number: number}) when is_integer(number), do: number
+
+  defp merged_pr_number(merge) when is_map(merge) do
+    case Map.get(merge, :number) || Map.get(merge, "number") do
+      number when is_integer(number) -> number
+      _ -> nil
+    end
+  end
+
   defp merged_pr_number(_), do: nil
 
   defp valid_sha(sha) when is_binary(sha) do
-    if Regex.match?(~r/\A[0-9a-fA-F]{7,40}\z/, sha), do: String.downcase(sha), else: nil
+    if sha != "" and Regex.match?(~r/\A[0-9a-fA-F]+\z/, sha), do: String.downcase(sha), else: nil
   end
 
   defp valid_sha(_), do: nil
