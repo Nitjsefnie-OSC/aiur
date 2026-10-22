@@ -33,8 +33,9 @@ defmodule Aiur.TestSupport.LifecycleLeakGuardSuiteTest do
     end
 
     LifecycleLeakGuard.finish(test_pid)
+    monitor = Process.monitor(worker)
     send(worker, :emit_late_log)
-    Process.sleep(25)
+    assert_receive {:DOWN, ^monitor, :process, ^worker, :killed}, 1_000
 
     assert_raise RuntimeError, ~r/lifecycle event late log/, fn -> LifecycleLeakGuard.check!() end
   end

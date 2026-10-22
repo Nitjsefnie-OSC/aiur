@@ -51,7 +51,13 @@ defmodule Aiur.TestSupport.LifecycleLeakGuardTest do
     previous_mode = System.get_env("AIUR_LIFECYCLE_LEAK_GUARD_MODE")
     System.put_env("AIUR_LIFECYCLE_LEAK_GUARD_MODE", "fail")
 
-    {:ok, runner} = Task.Supervisor.start_child(Aiur.TaskSupervisor, fn -> Process.sleep(:infinity) end)
+    {:ok, runner} =
+      Task.Supervisor.start_child(Aiur.TaskSupervisor, fn ->
+        receive do
+          :stop -> :ok
+        end
+      end)
+
     Process.put(":$initial_call", {Aiur.Orchestrator.Dispatcher.Launch, :"-start_runner_task/5-fun-0-", 0})
 
     on_exit(fn ->
@@ -66,7 +72,14 @@ defmodule Aiur.TestSupport.LifecycleLeakGuardTest do
 
   test "runner stopped by on_exit is not reported" do
     owner = self()
-    {:ok, runner} = Task.Supervisor.start_child(Aiur.TaskSupervisor, fn -> Process.sleep(:infinity) end)
+
+    {:ok, runner} =
+      Task.Supervisor.start_child(Aiur.TaskSupervisor, fn ->
+        receive do
+          :stop -> :ok
+        end
+      end)
+
     on_exit(fn -> Task.Supervisor.terminate_child(Aiur.TaskSupervisor, runner) end)
     refute Enum.any?(LifecycleLeakGuard.live_owned_processes(owner), &(elem(&1, 0) == runner))
   end
