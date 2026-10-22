@@ -76,11 +76,18 @@ defmodule AiurWeb.DashboardLive.UnitsPanel do
 
     socket
     |> assign(:units_view, view)
-    |> assign(:build_status, Aiur.BuildStatus.current())
     |> assign(:units_announcement, UnitsPresenter.announcement(view))
     |> assign(:units_count_label, units_count_label(view))
     |> assign(:tickets_view, tickets_view)
     |> assign_tickets_panel_view()
+  end
+
+  @doc false
+  @spec assign_units_header(map()) :: map()
+  def assign_units_header(assigns) do
+    assigns
+    |> Map.put_new(:units_count_label, units_count_label(assigns.units_view))
+    |> Map.put_new(:build_status, Aiur.BuildStatus.current())
   end
 
   # The unfiltered projection stays in `tickets_view` and the panel renders the

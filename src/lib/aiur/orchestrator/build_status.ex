@@ -9,12 +9,19 @@ defmodule Aiur.BuildStatus do
     stamp = read_stamp(release_dir)
     merges = Keyword.get_lazy(opts, :merges, &cached_merges/0)
     now = Keyword.get(opts, :now, DateTime.utc_now())
-    present(stamp, merges, now)
+    base_branch = Keyword.get_lazy(opts, :base_branch, &Aiur.Config.base_branch/0)
+    present(stamp, merges, now, base_branch)
   end
 
   @doc false
   @spec present(map(), term(), DateTime.t()) :: map()
   def present(stamp, merges, %DateTime{} = now) do
+    present(stamp, merges, now, Aiur.Config.base_branch())
+  end
+
+  @doc false
+  @spec present(map(), term(), DateTime.t(), String.t()) :: map()
+  def present(stamp, merges, %DateTime{} = now, base_branch) when is_binary(base_branch) do
     sha = valid_sha(Map.get(stamp, :source_sha))
     built_at = parse_built_at(Map.get(stamp, :built_at))
     behind = behind_count(sha, merges)
@@ -23,15 +30,16 @@ defmodule Aiur.BuildStatus do
       sha: if(sha, do: String.slice(sha, 0, 12), else: "unknown"),
       built_at: built_at,
       age: if(built_at, do: age_label(DateTime.diff(now, built_at, :second)), else: "unknown"),
+      base_branch: base_branch,
       behind: behind.count,
       newest_pr: behind.newest_pr
     }
   end
 
   @spec render(map()) :: String.t()
-  def render(%{sha: sha, age: age, behind: behind, newest_pr: newest_pr}) do
+  def render(%{sha: sha, age: age, base_branch: base_branch, behind: behind, newest_pr: newest_pr}) do
     commit_label = if behind == 1, do: "commit", else: "commits"
-    behind_text = if is_integer(behind), do: "#{behind} #{commit_label} behind origin/main", else: "unknown commits behind origin/main"
+    behind_text = if is_integer(behind), do: "#{behind} #{commit_label} behind origin/#{base_branch}", else: "unknown commits behind origin/#{base_branch}"
     pr_text = if is_integer(newest_pr), do: " (##{newest_pr})", else: ""
     "BUILD #{sha} built #{age} ago · #{behind_text}#{pr_text}"
   end
@@ -59,10 +67,7 @@ defmodule Aiur.BuildStatus do
   end
 
   defp cached_merges do
-    case Aiur.RecentMergeStore.snapshot() do
-      %{merges: merges} when is_list(merges) -> merges
-      _ -> :unknown
-    end
+    Aiur.RecentMergeStore.snapshot().merges
   rescue
     _ -> :unknown
   catch
