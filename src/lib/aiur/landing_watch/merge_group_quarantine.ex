@@ -8,6 +8,8 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
   alias Aiur.MainWatch
   alias Aiur.TestQuarantine.Detector
 
+  require Logger
+
   @window_ms 24 * 60 * 60 * 1_000
 
   @spec process_completed([map()], [map()], String.t(), keyword()) :: :ok | {:error, term()}
@@ -367,9 +369,13 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantine do
       :ok
     else
       case QuarantinePR.already_quarantined?(candidate.identity, opts) do
-        {:ok, true} -> Journal.claim_flake(skip_claim, opts) |> claim_result()
+        {:ok, true} ->
+          Journal.claim_flake(skip_claim, opts) |> claim_result()
+
         # An unreadable list falls back to filing; QuarantinePR.open re-checks it before publishing.
-        _unknown -> file_if_eligible(candidate, latest, rows, base, skip_claim, opts)
+        unknown ->
+          Logger.warning("quarantine list unreadable; filing without dedupe identity=#{candidate.identity} reason=#{inspect(unknown)}")
+          file_if_eligible(candidate, latest, rows, base, skip_claim, opts)
       end
     end
   end

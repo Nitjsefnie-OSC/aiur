@@ -3,7 +3,9 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineEvidenceTest do
   use ExUnit.Case, async: true
 
   alias Aiur.CI.FailureDigest
-  alias Aiur.LandingWatch.{MergeGroupFailureProcessor, MergeGroupQuarantine}
+  import ExUnit.CaptureLog
+
+  alias Aiur.LandingWatch.{Journal, MergeGroupFailureProcessor, MergeGroupQuarantine}
 
   @reaper "Aiur.Claude.Repl.ReaperTest :: stop_session/1 reports cleanup unknown while the process group remains alive"
   @reaper_path "src/test/aiur/claude/repl/reaper_test.exs"
@@ -324,6 +326,28 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineEvidenceTest do
     assert :ok = MergeGroupQuarantine.process_completed(runs, [pr], "main", Keyword.put(opts, :quarantine_now_ms, System.system_time(:millisecond) + 61_000))
     assert_received {:enqueue, "PR_4995"}
     refute_received {:quarantine_pr, _, _}
+  end
+
+  test "a group flake already in the quarantine list records a skip and files nothing", %{journal: journal} do
+    [module, name] = String.split(@reaper, " :: ", parts: 2)
+    opts = journal |> opts(self()) |> Keyword.put(:quarantine_list_fun, fn -> {:ok, "# header\n#{module}\t#{name}\t#5620\n"} end)
+    runs = [group_run(39_136_853_814, "pr-4995-aaa", 30), group_run(39_139_000_001, "pr-5108-bbb", 10)]
+
+    assert :ok = MergeGroupQuarantine.process_completed(runs, [], "main", opts)
+    refute_received {:flake_ticket, _, _}
+    refute_received {:quarantine_pr, _, _}
+    assert {:ok, %{"flakes" => flakes}} = Journal.state(journal_path: journal)
+    assert Map.has_key?(flakes, "quarantine-skip :: #{@reaper} :: https://github.com/test-org/test-repo/actions/runs/39139000001")
+  end
+
+  test "an unreadable blame log is logged and leaves the group flake on the filing path", %{journal: journal} do
+    opts = journal |> opts(self()) |> Keyword.put(:job_log_fun, fn _, _ -> {:error, :log_unavailable} end)
+    runs = [group_run(39_136_853_814, "pr-4995-aaa", 30), group_run(39_139_000_001, "pr-5108-bbb", 10)]
+
+    log = capture_log(fn -> assert :ok = MergeGroupQuarantine.process_completed(runs, [], "main", opts) end)
+    assert log =~ "merge-group blame unavailable"
+    assert_received {:flake_ticket, @reaper, _}
+    assert_received {:quarantine_pr, 5200, %{identity: @reaper}}
   end
 
   defp red_entry(minutes_ago) do

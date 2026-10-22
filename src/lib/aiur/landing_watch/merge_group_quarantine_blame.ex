@@ -1,6 +1,8 @@
 defmodule Aiur.LandingWatch.MergeGroupQuarantineBlame do
   @moduledoc false
 
+  require Logger
+
   alias Aiur.LandingWatch.{MergeFailureClassifier, MergeFailureOptions, MergeGroupFailureEvidence, QuarantineEvidence}
 
   # Blame is advisory: when its evidence cannot be read, the failure takes the ordinary flake path.
@@ -9,8 +11,15 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineBlame do
     options = MergeFailureOptions.build(run, prs, jobs, opts, &MergeGroupFailureEvidence.job_log/2)
 
     case MergeFailureClassifier.classify(run, jobs, [], options) do
-      {:ok, {:pr_caused, %{log: log}}} -> blamed_test_path?(log, prs, base, options)
-      _ -> false
+      {:ok, {:pr_caused, %{log: log}}} ->
+        blamed_test_path?(log, prs, base, options)
+
+      {:ok, _} ->
+        false
+
+      {:error, reason} ->
+        Logger.warning("merge-group blame unavailable; treating failure as unblamed run=#{run["id"]} reason=#{inspect(reason)}")
+        false
     end
   end
 
