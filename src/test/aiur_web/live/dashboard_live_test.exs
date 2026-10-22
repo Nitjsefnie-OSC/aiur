@@ -5107,6 +5107,8 @@ defmodule AiurWeb.DashboardLiveTest do
     # The same title/count pair the APIs and Models panels use.
     assert html =~ ~s(<span class="rs-group-title" id="units-title">Units</span>)
     assert html =~ ~s(<span class="rs-group-count">1 unit</span>)
+    assert html =~ ~s(id="build-status")
+    assert html =~ "BUILD unknown built unknown ago · unknown commits behind origin/main"
 
     [_before, after_header] = String.split(html, "units-title", parts: 2)
     assert after_header =~ "units-filter-list"

@@ -90,6 +90,7 @@ defmodule AiurWeb.DashboardLive.UnitsPanel do
 
     socket
     |> assign(:units_view, view)
+    |> assign(:build_status, Aiur.BuildStatus.current())
     |> assign(:units_announcement, UnitsPresenter.announcement(view))
     |> assign(:units_count_label, units_count_label(view))
     |> assign(:tickets_view, tickets_view)

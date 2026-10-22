@@ -96,6 +96,7 @@ defmodule Aiur.Orchestrator.StatusCLI do
   end
 
   defp print_status_report(statuses, snapshot, opts) do
+    IO.puts(Aiur.BuildStatus.current() |> Aiur.BuildStatus.render())
     Diagnostics.print_executor_listener_status()
     ExecutorAttention.CLI.print_wake_status()
     Commands.print_projection_status()
