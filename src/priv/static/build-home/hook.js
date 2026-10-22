@@ -21,6 +21,7 @@ import './states.js';
 import './list.js';
 import './modal/frame.js';
 import './modal/conversation.js';
+import './modal/composer.js';
 import './modal/command.js';
 
 export function writeOwnData() {
@@ -104,6 +105,7 @@ export function createBuildHomeHook() {
       fx.renderTools(); fx.initModal();
       writeOwnData();
       this.handleEvent('build-conversation', msg => fx.receiveConversation(msg));
+      this.handleEvent('send-status', msg => fx.sendStatus(msg));
       this.handleEvent('modal:command', msg => fx.renderCommand(msg));
       this.handleEvent('build-diff', receive); this.handleEvent('build:url', onServerURL);
       showServerState(this.el.dataset); resync();

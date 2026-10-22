@@ -44,7 +44,8 @@ function place(error) {
   if (!card || !main) { old?.remove(); return null; }
   const el = cardEl(card, error);
   if (old) old.replaceWith(el);
-  else { const form = main.querySelector('form#cv-in'); if (form) form.before(el); else main.append(el); }
+  // Before the footer slot: the composer inserts its form right after that slot, so the card stays above it.
+  else { const slot = main.querySelector('#cv-footer'); if (slot) slot.before(el); else main.append(el); }
   return el;
 }
 export function renderCommand(msg) {
