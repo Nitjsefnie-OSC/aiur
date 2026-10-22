@@ -2,6 +2,7 @@ defmodule Aiur.GitHub.LabelsTest do
   use ExUnit.Case, async: true
 
   alias Aiur.GitHub.Labels
+  alias Aiur.Orchestrator.ControlLifecycle.Restore
 
   describe "label_set/2" do
     test "claude+codex covers state, both model families, and complexity" do
@@ -85,7 +86,7 @@ defmodule Aiur.GitHub.LabelsTest do
       }
 
       unlabelled =
-        Enum.reject(Aiur.Orchestrator.ControlLifecycle.Restore.pause_reasons(), fn reason ->
+        Enum.reject(Restore.pause_reasons(), fn reason ->
           Labels.runtime_reason_modifier(reason) != nil or Map.has_key?(shown_by_existing_label, reason)
         end)
 
