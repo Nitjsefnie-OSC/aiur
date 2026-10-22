@@ -51,7 +51,7 @@ test('browser shards have bounded timeouts and home matrix keeps an independent 
   assert.equal(browser.steps[2].uses, './.github/actions/browser-smoke')
   assert.equal(browser.steps[2].with.shard, '${{ matrix.shard }}')
   assert.equal(browser.name, 'browser smoke (${{ matrix.shard }}/' + shardIds.length + ')')
-  assert.equal(browser['timeout-minutes'], 23)
+  assert.equal(browser['timeout-minutes'], 24)
   assert.equal(browser['timeout-minutes'] * 60_000 - budgetMs, 2 * 60_000, 'the runner reports slow suites before the job deadline')
   assert.equal(browser.strategy['fail-fast'], false)
   assert.deepEqual(browser.strategy.matrix.shard, shardIds)
@@ -60,7 +60,7 @@ test('browser shards have bounded timeouts and home matrix keeps an independent 
     { shard: 2, visual_regression: 'first' },
     { shard: 5, visual_regression: 'second' },
     ...Object.entries(shards).filter(([id, commands]) => Number(id) !== 1 &&
-      commands.some(command => ['test:build-home-usage', 'test:build-home-edges-parity', 'test:build-home-gantt'].includes(command)))
+      commands.some(command => ['test:build-home-usage', 'test:build-home-edges-parity', 'test:build-home-gantt', 'test:build-home-chains'].includes(command)))
       .map(([id]) => ({ shard: Number(id), upload_evidence: true })),
   ])
   assert.equal(browser.steps[2].with.visual_regression, "${{ matrix.visual_regression || 'none' }}")
@@ -114,7 +114,7 @@ test('browser shards execute every core suite exactly once', () => {
     assert.deepEqual(selected, expected)
     assert.equal(selected.length, new Set(selected).size, 'each core suite runs exactly once across shards')
     const runner = readFileSync(fileURLToPath(new URL('./run-browser-smoke-shard.mjs', import.meta.url)), 'utf8')
-    assert.match(runner, /export const budgetMs = 21 \* 60_000/)
+    assert.match(runner, /export const budgetMs = 22 \* 60_000/)
     assert.match(runner, /slowest completed suites/)
   } finally { rmSync(scratch, { recursive: true, force: true }) }
 })
