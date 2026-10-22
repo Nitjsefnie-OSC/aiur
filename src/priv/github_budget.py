@@ -89,9 +89,9 @@ def connection(path):
     # the rollback journal a reader blocks a writer and a writer blocks every
     # reader, so admission latency grows with fleet size for no reason.
     #
-    # A journal conversion must not consume the full request deadline.
-    # for. Failing instantly is the correct answer: the journal mode is a
-    # throughput preference, and a database already open elsewhere either is
+    # Attempted with no busy timeout: a journal conversion must not consume
+    # the full request deadline. Failing instantly is the correct answer: the
+    # journal mode is a throughput preference, and a database already open elsewhere either is
     # already in WAL or will be converted by whoever opens it uncontended.
     try:
         conn.execute("PRAGMA journal_mode = WAL")

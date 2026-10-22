@@ -134,6 +134,7 @@ def start_checkpoint_worker():
     CHECKPOINT_ACTIVE = threading.Event()
 
     def run():
+        global LAST_OBSERVED_WAL_FRAMES, LAST_SUCCESSFUL_CHECKPOINT_NS
         while True:
             db = CHECKPOINT_REQUESTS.get()
             CHECKPOINT_ACTIVE.set()
@@ -150,7 +151,6 @@ def start_checkpoint_worker():
                     "sqlite_wal_frames": frames,
                     "sqlite_checkpointed_frames": checkpointed,
                 }
-                global LAST_OBSERVED_WAL_FRAMES
                 LAST_OBSERVED_WAL_FRAMES = frames
                 if busy == 0 and checkpointed >= frames:
                     LAST_SUCCESSFUL_CHECKPOINT_NS = time.monotonic_ns()

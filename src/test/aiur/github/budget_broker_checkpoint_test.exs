@@ -120,4 +120,33 @@ defmodule Aiur.GitHub.BudgetBrokerCheckpointTest do
     assert {output, 0} = System.cmd("python3", ["-c", script, metrics, db], stderr_to_stdout: true)
     assert output == ""
   end
+
+  test "a successful worker checkpoint refreshes the checkpoint age" do
+    root = Aiur.TestSupport.tmp_root!("budget-broker-checkpoint-worker")
+    File.mkdir_p!(root)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
+
+    script = """
+    import importlib.util, sqlite3, sys, time
+    spec = importlib.util.spec_from_file_location("metrics", sys.argv[1])
+    metrics = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(metrics)
+    db = sys.argv[2]
+    conn = sqlite3.connect(db, isolation_level=None)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("CREATE TABLE values_table(value)")
+    metrics.start_checkpoint_worker()
+    metrics.schedule_checkpoint(db)
+    deadline = time.monotonic() + 5
+    while metrics.take_checkpoint_result(db) is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert metrics.LAST_SUCCESSFUL_CHECKPOINT_NS is not None
+    conn.close()
+    """
+
+    metrics = Path.expand("../../../priv/github_budget_metrics.py", __DIR__)
+    db = Path.join(root, "worker.sqlite3")
+    assert {output, 0} = System.cmd("python3", ["-c", script, metrics, db], stderr_to_stdout: true)
+    assert output == ""
+  end
 end
