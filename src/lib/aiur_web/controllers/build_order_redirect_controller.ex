@@ -3,7 +3,7 @@ defmodule AiurWeb.BuildOrderRedirectController do
   use Phoenix.Controller, formats: []
 
   alias Aiur.Bounded
-  alias Aiur.BuildOrder.Features.RootImportMapping
+  alias Aiur.BuildOrder.Features
   alias AiurWeb.Build.URLState
   alias Plug.Conn
 
@@ -16,7 +16,7 @@ defmodule AiurWeb.BuildOrderRedirectController do
   @spec root(Conn.t(), map()) :: Conn.t()
   def root(conn, %{"root_number" => raw}) do
     case Bounded.github_issue_identifier(raw) do
-      {:ok, id} -> moved(conn, id |> String.to_integer() |> RootImportMapping.slug())
+      {:ok, id} -> moved(conn, id |> String.to_integer() |> Features.root_slug())
       :error -> moved(conn, nil)
     end
   end
