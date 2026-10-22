@@ -9,4 +9,3 @@ Aiur.MainWatch.FixerTest	*	#5605
 Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads open decisions without calling the per-ticket store	#4463
 Aiur.PerClassCadenceTest	*	#5605
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
-AiurWeb.ZeroFetchPageOpenTest	*	#5605
