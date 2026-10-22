@@ -4,7 +4,6 @@ Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	*	#5674
 Aiur.Core.AgentRunnerCheckpointQueueTest	*	#4463
 Aiur.DecisionStore.EnrichmentTest	supervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification	#4463
 Aiur.Experiments.AnalystLoopTest	analyst loop: events, pre-registration, report and rejection paths	#5742
-Aiur.GitHub.Budget.BrokerFailuresTest	a first attempt cut off by the admission deadline stays a broker timeout	#5647
 Aiur.GitHub.MonotonicDepositTest	*	#5605
 Aiur.LandingWatch.MainRecoveryRerunTest	*	#5605
 Aiur.LandingWatch.MergeGroupFailureRequeueTest	the fifth group requeue in fifteen minutes is not enqueued	#5633
