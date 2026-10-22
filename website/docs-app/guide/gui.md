@@ -32,6 +32,16 @@ entries; scroll to the top to load earlier ones. A missing past transcript reads
 “Conversation not retained”. Remote workers show only their retained live window;
 stale or unavailable live state is labeled separately from the transcript.
 
+## Build timeline keyboard
+
+The board is one Tab stop: Tab from the toolbar lands on the first card in view.
+Arrow keys move to the next or previous card in reading order (history, live,
+planned, not queued); Home and End go to the first and last loaded card. Enter
+or Space opens the card; Escape closes the ticket. With `?trees=1`, Space locks
+or unlocks the card's dependency chain instead. Each card's name reads its
+number, title, state, progress, complexity and dependency counts, and agent
+state changes are announced once, politely.
+
 ## Build timeline freshness
 
 The build timeline at `/` labels daemon state separately from socket reachability. An offline or stale snapshot shows its last heartbeat age and local time; a missing heartbeat reads “no heartbeat recorded”. Socket loss lasting at least 500 ms shows “Daemon unreachable” and stops the live glows.
