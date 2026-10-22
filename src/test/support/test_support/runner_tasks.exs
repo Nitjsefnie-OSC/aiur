@@ -11,7 +11,11 @@ defmodule Aiur.TestSupport.RunnerTasks do
 
   @doc "Returns the agent runner tasks alive now."
   @spec capture() :: MapSet.t(pid())
-  def capture, do: MapSet.new(runner_tasks())
+  def capture, do: capture(Aiur.TaskSupervisor)
+
+  @doc false
+  @spec capture(GenServer.server()) :: MapSet.t(pid())
+  def capture(supervisor), do: MapSet.new(runner_tasks(supervisor))
 
   @doc "Stops every agent runner task started since `capture/0` returned `before`."
   @spec stop_started_since(MapSet.t(pid())) :: :ok
@@ -43,8 +47,8 @@ defmodule Aiur.TestSupport.RunnerTasks do
     Aiur.TestCleanup.rm_rf!(root)
   end
 
-  defp runner_tasks do
-    Enum.filter(Task.Supervisor.children(Aiur.TaskSupervisor), &runner_task?/1)
+  defp runner_tasks(supervisor \\ Aiur.TaskSupervisor) do
+    Enum.filter(Task.Supervisor.children(supervisor), &runner_task?/1)
   catch
     # Absent, or shut down by a :rest_for_one restart while we asked (#5581): its tasks exited with it.
     :exit, _reason -> []
