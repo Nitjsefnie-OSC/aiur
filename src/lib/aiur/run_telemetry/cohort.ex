@@ -13,8 +13,25 @@ defmodule Aiur.RunTelemetry.Cohort do
   defp feature_work?(labels), do: "build-order" in labels or Enum.any?(labels, &(String.starts_with?(&1, "build-lane:") or String.starts_with?(&1, "feature:")))
 
   defp test_ci_work?(labels, title) do
-    fix_label = Aiur.Config.base_branch() <> "-fix"
-    Enum.any?(labels, &(contains_any?(String.downcase(&1), ["flake", "test"]) or String.starts_with?(&1, fix_label))) or title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i)
+    title_matches?(title, ~r/\b(test|flake|ci|quarantine)\b/i) or Enum.any?(labels, &test_ci_label?/1)
+  end
+
+  defp test_ci_label?(label) do
+    normalized = String.downcase(label)
+    contains_any?(normalized, ["flake", "test"]) or base_fix_label?(normalized)
+  end
+
+  defp base_fix_label?(label) do
+    if String.ends_with?(label, "-fix") do
+      with {:ok, %{tracker: %{base_branch: branch}}} <- Aiur.Config.settings(),
+           true <- is_binary(branch) do
+        String.starts_with?(label, String.downcase(branch) <> "-fix")
+      else
+        _ -> false
+      end
+    else
+      false
+    end
   end
 
   defp tooling_work?(labels, title) do
