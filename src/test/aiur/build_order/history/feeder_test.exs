@@ -135,8 +135,10 @@ defmodule Aiur.BuildOrder.History.FeederTest do
       assert System.monotonic_time(:millisecond) < deadline,
              "feeder did not process catch-up task DOWN before the deadline"
 
-      Process.sleep(1)
-      await_catch_up_processed_down(pid, deadline)
+      receive do
+      after
+        1 -> await_catch_up_processed_down(pid, deadline)
+      end
     end
   end
 
