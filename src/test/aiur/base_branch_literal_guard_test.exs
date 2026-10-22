@@ -52,6 +52,7 @@ defmodule Aiur.BaseBranchLiteralGuardTest do
       ~S|IO.puts("MERGE POLICY ci=#{policy.ci} local_tests=#{policy.local_tests}#{labels} main_watch=#{watch} watcher=#{state.watcher}#{watch_error} landing_watcher=#{landing.watcher}#{main}")|,
       ~S|"main=unavailable last_known=" <> String.replace_prefix(main_state(Map.delete(state, :unavailable), now_ms), "main=", "")|,
       ~S|"main=red" <> observation(state, now_ms) <> since <> fixer|,
+      ~S|def main_state(%{status: :green} = state, now_ms), do: "main=green" <> event_source(state) <> observation(state, now_ms)|,
       ~S|def main_state(%{status: :green} = state, now_ms), do: "main=green" <> observation(state, now_ms)|,
       ~S|def main_state(_state, _now_ms), do: "main=unknown"|
     ]
