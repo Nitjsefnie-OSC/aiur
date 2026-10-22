@@ -29,6 +29,8 @@ export const recordedSeconds = {
   // CI run39148293958 (d9ee8e071), job117736821220: actual suite wall seconds.
   'test:build-home-now-band': 44.7,
   'test:browser-suite -- build-home-live-button-parity': 52.7,
+  // #3168 local idle run (no CI shard log yet; pre-handoff blocks shards): 7 cases, 99s wall incl. fixture boot.
+  'test:browser-suite -- build-home-command': 99,
   // Conservative CI-measured full-selection bounds from review5564161995 (#5124).
   // Routine commands select fewer cells; these are NOT routine measurements.
   // Refresh with routine suite-duration logs after the first new-head CI run.
