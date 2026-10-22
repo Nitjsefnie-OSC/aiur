@@ -117,12 +117,23 @@ defmodule Aiur.GitHub.Access.Token do
   defp nonblank_token?(_value), do: false
 
   @spec app_account() :: String.t() | nil
-  def app_account, do: normalize_account(Settings.current().app_account)
+  def app_account do
+    settings = Settings.current()
+    ensure_valid_config!(settings)
+    normalize_account(settings.app_account)
+  end
 
   @spec daemon_account() :: String.t() | nil
   def daemon_account do
     settings = Settings.current()
+    ensure_valid_config!(settings)
     normalize_account(settings.app_account) || normalize_account(settings.bot_account)
+  end
+
+  defp ensure_valid_config!(%{config_error: nil}), do: :ok
+
+  defp ensure_valid_config!(%{config_error: reason}) do
+    raise ArgumentError, message: "invalid GitHub config: #{inspect(reason)}"
   end
 
   @spec app_identity_issue() :: nil | :bot_account_missing | {:bot_account_not_app_bot, String.t()}

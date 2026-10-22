@@ -13,7 +13,10 @@ assert_raise ArgumentError, fn ->
   Aiur.GitHub.EventSourcePolicy.self_authored?("ticket.1.comment", "daemon[bot]", %{})
 end
 
-assert_raise ArgumentError, fn -> Aiur.GitHub.AccessSettings.settings() end
+assert %Aiur.GitHub.Access.Settings{config_error: reason} = Aiur.GitHub.AccessSettings.settings()
+refute is_nil(reason)
+assert_raise ArgumentError, ~r/invalid GitHub config/, fn -> Aiur.GitHub.Access.Token.app_account() end
+assert_raise ArgumentError, ~r/invalid GitHub config/, fn -> Aiur.GitHub.Access.Token.daemon_account() end
 Application.put_env(:aiur, :github_access_settings_provider, StaticSettings)
 Application.put_env(:aiur, :github_access_settings, Settings.new(root, repo: "o/r", budget: %{stagger_ms: 0}))
 # Poison the domain paths: a forgotten Config.Paths read must fail the path assertion.

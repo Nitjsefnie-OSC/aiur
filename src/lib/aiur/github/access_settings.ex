@@ -12,14 +12,14 @@ defmodule Aiur.GitHub.AccessSettings do
 
   @impl true
   def settings do
-    config =
+    {config, config_error} =
       case Config.settings() do
-        {:ok, settings} -> settings
-        {:error, reason} -> raise ArgumentError, message: "invalid GitHub config: #{inspect(reason)}"
+        {:ok, settings} -> {settings, nil}
+        {:error, reason} -> {nil, reason}
       end
 
-    github = config.tracker.github
-    repo = GitHubConfig.repo(config)
+    github = if config, do: config.tracker.github, else: %{}
+    repo = if config, do: GitHubConfig.repo(config)
 
     %Settings{
       state_root: &decision_root/0,
@@ -27,18 +27,19 @@ defmodule Aiur.GitHub.AccessSettings do
       budget_enabled?: Application.get_env(:aiur, :github_budget_enabled?, true),
       budget: if(is_struct(github), do: plain(github), else: %{}),
       repo: repo,
+      config_error: config_error,
       app_account: get_in(plain(github), [:github_app, :account]),
       bot_account: Map.get(github, :bot_account),
       credentials: github |> Map.get(:credentials, []) |> Enum.reject(&(&1.enabled == false)) |> Enum.map(&credential/1),
       quota_dir: fn -> quota_dir(repo) end,
       request_log_dir: fn -> request_log_dir(repo) end,
       resource_store_path: &resource_store_path/0,
-      probe_dir: &probe_dir/0,
+      probe_dir: if(config_error, do: nil, else: &probe_dir/0),
       cache: %{
         ttls: Application.get_env(:aiur, :github_read_cache_ttls, %{}),
         max_body_bytes: Application.get_env(:aiur, :github_resource_store_max_body_bytes)
       },
-      broker_timeout: broker_timeout(config)
+      broker_timeout: if(config, do: broker_timeout(config), else: broker_timeout(nil))
     }
   end
 
@@ -86,7 +87,7 @@ defmodule Aiur.GitHub.AccessSettings do
     defaults = %Agent{}
 
     Map.new(Map.keys(%Settings{state_root: nil}.broker_timeout), fn field ->
-      value = Map.get(config.agent, field)
+      value = if config, do: Map.get(config.agent, field)
       {field, if(is_integer(value) and value > 0, do: value, else: Map.fetch!(defaults, field))}
     end)
   end

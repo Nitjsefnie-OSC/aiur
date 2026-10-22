@@ -12,6 +12,7 @@ defmodule Aiur.GitHub.Access.Settings do
     :repo,
     :app_account,
     :bot_account,
+    :config_error,
     api_base_url: "https://api.github.com",
     graphql_url: "https://api.github.com/graphql",
     credentials: [],
