@@ -49,3 +49,29 @@ span.ax-cnt:hover { color: var(--muted); background: none; }
 
 .bm-agent .ax-mono { display: inline-grid; width: 16px; height: 16px; border-radius: 50%; font-size: .6rem; }
 .bm-tt h3:focus { outline: none; }
+
+/* MP-E8-C12-T05, S-12 default: keyboard focus geometry (not in design). The global ring draws it. */
+.bd-card:focus-visible { border-radius: var(--r); }
+/* opacity and filter on .bd-card also fade and blur its ring (C:274, C:467); full strength only while focused */
+.bd-card.dim:focus-visible, .bd-card.hdim:focus-visible { opacity: 1 !important; filter: none !important; }
+
+/* MP-E8-C12-T05, S-12 default: forced-colours fallback (not in design) */
+@media (forced-colors: active) {
+  /* !important only here: theme, palette and reduced-motion rules out-rank a plain selector (C:471, C:977, C:457, C:968, C:1053). */
+  .bd-card.dim, .bd-card.hdim { opacity: 1 !important; filter: none !important; }
+  .bd-card.dim .bd-in, .bd-card.hdim .bd-in { outline: 2px dashed GrayText; outline-offset: -4px; color: GrayText; }
+  /* agent state by border style and width; the glows are shadow and gradient, which forced colours drop */
+  .bd-card.ag-active .bd-in { border: 2px solid CanvasText; }
+  .bd-card.ag-queued .bd-in { border: 2px dashed CanvasText; }
+  .bd-card.ag-stuck .bd-in { border: 3px double CanvasText; }
+  .bd-card.ag-idle .bd-in { border: 1px dotted CanvasText; }
+  /* colour only, so an agent card keeps its border style */
+  .bd-card.hl .bd-in, .bd-card.sel .bd-in, .bd-card.feat-on .bd-in { border-color: Highlight; }
+  .bd-bar { forced-color-adjust: none; background: Canvas; border: 1px solid CanvasText; }
+  /* #build-root: the design's stuck fill is !important at 0,5,2 (C:1163) */
+  #build-root .bd-bar i { forced-color-adjust: none; background: CanvasText !important; }
+  .bd-e, .bd-e.ok, .bd-e.bl, .bd-e.bad { stroke: CanvasText; }
+  .bd-e.hl { stroke: Highlight; }
+  .bd-e.fade, .bd-ea.fade { opacity: .4; }
+  .bd-ea, .bd-ea.ok, .bd-ea.bl, .bd-ea.bad { fill: CanvasText; }
+}
