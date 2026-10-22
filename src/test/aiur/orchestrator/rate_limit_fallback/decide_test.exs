@@ -116,7 +116,7 @@ defmodule Aiur.Orchestrator.RateLimitFallback.DecideTest do
                primary_backend: "codex",
                fallback_backend: "claude",
                routing_backend: "codex",
-               state: %{"backends" => %{"claude" => %{"limited" => true}}},
+               state: %{"backends" => %{"claude" => %{"limited" => true, "reset_at" => DateTime.to_iso8601(DateTime.add(now, 7_200, :second))}}},
                now: now
              ) == :engage
     end

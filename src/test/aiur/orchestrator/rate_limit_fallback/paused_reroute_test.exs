@@ -8,8 +8,6 @@ defmodule Aiur.Orchestrator.RateLimitFallback.PausedRerouteTest do
   alias Aiur.Issue
   alias Aiur.Orchestrator.{RateLimitFallback, Slots, State}
 
-  @claude_limited %{"backends" => %{"claude" => %{"limited" => true}}}
-
   # Claude exhausted, then codex routed for this complexity: every limited
   # entry moves to codex in one tick, with no fallback labels to revert later.
   test "reroutes every paused claude entry onto the codex route in one tick without labels" do
@@ -57,7 +55,7 @@ defmodule Aiur.Orchestrator.RateLimitFallback.PausedRerouteTest do
     entry = Map.put(limited_entry("1"), :awaiting_fleet_slot, true)
     state = %State{max_concurrent_agents: 3, running: %{"1" => entry}}
 
-    result = RateLimitFallback.reconcile(state, opts(state: %{"backends" => %{"codex" => %{"limited" => true}, "claude" => %{"limited" => true}}}))
+    result = RateLimitFallback.reconcile(state, opts(state: %{"backends" => %{"codex" => limited(), "claude" => limited()}}))
 
     refute Map.has_key?(result.running["1"], :awaiting_fleet_slot)
   end
@@ -65,12 +63,15 @@ defmodule Aiur.Orchestrator.RateLimitFallback.PausedRerouteTest do
   defp limited_entry(id) do
     fallback_entry(%{
       identifier: "repo##{id}",
-      issue: %Issue{id: id, identifier: "repo##{id}", labels: ["complexity:4"]},
+      # The issue already resolves to the new route; only the session knows it ran on claude.
+      issue: %Issue{id: id, identifier: "repo##{id}", labels: ["complexity:4"], selected_backend: "codex"},
       worker_host: nil,
       paused_at: DateTime.add(DateTime.utc_now(), -601, :second),
       session_execution: %{backend: "claude"}
     })
   end
+
+  defp limited, do: %{"limited" => true, "reset_at" => DateTime.to_iso8601(DateTime.add(DateTime.utc_now(), 7_200, :second))}
 
   defp opts(overrides) do
     Keyword.merge(
@@ -79,7 +80,7 @@ defmodule Aiur.Orchestrator.RateLimitFallback.PausedRerouteTest do
         primary_backend: "codex",
         marker_label: "agent:rate-limit-fallback",
         routing_backend: "codex",
-        state: @claude_limited,
+        state: %{"backends" => %{"claude" => limited()}},
         backend_ready_fun: fn _backend, _worker_host -> true end,
         dispatch_ready_fun: fn state, _issue, _worker_host -> {:ok, state} end,
         teardown_fun: fn current_state, _entry, _reason -> current_state end,
