@@ -1,7 +1,7 @@
 defmodule Aiur.LandingWatch.QuarantineLifterTest do
   use ExUnit.Case, async: true
 
-  alias Aiur.LandingWatch.QuarantineLifter
+  alias Aiur.LandingWatch.{QuarantineLifter, QuarantineNightlyResults}
 
   test "a merged fix ticket opens a PR removing its quarantine row" do
     parent = self()
@@ -161,7 +161,7 @@ defmodule Aiur.LandingWatch.QuarantineLifterTest do
     end
 
     assert {:ok, [:failure]} =
-             Aiur.LandingWatch.QuarantineNightlyResults.fetch(
+             QuarantineNightlyResults.fetch(
                base_branch: "main",
                token: "test-gh-token",
                request_fun: request
