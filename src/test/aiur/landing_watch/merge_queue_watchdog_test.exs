@@ -236,8 +236,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     parent = self()
     observation = observation(55)
     behind = observation(61, merge_queue_entry: %{"id" => "entry-61", "state" => "AWAITING_CHECKS", "position" => 2})
-    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-    since_ms = now - 25 * 60_000
+    since_ms = DateTime.utc_now() |> DateTime.add(-25, :minute) |> DateTime.to_unix(:millisecond)
 
     failed_run = %{
       "id" => 900,
@@ -280,8 +279,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     path = temp_journal()
     parent = self()
     observation = observation(56)
-    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
-    since_ms = now - 25 * 60_000
+    since_ms = DateTime.utc_now() |> DateTime.add(-25, :minute) |> DateTime.to_unix(:millisecond)
 
     old_run = %{
       "id" => 910,
