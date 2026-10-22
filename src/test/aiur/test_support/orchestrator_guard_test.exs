@@ -183,7 +183,7 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert output =~
              "Aiur.IPlainCaseDecisionStoreLeakProbeTest: test leaves the durable decision store down (Aiur.DecisionStore unregistered)"
 
-    assert output =~ ~r/YTestSupportStandInProbeTest: test leaves a stand-in holding the name left Aiur.Orchestrator held by a stand-in #PID<[\d.]+> \(restore: :ok\)/
+    assert output =~ ~r/Aiur.Orchestrator was held by a stand-in #PID<[\d.]+> before Aiur.ZTestSupportWiringProbeTest/
     # Borrowing the name in setup and giving it back is not a leak.
     refute output =~ "AAUnregisterRestoreProbeTest"
   end
