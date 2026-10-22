@@ -11,9 +11,15 @@ defmodule Aiur.PerClassCadenceTest do
 
   setup do
     write_github_workflow!(
+      tracker_repo: "aiur-team/per-class-cadence-test",
       poll_interval_seconds: 120,
       polling_intervals: %{"dispatch" => 120, "review" => 300, "planning" => 0}
     )
+
+    # The default registry is application-global; use a repo owned by this
+    # module and reset it so a preceding test's proven webhook cannot widen the
+    # dispatch tick this module is asserting.
+    if repo = GitHubConfig.repo(), do: ModeRegistry.configure(repo, false)
 
     PollCadence.forget_effective_interval_ms()
     on_exit(&PollCadence.forget_effective_interval_ms/0)
@@ -69,7 +75,7 @@ defmodule Aiur.PerClassCadenceTest do
         running: %{}
       }
 
-      assert TrackerHealth.next_poll_delay_ms(state) == 60_000
+      assert TrackerHealth.next_poll_delay_ms(state, transport: :polling) == 60_000
     end
   end
 
@@ -445,7 +451,7 @@ defmodule Aiur.PerClassCadenceTest do
   defp write_github_workflow!(overrides) do
     write_workflow_file!(
       Workflow.workflow_file_path(),
-      Keyword.merge([tracker_kind: "github", tracker_repo: "owner/repo"], overrides)
+      Keyword.merge([tracker_kind: "github", tracker_repo: "aiur-team/per-class-cadence-test"], overrides)
     )
   end
 end
