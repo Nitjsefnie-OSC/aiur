@@ -133,9 +133,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
       codeowners: :persistent_term.get(@codeowners_key, :unset)
     }
 
-    errors = verify_shared_state_restored!(Map.put(context, :aiur_expected_shared_state, expected))
-    if errors != [], do: raise("#{test_name(context)} left shared test state changed (restored): #{Enum.join(errors, "; ")}")
-    :ok
+    verify_restored!(Map.put(context, :aiur_expected_shared_state, expected))
   end
 
   @doc false

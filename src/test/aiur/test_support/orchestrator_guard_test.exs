@@ -19,6 +19,18 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert is_pid(Process.whereis(Aiur.Orchestrator))
   end
 
+  test "verify_restored_shared_state also checks and restores supervised children", context do
+    previous_app_env = Aiur.TestSupport.capture_app_env()
+    previous_instance_key = System.get_env("AIUR_INSTANCE_KEY")
+    assert :ok = Supervisor.terminate_child(Aiur.Supervisor, Aiur.Orchestrator)
+
+    assert_raise RuntimeError, ~r/left Aiur.Orchestrator down/, fn ->
+      OrchestratorGuard.verify_restored_shared_state!(previous_app_env, previous_instance_key, context)
+    end
+
+    assert is_pid(Process.whereis(Aiur.Orchestrator))
+  end
+
   test "verify_restored! catches CodeOwners state left changed by a test", context do
     previous = CodeOwners.snapshot()
     baseline = OrchestratorGuard.capture_shared_state().codeowners
@@ -159,23 +171,22 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     mix = System.find_executable("mix") || flunk("mix executable not found")
 
     {output, status} =
-      System.cmd(mix, ["test", "--max-cases", "4", "--seed", "0", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
+      System.cmd(mix, ["test", "--seed", "0", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
         cd: src_dir,
         stderr_to_stdout: true,
         env: [{"AIUR_RUN_ORCHESTRATOR_GUARD_PROBES", "1"}]
       )
 
     assert status != 0
-    assert output =~ "18 tests, 1 failure"
+    assert output =~ "18 tests, 4 failures"
     assert output =~ "Aiur.Orchestrator was down before Aiur.BTestSupportWiringNeighbourTest"
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
 
-    assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down; last finished test: Aiur.YTestSupportStandInProbeTest: test leaves a stand-in holding the name"
+    assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down left Aiur.Orchestrator down (restore: :ok)"
 
-    assert output =~ "plain ExUnit tests broke Aiur.Orchestrator: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down (down)"
-    assert output =~ "Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down)"
-    assert output =~ "Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)"
+    assert output =~
+             "plain ExUnit tests broke Aiur.Orchestrator: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down (down), Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down), Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)"
 
     assert output =~
              ~r/plain ExUnit tests left shared runtime children down: .*Aiur.FPlainCasePubSubLeakProbeTest: test leaves the PubSub registry table down \(Aiur.PubSub unregistered\)/
@@ -183,7 +194,7 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert output =~
              "Aiur.IPlainCaseDecisionStoreLeakProbeTest: test leaves the durable decision store down (Aiur.DecisionStore unregistered)"
 
-    assert output =~ ~r/Aiur.Orchestrator was held by a stand-in #PID<[\d.]+> before Aiur.ZTestSupportWiringProbeTest/
+    assert output =~ ~r/YTestSupportStandInProbeTest: test leaves a stand-in holding the name left Aiur.Orchestrator held by a stand-in #PID<[\d.]+> \(restore: :ok\)/
     # Borrowing the name in setup and giving it back is not a leak.
     refute output =~ "AAUnregisterRestoreProbeTest"
   end
