@@ -126,15 +126,22 @@ defmodule Aiur.BuildOrder.History.FeederTest do
     assert fun.()
   end
 
-  defp await_catch_up_processed_down(pid) do
+  defp await_catch_up_processed_down(pid, deadline) do
     state = :sys.get_state(pid)
 
     if is_nil(state.catch_task) do
       state
     else
+      assert System.monotonic_time(:millisecond) < deadline,
+             "feeder did not process catch-up task DOWN before the deadline"
+
       Process.sleep(1)
-      await_catch_up_processed_down(pid)
+      await_catch_up_processed_down(pid, deadline)
     end
+  end
+
+  defp await_catch_up_processed_down(pid) do
+    await_catch_up_processed_down(pid, System.monotonic_time(:millisecond) + 5_000)
   end
 
   test "closed delivery batches issue and labels into one change, duplicates stay quiet", ctx do
