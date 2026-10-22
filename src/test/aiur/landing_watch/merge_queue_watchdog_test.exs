@@ -20,6 +20,8 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     )
   end
 
+  defp iso(milliseconds), do: DateTime.from_unix!(milliseconds, :millisecond) |> DateTime.to_iso8601()
+
   defp temp_journal do
     path =
       Path.join(
@@ -234,22 +236,22 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     parent = self()
     observation = observation(55)
     behind = observation(61, merge_queue_entry: %{"id" => "entry-61", "state" => "AWAITING_CHECKS", "position" => 2})
-    {:ok, stuck_at, _offset} = DateTime.from_iso8601("2026-10-21T12:00:00Z")
-    since_ms = DateTime.to_unix(stuck_at, :millisecond)
+    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+    since_ms = now - 25 * 60_000
 
     failed_run = %{
       "id" => 900,
       "event" => "merge_group",
       "conclusion" => "failure",
       "head_branch" => "gh-readonly-queue/main/pr-55-head",
-      "created_at" => "2026-10-21T12:15:00Z"
+      "created_at" => iso(since_ms + 15 * 60_000)
     }
 
     earlier_group = %{
       "id" => 899,
       "event" => "merge_group",
       "head_branch" => "gh-readonly-queue/main/pr-61-next",
-      "created_at" => "2026-10-21T12:10:00Z"
+      "created_at" => iso(since_ms + 10 * 60_000)
     }
 
     opts =
@@ -259,8 +261,8 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
           completed_merge_group_runs: [earlier_group, failed_run],
           all_observations: [observation, behind],
           base_branch: "main",
-          recent_main_failure_paths: ["test/aiur/flaky_test.exs"],
-          job_log_fun: fn _, _ -> {:ok, "mix test test/aiur/flaky_test.exs:17 known flaky failure"} end,
+          recent_main_failure_paths: ["src/test/aiur/flaky_test.exs"],
+          job_log_fun: fn _, _ -> {:ok, "1) test flaky (Aiur.FlakyTest)\n   src/test/aiur/flaky_test.exs:17"} end,
           changed_paths_fun: fn _, _ -> {:ok, []} end,
           known_failure_patterns: []
         )
@@ -278,15 +280,15 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogTest do
     path = temp_journal()
     parent = self()
     observation = observation(56)
-    {:ok, started_at, _offset} = DateTime.from_iso8601("2026-10-21T12:05:00Z")
-    since_ms = DateTime.to_unix(started_at, :millisecond)
+    now = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+    since_ms = now - 25 * 60_000
 
     old_run = %{
       "id" => 910,
       "event" => "merge_group",
       "conclusion" => "failure",
       "head_branch" => "gh-readonly-queue/main/pr-56-head",
-      "created_at" => "2026-10-21T12:00:00Z"
+      "created_at" => iso(since_ms - 5 * 60_000)
     }
 
     opts = [
