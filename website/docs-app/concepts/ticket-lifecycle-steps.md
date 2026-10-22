@@ -1,40 +1,5 @@
 # How a ticket flows: steps 0–8
 
-## Runtime reason labels
-
-Aiur keeps one workflow state label and adds a reason label when runtime
-conditions distinguish tickets within that state. Reason labels are removed
-when that condition clears or a replacement reason is written.
-
-| Label | Meaning | Transition that sets it |
-| --- | --- | --- |
-| `agent:todo` | Queued and eligible for dispatch | Operator or workflow queues a ticket |
-| `agent:in-progress` | Agent owns an active turn | Orchestrator claims and starts the ticket |
-| `agent:ci-wait` | Work is complete and CI is pending | Agent hands off a ready PR or CI is pending |
-| `agent:human-review` | Ready for human review | Required checks pass or CI lifecycle hands off a completed PR |
-| `agent:rework` | Agent should revise the work | Review requests changes, CI fails, or a PR conflict needs repair |
-| `agent:merging` | Approved work is being merged | Merge lifecycle starts |
-| `agent:done` | Ticket work is complete | Merge lifecycle completes |
-| `agent:error` | Automated work stopped after an unrecoverable failure | Retry exhaustion or terminal dispatch failure |
-| `agent:cancelled` / `agent:canceled` | Ticket was explicitly cancelled | Tracker records cancellation |
-| `agent:paused` | Existing workflow state is suppressed from dispatch | Operator adds or removes the pause override |
-| `agent:parked` | Ticket is deliberately held outside normal dispatch | Operator parks the ticket |
-| `agent:queued` | Ticket is waiting in an explicit build queue | Build queue adds or removes the queue marker |
-| `agent:rate-limit-fallback` | A provider fallback was selected for the ticket | Rate-limit fallback routing selects another provider |
-| `agent:merge-queued` | Approved PR is waiting in the merge queue | CI observes a merge queue entry |
-| `agent:ci-red` | Required checks failed or the PR conflicts | CI outcome is failing or conflicting |
-| `agent:body-fix` | PR body evidence needs correction | PR body validation finds stale evidence |
-| `agent:paused-usage-limit` | Paused by provider usage limits | Worker pause reason is provider limited |
-| `agent:paused-decision` | Waiting for an operator decision | Worker waits for human input |
-| `agent:paused-agent` | Agent requested a cooperative pause | Worker pause reason is agent pause request |
-| `agent:retrying` | Retry backoff is scheduled | Retry engine schedules a ticket retry |
-| `agent:blocked` | Waiting on a dependency | Issue sync observes an open `blocked_by` dependency; removed when the dependency clears |
-| `agent:handed-off` | Ownership was handed to another instance | Runtime reports a handoff |
-
-There is exactly one workflow state label per ticket. Reason labels are
-orthogonal modifiers, so do not include them in workflow `active_states`
-lists.
-
 Continues [How a ticket flows](/concepts/ticket-lifecycle), which holds the label lifecycle and state diagram. Covers every step from taking the Executor role to merge, and where tickets get stuck.
 
 ## Step 0 — Take the Executor role
@@ -533,3 +498,38 @@ The agent never self-merges.
   `ticket.<id>.agent.attention.budget-hold-persistent` naming the hold reason
   and `reset_at`. The next committed dispatch, a retry for any other reason, or
   a released claim resolves it.
+
+## Runtime reason labels
+
+Aiur keeps one workflow state label and adds a reason label when runtime
+conditions distinguish tickets within that state. Reason labels are removed
+when that condition clears or a replacement reason is written.
+
+| Label | Meaning | Transition that sets it |
+| --- | --- | --- |
+| `agent:todo` | Queued and eligible for dispatch | Operator or workflow queues a ticket |
+| `agent:in-progress` | Agent owns an active turn | Orchestrator claims and starts the ticket |
+| `agent:ci-wait` | Work is complete and CI is pending | Agent hands off a ready PR or CI is pending |
+| `agent:human-review` | Ready for human review | Required checks pass or CI lifecycle hands off a completed PR |
+| `agent:rework` | Agent should revise the work | Review requests changes, CI fails, or a PR conflict needs repair |
+| `agent:merging` | Approved work is being merged | Merge lifecycle starts |
+| `agent:done` | Ticket work is complete | Merge lifecycle completes |
+| `agent:error` | Automated work stopped after an unrecoverable failure | Retry exhaustion or terminal dispatch failure |
+| `agent:cancelled` / `agent:canceled` | Ticket was explicitly cancelled | Tracker records cancellation |
+| `agent:paused` | Existing workflow state is suppressed from dispatch | Operator adds or removes the pause override |
+| `agent:parked` | Ticket is deliberately held outside normal dispatch | Operator parks the ticket |
+| `agent:queued` | Ticket is waiting in an explicit build queue | Build queue adds or removes the queue marker |
+| `agent:rate-limit-fallback` | A provider fallback was selected for the ticket | Rate-limit fallback routing selects another provider |
+| `agent:merge-queued` | Approved PR is waiting in the merge queue | CI poll observes a merge queue entry; cleared on the next CI transition |
+| `agent:ci-red` | Required checks failed or the PR conflicts | CI outcome is failing or conflicting |
+| `agent:body-fix` | PR body evidence needs correction | PR body validation finds stale evidence |
+| `agent:paused-usage-limit` | Paused by provider usage limits | Worker pause reason is provider limited |
+| `agent:paused-decision` | Waiting for an operator decision | Worker waits for human input |
+| `agent:paused-agent` | Agent requested a cooperative pause | Worker pause reason is agent pause request |
+| `agent:retrying` | Waiting out a failure back-off | Retry engine schedules a retry after a failure; cleared when the retry fires (continuation retries are not labelled) |
+| `agent:blocked` | Waiting on a dependency | Issue sync observes an open `blocked_by` dependency; removed when the dependency clears |
+| `agent:handed-off` | Another owner holds the workspace (another Aiur instance, or a runner still exiting) | Dispatch waits on another owner's workspace lease; cleared when the lease is released |
+
+There is exactly one workflow state label per ticket. Reason labels are
+orthogonal modifiers, so do not include them in workflow `active_states`
+lists.

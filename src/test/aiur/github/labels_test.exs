@@ -62,6 +62,28 @@ defmodule Aiur.GitHub.LabelsTest do
       assert Labels.runtime_reason_modifier(:workspace_ownership_waiting) == "handed-off"
     end
 
+    # Fails when a new persisted pause reason appears without a label to show it.
+    test "every persisted pause reason has a label" do
+      shown_by_existing_label = %{
+        operator_pause: "paused",
+        label_override: "paused",
+        ci_wait: "ci-wait",
+        max_agent_duration: "rework or human-review (worker released)",
+        rate_limit_fallback_recovery: "rate-limit-fallback",
+        # Run-wide, not per ticket: `aiur status` reports the run as paused.
+        global_pause: :run_wide,
+        # No live writer; accepted only when restoring an old snapshot.
+        before_run_failure: :legacy_restore_only
+      }
+
+      unlabelled =
+        Enum.reject(Aiur.Orchestrator.ControlLifecycle.Restore.pause_reasons(), fn reason ->
+          Labels.runtime_reason_modifier(reason) != nil or Map.has_key?(shown_by_existing_label, reason)
+        end)
+
+      assert unlabelled == []
+    end
+
     test "label_set/2 seeds the queued marker" do
       assert "aiur:queued" in Labels.label_set("aiur", ["claude"])
       assert "aiur:queued" in Labels.marker_labels("aiur")
