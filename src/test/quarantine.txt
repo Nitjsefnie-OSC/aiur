@@ -1,14 +1,14 @@
-# Module, full ExUnit test name, owner fix ticket, and YYYY-MM-DD expiry. Tabs delimit four fields; new rows are quarantined only with a dedicated test-fix ticket.
+# Module, full ExUnit test name (describe prefix included, as failures print it), owner fix ticket, and YYYY-MM-DD expiry. Tabs delimit four fields.
 Aiur.AgentGitHubGuard.GraphqlAndPagination2Test	a broker failure refuses the real gh command	#5511	2026-12-31
-Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	emit_agent_event via event_publisher closure operator-decision pause requests raise a durable attention	#5683	2026-12-31
+Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	*	#5674	2026-12-31
 Aiur.Core.AgentRunnerCheckpointQueueTest	*	#5516	2026-12-31
 Aiur.DecisionStore.EnrichmentTest	supervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification	#5514	2026-12-31
 Aiur.GitHub.MonotonicDepositTest	*	#5605	2026-12-31
-Aiur.LandingWatch.MainRecoveryRerunTest	*	#5681	2026-12-31
+Aiur.LandingWatch.MainRecoveryRerunTest	*	#5605	2026-12-31
 Aiur.LandingWatch.MergeGroupFailureRequeueTest	the fifth group requeue in fifteen minutes is not enqueued	#5744	2026-12-31
-Aiur.MainWatch.FixerTest	*	#5682	2026-12-31
+Aiur.MainWatch.FixerTest	*	#5605	2026-12-31
 Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads open decisions without calling the per-ticket store	#5519	2026-12-31
 Aiur.PerClassCadenceTest	*	#5605	2026-12-31
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#5517	2026-12-31
 AiurWeb.PresenterTest	open_decision_count uses blocking Commands rather than attention chips	#5620	2026-12-31
-AiurWeb.ZeroFetchPageOpenTest	*	#5678	2026-12-31
+AiurWeb.ZeroFetchPageOpenTest	*	#5605	2026-12-31
