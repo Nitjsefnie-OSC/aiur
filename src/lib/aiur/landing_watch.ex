@@ -357,19 +357,12 @@ defmodule Aiur.LandingWatch do
         :ok
 
       true ->
-        land_unless_ticket_active(observation, opts)
+        if Journal.merge_group_head_held?(observation.number, observation.head, opts) == {:ok, true}, do: :ok, else: land_unless_ticket_active(observation, opts)
     end
   end
 
   # A ticket back in rework or with a running agent owns its PR; an Executor dequeue must stick (#4772).
   defp land_unless_ticket_active(observation, opts) do
-    case Journal.merge_group_head_held?(observation.number, observation.head, opts) do
-      {:ok, true} -> :ok
-      _ -> land_ticket_state(observation, opts)
-    end
-  end
-
-  defp land_ticket_state(observation, opts) do
     case TicketLookup.fetch(observation, opts) do
       {:ok, issue, _state, _paused?, true} -> HeldApproval.attention(observation, issue, opts)
       {:ok, _issue, state, _paused?, _held?} when state in ["rework", "in-progress", "todo"] -> :ok
