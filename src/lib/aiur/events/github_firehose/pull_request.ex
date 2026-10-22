@@ -5,6 +5,7 @@ defmodule Aiur.Events.GithubFirehose.PullRequest do
   alias Aiur.Events.PostDeployChecks
   alias Aiur.RecentMerge
 
+  @spec translate(map(), keyword()) :: {String.t(), map(), keyword()} | nil
   def translate(%{"type" => "PullRequestEvent"} = event, opts) do
     action = get_in(event, ["payload", "action"])
     pr = get_in(event, ["payload", "pull_request"]) || %{}
