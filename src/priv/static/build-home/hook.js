@@ -4,6 +4,7 @@ import { shell } from './shell.js';
 import { decide } from './protocol.js';
 import { acceptSnapshot, applyDiff } from './store.js';
 import { H } from './history.js';
+import { noteDiff, announceState } from './a11y.js';
 import { fromServer, flushURL } from './url.js';
 import './clock.js';
 import './render.js';
@@ -55,7 +56,7 @@ export function receive(msg) {
     case 'resync': resync(); break;
     case 'apply': {
       if (msg.kind !== 'snapshot' && msg.kind !== 'diff') return;
-      const first = !ctx.snap;
+      const first = !ctx.snap, before = ctx.D;
       const result = msg.kind === 'snapshot' ? acceptSnapshot(msg) : applyDiff(msg);
       if (result.error) {
         if (msg.kind === 'diff') resync(); else fx.renderUnavailable('invalid');
@@ -63,7 +64,7 @@ export function receive(msg) {
       }
       fx.tickCardAges();
       if (msg.kind === 'snapshot') { if (first) firstPaint(); else repaint(); }
-      else { fx.dataChanged(msg); fx.modalSync(msg); fx.drawEdgesSoon(30); }
+      else { fx.dataChanged(msg); fx.modalSync(msg); fx.drawEdgesSoon(30); announceState(noteDiff(before, ctx.D, msg)); }
       writeOwnData();
       break;
     }

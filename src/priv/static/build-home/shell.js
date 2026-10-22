@@ -17,6 +17,16 @@ export function shell() {
   }
   const sb = $('#bd-sb', root), th = $(':scope > i', sb), vp = ctx.vp = $('#bd-vp', root);
   if (!th) return fail('bd-sb > i');
+  // MP-E8-C12-T05: the cards are the board's Tab stop; the viewport only takes focus when a focused card leaves.
+  if (!vp.hasAttribute('role')) vp.setAttribute('role', 'region');
+  if (!vp.hasAttribute('aria-label')) vp.setAttribute('aria-label', 'Build timeline');
+  vp.tabIndex = -1;
+  if (!$('#bd-state-live', root)) {
+    const live = document.createElement('p');
+    Object.assign(live, { id: 'bd-state-live', className: 'sr-only' });
+    live.setAttribute('aria-live', 'polite'); live.setAttribute('aria-atomic', 'true');
+    root.appendChild(live);
+  }
   function fail(id) {
     console.error('BuildHome missing host: ' + id);
     root.dataset.buildHomeHook = 'failed';
