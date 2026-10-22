@@ -411,5 +411,59 @@
       "date": "2026-10-21",
       "ref": "https://github.com/aiur-team/aiur/issues/3152#issuecomment-6308707152"
     }
+  },
+  {
+    "id": "axe-light-good-ink-contrast",
+    "kind": "axe",
+    "rule": "color-contrast",
+    "selector": ".bd-q.promo, .bm-pr.open, .cv-dh .a",
+    "spec": "build-home-a11y.browser.spec.mjs",
+    "cells": {
+      "theme": "light"
+    },
+    "measured": "4.14:1 promoted cue (#79740e on #efeeda); 4.27:1 open PR link and diff additions (#79740e on #f3f0e8); light gruvbox",
+    "reason": "Design inks these --good-ink on light surfaces (C:255, C:502, C:529); under AA 4.5:1 in the light theme. Not recoloured here.",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "MP-E8-C12-T05 §4.6 (S-46)"
+    }
+  },
+  {
+    "id": "axe-light-modal-progress-contrast",
+    "kind": "axe",
+    "rule": "color-contrast",
+    "selector": "#bm-pct",
+    "spec": "build-home-a11y.browser.spec.mjs",
+    "cells": {
+      "theme": "light"
+    },
+    "measured": "3.76:1 (#8a8500 on #fdfcf9, 11.2px); light gruvbox",
+    "reason": "Design tints the live state line's percentage with the progress hue (.bm-st); under AA 4.5:1 in the light theme. Not recoloured here.",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "MP-E8-C12-T05 §4.6 (S-46)"
+    }
+  },
+  {
+    "id": "axe-light-conversation-event-contrast",
+    "kind": "axe",
+    "rule": "color-contrast",
+    "selector": ".cv-ev b",
+    "spec": "build-home-a11y.browser.spec.mjs",
+    "cells": {
+      "theme": "light"
+    },
+    "measured": "1.98:1 to 2.04:1 (#85b4f0, #c6b064, #bba3e8 on #f8f6f0); light gruvbox",
+    "reason": "Design colours conversation event labels oklch(.76 .1 hue) for both themes (C:539, C:1064); far under AA 4.5:1 in the light theme. Not recoloured here.",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "MP-E8-C12-T05 §4.6 (S-46)"
+    }
   }
 ]
