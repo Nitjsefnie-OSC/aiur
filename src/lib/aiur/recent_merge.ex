@@ -427,9 +427,15 @@ defmodule Aiur.RecentMerge do
     |> Enum.take(100)
     |> Enum.reduce_while({:ok, []}, fn message, {:ok, acc} ->
       case optional_text(message, 500, :commit_message) do
-        {:ok, nil} -> {:cont, {:ok, acc}}
-        {:ok, text} -> {:cont, {:ok, [text | acc]}}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:ok, nil} ->
+          {:cont, {:ok, acc}}
+
+        {:ok, text} ->
+          retained = ClosingReferences.preserve(text, ClosingReferences.references(message), 500)
+          {:cont, {:ok, [retained | acc]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
       end
     end)
     |> case do

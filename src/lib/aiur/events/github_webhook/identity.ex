@@ -50,12 +50,6 @@ defmodule Aiur.Events.GithubWebhook.Identity do
 
   def ticket_from_pr_body(_body), do: nil
 
-  @doc "Returns a closing ticket id using the same exclusions as merge reconciliation."
-  @spec ticket_from_commit_message(term(), String.t() | nil) :: String.t() | nil
-  def ticket_from_commit_message(message, repository \\ nil) do
-    RecentMerge.closing_issue_identifiers_in_body(message, repository) |> List.first()
-  end
-
   @doc "Returns ticket ids explicitly linked by the body or commit messages."
   @spec linked_ticket_identifiers(map()) :: [String.t()]
   def linked_ticket_identifiers(pr) do

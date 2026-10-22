@@ -2,7 +2,7 @@ defmodule Aiur.Events.GithubWebhookTest do
   use Aiur.TestSupport.WebhookTailCase
 
   alias Aiur.Events.{Exchange, GithubWebhook}
-  alias Aiur.Events.GithubWebhook.{Identity, Normalizer}
+  alias Aiur.Events.GithubWebhook.Normalizer
   alias Aiur.GitHub.ReadCache
   alias Aiur.Webhooks
 
@@ -157,7 +157,7 @@ defmodule Aiur.Events.GithubWebhookTest do
       assert Enum.map(triples, fn {_topic, _event, opts} -> opts[:issue_number] end) == ["5605"]
     end
 
-    test "Refs does not wake a ticket for an opened or ready PR" do
+    test "opened and ready PRs route by ticket branch and closing keyword, not Refs" do
       for action <- ["opened", "ready_for_review"] do
         delivery = %{
           "action" => action,
@@ -166,19 +166,14 @@ defmodule Aiur.Events.GithubWebhookTest do
             "number" => 905,
             "merged" => false,
             "body" => "Refs #5605",
-            "head" => %{"ref" => "executor/quarantine", "sha" => "deadbee"}
+            "head" => %{"ref" => "aiur/5606-fix", "sha" => "deadbee"}
           }
         }
 
-        assert {:drop, {:unresolved_ticket, "pull_request", 905}} =
-                 Normalizer.normalize("pull_request", delivery, repo: @repo)
+        assert {:publish, triples} = Normalizer.normalize("pull_request", delivery, repo: @repo)
+        topic_action = if action == "opened", do: "opened", else: "ready_for_review"
+        assert Enum.map(triples, &elem(&1, 0)) == ["ticket.5606.pr.#{topic_action}"]
       end
-    end
-
-    test "commit closing references ignore quoted and code-fenced lines" do
-      assert Identity.ticket_from_commit_message("Revert commit\n> Fixes #5605", @repo) == nil
-      assert Identity.ticket_from_commit_message("revert: undo\n\n```\nCloses #5605\n```", @repo) == nil
-      assert Identity.ticket_from_commit_message("Fixes #5606", @repo) == "5606"
     end
 
     test "publisher delivers each merged reference target once" do

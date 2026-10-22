@@ -131,13 +131,14 @@ defmodule Aiur.Events.GithubFirehose do
   defp process_event_response(events, etag, poll_interval, last_event_id, opts) do
     with {:ok, %{pages: pages, partial?: partial?}} <-
            fetch_backfill_pages(events, last_event_id, opts) do
-      processed = pages |> events_since_watermark(last_event_id) |> process_events(opts)
+      pending_events = pages |> events_since_watermark(last_event_id)
+      processed = process_events(pending_events, opts, last_event_id)
       pages_fetched = length(pages)
-      retry_enrichment? = processed.commit_messages_unavailable?
+      retry_enrichment? = is_binary(processed.retry_after_id)
 
       result = %{
         etag: if(retry_enrichment?, do: Keyword.get(opts, :etag), else: etag),
-        last_event_id: if(retry_enrichment?, do: last_event_id, else: newest_event_id(events) || last_event_id),
+        last_event_id: if(retry_enrichment?, do: processed.retry_after_id, else: newest_event_id(events) || last_event_id),
         count: processed.count,
         poll_interval: poll_interval,
         pages_fetched: pages_fetched,
@@ -228,21 +229,25 @@ defmodule Aiur.Events.GithubFirehose do
   defp newest_event_id([%{"id" => id} | _]) when is_binary(id), do: id
   defp newest_event_id(_events), do: nil
 
-  defp process_events(events, opts) do
-    Enum.reduce(
-      events,
-      %{count: 0, persistence_errors: [], persistence_attempted?: false, commit_messages_unavailable?: false},
-      fn original_event, acc ->
+  defp process_events(events, opts, fallback_event_id) do
+    events
+    |> Enum.with_index()
+    |> Enum.reduce_while(
+      %{count: 0, persistence_errors: [], persistence_attempted?: false, retry_after_id: nil},
+      fn {original_event, index}, acc ->
         event = enrich_merged_event(original_event, opts)
         persistence_result = persist_recent_merge(event, opts)
         publish_result = publish_one(event, opts)
+        retry_after_id = retry_after_id(event, events, index, fallback_event_id)
 
-        %{
+        next = %{
           count: acc.count + if(match?({:ok, _, _}, publish_result), do: 1, else: 0),
           persistence_errors: maybe_add_persistence_error(acc.persistence_errors, persistence_result),
           persistence_attempted?: acc.persistence_attempted? or persistence_attempted?(persistence_result),
-          commit_messages_unavailable?: acc.commit_messages_unavailable? or get_in(event, ["payload", "pull_request", "commit_messages_unavailable"]) == true
+          retry_after_id: retry_after_id || acc.retry_after_id
         }
+
+        if retry_after_id, do: {:halt, next}, else: {:cont, next}
       end
     )
   end
@@ -254,8 +259,16 @@ defmodule Aiur.Events.GithubFirehose do
       fetch_opts = Keyword.take(opts, [:request_fun]) |> Keyword.put(:head_sha, get_in(pr, ["head", "sha"]))
 
       case PullRequests.fetch_pull_request_commits(number, fetch_opts) do
-        {:ok, messages} -> put_in(event, ["payload", "pull_request", "commit_messages"], messages)
-        _ -> put_in(event, ["payload", "pull_request", "commit_messages_unavailable"], true)
+        {:ok, messages} ->
+          put_in(event, ["payload", "pull_request", "commit_messages"], messages)
+
+        {:error, :pull_request_commit_list_too_large} ->
+          event
+          |> put_in(["payload", "pull_request", "commit_messages_unavailable"], true)
+          |> put_in(["payload", "pull_request", "commit_messages_permanent"], true)
+
+        _ ->
+          put_in(event, ["payload", "pull_request", "commit_messages_unavailable"], true)
       end
     else
       event
@@ -263,6 +276,18 @@ defmodule Aiur.Events.GithubFirehose do
   end
 
   defp enrich_merged_event(event, _opts), do: event
+
+  defp retry_after_id(event, events, index, fallback_event_id) do
+    pr = get_in(event, ["payload", "pull_request"])
+
+    if is_map(pr) and Map.get(pr, "commit_messages_unavailable") == true and
+         Map.get(pr, "commit_messages_permanent") != true do
+      case Enum.at(events, index + 1) do
+        %{"id" => id} when is_binary(id) -> id
+        _ -> fallback_event_id
+      end
+    end
+  end
 
   defp persist_recent_merge(event, opts) do
     if commit_evidence_unavailable_without_body_closing?(event) do

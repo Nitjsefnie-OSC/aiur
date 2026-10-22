@@ -64,7 +64,7 @@ defmodule Aiur.Events.GithubFirehose.PullRequest do
     branch_id = if merged? and commit_messages_unavailable?, do: nil, else: branch_id
 
     with id when is_binary(id) <-
-           if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id),
+           if(merged?, do: List.first(closing_ids) || branch_id || List.first(linked_ids), else: branch_id || List.first(closing_ids)),
          topic when is_binary(topic) <- pr_topic(id, action, Map.get(pr, "merged")) do
       {id, topic}
     else
