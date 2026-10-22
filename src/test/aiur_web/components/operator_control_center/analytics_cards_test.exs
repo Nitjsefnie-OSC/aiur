@@ -3,7 +3,6 @@ defmodule AiurWeb.OperatorControlCenterComponentsAnalyticsCardsTest do
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
-
   alias AiurWeb.OperatorControlCenter.{DecisionDetail, DecisionLatency, DecisionRevisionAction}
 
   import AiurWeb.OperatorControlCenterComponentsFixtures
