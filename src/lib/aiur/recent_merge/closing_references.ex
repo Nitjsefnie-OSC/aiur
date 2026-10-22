@@ -103,6 +103,7 @@ defmodule Aiur.RecentMerge.ClosingReferences do
   end
 
   @reference_regex ~r/(?:^[ \t]*(?:[-*+][ \t]+|\d+[.)][ \t]+)?|[,;][ \t]*|\band[ \t]+)(?:refs?|mentions?|related[ \t]+to)[ \t]+(?<repository>[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+)?\#(?<number>\d+)\b/im
+  @named_issue_regex ~r/\bissues?[ \t]+#?(?<number>\d+)\b/i
 
   @doc "Returns same-repository identifiers named by a reference or closing keyword in arbitrary text."
   @spec linked_identifiers_in_text(term(), String.t() | nil) :: [String.t()]
@@ -110,7 +111,7 @@ defmodule Aiur.RecentMerge.ClosingReferences do
     text
     |> quotable_text()
     |> then(fn quotable ->
-      referenced_identifiers_in_body(quotable, repository) ++ identifiers_in_body(quotable, repository)
+      named_issue_identifiers(quotable) ++ referenced_identifiers_in_body(quotable, repository) ++ identifiers_in_body(quotable, repository)
     end)
     |> Enum.uniq()
   end
@@ -131,6 +132,13 @@ defmodule Aiur.RecentMerge.ClosingReferences do
   end
 
   def referenced_identifiers_in_body(_, _), do: []
+
+  defp named_issue_identifiers(text) do
+    Regex.scan(@named_issue_regex, text, capture: [:number])
+    |> Enum.map(fn [number] -> number end)
+    |> Enum.filter(&(String.to_integer(&1) > 0))
+    |> Enum.uniq()
+  end
 
   # Drops the regions GitHub itself does not read closing keywords from:
   # fenced code blocks, inline code spans and blockquotes.

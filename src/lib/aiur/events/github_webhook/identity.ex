@@ -7,8 +7,6 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   alias Aiur.RecentMerge
   alias Aiur.TicketBranch
 
-  @closing_keyword ~r/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/i
-
   @spec pull_request_identity(map(), keyword()) :: {:ok, String.t(), integer()} | {:drop, term()} | {:error, term()}
   def pull_request_identity(payload, opts \\ []) do
     pr = Map.get(payload, "pull_request")
@@ -39,24 +37,16 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   # closing keyword, so that keyword is the ticket mapping for this one case.
   @spec ticket_from_pr_body(term()) :: String.t() | nil
   def ticket_from_pr_body(body) when is_binary(body) do
-    case Regex.run(@closing_keyword, body) do
-      [_match, number] -> number
-      _other -> nil
-    end
+    RecentMerge.closing_issue_identifiers_in_body(body) |> List.first()
   end
 
   def ticket_from_pr_body(_body), do: nil
 
-  @doc "Returns closing-keyword ticket ids in an arbitrary commit message."
-  @spec ticket_from_commit_message(term()) :: String.t() | nil
-  def ticket_from_commit_message(message) when is_binary(message) do
-    case Regex.run(@closing_keyword, message) do
-      [_match, number] -> number
-      _other -> nil
-    end
+  @doc "Returns a closing ticket id using the same exclusions as merge reconciliation."
+  @spec ticket_from_commit_message(term(), String.t() | nil) :: String.t() | nil
+  def ticket_from_commit_message(message, repository \\ nil) do
+    RecentMerge.closing_issue_identifiers_in_body(message, repository) |> List.first()
   end
-
-  def ticket_from_commit_message(_message), do: nil
 
   @doc "Returns ticket ids explicitly linked by the body or commit messages."
   @spec linked_ticket_identifiers(map()) :: [String.t()]
@@ -65,8 +55,7 @@ defmodule Aiur.Events.GithubWebhook.Identity do
     body = Map.get(pr, "body")
     commit_messages = Map.get(pr, "commit_messages", [])
     linked_ids = RecentMerge.linked_issue_identifiers(struct(RecentMerge, summary: body, repository: repository, commit_messages: commit_messages))
-    fallback_ids = Enum.flat_map(commit_messages, &List.wrap(ticket_from_commit_message(&1)))
-    Enum.uniq(linked_ids ++ fallback_ids)
+    Enum.uniq(linked_ids)
   end
 
   @spec ticket_identifier(term()) :: String.t() | nil

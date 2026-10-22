@@ -2,6 +2,7 @@ defmodule Aiur.GitHub.PullRequestsTest do
   use Aiur.TestSupport
 
   alias Aiur.GitHub.PullRequests
+  alias Aiur.GitHub.ReadCache
 
   @token_cache_key {Aiur.GitHub.Access.Token, :resolved_token}
 
@@ -43,6 +44,40 @@ defmodule Aiur.GitHub.PullRequestsTest do
       assert {:ok, ["lib/foo.ex", "test/foo_test.exs"]} =
                PullRequests.fetch_pull_request_changed_paths(42, request_fun: request_fun)
     end
+  end
+
+  test "merged commit messages are shared by PR head and fetched again for a new head" do
+    ReadCache.reset()
+    number = System.unique_integer([:positive])
+    parent = self()
+    requests = :atomics.new(1, [])
+
+    first_fetch = fn request ->
+      :atomics.add(requests, 1, 1)
+      send(parent, {:fetched, request.url})
+      Process.sleep(20)
+      {:ok, %{status: 200, body: [%{"commit" => %{"message" => "Refs #5605"}}], headers: []}}
+    end
+
+    concurrent =
+      for _ <- 1..2 do
+        Task.async(fn -> PullRequests.fetch_pull_request_commits(number, request_fun: first_fetch, head_sha: "head-one") end)
+      end
+
+    assert Enum.map(concurrent, &Task.await(&1, 1000)) == [{:ok, ["Refs #5605"]}, {:ok, ["Refs #5605"]}]
+    assert :atomics.get(requests, 1) == 1
+
+    assert_receive {:fetched, url}, 1000
+    assert url =~ "/pulls/#{number}/commits"
+
+    assert {:ok, ["Refs #5605"]} =
+             PullRequests.fetch_pull_request_commits(number, request_fun: fn _ -> flunk("same head must use cached commit messages") end, head_sha: "head-one")
+
+    assert {:ok, ["Refs #5605"]} =
+             PullRequests.fetch_pull_request_commits(number, request_fun: first_fetch, head_sha: "head-two")
+
+    assert_receive {:fetched, _url}, 1000
+    assert :atomics.get(requests, 1) == 2
   end
 
   test "returns all 150 changed paths across pages" do

@@ -2,7 +2,7 @@ defmodule Aiur.Events.GithubWebhookTest do
   use Aiur.TestSupport.WebhookTailCase
 
   alias Aiur.Events.{Exchange, GithubWebhook}
-  alias Aiur.Events.GithubWebhook.Normalizer
+  alias Aiur.Events.GithubWebhook.{Identity, Normalizer}
   alias Aiur.GitHub.ReadCache
   alias Aiur.Webhooks
 
@@ -78,6 +78,7 @@ defmodule Aiur.Events.GithubWebhookTest do
       assert "ticket.5605.pr.merged" in topics
       assert "ticket.5606.pr.merged" in topics
       assert Enum.all?(triples, fn {_topic, _payload, opts} -> opts[:issue_number] in ["5605", "5606"] end)
+      assert length(Enum.map(triples, fn {_topic, _payload, opts} -> opts[:dedup_key] end) |> Enum.uniq()) == 2
     end
 
     test "commit-only references resolve a merged PR when its branch has no ticket id" do
@@ -97,6 +98,72 @@ defmodule Aiur.Events.GithubWebhookTest do
                Normalizer.normalize("pull_request", delivery, repo: @repo)
 
       assert opts[:issue_number] == "5605"
+    end
+
+    test "a merged ticket branch is not attributed when commit evidence cannot be fetched" do
+      ReadCache.reset()
+
+      delivery = %{
+        "action" => "closed",
+        "repository" => %{"full_name" => @repo},
+        "pull_request" => %{
+          "number" => 904,
+          "merged" => true,
+          "body" => "",
+          "head" => %{"ref" => "aiur/5606-quarantine", "sha" => "badcafe"}
+        }
+      }
+
+      assert {:drop, {:commit_messages_unavailable, 904}} =
+               Normalizer.normalize("pull_request", delivery, repo: @repo, request_fun: fn _ -> {:error, :offline} end)
+    end
+
+    test "Refs does not wake a ticket for an opened or ready PR" do
+      for action <- ["opened", "ready_for_review"] do
+        delivery = %{
+          "action" => action,
+          "repository" => %{"full_name" => @repo},
+          "pull_request" => %{
+            "number" => 905,
+            "merged" => false,
+            "body" => "Refs #5605",
+            "head" => %{"ref" => "executor/quarantine", "sha" => "deadbee"}
+          }
+        }
+
+        assert {:drop, {:unresolved_ticket, "pull_request", 905}} =
+                 Normalizer.normalize("pull_request", delivery, repo: @repo)
+      end
+    end
+
+    test "commit closing references ignore quoted and code-fenced lines" do
+      assert Identity.ticket_from_commit_message("Revert commit\n> Fixes #5605", @repo) == nil
+      assert Identity.ticket_from_commit_message("revert: undo\n\n```\nCloses #5605\n```", @repo) == nil
+      assert Identity.ticket_from_commit_message("Fixes #5606", @repo) == "5606"
+    end
+
+    test "publisher delivers each merged reference target once" do
+      :ok = Exchange.subscribe("ticket.5605.pr.merged")
+      :ok = Exchange.subscribe("ticket.5606.pr.merged")
+
+      delivery = %{
+        "action" => "closed",
+        "repository" => %{"full_name" => @repo},
+        "sender" => %{"login" => "reviewer"},
+        "pull_request" => %{
+          "number" => 906,
+          "merged" => true,
+          "body" => "Refs #5605",
+          "head" => %{"ref" => "aiur/5605-quarantine", "sha" => "d15ea5e"},
+          "commit_messages" => ["Closes #5606"]
+        }
+      }
+
+      assert %{status: :published} = GithubWebhook.handle_delivery("pull_request", delivery, repo: @repo)
+      assert_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 1000
+      assert_receive {:event, %{topic: "ticket.5606.pr.merged"}}, 1000
+      assert %{status: :published} = GithubWebhook.handle_delivery("pull_request", delivery, repo: @repo)
+      refute_receive {:event, %{topic: _}}, 200
     end
 
     test "an unrecognized event type is ignored without crashing" do
@@ -257,6 +324,7 @@ defmodule Aiur.Events.GithubWebhookTest do
         "pull_request" => %{
           "number" => 901,
           "merged" => true,
+          "commit_messages" => [],
           "body" => "#### Context\ntext\n## Local tests\nPolicy: partial\nPost-deploy check: open /post-deploy and verify this merge appears\n## Docs\ntext",
           "updated_at" => "2026-06-24T12:00:00Z",
           "head" => %{"ref" => "aiur/#{ticket}-slug", "sha" => "deadbeef"}
@@ -269,7 +337,7 @@ defmodule Aiur.Events.GithubWebhookTest do
       assert payload.action == "closed"
       assert payload.post_deploy_checks == ["open /post-deploy and verify this merge appears"]
       assert opts[:bypass_contamination] == true
-      assert opts[:dedup_key] == {@repo, "pr:closed:901", "deadbeef"}
+      assert opts[:dedup_key] == {@repo, "pr:closed:901:#{ticket}", "deadbeef"}
     end
 
     test "closed without merge publishes nothing, matching the firehose" do

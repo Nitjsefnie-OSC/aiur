@@ -34,29 +34,82 @@ defmodule Aiur.Events.GithubFirehoseTest do
     test "a Refs body routes a merged PR from a non-ticket branch to the referenced ticket" do
       :ok = Exchange.subscribe("ticket.5605.pr.merged")
 
-      stub = fn _ ->
-        {:ok,
-         %{
-           status: 200,
-           headers: [{"ETag", ~s("ref-merge")}],
-           body: [
-             %{
-               "id" => "refs-merge",
-               "type" => "PullRequestEvent",
-               "created_at" => "2026-07-12T17:59:00Z",
-               "actor" => %{"login" => "carol"},
-               "repo" => %{"name" => "owner/repo"},
-               "payload" => %{
-                 "action" => "merged",
-                 "pull_request" => %{"number" => 5606, "body" => "Refs #5605", "merged" => true, "head" => %{"ref" => "executor/quarantine", "sha" => String.duplicate("a", 40)}}
+      stub = fn %{url: url} ->
+        if String.contains?(url, "/pulls/5606/commits") do
+          {:ok, %{status: 200, headers: [], body: []}}
+        else
+          {:ok,
+           %{
+             status: 200,
+             headers: [{"ETag", ~s("ref-merge")}],
+             body: [
+               %{
+                 "id" => "refs-merge",
+                 "type" => "PullRequestEvent",
+                 "created_at" => "2026-07-12T17:59:00Z",
+                 "actor" => %{"login" => "carol"},
+                 "repo" => %{"name" => "owner/repo"},
+                 "payload" => %{
+                   "action" => "merged",
+                   "pull_request" => %{
+                     "number" => 5606,
+                     "body" => "Refs #5605",
+                     "merged" => true,
+                     "commit_messages" => [],
+                     "head" => %{"ref" => "executor/quarantine", "sha" => String.duplicate("a", 40)}
+                   }
+                 }
                }
-             }
-           ]
-         }}
+             ]
+           }}
+        end
       end
 
       assert {:ok, %{count: 1}} = GithubFirehose.poll(request_fun: stub, boot_time: ~U[2026-07-12 18:00:00Z] |> DateTime.to_unix())
       assert_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 500
+    end
+
+    test "a merged ticket branch is not published when commit references cannot be fetched" do
+      ticket = "5606"
+      :ok = Exchange.subscribe("ticket.#{ticket}.pr.merged")
+
+      stub = fn %{url: url} ->
+        cond do
+          String.contains?(url, "/pulls/5606/commits") ->
+            {:error, :offline}
+
+          String.contains?(url, "/events") ->
+            {:ok,
+             %{
+               status: 200,
+               headers: [],
+               body: [
+                 %{
+                   "id" => "failed-commit-fetch",
+                   "type" => "PullRequestEvent",
+                   "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
+                   "actor" => %{"login" => "carol"},
+                   "repo" => %{"name" => "owner/repo"},
+                   "payload" => %{
+                     "action" => "merged",
+                     "pull_request" => %{
+                       "number" => 5606,
+                       "body" => "",
+                       "merged" => true,
+                       "head" => %{"ref" => "aiur/5606-ticket", "sha" => String.duplicate("f", 40)}
+                     }
+                   }
+                 }
+               ]
+             }}
+
+          true ->
+            {:ok, %{status: 200, headers: [], body: []}}
+        end
+      end
+
+      assert {:ok, %{count: 0}} = GithubFirehose.poll(request_fun: stub, boot_time: DateTime.add(DateTime.utc_now(), -3600, :second) |> DateTime.to_unix())
+      refute_receive {:event, %{topic: "ticket.5606.pr.merged"}}, 100
     end
 
     test "a closing keyword routes a merged PR from a non-ticket branch" do
@@ -76,7 +129,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                "repo" => %{"name" => "owner/repo"},
                "payload" => %{
                  "action" => "merged",
-                 "pull_request" => %{"number" => 5606, "body" => "Closes #5605", "merged" => true, "head" => %{"ref" => "executor/patch", "sha" => String.duplicate("b", 40)}}
+                 "pull_request" => %{"number" => 5606, "body" => "Closes #5605", "merged" => true, "commit_messages" => [], "head" => %{"ref" => "executor/patch", "sha" => String.duplicate("b", 40)}}
                }
              }
            ]
@@ -158,6 +211,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                  "action" => "merged",
                  "pull_request" => %{
                    "number" => 7,
+                   "commit_messages" => [],
                    "body" =>
                      "#### Summary\nPost-deploy check: ignore the example\n## Local tests\nPost-deploy check: run the real TUI and verify the rendered message\n#### Docs\nPost-deploy check: ignore this too",
                    "head" => %{"ref" => "aiur/7"}
@@ -285,6 +339,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                  "action" => "merged",
                  "pull_request" => %{
                    "number" => 559,
+                   "commit_messages" => [],
                    "head" => %{"ref" => "aiur/7", "sha" => "merge-bypass-sha"}
                  }
                }
@@ -445,6 +500,7 @@ defmodule Aiur.Events.GithubFirehoseTest do
                  "pull_request" => %{
                    "number" => 771,
                    "merged" => true,
+                   "commit_messages" => [],
                    "merged_by" => %{"login" => "aiur-bot"},
                    "head" => %{"ref" => "aiur/7", "sha" => "bot-merge-head"}
                  }

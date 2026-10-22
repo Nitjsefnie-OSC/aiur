@@ -5,21 +5,26 @@ defmodule Aiur.GitHub.PullRequests do
 
   alias Aiur.Codeowners
   alias Aiur.GitHub.{ChangedPaths, Comments, Errors, ResourceFetch, ResourceStore, Transport}
+  alias Aiur.GitHub.ReadCache
   alias Aiur.GitHub.PullRequests.{BaseBranch, OpenPullRequests}
   alias Aiur.GitHub.PullRequests.CommitCiStatus
 
   @issue_events_page 100
 
-  @doc "Fetches commit messages for a pull request, across all pages."
+  @doc "Fetches commit messages for a pull request, across all pages, cached by its head SHA."
   @spec fetch_pull_request_commits(pos_integer(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
   def fetch_pull_request_commits(number, opts \\ [])
 
   def fetch_pull_request_commits(number, opts) when is_integer(number) and number > 0 do
     with {:ok, {owner, repo}} <- Transport.parse_repo(),
          {:ok, token} <- Transport.require_token(opts) do
-      request_fun = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
-      url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/pulls/#{number}/commits?per_page=100"
-      fetch_commit_messages(request_fun, token, url, 0, [])
+      fetch = fn ->
+        request_fun = Keyword.get(opts, :request_fun, &Transport.default_request_fun/1)
+        url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/pulls/#{number}/commits?per_page=100"
+        fetch_commit_messages(request_fun, token, url, 0, [])
+      end
+
+      ReadCache.pull_request_commits("#{owner}/#{repo}", number, Keyword.get(opts, :head_sha), fetch)
     end
   end
 

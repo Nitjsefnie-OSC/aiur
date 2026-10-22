@@ -347,6 +347,7 @@ defmodule Aiur.Events.GithubFirehoseWindowTest do
           "body" => "Bounded summary",
           "html_url" => "https://github.com/owner/repo/pull/#{pr_number}",
           "merged" => true,
+          "commit_messages" => [],
           "merged_at" => Keyword.fetch!(opts, :created_at),
           "merge_commit_sha" => "merge-#{pr_number}",
           "head" => %{"ref" => head_ref, "sha" => head_sha},

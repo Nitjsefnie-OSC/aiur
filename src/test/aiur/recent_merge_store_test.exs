@@ -173,6 +173,9 @@ defmodule Aiur.RecentMergeStoreTest do
 
   test "reads explicit Refs lines for non-closing merge triage" do
     assert RecentMerge.referenced_issue_identifiers_in_body("Refs #176", "owner/repo") == ["176"]
+    assert RecentMerge.linked_issue_identifiers(struct(RecentMerge, summary: "issue 177", repository: "owner/repo")) == ["177"]
+    assert RecentMerge.linked_issue_identifiers(struct(RecentMerge, summary: "issue #178", repository: "owner/repo")) == ["178"]
+    assert RecentMerge.linked_issue_identifiers(struct(RecentMerge, summary: "`issue 179`", repository: "owner/repo")) == []
     assert RecentMerge.referenced_issue_identifiers_in_body("Part of #176\nimplementation details", "owner/repo") == ["176"]
     assert RecentMerge.referenced_issue_identifiers_in_body("Part of other/repo#176", "owner/repo") == []
     assert RecentMerge.referenced_issue_identifiers_in_body("Context\nPart of #176", "owner/repo") == []

@@ -82,7 +82,7 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
 
     {state, []} =
       MergedTicketReconciler.reconcile(%State{}, [issue],
-        recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1600"}] end,
+        recent_merges_fun: fn -> [%{merged_pr("Refs #1570") | ticket_id: "1570"}] end,
         reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> false end,
         mark_reference_merge_reconciled_fun: fn _merge_id, _ticket_id -> :ok end,
         now_fun: fn -> @now end,
@@ -112,7 +112,7 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
     parent = self()
     merge = %{merged_pr("Refs #1570") | ticket_id: "1570"}
 
-    _result =
+    {state, []} =
       MergedTicketReconciler.reconcile(%State{}, [issue],
         recent_merges_fun: fn -> [merge] end,
         now_fun: fn -> @now end,
@@ -120,10 +120,20 @@ defmodule Aiur.Orchestrator.MergedTicketCloseTest do
           send(parent, {:transition, id, target, expected})
           :ok
         end,
+        create_comment_fun: fn id, body ->
+          send(parent, {:comment, id, body})
+          :ok
+        end,
+        fetch_issue_states_fun: fn _ids, _cache -> flunk("a reference-only branch merge must not repair the closed ticket") end,
         resume_blockees_fun: fn current, _id -> current end,
         emit_alert_fun: fn topic, _opts -> send(parent, {:alert, topic}) end
       )
 
+    assert state.tracker_tasks == %{}
+    assert state.merged_ticket_reconciliations == MapSet.new()
+    assert state.merged_ticket_issue_cache == %{}
+    assert_receive {:comment, "1570", body}, 1000
+    assert body =~ "PR 1600 referencing this ticket merged"
     refute_receive {:transition, _, _, _}, 100
   end
 
