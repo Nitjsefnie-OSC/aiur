@@ -57,7 +57,7 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogRevalidationTest do
     Keyword.merge(base_opts, overrides)
   end
 
-  test "malformed live PR revalidation returns an error instead of crashing the poll" do
+  test "malformed post-dequeue PR revalidation still re-enqueues and raises attention" do
     path = temp_journal()
     parent = self()
     observation = observation(53)
@@ -96,6 +96,24 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogRevalidationTest do
 
                 Map.get(call, :method) == :post and query =~ "dequeuePullRequest" ->
                   {:ok, %{status: 200, body: %{"data" => %{"dequeuePullRequest" => %{}}}}}
+
+                Map.get(call, :method) == :post and query =~ "enqueuePullRequest" ->
+                  send(parent, :enqueued_after_malformed_revalidation)
+
+                  {:ok,
+                   %{
+                     status: 200,
+                     body: %{
+                       "data" => %{
+                         "enqueuePullRequest" => %{
+                           "mergeQueueEntry" => %{
+                             "id" => "new-entry",
+                             "pullRequest" => %{"id" => "PR_53", "headRefOid" => observation.head}
+                           }
+                         }
+                       }
+                     }
+                   }}
               end
           end
         )
@@ -104,8 +122,12 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogRevalidationTest do
 
     assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_000))
 
-    assert {:error, :invalid_queue_recovery_revalidation} =
-             MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_201_000))
+    assert :ok = MergeQueueWatchdog.reconcile([observation], Keyword.put(opts, :now_ms, 1_201_000))
+    assert_received :enqueued_after_malformed_revalidation
+
+    assert_received {:attention, "system.pr.landing.merge_queue_recovery_revalidation_changed", attrs}
+
+    assert attrs[:message] =~ "PR #53"
   end
 
   for state <- ["AWAITING_CHECKS", "MERGEABLE", "LOCKED"] do

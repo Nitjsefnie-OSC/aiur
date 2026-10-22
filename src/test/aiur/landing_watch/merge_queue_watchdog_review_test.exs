@@ -157,6 +157,50 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdogReviewTest do
     assert get_in(state, ["unmergeable_queue_entries", "80:#{head_ref(80)}", "attempts"]) == 1
   end
 
+  test "keeps first-seen time through queued states and resets it when the PR head changes" do
+    path = temp_journal()
+    first_seen = DateTime.utc_now() |> DateTime.to_unix(:millisecond)
+    parent_head = head_ref(85)
+    new_head = head_ref(86)
+    observation = observation(85, "UNMERGEABLE", "UNKNOWN")
+    queued = %{observation | merge_queue_entry: %{"id" => "entry-85", "state" => "QUEUED"}}
+
+    opts = [journal_path: path, base_branch: "main", now_ms: first_seen]
+
+    assert :ok = MergeQueueWatchdog.reconcile([observation], opts)
+    assert :ok = MergeQueueWatchdog.reconcile([queued], Keyword.put(opts, :now_ms, first_seen + 60_000))
+
+    assert {:ok, queued_state} = Journal.state(journal_path: path)
+
+    assert get_in(queued_state, ["unmergeable_queue_entries", "85:#{parent_head}", "first_seen_ms"]) ==
+             first_seen
+
+    changed_head = %{queued | head: new_head}
+
+    assert :ok =
+             MergeQueueWatchdog.reconcile(
+               [changed_head],
+               Keyword.put(opts, :now_ms, first_seen + 120_000)
+             )
+
+    assert {:ok, changed_state} = Journal.state(journal_path: path)
+    refute get_in(changed_state, ["unmergeable_queue_entries", "85:#{parent_head}"])
+
+    assert get_in(changed_state, ["unmergeable_queue_entries", "85:#{new_head}", "first_seen_ms"]) ==
+             first_seen + 120_000
+
+    assert :ok =
+             MergeQueueWatchdog.reconcile(
+               [%{number: 85, head: new_head}],
+               Keyword.put(opts, :now_ms, first_seen + 180_000)
+             )
+
+    assert {:ok, left_queue_state} = Journal.state(journal_path: path)
+
+    assert get_in(left_queue_state, ["unmergeable_queue_entries", "85:#{new_head}", "first_seen_ms"]) ==
+             nil
+  end
+
   test "commits the recovery attempt immediately after dequeue even when enqueue fails" do
     path = temp_journal()
     parent = self()

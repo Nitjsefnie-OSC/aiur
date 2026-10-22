@@ -55,7 +55,10 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     if tracked_observation?(observation) do
       track_candidate(observation, now, opts)
     else
-      clear_first_seen(number, head, opts)
+      case ensure_head_first_seen(number, head, now, opts) do
+        {:ok, _first_seen} -> :ok
+        {:error, _} = error -> error
+      end
     end
   end
 
@@ -106,9 +109,9 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
 
   defp track_candidate(observation, now, opts) do
     queue_state = get_in(observation, [:merge_queue_entry, "state"])
-    key = "#{observation.number}:#{observation.head}"
 
-    with {:ok, first_seen} <- ensure_head_first_seen(key, now, opts) do
+    with {:ok, first_seen} <-
+           ensure_head_first_seen(observation.number, observation.head, now, opts) do
       failed_since = failed_group_trigger_since(observation, first_seen, opts)
       candidate_since = candidate_since(queue_state, failed_since, now)
 
@@ -122,9 +125,22 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     end
   end
 
-  defp ensure_head_first_seen(key, now, opts) do
+  defp ensure_head_first_seen(number, head, now, opts) do
+    key = "#{number}:#{head}"
+
     Journal.update(opts, fn state ->
       rows = Map.get(state, "unmergeable_queue_entries", %{})
+
+      rows =
+        rows
+        |> Enum.reject(fn
+          {row_key, _row} when is_binary(row_key) ->
+            String.starts_with?(row_key, "#{number}:") and row_key != key
+
+          _ ->
+            false
+        end)
+        |> Map.new()
 
       existing =
         case Map.get(rows, key) do
@@ -301,30 +317,34 @@ defmodule Aiur.LandingWatch.MergeQueueWatchdog do
     end
   end
 
-  defp clear_first_seen(number, head, opts) do
-    key = "#{number}:#{head}"
-
+  defp clear_first_seen(number, _head, opts) do
     Journal.update(opts, fn state ->
       rows = Map.get(state, "unmergeable_queue_entries", %{})
-      row = Map.get(rows, key)
 
       rows =
-        case row do
-          value when is_map(value) ->
-            rows
-            |> Map.put(key, Map.put(value, "since", nil))
-            |> Map.update!(key, &Map.put(&1, "first_seen_ms", nil))
+        Map.new(rows, fn
+          {row_key, value} when is_binary(row_key) ->
+            if String.starts_with?(row_key, "#{number}:") do
+              {row_key, clear_row_timer(value)}
+            else
+              {row_key, value}
+            end
 
-          since when is_integer(since) ->
-            Map.put(rows, key, %{"since" => nil, "first_seen_ms" => nil, "attempts" => 0})
-
-          _ ->
-            rows
-        end
+          pair ->
+            pair
+        end)
 
       {:ok, Map.put(state, "unmergeable_queue_entries", rows)}
     end)
   end
+
+  defp clear_row_timer(value) when is_map(value),
+    do: value |> Map.put("since", nil) |> Map.put("first_seen_ms", nil)
+
+  defp clear_row_timer(value) when is_integer(value),
+    do: %{"since" => nil, "first_seen_ms" => nil, "attempts" => 0}
+
+  defp clear_row_timer(value), do: value
 
   defp mark_gave_up_alerted(number, head, opts) do
     key = "#{number}:#{head}"
