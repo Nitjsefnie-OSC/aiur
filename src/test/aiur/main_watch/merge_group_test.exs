@@ -7,8 +7,9 @@ defmodule Aiur.MainWatch.MergeGroupTest do
     :ok
   end
 
-  test "merge-group run on landed main SHA is not a main health observation" do
-    assert {:ok, %{observations: [], runs: [], merge_groups: []}} = GitHub.poll("main", ["ci"], token: "test-gh-token", request_fun: request(%{}, false, true), actions_write: false)
+  test "completed merge-group run is the fallback main health observation" do
+    assert {:ok, %{observations: [observation], runs: [], merge_groups: [_run]}} = GitHub.poll("main", ["ci"], token: "test-gh-token", request_fun: request(%{}, false, true), actions_write: false)
+    assert %{sha: "landed", event: "merge_group", checks: [%{name: "ci gate", conclusion: "success"}]} = observation
   end
 
   test "cancelled newest push falls back to the newest completed push run" do
@@ -38,7 +39,8 @@ defmodule Aiur.MainWatch.MergeGroupTest do
         ok(%{"workflow_runs" => [Map.merge(queue_run(), override)]})
 
       String.contains?(url, "/check-runs?") ->
-        ok(%{"check_runs" => [%{"id" => 1, "name" => "ci gate", "status" => "completed", "conclusion" => "success", "check_suite" => %{"id" => 8}, "app" => %{"slug" => "github-actions"}}]})
+        suite = if no_push?, do: 7, else: 8
+        ok(%{"check_runs" => [%{"id" => 1, "name" => "ci gate", "status" => "completed", "conclusion" => "success", "check_suite" => %{"id" => suite}, "app" => %{"slug" => "github-actions"}}]})
 
       String.ends_with?(url, "/status") ->
         ok(%{"statuses" => []})
