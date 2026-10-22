@@ -75,11 +75,19 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     journal = journal_path("rate-cap")
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(journal) end)
 
-    run = group_run(401, "failure", "pr-17-a-pr-18-b-pr-19-c-pr-20-d-pr-21-e")
     now_ms = System.system_time(:millisecond)
 
+    runs =
+      for {id, first_pr} <- Enum.with_index(401..405, 17),
+          do:
+            group_run(
+              id,
+              "failure",
+              "pr-#{first_pr}-a-pr-#{first_pr + 1}-b-pr-#{first_pr + 2}-c-pr-#{first_pr + 3}-d-pr-#{first_pr + 4}-e"
+            )
+
     prs =
-      for number <- 17..21,
+      for number <- 17..41,
           do: %{
             number: number,
             base: "main",
@@ -93,8 +101,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
           }
 
     request = fn %{method: :get, url: url} ->
-      runs = if String.contains?(url, "status=completed"), do: [run], else: []
-      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+      completed_runs = if String.contains?(url, "status=completed"), do: runs, else: []
+      {:ok, %{status: 200, body: %{"workflow_runs" => completed_runs}}}
     end
 
     options = [

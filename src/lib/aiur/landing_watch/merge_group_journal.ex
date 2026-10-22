@@ -122,7 +122,7 @@ defmodule Aiur.LandingWatch.MergeGroupJournal do
       else
         runs =
           runs
-          |> Map.put(run_key, System.system_time(:millisecond))
+          |> Map.put(run_key, Keyword.get(opts, :now_ms, System.system_time(:millisecond)))
           |> Enum.sort_by(&elem(&1, 1), :desc)
           |> Enum.take(500)
           |> Map.new()
