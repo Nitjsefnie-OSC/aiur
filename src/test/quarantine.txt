@@ -3,6 +3,7 @@ Aiur.AgentGitHubGuard.GraphqlAndPagination2Test	a broker failure refuses the rea
 Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	*	#5674
 Aiur.Core.AgentRunnerCheckpointQueueTest	*	#4463
 Aiur.DecisionStore.EnrichmentTest	supervisor enrichment exact replay is duplicate while changed reuse conflicts without append or notification	#4463
+Aiur.Experiments.AnalystLoopTest	analyst loop: events, pre-registration, report and rejection paths	#5742
 Aiur.GitHub.Budget.BrokerFailuresTest	a first attempt cut off by the admission deadline stays a broker timeout	#5647
 Aiur.GitHub.MonotonicDepositTest	*	#5605
 Aiur.LandingWatch.MainRecoveryRerunTest	*	#5605
@@ -12,5 +13,6 @@ Aiur.Orchestrator.MergeTransitionTest	*	#5655
 Aiur.Orchestrator.Status.ProgressAndIdentityTest	orchestrator snapshot reads open decisions without calling the per-ticket store	#4463
 Aiur.PerClassCadenceTest	*	#5605
 Aiur.Regression.OrchestratorLifecycleTest	pause/resume semantics resume revalidates tracker state after clearing the pause override	#4463
-AiurWeb.PresenterTest	open_decision_count uses blocking Commands rather than attention chips	#5620
+Aiur.Workspace.Ownership.RetentionOrderTest	persists a changed retention cause after a failed reboot audit	#5741
+Aiur.Workspace.ProvisionerTest	bulk workspace creation caps external POSIX after_create child builds	#5743
 AiurWeb.ZeroFetchPageOpenTest	*	#5605
