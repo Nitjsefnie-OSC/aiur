@@ -4,7 +4,7 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   identity" on `Aiur.Events.GithubWebhook.Normalizer`.
   """
 
-  alias Aiur.RecentMerge.ClosingReferences
+  alias Aiur.RecentMerge
   alias Aiur.TicketBranch
 
   @closing_keyword ~r/\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b/i
@@ -63,13 +63,13 @@ defmodule Aiur.Events.GithubWebhook.Identity do
   def linked_ticket_identifiers(pr) do
     repository = get_in(pr, ["base", "repo", "full_name"])
     body = Map.get(pr, "body")
-    body_ids = ClosingReferences.linked_identifiers_in_text(body, repository)
+    body_ids = RecentMerge.linked_issue_identifiers_in_text(body, repository)
 
     commit_ids =
       pr
       |> Map.get("commit_messages", [])
       |> Enum.flat_map(fn message ->
-        ClosingReferences.linked_identifiers_in_text(message, repository) ++
+        RecentMerge.linked_issue_identifiers_in_text(message, repository) ++
           List.wrap(ticket_from_commit_message(message))
       end)
 

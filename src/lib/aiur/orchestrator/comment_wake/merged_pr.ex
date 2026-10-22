@@ -194,8 +194,8 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPr do
   end
 
   defp merge_linked_identifiers(opts) do
-    body_ids = RecentMerge.ClosingReferences.linked_identifiers_in_text(Keyword.get(opts, :pr_body), merge_repository(opts))
-    commit_ids = Enum.flat_map(Keyword.get(opts, :commit_messages, []), &RecentMerge.ClosingReferences.linked_identifiers_in_text(&1, merge_repository(opts)))
+    body_ids = RecentMerge.linked_issue_identifiers_in_text(Keyword.get(opts, :pr_body), merge_repository(opts))
+    commit_ids = Enum.flat_map(Keyword.get(opts, :commit_messages, []), &RecentMerge.linked_issue_identifiers_in_text(&1, merge_repository(opts)))
     Enum.uniq(body_ids ++ commit_ids)
   end
 

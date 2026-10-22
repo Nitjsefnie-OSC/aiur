@@ -13,7 +13,7 @@ defmodule Aiur.Events.GithubWebhook.Triples do
   alias Aiur.Events.GithubWebhook.Identity
   alias Aiur.GitHub.PullRequests
   alias Aiur.GitHub.ResourceStore
-  alias Aiur.RecentMerge.ClosingReferences
+  alias Aiur.RecentMerge
 
   @type triple :: {String.t(), map(), keyword()}
   @type result :: {:publish, [triple()]} | {:drop, term()} | {:error, term()}
@@ -331,7 +331,7 @@ defmodule Aiur.Events.GithubWebhook.Triples do
   defp maybe_enrich_commit_messages(pr, number, true, opts) do
     linked_in_body =
       Map.get(pr, "body")
-      |> ClosingReferences.linked_identifiers_in_text(repo_from_pr(pr))
+      |> RecentMerge.linked_issue_identifiers_in_text(repo_from_pr(pr))
 
     if Map.has_key?(pr, "commit_messages") or linked_in_body != [] do
       pr

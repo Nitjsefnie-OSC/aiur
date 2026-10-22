@@ -65,7 +65,7 @@ defmodule Aiur.Orchestrator.MergedTicketOpenPRTest do
     assert Tracker.labels("1570") == ["needs-triage"]
   end
 
-  test "a reference-only merge leaves an existing operator park unchanged" do
+  test "a reference-only merge leaves ticket state unchanged" do
     issue = %Issue{id: "issue-1570", identifier: "1570", state: "in-progress"}
     tracker = Tracker.start("1570", ["agent:in-progress"], true)
     on_exit(fn -> Tracker.stop("1570", tracker) end)
