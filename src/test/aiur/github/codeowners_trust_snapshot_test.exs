@@ -125,7 +125,7 @@ defmodule Aiur.GitHub.CodeownersTrustSnapshotTest do
     end)
 
     payload = %{author: "member", comment: %{"user" => %{"login" => "member"}, "body" => "/aiur <request>"}}
-    sanitized = payload |> Sanitizer.scrub() |> Sanitizer.stamp_author_trust() |> Sanitizer.put_comment_message()
+    sanitized = payload |> Sanitizer.scrub() |> Sanitizer.stamp_author_trust(trust_server: server) |> Sanitizer.put_comment_message()
     assert sanitized.comment["body"] == "/aiur &lt;request&gt;"
     assert sanitized.author_trusted? == false
     refute PrCommandScanner.command?(Map.put(sanitized.comment, :author_trusted?, sanitized.author_trusted?), "/aiur", nil)

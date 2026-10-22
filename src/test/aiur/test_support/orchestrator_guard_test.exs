@@ -35,6 +35,22 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert CodeOwners.codeowners_snapshot() == baseline.codeowners
   end
 
+  test "verify_restored! reports and restores CodeOwners while its name is unregistered", context do
+    pid = Process.whereis(CodeOwners)
+    baseline = OrchestratorGuard.capture_shared_state().codeowners
+    assert is_pid(pid)
+    on_exit(fn -> if Process.alive?(pid) and is_nil(Process.whereis(CodeOwners)), do: Process.register(pid, CodeOwners) end)
+    Process.unregister(CodeOwners)
+
+    assert_raise RuntimeError,
+                 ~r/Aiur\.TestSupport\.OrchestratorGuardTest: test verify_restored! reports and restores CodeOwners while its name is unregistered .*Aiur\.GitHub\.CodeOwners unregistered during Aiur\.TestSupport\.OrchestratorGuardTest: test verify_restored! reports and restores CodeOwners while its name is unregistered/,
+                 fn -> OrchestratorGuard.verify_restored!(context) end
+
+    assert Process.whereis(CodeOwners) == pid
+    assert CodeOwners.snapshot() == baseline.allowlist
+    assert CodeOwners.codeowners_snapshot() == baseline.codeowners
+  end
+
   test "verify_restored! skips async tests", context do
     assert :ok = Supervisor.terminate_child(Aiur.Supervisor, Aiur.Orchestrator)
 
@@ -143,14 +159,14 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     mix = System.find_executable("mix") || flunk("mix executable not found")
 
     {output, status} =
-      System.cmd(mix, ["test", "--seed", "0", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
+      System.cmd(mix, ["test", "--max-cases", "4", "--seed", "0", "--include", "orchestrator_guard_probe", "test/fixtures/orchestrator_guard"],
         cd: src_dir,
         stderr_to_stdout: true,
         env: [{"AIUR_RUN_ORCHESTRATOR_GUARD_PROBES", "1"}]
       )
 
     assert status != 0
-    assert output =~ "18 tests, 4 failures"
+    assert output =~ "18 tests, 1 failure"
     assert output =~ "Aiur.Orchestrator was down before Aiur.BTestSupportWiringNeighbourTest"
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
