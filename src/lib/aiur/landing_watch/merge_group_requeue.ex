@@ -115,21 +115,17 @@ defmodule Aiur.LandingWatch.MergeGroupRequeue do
          %{number: number, head: head, node_id: node_id, merge_queue_entry: %{"id" => entry, "state" => "UNMERGEABLE"}} = pr,
          opts
        ) do
-    eligible_approved_pr?(pr, number, head, opts, false) and is_binary(node_id) and is_binary(entry) and
+    eligible_approved_pr?(pr, number, head, opts) and is_binary(node_id) and is_binary(entry) and
       pr.mergeable == "MERGEABLE" and pr.merge_state_status == "CLEAN" and
       is_nil(pr.auto_merge_request)
   end
 
   defp eligible_for_group_requeue?(_pr, _opts), do: false
 
-  defp eligible_approved_pr?(pr, number, head, opts), do: eligible_approved_pr?(pr, number, head, opts, true)
-
-  defp eligible_approved_pr?(pr, number, head, opts, check_ticket?) do
+  defp eligible_approved_pr?(pr, number, head, opts) do
     pr.draft? == false and pr.review_decision == "APPROVED" and is_binary(head) and
-      is_binary(pr.node_id) and (not check_ticket? or ticket_can_land?(pr, opts)) and approved?(number, opts) and attributed_cleanly?(pr, opts)
+      is_binary(pr.node_id) and ticket_can_land?(pr, opts) and approved?(number, opts) and attributed_cleanly?(pr, opts)
   end
-
-  defp ticket_can_land?(%{merge_queue_entry: %{"state" => "UNMERGEABLE"}}, _opts), do: true
 
   defp ticket_can_land?(pr, opts) do
     case TicketLookup.fetch(pr, opts) do

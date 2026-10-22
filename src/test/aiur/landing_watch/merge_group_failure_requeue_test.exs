@@ -185,6 +185,23 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     assert :ok = MergeGroupRequeue.requeue_group_prs([17], [pr], %{"id" => 903}, "known non-PR failure", opts)
     refute_received {:enqueue, _}
 
+    unmergeable_pr =
+      Map.merge(pr, %{
+        merge_queue_entry: %{"id" => "entry-17", "state" => "UNMERGEABLE"},
+        mergeable: "MERGEABLE",
+        merge_state_status: "CLEAN"
+      })
+
+    opts =
+      Keyword.merge(opts,
+        unmergeable_revalidate_fun: fn _, _ -> :ok end,
+        dequeue_fun: fn _, _ -> :ok end,
+        queue_free_revalidate_fun: fn _, _ -> :ok end
+      )
+
+    assert :ok = MergeGroupRequeue.requeue_group_prs([17], [unmergeable_pr], %{"id" => 905}, "known non-PR failure", opts)
+    refute_received {:enqueue, _}
+
     opts = Keyword.put(opts, :ticket_state_fun, fn "17", _ -> {:ok, "ci-wait"} end)
     new_pr = %{pr | head: "new-head"}
     assert :ok = MergeGroupRequeue.requeue_group_prs([17], [new_pr], %{"id" => 904}, "known non-PR failure", opts)
