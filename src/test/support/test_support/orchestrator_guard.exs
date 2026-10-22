@@ -17,6 +17,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   use GenServer
 
   alias Aiur.GitHub.CodeOwners
+  alias Aiur.TestSupport.CodeownersGuardState
   alias Aiur.TestSupport.OrchestratorChild
 
   alias Aiur.TestSupport.RuntimeChildren
@@ -354,14 +355,14 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   end
 
   def capture_codeowners_baseline! do
-    case Aiur.TestSupport.CodeownersGuardState.capture() do
+    case CodeownersGuardState.capture() do
       nil -> :ok
       state -> :persistent_term.put(@codeowners_key, state)
     end
   end
 
   defp attribute_unregistered_codeowners(leaks, context) do
-    if Aiur.TestSupport.CodeownersGuardState.unregistered?(), do: ["Aiur.GitHub.CodeOwners unregistered during #{test_name(context)}"], else: leaks
+    if CodeownersGuardState.unregistered?(), do: ["Aiur.GitHub.CodeOwners unregistered during #{test_name(context)}"], else: leaks
   end
 
   @doc false
@@ -375,20 +376,27 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   defp codeowners_leaks(expected) when expected in [:unset, nil], do: []
 
   defp codeowners_leaks(expected) do
-    if Aiur.TestSupport.CodeownersGuardState.unregistered?() do
+    if CodeownersGuardState.unregistered?() do
       ["Aiur.GitHub.CodeOwners unregistered after #{last_finished() || "unknown"}"]
     else
-      case codeowners_state() do
-        ^expected -> []
-        actual -> ["Aiur.GitHub.CodeOwners changed from #{inspect(expected)} to #{inspect(actual)}"]
+      case Process.whereis(CodeOwners) do
+        nil -> []
+        _pid -> compare_codeowners_state(expected)
       end
+    end
+  end
+
+  defp compare_codeowners_state(expected) do
+    case codeowners_state() do
+      ^expected -> []
+      actual -> ["Aiur.GitHub.CodeOwners changed from #{inspect(expected)} to #{inspect(actual)}"]
     end
   end
 
   defp restore_codeowners(expected) do
     case expected do
       %{allowlist: _allowlist, codeowners: _codeowners} = state ->
-        Aiur.TestSupport.CodeownersGuardState.restore(state)
+        CodeownersGuardState.restore(state)
 
       _ ->
         :ok

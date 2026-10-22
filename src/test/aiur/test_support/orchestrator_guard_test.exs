@@ -171,7 +171,7 @@ defmodule Aiur.TestSupport.OrchestratorGuardTest do
     assert output =~ "last finished test: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down"
     assert output =~ "last finished test: Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed"
 
-    assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down left Aiur.Orchestrator down (restore: :ok)"
+    assert output =~ "Aiur.ZTestSupportWiringProbeTest: test leaves orchestrator down; last finished test: Aiur.YTestSupportStandInProbeTest: test leaves a stand-in holding the name"
 
     assert output =~
              "plain ExUnit tests broke Aiur.Orchestrator: Aiur.APlainCaseWiringProbeTest: test leaves orchestrator down (down), Aiur.DPlainCaseUnnamedProbeTest: test leaves the supervised orchestrator unnamed (down), Aiur.ZZPlainCaseLastProbeTest: test leaves orchestrator down at suite end (down)"

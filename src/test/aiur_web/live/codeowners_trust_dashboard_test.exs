@@ -3,6 +3,7 @@ defmodule AiurWeb.CodeownersTrustDashboardTest do
   require Phoenix.LiveViewTest
 
   alias Aiur.GitHub.CodeOwners
+  alias AiurWeb.OperatorControlCenter.CodeownersTrust
 
   @moduletag :tmp_dir
 
@@ -29,7 +30,7 @@ defmodule AiurWeb.CodeownersTrustDashboardTest do
              {:team_lookup_failed, "@acme/team", {:github, :http, %{status: 503}}}
 
     html =
-      Phoenix.LiveViewTest.render_component(&AiurWeb.OperatorControlCenter.CodeownersTrust.banner/1,
+      Phoenix.LiveViewTest.render_component(&CodeownersTrust.banner/1,
         now: DateTime.utc_now(),
         snapshot: CodeOwners.trust_snapshot(server)
       )
@@ -40,6 +41,6 @@ defmodule AiurWeb.CodeownersTrustDashboardTest do
     File.write!(path, "* @direct\n")
     CodeOwners.refresh(server)
     recovered = CodeOwners.trust_snapshot(server)
-    assert Phoenix.LiveViewTest.render_component(&AiurWeb.OperatorControlCenter.CodeownersTrust.banner/1, now: DateTime.utc_now(), snapshot: recovered) == ""
+    assert Phoenix.LiveViewTest.render_component(&CodeownersTrust.banner/1, now: DateTime.utc_now(), snapshot: recovered) == ""
   end
 end
