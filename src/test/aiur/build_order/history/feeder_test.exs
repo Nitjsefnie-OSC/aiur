@@ -283,8 +283,24 @@ defmodule Aiur.BuildOrder.History.FeederTest do
 
   test "task crash reports failed and not-running is explicit", ctx do
     store(ctx, true)
-    feeder(ctx, graphql_fun: fn _, _, _, _, _ -> exit(:query_crashed) end)
-    after_feed(fn -> Feeder.catch_up_status().status == :failed end)
+    owner = self()
+
+    feeder(ctx,
+      graphql_fun: fn _, _, _, _, _ ->
+        send(owner, :catch_up_started)
+        Aiur.TestSupport.receive_barrier({:crash_catch_up, ^owner})
+        exit(:query_crashed)
+      end
+    )
+
+    assert_receive :catch_up_started, 5_000
+    assert Feeder.catch_up_status().status == :running
+    task = Enum.find(Task.Supervisor.children(@tasks), fn pid -> Process.info(pid, :dictionary) end)
+    assert is_pid(task)
+    ref = Process.monitor(task)
+    send(task, {:crash_catch_up, self()})
+    Aiur.TestSupport.receive_barrier({:DOWN, ^ref, :process, ^task, :query_crashed})
+    assert Feeder.catch_up_status().status == :failed
     assert Feeder.catch_up_status().reason == {:task_down, :query_crashed}
     stop_supervised!(Feeder)
     assert Feeder.catch_up_status() == {:error, :not_running}
