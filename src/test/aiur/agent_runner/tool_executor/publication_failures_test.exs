@@ -164,13 +164,15 @@ defmodule Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest do
       identifier = "TE-attention-#{System.unique_integer([:positive])}"
       issue = %Issue{identifier: identifier}
       executor = ToolExecutor.build(issue, nil, nil)
+      :ok = Exchange.subscribe("ticket.#{identifier}.agent.attention.scope-question")
 
       assert executor.("emit_event", %{"name" => "attention.scope-question", "message" => "Approve the target?"})["success"] == true
-      assert :drained = Aiur.CoordinationTasks.run({:ticket, identifier}, fn -> :drained end)
+      assert_published_attention(identifier, "attention.scope-question")
       assert open_attentions(identifier) == ["scope-question"]
 
+      :ok = Exchange.subscribe("ticket.#{identifier}.agent.attention.resolved")
       assert executor.("emit_event", %{"name" => "attention.resolved", "message" => "Approved", "payload" => %{"slug" => "scope-question"}})["success"] == true
-      assert :drained = Aiur.CoordinationTasks.run({:ticket, identifier}, fn -> :drained end)
+      assert_published_attention(identifier, "attention.resolved")
       assert open_attentions(identifier) == []
     end
 
@@ -422,5 +424,11 @@ defmodule Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest do
       :not_found -> []
       snapshot -> snapshot.open_attentions
     end
+  end
+
+  defp assert_published_attention(identifier, name) do
+    topic = "ticket.#{identifier}.agent.#{name}"
+    assert :drained = Aiur.CoordinationTasks.run({:ticket, identifier}, fn -> :drained end)
+    assert_receive {:event, %{topic: ^topic}}, 2_000
   end
 end
