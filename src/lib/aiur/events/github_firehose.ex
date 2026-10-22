@@ -38,6 +38,7 @@ defmodule Aiur.Events.GithubFirehose do
   alias Aiur.{Boot, RecentMerge, RecentMergeStore, RunTelemetry}
   alias Aiur.Events
   alias Aiur.Events.{GithubKeys, Sanitizer}
+  alias Aiur.Events.GithubFirehose.PullRequest
   alias Aiur.GitHub.Client
   alias Aiur.GitHub.PullRequests
   alias Aiur.RunTelemetry.Lifecycle
@@ -425,7 +426,7 @@ defmodule Aiur.Events.GithubFirehose do
   end
 
   defp translate(%{"type" => "PullRequestEvent"} = event, opts),
-    do: Aiur.Events.GithubFirehose.PullRequest.translate(event, opts)
+    do: PullRequest.translate(event, opts)
 
   defp translate(_event, _opts), do: nil
 
