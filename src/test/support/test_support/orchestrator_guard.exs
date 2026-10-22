@@ -49,7 +49,6 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def handle_cast({:test_finished, %ExUnit.Test{} = test}, _last) do
     name = "#{inspect(test.module)}: #{test.name}"
     :persistent_term.put(@last_finished_key, name)
-    signal_test_finished(test, name)
     {:noreply, name}
   end
 
@@ -482,15 +481,6 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   catch
     :exit, _reason -> nil
   end
-
-  defp signal_test_finished(%ExUnit.Test{module: Aiur.YTestSupportStandInProbeTest}, name) do
-    case System.get_env("AIUR_ORCHESTRATOR_GUARD_COMPLETION_FILE") do
-      nil -> :ok
-      path -> File.write!(path, name)
-    end
-  end
-
-  defp signal_test_finished(_test, _name), do: :ok
 
   defp test_name(context), do: "#{inspect(context[:module])}: #{context[:test]}"
 end

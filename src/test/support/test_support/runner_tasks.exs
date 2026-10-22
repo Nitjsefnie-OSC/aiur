@@ -22,6 +22,9 @@ defmodule Aiur.TestSupport.RunnerTasks do
     end
 
     :ok
+  catch
+    # The supervisor shut down mid-loop and took the remaining tasks with it.
+    :exit, _reason -> :ok
   end
 
   @doc "Fails the suite if a runner task outlives the test support fixture."
@@ -41,11 +44,10 @@ defmodule Aiur.TestSupport.RunnerTasks do
   end
 
   defp runner_tasks do
-    if Process.whereis(Aiur.TaskSupervisor) do
-      Enum.filter(Task.Supervisor.children(Aiur.TaskSupervisor), &runner_task?/1)
-    else
-      []
-    end
+    Enum.filter(Task.Supervisor.children(Aiur.TaskSupervisor), &runner_task?/1)
+  catch
+    # Absent, or shut down by a :rest_for_one restart while we asked (#5581): its tasks exited with it.
+    :exit, _reason -> []
   end
 
   defp runner_task?(pid) do
