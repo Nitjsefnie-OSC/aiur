@@ -173,11 +173,11 @@ defmodule Aiur.AgentRunner.ReworkHandoffGuard do
     review_blockers(ReworkFindings.fetch(issue.identifier, opts), issue, state, workspace, opts)
   end
 
-  # #5746: workers move a rework ticket to `in-progress` before handing back, so an open blocking review
-  # is checked in any state. Outside rework an unreadable review or a comment-only request fails open.
+  # #5746: workers move a rework ticket to `in-progress` before handing back, so an open review with findings
+  # is checked in any state. Outside rework an unreadable review, or one with no numbered findings, fails open.
   def findings_blockers(%Issue{} = issue, state, workspace, opts) when state in ["ci-wait", "human-review"] do
     case ReworkFindings.fetch(issue.identifier, opts) do
-      {:ok, %{review_head: review_head}} = fetched when is_binary(review_head) -> review_blockers(fetched, issue, state, workspace, opts)
+      {:ok, %{review_head: review_head, findings: [_ | _]}} = fetched when is_binary(review_head) -> review_blockers(fetched, issue, state, workspace, opts)
       _no_open_review -> {:allow, []}
     end
   end
