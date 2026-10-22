@@ -3,6 +3,9 @@ import { open, lock } from './support/build-home-chains.mjs'
 import { settleAnimations } from './support/browser-helpers.mjs'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 
+// The design export stops arrow tips 2 px short of the target card; edge parity holds the product to it.
+const TIP_GAP = 2
+
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 
 for (const width of [1440, 1024]) test(`Fit redraws dependency arrows on settled cards at ${width}px`, async ({ page }) => {
@@ -52,6 +55,6 @@ for (const width of [1440, 1024]) test(`Fit redraws dependency arrows on settled
   expect(afterFit).not.toEqual(beforeFit)
   for (const edge of endpointErrors) {
     expect(edge.source, `${edge.id} source endpoint`).toBeLessThanOrEqual(1)
-    expect(edge.target, `${edge.id} arrow tip`).toBeLessThanOrEqual(1)
+    expect(Math.abs(edge.target - TIP_GAP), `${edge.id} arrow tip`).toBeLessThanOrEqual(1)
   }
 })

@@ -20,7 +20,7 @@ export function edgeEmphasis(chain, id, did, dim) {
 export function edgeGeometry(a, b, cr) {
   if (a.bottom <= b.top + 6) {
     const x1 = a.left + a.width / 2 - cr.left, y1 = a.bottom - cr.top;
-    const x2 = b.left + b.width / 2 - cr.left, y2 = b.top - cr.top - 1;
+    const x2 = b.left + b.width / 2 - cr.left, y2 = b.top - cr.top - 3;
     const dy = Math.max(18, (y2 - y1) / 2);
     return {
       path: `M${x1} ${y1} C${x1} ${y1 + dy} ${x2} ${y2 - dy} ${x2} ${y2}`,
@@ -29,7 +29,7 @@ export function edgeGeometry(a, b, cr) {
   }
   const right = a.right <= b.left;
   const x1 = (right ? a.right : a.left) - cr.left, y1 = a.top + a.height / 2 - cr.top;
-  const x2 = (right ? b.left - 1 : b.right + 1) - cr.left, y2 = b.top + Math.min(18, b.height / 2) - cr.top;
+  const x2 = (right ? b.left - 3 : b.right + 3) - cr.left, y2 = b.top + Math.min(18, b.height / 2) - cr.top;
   const dx = Math.max(20, Math.abs(x2 - x1) / 2) * (right ? 1 : -1);
   return {
     path: `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`,
