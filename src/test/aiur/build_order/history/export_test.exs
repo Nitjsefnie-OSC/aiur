@@ -256,6 +256,16 @@ defmodule Aiur.BuildOrder.History.ExportTest do
     end
   end
 
+  # Redaction can shrink the sanitised head below the excerpt limit; the rest
+  # of the body was still never shown, so the excerpt is truncated.
+  test "a body cut before sanitising is truncated even when its excerpt is short" do
+    body = Enum.map_join(1..40, "\n", &"https://example.com/#{&1}/#{String.duplicate("p", 200)}")
+    held = ticket(Export.page(opts([row(1)], issue_body: fn 1 -> {:ok, %{data: %{"body" => body}}} end)), 1).body
+
+    assert String.length(held.excerpt) < 1_600
+    assert held.truncated
+  end
+
   test "labels that sanitise to nothing are dropped and an unobserved row says so" do
     result = Export.page(opts([row(1, labels: ["bug", "\e", "  "], observed_at: :unknown)]))
     one = ticket(result, 1)
