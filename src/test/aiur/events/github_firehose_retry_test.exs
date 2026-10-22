@@ -160,6 +160,48 @@ defmodule Aiur.Events.GithubFirehoseRetryTest do
       assert_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 500
     end
 
+    test "an unclassified merge advances the cursor when commit lookup fails" do
+      :ok = Exchange.subscribe("ticket.5605.pr.merged")
+
+      stub = fn
+        %{url: url} when is_binary(url) ->
+          if String.contains?(url, "/pulls/5607/commits") do
+            {:error, :offline}
+          else
+            {:ok,
+             %{
+               status: 200,
+               headers: [{"ETag", ~s("unclassified-merge")}],
+               body: [
+                 %{
+                   "id" => "unclassified-merge",
+                   "type" => "PullRequestEvent",
+                   "created_at" => DateTime.to_iso8601(DateTime.utc_now()),
+                   "repo" => %{"name" => "owner/repo"},
+                   "payload" => %{
+                     "action" => "merged",
+                     "pull_request" => %{
+                       "number" => 5607,
+                       "body" => "Refs #5605",
+                       "merged" => true,
+                       "head" => %{"ref" => "executor/quarantine", "sha" => "unclassified-head"}
+                     }
+                   }
+                 }
+               ]
+             }}
+          end
+
+        _request ->
+          flunk("the merge event request should be the only other request")
+      end
+
+      assert {:ok, %{count: 0, last_event_id: "unclassified-merge", etag: ~s("unclassified-merge")}} =
+               GithubFirehose.poll(request_fun: stub)
+
+      refute_receive {:event, %{topic: "ticket.5605.pr.merged"}}, 100
+    end
+
     test "a closing keyword routes a merged PR when commit evidence cannot be fetched" do
       :ok = Exchange.subscribe("ticket.5605.pr.merged")
 
