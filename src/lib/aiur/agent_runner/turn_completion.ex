@@ -138,7 +138,7 @@ defmodule Aiur.AgentRunner.TurnCompletion do
   end
 
   defp handoff_noop_without_state(turn_context, issue, workspace, worker_host, progress, witness, cap, turn_number) do
-    reason = "Agent reached the no-op turn limit without a state transition or pull request."
+    reason = "Agent reached the no-op turn limit without making progress."
 
     case TicketTransition.write_comment(issue.identifier, reason, writer: :turn_loop) do
       :ok ->

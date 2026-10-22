@@ -96,7 +96,7 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
       identifier = ctx.issue.identifier
       assert_receive {:memory_tracker_state_update, ^identifier, "human-review"}, 1000
       assert_receive {:memory_tracker_comment, ^identifier, comment}, 1000
-      assert comment =~ "no-op turn limit"
+      assert comment =~ "without making progress"
     end
 
     test "recognizes waiting, requested, and pending check runs", ctx do
@@ -136,7 +136,7 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
 
       assert_receive {:memory_tracker_comment, identifier, comment}, 1000
       assert identifier == issue.identifier
-      assert comment =~ "no-op turn limit"
+      assert comment =~ "without making progress"
       assert_receive {:memory_tracker_state_update, ^identifier, "human-review"}, 1000
     end
 
