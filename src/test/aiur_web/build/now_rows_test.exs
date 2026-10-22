@@ -110,14 +110,30 @@ defmodule AiurWeb.Build.NowRowsTest do
 
   test "empty, unavailable, stale and truncated catalogs preserve source truth" do
     empty = NowRows.build(catalog([], :empty), repository: @repo)
-    assert empty == %{rows: %{}, source: %{state: "ok", observed_at: @ms, reason: nil}}
+
+    assert empty == %{
+             rows: %{},
+             source: %{
+               state: "ok",
+               observed_at: @ms,
+               reason: nil,
+               stale_after_ms: Aiur.PollCadence.snapshot_tolerance_ms(15_000, class: :dispatch)
+             }
+           }
 
     assert NowRows.build(catalog([row()], :unavailable), repository: @repo) ==
              %{rows: %{}, source: %{state: "unavailable", observed_at: nil, reason: "fleet_unavailable"}}
 
     stale = NowRows.build(catalog([row()], :stale), repository: @repo)
     assert map_size(stale.rows) == 1
-    assert stale.source == %{state: "stale", observed_at: @ms, reason: "fleet_stale"}
+
+    assert stale.source == %{
+             state: "stale",
+             observed_at: @ms,
+             reason: "fleet_stale",
+             stale_after_ms: Aiur.PollCadence.snapshot_tolerance_ms(15_000, class: :dispatch)
+           }
+
     assert NowRows.build(Map.put(catalog([]), :truncated?, true), repository: @repo).source.reason == "membership_truncated"
 
     for freshness <- [%{status: :unknown}, %{status: %{observed_at: "garbage"}}, %{}] do
