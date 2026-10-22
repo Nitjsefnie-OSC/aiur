@@ -9,6 +9,7 @@ import { rowState, agentClasses, glowHTML, logoHTML, lineLogoHTML, srHTML } from
 import { colKey, match } from './match.js';
 import { place } from './render.js';
 import { estOf } from './gantt.js';
+import { cardLabel } from './a11y.js';
 
 const CX = ['❶', '❷', '❸', '❹', '❺'], CXH = [145, 110, 80, 50, 25];
 export const finite = (x, lo = 0, hi = Number.MAX_SAFE_INTEGER) => Number.isFinite(x) && x >= lo && x <= hi ? x : null;
@@ -91,7 +92,7 @@ export function makeCard(it) {
   const el = document.createElement('div');
   const startUnknown = it.startUnknown || (S.view === 'gantt' && t.sec === 'hist' && t.start == null);
   const estUnknown = it.estUnknown || (S.view === 'gantt' && t.sec === 'now' && estOf(t) === null);
-  el._it = it; el.dataset.id = t.id; el.tabIndex = -1;
+  el._it = it; el.dataset.id = t.id; el.tabIndex = t.id === ctx.a11y.roving ? 0 : -1; el.setAttribute('role', 'button');
   el.className = 'bd-card ' + det + ' ' + t.sec + (t.status === 'failed' ? ' failed' : '') + (cls.ag ? ' ' + cls.ag : '') +
     (startUnknown ? ' start-unknown' : '') + (estUnknown ? ' est-unknown' : '') + (it.ghost ? ' ghost' : '') + (e.unsorted ? ' unsorted' : '') + (it.gantt ? ' gplan' : '') +
     (t.sec === 'plan' && (t.cue?.failed || t.cue?.blockedChain) ? ' blk' : '') + (cls.hasAg ? ' has-ag' : '') + (t.status === 'not_planned' ? ' np' : '');
@@ -129,6 +130,7 @@ export function decorate(el) {
   el.classList.toggle('also', !!also); el.classList.toggle('feat-on', !!inFeat);
   const hue = F && Object.hasOwn(ctx.D.features, F) ? finite(ctx.D.features[F].hue, 0, 360) : null;
   if (hue !== null) el.style.setProperty('--fh', hue); else el.style.removeProperty('--fh');
+  el.setAttribute('aria-label', cardLabel(t, ctx.D, ctx.snap, el.classList));
 }
 export function decorateAll() { rendered().forEach(decorate); fx.drawEdgesSoon(10); }
 export function refreshTicket(id) {
