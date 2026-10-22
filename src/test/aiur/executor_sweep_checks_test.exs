@@ -58,7 +58,7 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
 
   test "names runner starvation when queued merge-group runs outnumber running runs" do
     now = DateTime.utc_now()
-    queued = for id <- 1..11, do: %{id: id, name: "run #{id}", state: "queued", started_at: DateTime.add(now, -20, :minute)}
+    queued = for id <- 1..11, do: %{id: id, name: "run #{id}", state: "queued", started_at: now}
     snapshot = %{merge_groups: queued, github_cache_ages: %{merge_group_runs: Map.new(1..11, &{&1, 0})}}
 
     findings = Checks.all(snapshot, now)
