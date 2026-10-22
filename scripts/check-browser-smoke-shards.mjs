@@ -187,3 +187,18 @@ for (const [shard, commands] of Object.entries(plan)) {
   } else console.log(line)
 }
 if (over) process.exit(1)
+
+// The job deadline must cover setup, the runner's whole suite budget and post-suite steps, so a loaded
+// shard that is still making progress is stopped by its own budget or per-test timeouts, never cancelled.
+const { setupSeconds, tailSeconds } = await import(pathToFileURL(runnerPath).href)
+if (setupSeconds === undefined || tailSeconds === undefined) throw new Error(`${runnerPath} must export setupSeconds and tailSeconds`)
+const browserJob = readFileSync(resolve(ciRoot, 'workflows/ci.yml'), 'utf8').match(/^ {2}browser:\n(?:(?: {3,}.*)?\n)*/m)?.[0]
+const timeoutMinutes = Number(browserJob?.match(/^ {4}timeout-minutes: (\d+)$/m)?.[1])
+if (!timeoutMinutes) throw new Error('.github/workflows/ci.yml has no browser job timeout-minutes')
+const neededSeconds = setupSeconds + budgetMs / 1000 + tailSeconds
+const deadline = `browser job timeout ${timeoutMinutes * 60}s for setup ${setupSeconds}s + suite budget ${budgetMs / 1000}s + tail ${tailSeconds}s = ${neededSeconds}s`
+if (timeoutMinutes * 60 < neededSeconds) {
+  console.error(`Browser smoke ${deadline}: too short. Raise timeout-minutes in .github/workflows/ci.yml.`)
+  process.exit(1)
+}
+console.log(deadline)
