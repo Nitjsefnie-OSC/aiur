@@ -12,9 +12,13 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     failed = group_run(201, "failure", "pr-17-a")
     passed = group_run(202, "success", "pr-17-b")
 
-    request = fn %{method: :get, url: url} ->
-      runs = if String.contains?(url, "status=completed"), do: [failed, passed], else: []
-      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: [%{"ref" => "refs/heads/gh-readonly-queue/main/pr-17-a"}]}}
+
+      %{method: :get, url: url} ->
+        runs = if String.contains?(url, "status=completed"), do: [failed, passed], else: []
+        {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
     end
 
     pr = %{
@@ -64,7 +68,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
     ]
 
     assert :ok = MergeGroups.cancel_stale([], options)
-    assert_received {:enqueue, "PR_17", "current"}
+    assert_receive {:enqueue, "PR_17", "current"}, 1_000
     assert :ok = MergeGroups.cancel_stale([], options)
     refute_received {:enqueue, _, _}
   end
@@ -86,6 +90,8 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
               "pr-#{first_pr}-a-pr-#{first_pr + 1}-b-pr-#{first_pr + 2}-c-pr-#{first_pr + 3}-d-pr-#{first_pr + 4}-e"
             )
 
+    group_branch = "pr-17-a-pr-18-b-pr-19-c-pr-20-d-pr-21-e"
+
     prs =
       for number <- 17..41,
           do: %{
@@ -100,9 +106,13 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
             rest: %{"head" => %{"ref" => "aiur/#{number}-work"}}
           }
 
-    request = fn %{method: :get, url: url} ->
-      completed_runs = if String.contains?(url, "status=completed"), do: runs, else: []
-      {:ok, %{status: 200, body: %{"workflow_runs" => completed_runs}}}
+    request = fn
+      %{url: "https://api.github.com/repos/test-org/test-repo/git/matching-refs/heads/gh-readonly-queue/" <> _} ->
+        {:ok, %{status: 200, body: [%{"ref" => "refs/heads/gh-readonly-queue/main/#{group_branch}"}]}}
+
+      %{method: :get, url: url} ->
+        completed_runs = if String.contains?(url, "status=completed"), do: runs, else: []
+        {:ok, %{status: 200, body: %{"workflow_runs" => completed_runs}}}
     end
 
     options = [
@@ -112,7 +122,9 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
       journal_path: journal,
       now_ms: now_ms,
       live_observations_fun: fn _, _ -> {:ok, prs} end,
-      job_log_fun: fn _, _ -> {:ok, "runner lost before job setup"} end,
+      job_log_fun: fn _, _ -> {:ok, "runner lost before job setup; failed test"} end,
+      recent_main_failure_paths_fun: fn _, _ -> {:ok, []} end,
+      changed_paths_fun: fn _prs, _ -> {:ok, []} end,
       jobs_fun: fn _, _ ->
         {:ok, [%{"id" => 12, "name" => "ci gate", "conclusion" => "failure"}]}
       end,
@@ -130,7 +142,7 @@ defmodule Aiur.LandingWatch.MergeGroupFailureRequeueTest do
 
     enqueued =
       for _ <- 1..4 do
-        assert_received {:enqueue, node, _}
+        assert_receive {:enqueue, node, _}, 1_000
         node
       end
 
