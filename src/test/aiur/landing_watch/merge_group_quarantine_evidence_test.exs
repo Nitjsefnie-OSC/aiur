@@ -3,7 +3,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineEvidenceTest do
   use ExUnit.Case, async: true
 
   alias Aiur.CI.FailureDigest
-  alias Aiur.LandingWatch.MergeGroupQuarantine
+  alias Aiur.LandingWatch.{MergeGroupFailureProcessor, MergeGroupQuarantine}
 
   @reaper "Aiur.Claude.Repl.ReaperTest :: stop_session/1 reports cleanup unknown while the process group remains alive"
   @reaper_path "src/test/aiur/claude/repl/reaper_test.exs"
@@ -99,6 +99,90 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineEvidenceTest do
     assert :ok = MergeGroupQuarantine.process_completed(runs, [], "main", opts)
     refute_received {:flake_ticket, _, _}
     refute_received {:quarantine_pr, _, _}
+  end
+
+  test "a multi-module failure absent on main with one changed lib area routes only that PR", %{journal: journal} do
+    parent = self()
+    blame_test = "src/test/aiur/landing_watch/merge_group_blame_test.exs"
+    journal_test = "src/test/aiur/landing_watch/merge_group_journal_test.exs"
+
+    log =
+      "  1) test changed behavior (Aiur.LandingWatch.MergeGroupBlameTest)\n     #{blame_test}:12\n\n  2) test records group evidence (Aiur.LandingWatch.MergeGroupJournalTest)\n     #{journal_test}:24"
+
+    runs = [group_run(39_143_000_001, "pr-5598-fix-pr-5600-other", 3), group_run(39_144_000_001, "pr-5598-fix-pr-5600-other", 2)]
+
+    changed_paths = fn
+      5598, _ -> {:ok, ["src/lib/aiur/landing_watch/merge_group_run_fetcher.ex"]}
+      5600, _ -> {:ok, ["src/lib/aiur/unrelated.ex"]}
+    end
+
+    opts =
+      journal
+      |> opts(parent)
+      |> Keyword.merge(
+        job_log_fun: fn _, _ -> {:ok, log} end,
+        annotations_fun: fn _, _ ->
+          {:ok,
+           [
+             %{"title" => "aiur-test-failure", "path" => blame_test, "message" => "new-failure :: Aiur.LandingWatch.MergeGroupBlameTest :: changed behavior"},
+             %{"title" => "aiur-test-failure", "path" => journal_test, "message" => "new-failure :: Aiur.LandingWatch.MergeGroupJournalTest :: records group evidence"}
+           ]}
+        end,
+        changed_paths_fun: changed_paths
+      )
+
+    assert :ok = MergeGroupQuarantine.process_completed(runs, [], "main", opts)
+    refute_received {:flake_ticket, _, _}
+    refute_received {:quarantine_pr, _, _}
+
+    prs =
+      for number <- [5598, 5600],
+          do: %{
+            number: number,
+            base: "main",
+            head: "head-#{number}",
+            node_id: "PR_#{number}",
+            draft?: false,
+            review_decision: "APPROVED",
+            merge_queue_entry: nil,
+            auto_merge_request: nil,
+            rest: %{"head" => %{"ref" => "aiur/#{number}-fix"}}
+          }
+
+    failure_opts = [
+      base_branch: "main",
+      token: "test-gh-token",
+      journal_path: journal,
+      recent_main_failure_paths_fun: fn _, _ -> {:ok, []} end,
+      known_failure_patterns: [],
+      jobs_fun: fn run_id, _ -> {:ok, [%{"id" => run_id, "check_run_id" => run_id, "name" => "test", "conclusion" => "failure"}]} end,
+      job_log_fun: fn _, _ -> {:ok, log} end,
+      changed_paths_fun: changed_paths,
+      rework_fun: fn observation, _, _ ->
+        send(parent, {:rework, observation.number})
+        :ok
+      end,
+      approved_fun: fn _, _ -> {:ok, true} end,
+      revalidate_fun: fn _, _, _ -> :ok end,
+      attribution_fun: fn _ -> {:ok, :clean} end,
+      comment_fun: fn _, _, _ -> :ok end,
+      enqueue_fun: fn node, _, _ ->
+        send(parent, {:enqueue, node})
+        {:ok, "entry-#{node}"}
+      end,
+      request_fun: fn %{method: :get, url: url} ->
+        cond do
+          url =~ "/commits?" -> {:ok, %{status: 200, body: [%{"sha" => "fixsha"}]}}
+          url =~ "/compare/" -> {:ok, %{status: 200, body: %{"status" => "behind"}}}
+          true -> {:ok, %{status: 200, body: %{}}}
+        end
+      end
+    ]
+
+    assert :ok = MergeGroupFailureProcessor.process_completed(runs, prs, "main", failure_opts)
+    assert_received {:rework, 5598}
+    assert_received {:enqueue, "PR_5600"}
+    refute_received {:rework, 5600}
   end
 
   test "a failed read while scanning a red main commit backs off instead of repeating every poll", %{journal: journal} do

@@ -26,10 +26,30 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineBlame do
   end
 
   defp blamed_test_path?(log, prs, opts) do
-    Enum.any?(MergeGroupFailureEvidence.test_paths(log), fn path ->
-      Enum.any?(prs, &path_touched_by_pr?(path, &1, opts))
+    paths = MergeGroupFailureEvidence.test_paths(log)
+    main_failures = Keyword.get(opts, :recent_main_failure_paths, [])
+
+    Enum.any?(paths, fn path ->
+      Enum.any?(prs, &path_touched_by_pr?(path, &1, opts)) or
+        (path not in main_failures and single_test_area_change?(path, prs, opts))
     end)
   end
+
+  defp single_test_area_change?(test_path, prs, opts) do
+    Enum.count(prs, fn pr ->
+      case get_in(opts, [:changed_paths_by_pr, pr]) do
+        paths when is_list(paths) -> test_area_changed?(test_path, paths)
+        _ -> false
+      end
+    end) == 1
+  end
+
+  defp test_area_changed?("src/test/" <> rest, changed_paths) do
+    area = rest |> Path.dirname() |> then(&Path.join("src/lib", &1))
+    Enum.any?(changed_paths, &(is_binary(&1) and String.starts_with?(&1, area <> "/")))
+  end
+
+  defp test_area_changed?(_test_path, _changed_paths), do: false
 
   defp path_touched_by_pr?(path, pr, opts) do
     case get_in(opts, [:changed_paths_by_pr, pr]) do
