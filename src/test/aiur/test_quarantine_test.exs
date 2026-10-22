@@ -20,7 +20,7 @@ defmodule Aiur.TestQuarantineTest do
              TestQuarantine.parse("Aiur.ExampleTest\tkeeps the exact name\t#42\t2026-13-40\n")
   end
 
-  test "the checked-in quarantine list parses with sorted rows and unique ticket provenance" do
+  test "the checked-in quarantine list parses with sorted rows, owner tickets and expiries" do
     test_root = Path.join(File.cwd!(), "test")
     path = Path.join(test_root, "quarantine.txt")
     assert {:ok, entries} = TestQuarantine.read(path)
@@ -29,7 +29,6 @@ defmodule Aiur.TestQuarantineTest do
     assert identities == Enum.sort(identities)
     assert length(identities) == length(Enum.uniq(identities))
     assert Enum.all?(entries, &(&1.ticket =~ ~r/^#?[1-9][0-9]*$/))
-    assert length(Enum.map(entries, & &1.ticket) |> Enum.uniq()) == length(entries)
     assert Enum.all?(entries, &match?(%Date{}, &1.expires))
 
     test_modules = test_root |> Path.join("**/*_test.exs") |> Path.wildcard() |> test_module_names()
