@@ -207,6 +207,7 @@ defmodule Aiur.LandingWatch.MergeGroupQuarantineEvidenceTest do
       |> opts(parent)
       |> Keyword.merge(
         approved_fun: fn _, _ -> {:ok, true} end,
+        ticket_state_fun: fn "4995", _ -> {:ok, "ci-wait"} end,
         revalidate_fun: fn _, _, _ -> :ok end,
         attribution_fun: fn _ -> {:ok, :clean} end,
         comment_fun: fn _, _, _ -> :ok end,
