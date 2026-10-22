@@ -1,6 +1,9 @@
 defmodule Aiur.AgentRunner.StoppedSessionPrompt do
   @moduledoc false
 
+  @tail_bytes 1_048_576
+  @max_message_chars 2_000
+
   @spec render(Path.t() | nil, String.t() | nil) :: String.t()
   def render(workspace, identifier) when is_binary(workspace) and is_binary(identifier) do
     with true <- File.dir?(workspace),
@@ -36,7 +39,7 @@ defmodule Aiur.AgentRunner.StoppedSessionPrompt do
   defp last_agent_message(workspace, identifier) do
     path = Path.join(workspace, "logs/agent.ndjson")
 
-    case File.read(path) do
+    case read_tail(path) do
       {:ok, content} ->
         content
         |> String.split("\n", trim: true)
@@ -48,6 +51,21 @@ defmodule Aiur.AgentRunner.StoppedSessionPrompt do
     end
   rescue
     _error -> "(not recorded)"
+  end
+
+  # agent.ndjson can reach tens of MB; only its tail holds the last message.
+  defp read_tail(path) do
+    with {:ok, %File.Stat{size: size}} <- File.stat(path),
+         {:ok, file} <- File.open(path, [:read, :binary]) do
+      try do
+        case :file.pread(file, max(size - @tail_bytes, 0), @tail_bytes) do
+          :eof -> {:ok, ""}
+          result -> result
+        end
+      after
+        File.close(file)
+      end
+    end
   end
 
   defp remember_agent_message(line, previous) do
@@ -116,7 +134,10 @@ defmodule Aiur.AgentRunner.StoppedSessionPrompt do
     end
   end
 
-  defp format_agent_message(%{text: message}, identifier), do: "Ticket #{identifier}: " <> message
-  defp format_agent_message(message, identifier) when is_binary(message) and message != "", do: "Ticket #{identifier}: " <> message
+  defp format_agent_message(%{text: message}, identifier), do: format_agent_message(message, identifier)
+
+  defp format_agent_message(message, identifier) when is_binary(message) and message != "",
+    do: "Ticket #{identifier}: " <> String.slice(message, -@max_message_chars..-1//1)
+
   defp format_agent_message(_missing_message, _identifier), do: "(not recorded)"
 end

@@ -141,6 +141,20 @@ defmodule Aiur.AgentRunner.TurnPromptTest do
       assert prompt =~ "Claude was tracing the broker retry."
     end
 
+    test "dirty workspace keeps only the tail of a long last agent message" do
+      workspace = temp_git_workspace!("stopped-long")
+      File.write!(Path.join(workspace, "unfinished.ex"), "unfinished work\n")
+      File.mkdir_p!(Path.join(workspace, "logs"))
+      write_agent_events!(workspace, [%{event: "agent_message", last_message: String.duplicate("a", 3_000) <> "END"}])
+      on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
+
+      issue = %Issue{id: "5561", identifier: "5561", title: "Resume work", state: "in-progress"}
+      prompt = TurnPrompt.build_turn_prompt(issue, [prior_work: true, workspace: workspace], 1, nil)
+
+      assert prompt =~ "Ticket 5561: " <> String.duplicate("a", 1_997) <> "END"
+      refute prompt =~ String.duplicate("a", 1_998)
+    end
+
     test "clean prior-work workspace does not include stopped-session guidance" do
       workspace = temp_git_workspace!("stopped-clean")
       on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
