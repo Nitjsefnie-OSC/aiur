@@ -20,3 +20,7 @@ export async function openModalPair(browser, cell, options) {
     } }
   } }, cell, options)
 }
+
+// Interface note 1: the server sends chat: null, so the product hides "Open in Conversations"
+// until C14-T03 gives it a destination. Scope the design's button out of header parity until then.
+export const hideDesignChat = pair => pair.design.addStyleTag({ content: '#tk-head [data-a="chat"] { display: none !important; }' })

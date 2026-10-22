@@ -398,20 +398,6 @@
     }
   },
   {
-    "id": "modal-historical-chat",
-    "kind": "design-style",
-    "selector": "#build-root",
-    "css": "[data-modal-section=\"hist\"] [data-a=\"chat\"] { display: none; }",
-    "cells": {},
-    "reason": "S-41: historical tickets lack a Units drawer destination until C14-T03; hide only their design expand button.",
-    "approval": {
-      "status": "pending-sign-off",
-      "by": null,
-      "date": null,
-      "ref": "MP-E8-C11-T07 decision 2 / DESIGN-E8 S-41; removed by C14-T03"
-    }
-  },
-  {
     "id": "chain-fit-settled",
     "spec": "build-home-chains-parity.browser.spec.mjs",
     "kind": "property",

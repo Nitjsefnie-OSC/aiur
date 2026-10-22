@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openModalPair } from '../support/build-home-modal-pair.mjs'
+import { hideDesignChat, openModalPair } from '../support/build-home-modal-pair.mjs'
 import { compareRegion } from '../support/build-home-region-parity.mjs'
 
 test.setTimeout(180_000)
@@ -7,6 +7,7 @@ for (const width of [1440, 390]) for (const theme of ['dark', 'light']) {
   test(`agent controls ${width} ${theme}`, async ({ browser }) => {
     const pair = await openModalPair(browser, { viewport: { width, height: 1000 }, theme, palette: 'aiur', dataset: 'offline' }, { productPending: true })
     try {
+      await hideDesignChat(pair)
       await expect(pair.product.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
       const rows = await pair.product.evaluate(async () => {
         const { ctx } = await import('/build-home/state.js')

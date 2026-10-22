@@ -73,7 +73,7 @@ test('read-only is reachable, dimmed and never sends a control request', async (
   await expect(pause(page)).not.toHaveAttribute('disabled')
   await pause(page).focus(); await page.keyboard.press('Enter')
   expect(await page.evaluate(() => window.controlCalls.filter(c => c.event === 'request-unit-control'))).toEqual([])
-  await expect(chat(page)).toBeVisible()
+  await expect(chat(page)).toBeHidden()
 })
 
 test('expiry permits retry, same-row diffs preserve control and error feedback', async ({ page }) => {
@@ -110,11 +110,11 @@ test('unavailable and historical controls stay safe, mobile keeps live buttons',
   })
   await expect(chat(page)).toBeHidden()
   await page.evaluate(async row => (await import('/build-home/modal/frame.js')).openModal(row), row)
-  await expect(chat(page)).toBeVisible()
+  await expect(chat(page)).toBeHidden()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(page.locator('.bm-agent > span').first()).toBeHidden()
   await expect(pause(page)).toBeVisible()
-  await expect(chat(page)).toBeVisible()
+  await expect(chat(page)).toBeHidden()
 })
 
 test('guard: parked and command rows retain the existing design visibility rule', async ({ page }) => {
@@ -129,12 +129,12 @@ test('guard: parked and command rows retain the existing design visibility rule'
 })
 
 
-test('expand navigates without clearing the ticket Back target', async ({ page }) => {
+test('conversation handoff stays hidden while legacy chat routes return to this modal', async ({ page }) => {
   const row = await open(page)
   await expect(page).toHaveURL(new RegExp('ticket=' + row.id))
-  await chat(page).click()
-  await expect(page).toHaveURL(new RegExp('/chat/aiur-labs/aiur/' + row.id + '$'))
-  await page.goBack()
+  await expect(chat(page)).toBeHidden()
+  const reply = await page.evaluate(async id => (await import('/build-home/state.js')).ctx.push('open-conversation', { id }), row.id)
+  expect(reply).toEqual({ v: 1, kind: 'error', reason: 'unavailable' })
   await expect(page).toHaveURL(new RegExp('ticket=' + row.id))
   await expect(page.locator('#tk-backdrop')).toHaveClass(/show/)
 })

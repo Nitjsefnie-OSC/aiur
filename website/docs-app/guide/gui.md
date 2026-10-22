@@ -32,9 +32,9 @@ access. The button waits for the agent's confirmation; a change from the TUI or
 another tab takes precedence.
 
 Pending, unavailable and failed requests explain
-why through the button's accessible label. **Open in Conversations** opens the
-existing chat drawer when a server-side agent identity is available; Back
-returns to the ticket modal.
+why through the button's accessible label. **Open in Conversations** stays hidden
+until a full conversation page is available; legacy `/chat/...` links return to
+the ticket modal.
 
 Open a ticket card to read its conversation. The modal starts with the newest
 entries; scroll to the top to load earlier ones. A missing past transcript reads

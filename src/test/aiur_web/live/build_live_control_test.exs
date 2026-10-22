@@ -175,7 +175,7 @@ defmodule AiurWeb.BuildLiveControlTest do
     render_hook(view, "build:url", %{ticket: "1110"})
     assert_push_event(view, "build-ticket-control", %{"id" => "1110", "control" => %{"state" => "enabled", "action" => "pause"}})
     render_hook(view, "open-ticket", %{id: "1110", loaded: true})
-    assert_reply(view, %{"kind" => "ticket", "control" => %{"state" => "enabled"}, "chat" => "/chat/aiur-labs/aiur/1110"} = reply)
+    assert_reply(view, %{"kind" => "ticket", "control" => %{"state" => "enabled"}, "chat" => nil} = reply)
     assert Payload.validate(reply) == :ok
   end
 
@@ -196,13 +196,19 @@ defmodule AiurWeb.BuildLiveControlTest do
     assert_received {:unit_resume, "1110"}
   end
 
-  test "server row owns the chat destination, including on a read-only dashboard" do
-    Phoenix.Config.put(AiurWeb.Endpoint, :dashboard_writable, false)
+  # /chat/... redirects back to the modal since C12-T01, so no ticket has a destination until C14-T03.
+  test "open-conversation never navigates, even for a live row with an identity" do
     view = view()
-    render_hook(view, "open-conversation", %{id: "999", path: "/evil"})
-    assert_reply(view, %{"reason" => "unavailable"})
     render_hook(view, "open-conversation", %{id: "1110", path: "/evil"})
-    assert_redirect(view, "/chat/aiur-labs/aiur/1110")
+    assert_reply(view, %{"kind" => "error", "reason" => "unavailable"})
+    render_hook(view, "open-conversation", %{id: "pack:1"})
+    assert_reply(view, %{"reason" => "invalid_params"})
+  end
+
+  test "no control state advertises a conversation route before C14-T03", %{row: row} do
+    for writable <- [true, false], state <- [:working, :paused, :ended] do
+      assert TicketControl.encode(put_in(row, [:runtime, :work_state], state), nil, writable).chat == nil
+    end
   end
 
   test "disabled causes remain distinct and encoded messages validate", %{row: row} do

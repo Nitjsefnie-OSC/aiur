@@ -1,6 +1,5 @@
 defmodule AiurWeb.Build.TicketControl do
-  @moduledoc "Truthful modal control and server-owned conversation destinations."
-  alias Aiur.TrackerIdentity
+  @moduledoc "Truthful modal control; the conversation destination stays nil until C14-T03."
   alias AiurWeb.OperatorControlCenter.UnitsControlPolicy, as: Policy
 
   @spec encode(map() | nil, map() | nil, boolean()) :: map()
@@ -11,7 +10,7 @@ defmodule AiurWeb.Build.TicketControl do
     status = if control, do: status(control)
     action = affordance.action || affordance.pending_action
     title = title(affordance, status, writable)
-    %{control: %{action: action, state: if(writable, do: affordance.state, else: :disabled), title: title, status: status}, chat: chat_path(row)}
+    %{control: %{action: action, state: if(writable, do: affordance.state, else: :disabled), title: title, status: status}, chat: nil}
   end
 
   defp status(control) do
@@ -24,12 +23,4 @@ defmodule AiurWeb.Build.TicketControl do
   defp title(_affordance, %{tone: tone, label: label}, true) when tone in [:pending, :error, :warning], do: label
   defp title(%{action: :resume}, _status, true), do: "Resume agent"
   defp title(_affordance, _status, true), do: "Pause agent"
-
-  @spec chat_path(map()) :: String.t() | nil
-  def chat_path(%{identity: %TrackerIdentity{owner: owner, repository: repo, identifier: id}})
-      when is_binary(owner) and is_binary(repo) and is_binary(id) do
-    "/chat/" <> Enum.map_join([owner, repo, id], "/", &URI.encode(&1, fn char -> URI.char_unreserved?(char) end))
-  end
-
-  def chat_path(_row), do: nil
 end

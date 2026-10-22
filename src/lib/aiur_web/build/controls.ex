@@ -1,7 +1,7 @@
 defmodule AiurWeb.Build.Controls do
   @moduledoc false
   import Phoenix.Component, only: [assign: 2, assign: 3]
-  import Phoenix.LiveView, only: [connected?: 1, push_event: 3, push_navigate: 2]
+  import Phoenix.LiveView, only: [connected?: 1, push_event: 3]
   alias Aiur.AgentPubSub
   alias AiurWeb.Build.{DataSource, Payload, Read, TicketControl, URLState}
   alias AiurWeb.EndpointConfig
@@ -37,17 +37,11 @@ defmodule AiurWeb.Build.Controls do
 
   @spec open_conversation(Phoenix.LiveView.Socket.t(), map()) :: tuple()
   def open_conversation(socket, %{"id" => id}) when is_binary(id) do
-    if valid?(id), do: navigate(socket, row(socket, id)), else: {:reply, Payload.error(:invalid_params), socket}
+    # /chat/... now redirects back to this modal; C14-T03 adds the conversation page.
+    {:reply, Payload.error(if(valid?(id), do: :unavailable, else: :invalid_params)), socket}
   end
 
   def open_conversation(socket, _params), do: {:reply, Payload.error(:invalid_params), socket}
-
-  defp navigate(socket, row) do
-    case TicketControl.chat_path(row) do
-      nil -> {:reply, Payload.error(:unavailable), socket}
-      path -> {:noreply, push_navigate(socket, to: path)}
-    end
-  end
 
   @spec refresh(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   def refresh(socket) do
