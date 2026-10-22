@@ -6,7 +6,8 @@ import { I, MI } from '../icons.js';
 export const bodyKind = t => t.agent && t.start != null ? 'conversation' : 'doc';
 const number = t => Number.isFinite(t.num) ? '#' + t.num : '—';
 const close = () => '<button class="bm-ib bm-x" id="bd-tk-close" type="button" aria-label="Close">' + I.x + '</button>';
-const title = t => '<h3 id="bm-title" tabindex="-1" data-dialog-heading><span class="bm-num"' +
+// aria-level 2: the dialog title sits under the page's level-1 route title (axe heading-order); the h3 keeps the design's styling.
+const title = t => '<h3 id="bm-title" tabindex="-1" aria-level="2" data-dialog-heading><span class="bm-num"' +
   (Number.isFinite(t.num) ? '' : ' title="Not filed yet"') + '>' + number(t) + '</span>' + esc(t.title) + '</h3>';
 const lookup = (map, key) => map && Object.hasOwn(map, key) ? map[key] : null;
 
