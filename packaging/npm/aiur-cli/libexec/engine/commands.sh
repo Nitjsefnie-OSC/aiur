@@ -307,7 +307,7 @@ cmd_cleanup_stale() {
 }
 
 # `aiur set <key> <value>` — runtime config overrides without editing
-# `.aiur/config`. Currently: `aiur set max-agents N`.
+# `.aiur/config`. `max-agents` remains the session-only compatibility path.
 cmd_set() {
   local key="${1:-}"
   shift 2>/dev/null || true
@@ -321,9 +321,38 @@ cmd_set() {
       fi
       run_control_rpc "Aiur.AgentControlCLI.set_max_agents($n)"
       ;;
-    *)
-      echo "aiur: unknown setting: ${key:-(none)} (supported: max-agents)" >&2
+    --list)
+      if [ "$#" -eq 0 ]; then
+        run_control_rpc "Aiur.AgentControlCLI.list_settings()"
+      elif [ "$#" -eq 1 ] && [ "$1" = "--json" ]; then
+        run_control_rpc "Aiur.AgentControlCLI.list_settings(json: true)"
+      else
+        echo "aiur: usage: aiur set --list [--json]" >&2
+        exit 64
+      fi
+      ;;
+    --unset)
+      if [ "$#" -ne 1 ] || [ -z "${1:-}" ]; then
+        echo "aiur: usage: aiur set --unset <key>" >&2
+        exit 64
+      fi
+      local unset_key
+      unset_key="$(printf '%s' "$1" | base64 | tr -d '\n')"
+      run_control_rpc "Aiur.AgentControlCLI.unset_setting(Base.decode64!(\"$unset_key\"))"
+      ;;
+    "")
+      echo "aiur: usage: aiur set <key> <json> | --list [--json] | --unset <key>" >&2
       exit 64
+      ;;
+    *)
+      if [ "$#" -ne 1 ]; then
+        echo "aiur: usage: aiur set <key> <json>" >&2
+        exit 64
+      fi
+      local encoded_key encoded_value
+      encoded_key="$(printf '%s' "$key" | base64 | tr -d '\n')"
+      encoded_value="$(printf '%s' "$1" | base64 | tr -d '\n')"
+      run_control_rpc "Aiur.AgentControlCLI.set_setting(Base.decode64!(\"$encoded_key\"), Base.decode64!(\"$encoded_value\"))"
       ;;
   esac
 }
