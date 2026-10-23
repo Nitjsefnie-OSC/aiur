@@ -114,6 +114,7 @@ defmodule Aiur.Config.Schema.Agent do
     field(:build_start_stagger_seconds, :integer, default: 0)
     # Optional Linux MemAvailable floor shared by normal dispatch and the local
     # Mix build gate. Omitted means memory admission is disabled.
+    # credo:disable-for-next-line Credo.Check.Readability.MaxLineLength
     # @config-reference config-configuration-agent-00 agent.min_free_memory_mb | integer or nil | nil | Host `MemAvailable` floor shared by dispatch and the Mix build gate. For containers with a usable cgroup v2 memory limit, the dispatch memory gate uses `memory.current - inactive_file` instead. |
     field(:min_free_memory_mb, :integer)
     # Fraction of cgroup v2 memory.max that may be used before dispatch holds.
