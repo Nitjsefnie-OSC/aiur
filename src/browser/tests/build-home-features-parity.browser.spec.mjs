@@ -19,7 +19,10 @@ for (const feature of ['pag', 'khala']) for (const width of [1440, 390]) test(`f
   const pair = await openParityPair(await pairedBrowser(browser), { viewport: { width, height: 900 }, theme: 'dark', palette: 'gruvbox' }, { dataset: 'live', query: `feature=${feature}`, motion: true })
   try {
     // Reference HTML:154 reserves a shell gutter; compare the header at equal available widths.
-    for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: 'html { scrollbar-gutter: stable !important; overflow-y: scroll !important }' })
+    const boxes = await Promise.all([pair.design, pair.product].map(page => page.locator('#bd-fh').boundingBox()))
+    const available = Math.min(...boxes.map(box => box.width))
+    await test.info().attach('header-shell-widths', { body: Buffer.from(JSON.stringify({ design: boxes[0], product: boxes[1], available })), contentType: 'application/json' })
+    for (const page of [pair.design, pair.product]) await page.locator('#bd-fh').evaluate((host, width) => { host.style.width = width + 'px' }, available)
     await expect(pair.product.locator('.bd-fh')).toBeVisible()
     const html = page => page.locator('#bd-fh').evaluate(el => el.innerHTML)
     expect(await html(pair.product)).toBe(await html(pair.design))
