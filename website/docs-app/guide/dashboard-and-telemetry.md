@@ -248,13 +248,17 @@ For a finite cgroup CPU quota, `schedulers` is the quota rounded down, with a
 minimum of one. An explicit `agent.max_concurrent_agents` always wins.
 
 To measure a deployment, run representative Claude and Codex turns and a build
-or test step. Once per second, sample each agent process tree's peak RSS and
-cumulative CPU time. Record the date, provider/model, workload, cgroup CPU and
-memory limits, and sampling method with the results.
+or test step.
+
+Once per second, sample each agent process tree's peak RSS and cumulative CPU
+time. Record the date, provider/model, workload, cgroup CPU and memory limits,
+and sampling method with the results.
 
 These container limits apply only with cgroup v2. If `cpu.pressure` is absent,
 the CPU pressure gate is not applied (the quota still contributes to the
-default cap). With a readable cgroup memory limit, dispatch uses
+default cap).
+
+With a readable cgroup memory limit, dispatch uses
 `memory.current - inactive_file` against `agent.cgroup_memory_threshold`.
 This container memory gate replaces `agent.min_free_memory_mb`. Systems
 without a usable cgroup v2 memory limit keep the host memory behavior.
