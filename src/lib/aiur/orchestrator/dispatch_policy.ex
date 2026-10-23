@@ -5,7 +5,7 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
 
   require Logger
 
-  alias Aiur.{BuildQueue.Hints, Config, GitHub.StateLabels, Issue, MergePolicy, SystemCpu, SystemFileDescriptors}
+  alias Aiur.{BuildQueue.Hints, Config, Issue, MergePolicy, SystemCpu, SystemFileDescriptors, Tracker}
   alias Aiur.Orchestrator.DispatchPolicy.{Eligibility, Gates, IssueStates}
   alias Aiur.Orchestrator.{OptimisticSlots, QueueSetSlots, Slots, State}
 
@@ -379,21 +379,9 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
     end
   end
 
-  defp foreign_tracker_state_label?(%Issue{state: state, labels: labels})
+  defp foreign_tracker_state_label?(%Issue{labels: labels})
        when is_list(labels) and labels != [] do
-    if Config.tracker_kind() == "github" do
-      prefix = Aiur.GitHub.Config.label_prefix() |> String.trim() |> String.downcase()
-
-      active_states =
-        (Aiur.Config.active_states() ++ [state])
-        |> Enum.map(&IssueStates.state_slug/1)
-        |> Enum.reject(&is_nil/1)
-        |> MapSet.new()
-
-      StateLabels.foreign_candidate_state_label?(labels, prefix, active_states)
-    else
-      false
-    end
+    Config.tracker_kind() == "github" and Tracker.foreign_state_label?(labels)
   end
 
   defp foreign_tracker_state_label?(_issue), do: false
