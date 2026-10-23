@@ -7,100 +7,16 @@ defmodule VoiceConverse.Providers do
   """
 
   alias VoiceConverse.Config
-
-  @credential_env %{
-    anthropic: "ANTHROPIC_API_KEY",
-    elevenlabs: "ELEVENLABS_API_KEY",
-    gemini: "GEMINI_API_KEY",
-    openai: "OPENAI_API_KEY"
-  }
-  @part_credentials %{
-    elevenlabs_stt: :elevenlabs,
-    elevenlabs_tts: :elevenlabs,
-    openai_stt: :openai,
-    openai_tts: :openai
-  }
-  @registry [
-    {:openai_live, VoiceConverse.Providers.OpenAILive,
-     %{
-       id: :openai_live,
-       family: :speech_to_speech,
-       label: "OpenAI Live",
-       modes: [:voice],
-       needs: [:openai],
-       privacy: %{audio_stored_by_provider: true, deletable?: false},
-       price_hint: "about USD 0.05/min"
-     }},
-    {:openai_realtime, VoiceConverse.Providers.OpenAIRealtime,
-     %{
-       id: :openai_realtime,
-       family: :speech_to_speech,
-       label: "OpenAI Realtime",
-       modes: [:voice],
-       needs: [:openai],
-       privacy: %{audio_stored_by_provider: true, deletable?: false},
-       price_hint: "token-priced"
-     }},
-    {:gemini_live, VoiceConverse.Providers.GeminiLive,
-     %{
-       id: :gemini_live,
-       family: :speech_to_speech,
-       label: "Gemini Live",
-       modes: [:voice],
-       needs: [:gemini],
-       privacy: %{audio_stored_by_provider: true, deletable?: false},
-       price_hint: "about USD 0.023/min"
-     }},
-    {:elevenlabs_agents, VoiceConverse.Providers.ElevenLabsAgents,
-     %{
-       id: :elevenlabs_agents,
-       family: :hosted_agent,
-       label: "ElevenLabs Agents",
-       modes: [:voice, :text],
-       needs: [:elevenlabs],
-       privacy: %{audio_stored_by_provider: true, deletable?: true},
-       price_hint: "about USD 0.08/min"
-     }},
-    {:cascade, nil,
-     %{
-       id: :cascade,
-       family: :cascade,
-       label: "Cascade",
-       modes: [:voice, :text],
-       needs: [],
-       privacy: %{audio_stored_by_provider: false, deletable?: false},
-       price_hint: "depends on selected parts"
-     }},
-    {:text_only, nil,
-     %{
-       id: :text_only,
-       family: :cascade,
-       label: "Text only",
-       modes: [:text],
-       needs: [],
-       privacy: %{audio_stored_by_provider: false, deletable?: false},
-       price_hint: "model-token-priced"
-     }},
-    {:codex_realtime, VoiceConverse.Providers.CodexRealtime,
-     %{
-       id: :codex_realtime,
-       family: :agent_native,
-       label: "Codex Realtime",
-       modes: [:voice, :text],
-       needs: [:openai],
-       privacy: %{audio_stored_by_provider: false, deletable?: false},
-       price_hint: "experimental"
-     }}
-  ]
+  alias VoiceConverse.Providers.Registry
 
   @spec default_preference() :: [atom()]
   def default_preference, do: Config.default_provider_preference()
 
   @spec credential_env(atom()) :: String.t() | nil
-  def credential_env(provider), do: Map.get(@credential_env, provider)
+  def credential_env(provider), do: Registry.credential_env(provider)
 
   @spec options(Config.t()) :: [map()]
-  def options(%Config{} = config), do: Enum.map(@registry, &option(&1, config))
+  def options(%Config{} = config), do: Enum.map(Registry.entries(), &option(&1, config))
 
   @spec resolve(Config.t()) ::
           {:ok, map(), skipped: [{atom(), term()}]} | {:error, :no_usable_option, [{atom(), term()}]}
@@ -142,23 +58,19 @@ defmodule VoiceConverse.Providers do
   end
 
   defp fallback_to_text_only(
-         %Config{providers: %{on_missing_credential: :text_only, preference: preference}} = config,
+         %Config{providers: %{on_missing_credential: :text_only}} = config,
          skipped
        ) do
-    if :text_only in preference do
-      {:error, :no_usable_option, skipped}
-    else
-      case option_by_id(:text_only, config) do
-        %{status: :ready} = option -> {:ok, option, skipped: skipped}
-        %{reason: reason} -> {:error, :no_usable_option, skipped ++ [{:text_only, reason}]}
-      end
+    case option_by_id(:text_only, config) do
+      %{status: :ready} = option -> {:ok, option, skipped: Enum.reject(skipped, &(elem(&1, 0) == :text_only))}
+      %{reason: reason} -> {:error, :no_usable_option, skipped ++ [{:text_only, reason}]}
     end
   end
 
   defp fallback_to_text_only(_config, skipped), do: {:error, :no_usable_option, skipped}
 
   defp option_by_id(id, config) do
-    case Enum.find(@registry, fn {option_id, _module, _descriptor} -> option_id == id end) do
+    case Registry.entry(id) do
       nil -> nil
       entry -> option(entry, config)
     end
@@ -183,13 +95,7 @@ defmodule VoiceConverse.Providers do
   defp descriptor(:cascade, _module, fallback, config), do: cascade_descriptor(fallback, config, :cascade)
   defp descriptor(:text_only, _module, fallback, config), do: cascade_descriptor(fallback, config, :text_only)
 
-  defp descriptor(_id, module, fallback, _config) do
-    if is_atom(module) and Code.ensure_loaded?(module) and function_exported?(module, :descriptor, 0) do
-      Map.merge(fallback, module.descriptor())
-    else
-      fallback
-    end
-  end
+  defp descriptor(_id, module, fallback, _config), do: Registry.descriptor(:adapter, module, fallback)
 
   defp cascade_descriptor(fallback, config, kind) do
     cascade = config.providers.cascade
@@ -221,13 +127,8 @@ defmodule VoiceConverse.Providers do
 
   defp configuration_availability(_id, _module, _config), do: :ok
 
-  defp adapter_availability(nil), do: :ok
-
-  defp adapter_availability(module) do
-    if Code.ensure_loaded?(module) and function_exported?(module, :descriptor, 0),
-      do: :ok,
-      else: {:error, :adapter_missing}
-  end
+  defp adapter_availability(module),
+    do: if(Registry.adapter_available?(module), do: :ok, else: {:error, :adapter_missing})
 
   defp credential_option(descriptor, config) do
     case missing_credentials(descriptor.needs, config) do
@@ -246,7 +147,7 @@ defmodule VoiceConverse.Providers do
   end
 
   defp cascade_needs(cascade) do
-    (llm_needs(cascade.llm) ++ Enum.flat_map(cascade.stt ++ cascade.tts, &List.wrap(Map.get(@part_credentials, &1))))
+    (llm_needs(cascade.llm) ++ Enum.flat_map(cascade.stt ++ cascade.tts, &List.wrap(Registry.credential_for_part(&1))))
     |> Enum.uniq()
   end
 

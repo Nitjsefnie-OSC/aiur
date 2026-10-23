@@ -15,11 +15,11 @@ end
 defmodule VoiceConverse.Providers.OpenAILive do
   def descriptor do
     %{
-      id: :openai_live,
-      family: :speech_to_speech,
+      id: :wrong_id,
+      family: :hosted_agent,
       label: "OpenAI Live",
       modes: [:voice],
-      needs: [:openai],
+      needs: [:elevenlabs],
       privacy: %{audio_stored_by_provider: true, deletable?: false},
       price_hint: "provider-priced"
     }
@@ -112,6 +112,12 @@ defmodule VoiceConverse.ProvidersTest do
     assert {:error, :no_usable_option, [{:gemini_live, :adapter_missing}]} = Providers.resolve(config)
   end
 
+  test "loaded adapters cannot change their registered identity or credentials" do
+    [openai_live] = Enum.filter(Providers.options(config(%{}, preference: [:openai_live])), &(&1.id == :openai_live))
+
+    assert %{family: :speech_to_speech, needs: [:openai], status: :needs_credential} = openai_live
+  end
+
   test "options list every registered option with an unavailable reason" do
     options = Providers.options(config(%{}, []))
 
@@ -144,6 +150,13 @@ defmodule VoiceConverse.ProvidersTest do
     refute_receive {StaticCredentials, :fetch, _provider, :connect}
     refute_receive {StaticCredentials, :fetch, _provider, :provision}
     refute_receive {StaticCredentials, :fetch, _provider, :delete}
+    refute_receive {StaticCredentials, :fetch, _provider, :render}
+  end
+
+  test "text_only policy retries text_only when it was in the preference" do
+    config = config(%{anthropic: "anthropic-secret"}, preference: [:text_only], on_missing_credential: :text_only)
+
+    assert {:ok, %{id: :text_only}, skipped: []} = Providers.resolve(config)
   end
 
   defp config(secrets, overrides) do
