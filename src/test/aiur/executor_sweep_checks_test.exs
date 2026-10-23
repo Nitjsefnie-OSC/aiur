@@ -3,6 +3,8 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
 
   alias Aiur.ExecutorSweep.Checks
   alias Aiur.ExecutorSweep.SnapshotCache
+  alias Aiur.ExecutorSweep.StateLabels
+  alias Aiur.GitHub.Labels
   alias Aiur.GitHub.ResourceStore
 
   test "puts the 23-hour unreviewed PR first and includes age" do
@@ -317,13 +319,13 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     assert message =~ "oldest ticket #1800"
   end
 
-  test "queued build membership does not count as an extra state label" do
+  test "queued membership is a modifier under the configured lifecycle prefix" do
     tickets =
-      for state <- ~w(todo in-progress ci-wait human-review rework merging done error cancelled canceled) do
-        %{number: 2000, labels: ["agent:queued", "agent:#{state}"]}
+      for state <- Labels.state_labels("sym") do
+        %{number: 2000, labels: ["sym:queued", state]}
       end
 
-    refute Enum.any?(Checks.all(%{tickets: tickets}, ~U[2026-10-22 18:00:00Z]), &(&1.kind == "invalid_state_labels"))
+    assert [] = StateLabels.findings(tickets, "sym")
   end
 
   test "counts merging and cancelled as real state labels, not missing ones" do

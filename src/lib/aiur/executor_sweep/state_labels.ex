@@ -8,16 +8,19 @@ defmodule Aiur.ExecutorSweep.StateLabels do
   alias Aiur.GitHub.Config
   alias Aiur.GitHub.Labels
 
-  @doc "Takes tickets with agent-prefix-stripped `labels`; returns zero or one finding."
+  @doc "Takes tickets with raw labels and their configured prefix; returns zero or one finding."
   @spec findings([map()]) :: [map()]
-  def findings(tickets) do
-    prefix = Config.label_prefix()
-    state_labels = Labels.state_labels(prefix) |> Enum.map(&String.replace_prefix(&1, prefix <> ":", ""))
+  def findings(tickets), do: findings(tickets, Config.label_prefix())
+
+  @spec findings([map()], String.t()) :: [map()]
+  def findings(tickets, prefix) when is_list(tickets) and is_binary(prefix) do
+    state_labels = Labels.state_labels(prefix)
 
     case for(
            ticket <- tickets,
-           not excluded?(ticket.labels),
-           states = Enum.filter(ticket.labels, &(&1 in state_labels)),
+           labels = ticket.labels,
+           not excluded?(labels, prefix),
+           states = matching_states(labels, state_labels, prefix),
            length(states) != 1,
            do: {ticket, states}
          ) do
@@ -43,9 +46,16 @@ defmodule Aiur.ExecutorSweep.StateLabels do
     end
   end
 
-  defp excluded?(labels) do
+  defp matching_states(labels, state_labels, prefix) do
+    labels
+    |> Enum.filter(&(&1 in state_labels))
+    |> Enum.map(&String.replace_prefix(&1, prefix <> ":", ""))
+  end
+
+  defp excluded?(labels, prefix) do
     Enum.any?(labels, fn label ->
-      label in ["parked", "needs-triage", "human:todo"] or String.downcase(label) == "epic" or String.starts_with?(String.downcase(label), "epic:")
+      suffix = String.replace_prefix(label, prefix <> ":", "")
+      suffix in ["parked", "needs-triage", "human:todo"] or String.downcase(suffix) == "epic" or String.starts_with?(String.downcase(suffix), "epic:")
     end)
   end
 
