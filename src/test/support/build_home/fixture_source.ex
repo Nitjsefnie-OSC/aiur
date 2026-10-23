@@ -80,6 +80,18 @@ defmodule Aiur.TestSupport.BuildHome.FixtureSource do
   def unit_row(id, opts), do: ControlFixture.unit_row(id, opts)
 
   def full(opts), do: load(dataset(opts), Keyword.get(opts, :dir, @dir))
+
+  @impl true
+  def ticket_doc_identity(id, opts) do
+    with {:ok, row} <- ticket(id, opts) do
+      Aiur.TrackerIdentity.from_github(
+        %{"node_id" => "build-fixture:#{dataset(opts)}:#{id}", "number" => row["num"]},
+        {"fixture", "build-home"},
+        {"fixture", "build-home"}
+      )
+    end
+  end
+
   defp dataset(opts), do: Keyword.get(opts, :dataset, Application.get_env(:aiur, :build_fixture_dataset, "live"))
   defp load("unavailable", _dir), do: {:error, :fixture_unavailable}
 
