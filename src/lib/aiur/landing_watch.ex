@@ -153,6 +153,8 @@ defmodule Aiur.LandingWatch do
   end
 
   defp process_all(observations, opts) do
+    opts = Keyword.put(opts, :all_observations, observations)
+
     Enum.reduce(observations, :ok, fn observation, first_error ->
       result = process_observation(observation, opts)
       if first_error == :ok, do: result, else: first_error

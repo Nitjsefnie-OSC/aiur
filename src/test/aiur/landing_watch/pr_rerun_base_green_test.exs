@@ -1,7 +1,7 @@
 defmodule Aiur.LandingWatch.PrRerunBaseGreenTest do
   use ExUnit.Case, async: true
 
-  alias Aiur.LandingWatch.PrRerun
+  alias Aiur.LandingWatch.{Journal, PrRerun, PrRerunClassifier}
 
   @started "2026-10-14T10:00:00Z"
   @started_ms 1_791_972_000_000
@@ -41,11 +41,11 @@ defmodule Aiur.LandingWatch.PrRerunBaseGreenTest do
     opts = [
       actions_run_fun: fn 99, _ -> {:ok, %{"path" => ".github/workflows/ci.yml"}} end,
       workflow_definitions_fun: fn ".github/workflows/ci.yml", "main", _ -> {:ok, %{"audit" => %{"name" => "audit"}}} end,
-      ci_merges_fun: fn _ -> {:ok, []} end,
       recent_main_failure_paths: [],
       known_failure_patterns: [],
       job_log_fun: fn _, _ -> {:ok, "unrecognized test failure"} end,
       main_history_fun: fn -> history end,
+      ci_merges_fun: fn _ -> {:ok, [%{"pr" => 5913, "merged_at_ms" => @started_ms + 30_000, "paths" => ["mix.lock"]}]} end,
       changed_paths_fun: fn _, _ -> {:ok, ["src/lib/aiur/feature.ex"]} end,
       base_branch: "main",
       rerun_fun: fn _, _ -> send(parent, :rerun) && {:ok, %{}} end,
@@ -59,8 +59,74 @@ defmodule Aiur.LandingWatch.PrRerunBaseGreenTest do
       now_ms: @started_ms + 3_600_000
     ]
 
+    assert {:ok, {:refresh, _}} = PrRerunClassifier.classify(observation, %{failures: [%{name: "audit"}]}, [run], opts)
     assert :ok = PrRerun.handle_failure(observation, %{failures: [%{name: "audit"}]}, [run], opts)
     assert_received :updated
     refute_received :rerun
+
+    later_opts = Keyword.put(opts, :now_ms, @started_ms + 4_000_000)
+    assert :ok = PrRerun.handle_failure(observation, %{failures: [%{name: "audit"}]}, [run], later_opts)
+    refute_received :updated
+    refute_received :rerun
+  end
+
+  test "a green main check without a changed check input does not refresh a PR-caused test failure" do
+    history = [
+      %{completed_at: @started_ms - 60_000, checks: [%{name: "test", conclusion: "success"}]},
+      %{completed_at: @started_ms + 60_000, checks: [%{name: "test", conclusion: "success"}]}
+    ]
+
+    run = %{
+      "run_id" => nil,
+      "name" => "test",
+      "status" => "completed",
+      "conclusion" => "failure",
+      "started_at" => @started,
+      "workflow_jobs" => [%{"name" => "test", "conclusion" => "failure"}]
+    }
+
+    assert {:ok, :rework} =
+             PrRerunClassifier.classify(%{number: 18}, %{failures: [%{name: "test"}]}, [run],
+               main_history_fun: fn -> history end,
+               ci_merges_fun: fn _ -> {:ok, [%{"pr" => 5913, "merged_at_ms" => @started_ms + 30_000, "paths" => ["README.md"]}]} end
+             )
+  end
+
+  test "the same failed check on approved PRs with disjoint files is base-fix evidence" do
+    approved = fn number ->
+      %{number: number, head: "head-#{number}", raw: %{"reviewDecision" => "APPROVED", "headRefOid" => "head-#{number}", "reviews" => %{"nodes" => [%{"commit" => %{"oid" => "head-#{number}"}}]}}}
+    end
+
+    observations = [approved.(18), approved.(19)]
+    run = %{"run_id" => nil, "name" => "test", "status" => "completed", "conclusion" => "failure", "started_at" => @started}
+    history = [%{completed_at: @started_ms + 60_000, checks: [%{name: "test", conclusion: "success"}]}]
+
+    assert {:ok, {:refresh, "same check failed on approved PRs with disjoint changes"}} =
+             PrRerunClassifier.classify(%{number: 18}, %{failures: [%{name: "test"}]}, [run],
+               current_pr: 18,
+               all_observations: observations,
+               main_history_fun: fn -> history end,
+               failed_checks_fun: fn _observation, _opts -> {:ok, ["test"]} end,
+               changed_paths_fun: fn
+                 18, _ -> {:ok, ["src/one.ex"]}
+                 19, _ -> {:ok, ["src/two.ex"]}
+               end
+             )
+  end
+
+  test "a merged dependency input is recorded for green-main base-fix detection" do
+    path = Path.join(System.tmp_dir!(), "landing-ci-input-#{System.unique_integer([:positive])}.json")
+    ExUnit.Callbacks.on_exit(fn -> Aiur.TestCleanup.rm_rf!(path) end)
+    event = %{topic: "ticket.5921.pr.merged", pr: %{"number" => 5921, "merged_at" => "2026-10-14T11:00:00Z"}}
+
+    assert :ok =
+             PrRerun.record_merge(event,
+               journal_path: path,
+               base_branch: "main",
+               changed_paths_fun: fn _, _ -> {:ok, ["mix.lock", "README.md"]} end
+             )
+
+    merged_at = @started_ms + 3_600_000
+    assert {:ok, [%{"pr" => 5921, "paths" => ["mix.lock"], "merged_at_ms" => ^merged_at}]} = Journal.ci_merges(journal_path: path)
   end
 end
