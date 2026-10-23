@@ -1,10 +1,7 @@
 defmodule Aiur.ExecutorSweep.Checks do
-  @moduledoc """
-  Builds prioritized Executor sweep findings from already-observed daemon and
-  GitHub snapshot data. This module performs no I/O.
-  """
+  @moduledoc "Builds prioritized Executor sweep findings from observed daemon and GitHub snapshot data."
 
-  alias Aiur.ExecutorSweep.{CacheFreshness, FailureCause, StateLabels, TriageBacklog}
+  alias Aiur.ExecutorSweep.{CacheFreshness, FailureCause, StaleCiWait, StateLabels, TriageBacklog}
 
   @type finding :: %{kind: String.t(), priority: pos_integer(), action: String.t(), message: String.t()}
 
@@ -25,6 +22,7 @@ defmodule Aiur.ExecutorSweep.Checks do
       {"old_decisions", [:decisions], fn -> old_decisions(snapshot, now) end},
       {"approved_prs", [:pull_requests], fn -> approved_prs(snapshot, github_freshness_ms) end},
       {"conflicting_waiting_prs", [:pull_requests, :tickets], fn -> conflicting_waiting_prs(snapshot) end},
+      {"stale_ci_wait_prs", [:pull_requests, :tickets], fn -> stale_ci_wait_prs(snapshot, now) end},
       {"landing_rerun_backlog", [:landing_rerun_backlog], fn -> landing_rerun_backlog(snapshot, now) end},
       {"unmergeable_queue_entries", [:merge_queue], fn -> unmergeable_queue_entries(snapshot) end},
       {"stale_merge_groups", [:merge_groups], fn -> CacheFreshness.stale_merge_groups(snapshot, now, stale_minutes, github_freshness_ms) end},
@@ -70,7 +68,7 @@ defmodule Aiur.ExecutorSweep.Checks do
       ]
   end
 
-  @doc "Returns unreviewed human-review PR findings, oldest first."
+  @doc "Returns findings for ready PRs unreviewed at their head, whatever their ticket state, oldest first."
   @spec unreviewed_prs(map(), DateTime.t(), pos_integer()) :: [finding()]
   def unreviewed_prs(snapshot, %DateTime{} = now, threshold_minutes) when is_integer(threshold_minutes) and threshold_minutes > 0 do
     snapshot
@@ -141,6 +139,8 @@ defmodule Aiur.ExecutorSweep.Checks do
       end
     end)
   end
+
+  defp stale_ci_wait_prs(snapshot, now), do: StaleCiWait.findings(snapshot, now)
 
   defp approved_pr_findings(pr, base_checks, cache_age_ms, max_age_ms) do
     failures = Enum.filter(value(pr, :required_checks, []), &red_check?/1)
@@ -420,21 +420,23 @@ defmodule Aiur.ExecutorSweep.Checks do
     with false <- value(pr, :draft, false),
          "open" <- value(pr, :state, "open"),
          number when is_integer(number) <- value(pr, :issue_number, nil),
-         true <- human_review_ticket?(snapshot, number),
          sha when is_binary(sha) and sha != "" <- value(pr, :head_sha, nil),
          reviewed when reviewed != sha <- value(pr, :reviewed_head_sha, nil),
          %DateTime{} = ready_at <- value(pr, :ready_at, nil),
          age_ms when age_ms > threshold_minutes * 60_000 <- DateTime.diff(now, ready_at, :millisecond) do
+      state = ticket_state(snapshot, number)
+
       [
         %{
-          kind: "unreviewed_human_review_pr",
+          kind: "unreviewed_pr",
           priority: 1,
           pull_request: value(pr, :number, nil),
           issue_number: number,
+          ticket_state: state,
           head_sha: sha,
           age_ms: age_ms,
-          action: "Review the current PR head or move its ticket out of agent:human-review.",
-          message: "PR ##{value(pr, :number, "?")} has waited #{duration(age_ms)} for review at its current head."
+          action: unreviewed_pr_action(state),
+          message: "PR ##{value(pr, :number, "?")} (ticket ##{number}, agent:#{state}) has waited #{duration(age_ms)} for review at its current head."
         }
       ]
     else
@@ -444,11 +446,18 @@ defmodule Aiur.ExecutorSweep.Checks do
 
   defp unreviewed_pr_finding(_pr, _snapshot, _now, _threshold_minutes), do: []
 
-  defp human_review_ticket?(snapshot, number) do
+  defp unreviewed_pr_action("human-review"), do: "Review the current PR head or move its ticket out of agent:human-review."
+
+  defp unreviewed_pr_action(state),
+    do: "Review the current PR head, or have the agent:#{state} ticket hand off or return its PR to draft."
+
+  @ticket_states ~w(todo in-progress ci-wait human-review rework merging done cancelled canceled error)
+
+  defp ticket_state(snapshot, number) do
     snapshot
     |> Map.get(:tickets, [])
-    |> Enum.any?(fn ticket ->
-      value(ticket, :number, nil) == number and "human-review" in labels(ticket)
+    |> Enum.find_value("unknown", fn ticket ->
+      value(ticket, :number, nil) == number and Enum.find(labels(ticket), "unknown", &(&1 in @ticket_states))
     end)
   end
 
@@ -480,7 +489,7 @@ defmodule Aiur.ExecutorSweep.Checks do
   defp date(_), do: nil
 
   defp age_ms(%DateTime{} = timestamp, %DateTime{} = now), do: max(DateTime.diff(now, timestamp, :millisecond), 0)
-  defp age_ms(_, _), do: 0
+  defp age_ms(_, _), do: nil
 
   defp duration(ms) do
     total_minutes = div(ms, 60_000)

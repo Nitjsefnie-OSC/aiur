@@ -16,10 +16,25 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     }
 
     assert [finding] = Checks.unreviewed_prs(snapshot, now, 10)
-    assert finding.kind == "unreviewed_human_review_pr"
+    assert finding.kind == "unreviewed_pr"
     assert finding.priority == 1
     assert finding.age_ms == 23 * 60 * 60 * 1_000 + 12 * 60 * 1_000
     assert finding.message =~ "23h 12m"
+  end
+
+  test "reports a ready PR whose ticket is still in progress and names that state" do
+    now = ~U[2026-10-22 17:05:00Z]
+    pr = %{number: 5750, issue_number: 5749, state: "open", draft: false, head_sha: "abc", reviewed_head_sha: nil, ready_at: ~U[2026-10-22 08:17:00Z]}
+
+    snapshot = %{tickets: [%{number: 5749, labels: ["agent:in-progress", "priority:2"]}], pull_requests: [pr]}
+
+    assert [finding] = Checks.unreviewed_prs(snapshot, now, 10)
+    assert finding.ticket_state == "in-progress"
+    assert finding.message == "PR #5750 (ticket #5749, agent:in-progress) has waited 8h 48m for review at its current head."
+    assert finding.action =~ "agent:in-progress ticket hand off"
+
+    assert [%{ticket_state: "unknown"}] = Checks.unreviewed_prs(%{snapshot | tickets: []}, now, 10)
+    assert [%{ticket_state: "human-review"}] = Checks.unreviewed_prs(%{snapshot | tickets: [%{number: 5749, labels: ["agent:human-review"]}]}, now, 10)
   end
 
   test "requires a review on the current head and a strict threshold exceedance" do
@@ -175,6 +190,54 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     refute Enum.any?(findings, &(&1.kind == "approved_pr_not_landing"))
   end
 
+  test "finds ci-wait tickets older than two hours when required checks are terminal" do
+    now = ~U[2026-10-21 18:00:00Z]
+
+    snapshot = %{
+      tickets: [%{number: 5579, labels: ["agent:ci-wait"], updated_at: ~U[2026-10-21 15:59:59Z]}],
+      pull_requests: [%{number: 6000, issue_number: 5579, state: "open", head_sha: "head", ci_head_sha: "head", ci_decision: :passed, required_checks: [%{name: "test", conclusion: "success"}]}]
+    }
+
+    assert [%{kind: "stale_ci_wait_without_pending_checks", issue_number: 5579, pull_request: 6000, age_ms: 7_201_000}] =
+             Enum.filter(Checks.all(snapshot, now), &(&1.kind == "stale_ci_wait_without_pending_checks"))
+
+    snapshot = update_in(snapshot.tickets, &[Map.put(hd(&1), :updated_at, ~U[2026-10-21 16:00:00Z])])
+    assert [] = Enum.filter(Checks.all(snapshot, now), &(&1.kind == "stale_ci_wait_without_pending_checks"))
+
+    snapshot = put_in(snapshot.pull_requests, [%{hd(snapshot.pull_requests) | required_checks: [%{name: "test", conclusion: "in_progress"}]}])
+    assert [] = Enum.filter(Checks.all(snapshot, now), &(&1.kind == "stale_ci_wait_without_pending_checks"))
+  end
+
+  test "stale ci-wait sweep ignores a pending current-head CI observation" do
+    now = DateTime.utc_now()
+    started = DateTime.add(now, -3 * 60 * 60, :second)
+
+    snapshot = %{
+      tickets: [%{number: 5579, labels: ["ci-wait"], ci_wait_since: started}],
+      pull_requests: [%{number: 6000, issue_number: 5579, state: "open", head_sha: "head", ci_head_sha: "head", ci_decision: :pending, required_checks: []}]
+    }
+
+    assert [] = Enum.filter(Checks.all(snapshot, now), &(&1.kind == "stale_ci_wait_without_pending_checks"))
+  end
+
+  test "snapshot tracks the latest ci-wait label time from the issue timeline" do
+    ticket =
+      SnapshotCache.build(
+        [],
+        [],
+        [{5579, ["agent:ci-wait"]}],
+        %{5579 => %{"updated_at" => "2026-10-21T17:59:00Z"}},
+        %{},
+        [],
+        %{5579 => %{"events" => [%{"event" => "labeled", "label" => %{"name" => "agent:ci-wait"}, "created_at" => "2026-10-21T15:30:00Z"}]}},
+        %{status: :available, tickets: [], truncated?: false}
+      )
+      |> Map.fetch!(:tickets)
+      |> hd()
+
+    assert ticket.ci_wait_since == "2026-10-21T15:30:00Z"
+  end
+
   test "does not treat an old-head approval as current approval" do
     snapshot = %{pull_requests: [%{number: 10, state: "open", head_sha: "new", approved_head_sha: "old", review_decision: "APPROVED", in_merge_queue: false, auto_merge: false, required_checks: []}]}
 
@@ -254,6 +317,21 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     assert message =~ "oldest ticket #1800"
   end
 
+  test "counts merging and cancelled as real state labels, not missing ones" do
+    # `agent:merging` and `agent:cancelled` are lifecycle states the tracker
+    # writes (#5796). A ticket carrying one of them has exactly one state label;
+    # reporting it as invalid inflates P9 and sends the Executor relabelling a
+    # healthy ticket.
+    tickets = [
+      %{number: 1, labels: ["agent:merging"]},
+      %{number: 2, labels: ["agent:cancelled"]},
+      %{number: 3, labels: ["agent:merging", "agent:ci-wait"]}
+    ]
+
+    assert [%{ticket: 3, ticket_count: 1, state_labels: ["merging", "ci-wait"]}] =
+             Checks.all(%{tickets: tickets}, ~U[2026-10-18 14:00:00Z]) |> Enum.filter(&(&1.kind == "invalid_state_labels"))
+  end
+
   test "summarizes a stale triage backlog in one finding with its count and oldest ticket" do
     snapshot = %{
       open_tickets: %Aiur.OpenTicketSource.Snapshot{
@@ -318,7 +396,7 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     kinds = Checks.all(snapshot, now) |> Enum.map(& &1.kind)
     findings = Checks.all(snapshot, now)
 
-    assert hd(kinds) == "unreviewed_human_review_pr"
+    assert hd(kinds) == "unreviewed_pr"
 
     for kind <- [
           "unanswered_blocking_decision",

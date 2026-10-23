@@ -9,7 +9,9 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
   alias Aiur.Orchestrator.CiLifecycle.ApprovalCarryAlert
   alias Aiur.Orchestrator.CiLifecycle.FailureComment
   alias Aiur.Orchestrator.CiLifecycle.Poll
+  alias Aiur.Orchestrator.CiLifecycle.PrLessReview
   alias Aiur.Orchestrator.CiLifecycle.ResultProjection
+  alias Aiur.Orchestrator.CiLifecycle.ReviewHandoff
   alias Aiur.Orchestrator.CiLifecycle.TerminalEvent
   alias Aiur.Orchestrator.CiLifecycle.Transition
   alias Aiur.Orchestrator.CiLifecycle.WaitRewake
@@ -39,6 +41,10 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
       HumanReview.human_review_state?(Transition.effective_ci_state(issue)) and ci_head_approved?(state, issue, result) ->
         Reconciler.refresh_running_issue_state(state, Transition.effective_issue_state(issue))
 
+      # No open PR means no CI run could ever resolve ci-wait (#5816).
+      HumanReview.human_review_state?(Transition.effective_ci_state(issue)) and PrLessReview.no_pull_request?(result) ->
+        Reconciler.refresh_running_issue_state(state, Transition.effective_issue_state(issue))
+
       true ->
         Transition.transition_ci_ticket(state, issue, @ci_wait_state)
     end
@@ -52,7 +58,11 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
       |> clear_stale_ci_wait(issue)
       |> Reconciler.refresh_running_issue_state(Transition.effective_issue_state(issue))
     else
-      transition_ci_pass(state, issue, result)
+      if CiLifecycle.ci_wait_state?(Transition.effective_ci_state(issue)) and ReviewHandoff.ready_unreviewed_head?(result) do
+        ReviewHandoff.transition(state, issue, result)
+      else
+        transition_ci_pass(state, issue, result)
+      end
     end
   end
 
@@ -178,6 +188,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
   @spec recover_ci_poll_result(State.t(), term(), term(), term()) :: term()
   def recover_ci_poll_result(state, issue, result, opts) do
     result = Map.put(result, :ci_recovery_opts, opts)
+    state = PrLessReview.reconcile(state, issue, result, opts)
 
     # Unapproved conflicts only: changes-requested belongs to HeadVerdictRouter (#4822),
     # while confirmed mergeability conflicts route independently of review status.
