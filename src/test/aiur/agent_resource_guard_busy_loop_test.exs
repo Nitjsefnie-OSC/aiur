@@ -130,6 +130,25 @@ defmodule Aiur.AgentResourceGuardBusyLoopTest do
     refute_receive {:killed, _pid}, 50
   end
 
+  test "dead report-only pids do not re-emit an alert" do
+    test_pid = self()
+
+    opts = [
+      cap: 1,
+      kill_detected: false,
+      entries_fun: fn -> [] end,
+      orphans_fun: fn -> [%{pid: 301, cwd: "/ws/aiur/7/src"}] end,
+      process_info_fun: fn _pid -> nil end,
+      sample_fun: fn pid -> sample(pid, []) end,
+      cores: 1,
+      alert_fun: fn topic, alert -> send(test_pid, {:alert, topic, alert}) end
+    ]
+
+    assert {[], %{reported: reported}} = AgentResourceGuard.enforce(opts, %{})
+    assert MapSet.size(reported) == 0
+    refute_receive {:alert, _, _}, 50
+  end
+
   test "killing detected load is opt-in by config" do
     assert {:ok, %{agent: %{synthetic_load_kill_detected: false}}} = Schema.parse(%{tracker: %{kind: "memory"}})
     assert {:ok, %{agent: %{synthetic_load_kill_detected: true}}} = Schema.parse(%{tracker: %{kind: "memory"}, agent: %{synthetic_load_kill_detected: true}})

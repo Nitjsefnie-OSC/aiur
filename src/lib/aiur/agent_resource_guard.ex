@@ -91,6 +91,7 @@ defmodule Aiur.AgentResourceGuard do
       # A process left running is still flagged on the next tick; report it once.
       results =
         found
+        |> Enum.map(fn result -> %{result | reported: Enum.filter(result.reported, fn pid -> process_alive?(pid, opts) end)} end)
         |> Enum.map(&%{&1 | reported: Enum.reject(&1.reported, fn pid -> pid in already_reported end)})
         |> Enum.reject(&(&1.killed == [] and &1.reported == []))
 
@@ -303,6 +304,8 @@ defmodule Aiur.AgentResourceGuard do
     info = Keyword.get(opts, :process_info_fun, &proc_info/1).(pid)
     info != nil and synthetic_load_generator?(info)
   end
+
+  defp process_alive?(pid, opts), do: Keyword.get(opts, :process_info_fun, &proc_info/1).(pid) != nil
 
   defp report(%{workspace: workspace, cap: cap, killed: killed, reported: reported, root_pid: root_pid}, opts) do
     what = if root_pid, do: "exceeded the synthetic load cap of #{cap}", else: "left orphaned synthetic load running"
