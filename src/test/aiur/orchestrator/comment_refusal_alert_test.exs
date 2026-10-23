@@ -53,13 +53,23 @@ defmodule Aiur.Orchestrator.CommentRefusalAlertTest do
   end
 
   defp open_pr_event(issue, extra) do
-    Map.merge(
-      comment_event(issue, %{
-        open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "head-1"}}} end,
-        unresolved_threads_fetcher: fn _ -> {:ok, [%{"isResolved" => false}]} end
-      }),
-      extra
-    )
+    event =
+      Map.merge(
+        comment_event(issue, %{
+          open_pr_fetcher: fn _ -> {:ok, %{"head" => %{"sha" => "head-1"}}} end,
+          unresolved_threads_fetcher: fn _ -> {:ok, [%{"isResolved" => false}]} end,
+          human_merger_allowed_fun: &(&1 == "its-everdred")
+        }),
+        extra
+      )
+
+    case event[:comment] do
+      %{"state" => "CHANGES_REQUESTED"} = comment ->
+        put_in(event, [:comment], Map.put_new(comment, "user", %{"login" => "its-everdred"}))
+
+      _ ->
+        event
+    end
   end
 
   test "parked issue refusal is durable and gives the parking remedy" do
