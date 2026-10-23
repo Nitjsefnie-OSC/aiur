@@ -70,7 +70,7 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
     end
   end
 
-  test "agent runner pauses on before_run failure and resumes after operator intervention" do
+  test "agent runner pauses on before_run timeout and resumes after operator intervention" do
     test_root = Aiur.TestSupport.tmp_root!("aiur-elixir-agent-runner-before-run-pause")
 
     try do
@@ -122,10 +122,10 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
         hook_before_run: """
         printf '%s\\t%s\\t%s\\t%s\\n' "$AIUR_HOOK_TICKET_ID" "$AIUR_HOOK_TICKET_IDENTIFIER" "$AIUR_HOOK_RUNNER_PID" "$PWD" >> #{before_run_trace}
         if [ ! -f #{resume_marker} ]; then
-          printf '%s\\n' 'dependency fetch failed' >&2
-          exit 74
+          sleep 2
         fi
         """,
+        hook_timeout_ms: 500,
         codex_command: "#{codex_binary} app-server",
         max_turns: 1
       )
@@ -136,8 +136,8 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
       issue = %Issue{
         id: "issue-before-run-pause",
         identifier: identifier,
-        title: "Pause on hook failure",
-        description: "before_run should pause instead of exhausting retries",
+        title: "Pause on hook timeout",
+        description: "before_run timeout should pause instead of exhausting retries",
         state: "In Progress",
         url: "https://example.org/issues/MT-BEFORE-RUN-PAUSE",
         labels: []
@@ -156,6 +156,17 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
 
       assert_receive {:worker_control_state, "issue-before-run-pause", :paused, %{kind: :before_run_failure}},
                      5_000
+
+      pause_events =
+        test_workspace
+        |> Path.join("logs/agent.ndjson")
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> Enum.map(&Jason.decode!/1)
+
+      assert Enum.any?(pause_events, fn event ->
+               event["last_message"] == "before_run hook timed out; agent paused pending Executor resume."
+             end)
 
       refute_receive {:codex_worker_update, "issue-before-run-pause", %{event: :session_started}}, 200
       assert Task.yield(task, 50) == nil
@@ -189,54 +200,7 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
         end)
 
       assert length(trace_lines) == 2 and all_owned_by_test?,
-             "expected exactly two before_run entries from this test runner; got #{inspect(trace_lines)}"
-    after
-      File.rm_rf(test_root)
-    end
-  end
-
-  test "before_run timeout becomes a named failure for the controlled pause path" do
-    test_root = Aiur.TestSupport.tmp_root!("aiur-elixir-agent-runner-before-run-timeout")
-
-    try do
-      template_repo = Path.join(test_root, "source")
-      workspace_root = Path.join(test_root, "workspaces")
-      File.mkdir_p!(template_repo)
-      File.write!(Path.join(template_repo, "README.md"), "# test")
-      System.cmd("git", ["-C", template_repo, "init", "-b", "main"])
-      System.cmd("git", ["-C", template_repo, "config", "user.name", "Test User"])
-      System.cmd("git", ["-C", template_repo, "config", "user.email", "test@example.com"])
-      System.cmd("git", ["-C", template_repo, "add", "README.md"])
-      System.cmd("git", ["-C", template_repo, "commit", "-m", "initial"])
-
-      write_workflow_file!(Workflow.workflow_file_path(),
-        workspace_root: workspace_root,
-        hook_after_create: "cp #{Path.join(template_repo, "README.md")} README.md",
-        hook_before_run: "sleep 2",
-        hook_timeout_ms: 60_000
-      )
-
-      issue = %Issue{
-        id: "issue-before-run-timeout",
-        identifier: "MT-BEFORE-RUN-TIMEOUT-#{System.unique_integer([:positive])}",
-        title: "Pause on hook timeout",
-        description: "A hook timeout must not consume agent retries",
-        state: "In Progress"
-      }
-
-      {:ok, workspace} = Aiur.Workspace.create_for_issue(issue)
-
-      write_workflow_file!(Workflow.workflow_file_path(),
-        workspace_root: workspace_root,
-        hook_after_create: "cp #{Path.join(template_repo, "README.md")} README.md",
-        hook_before_run: "sleep 2",
-        hook_timeout_ms: 50
-      )
-
-      assert {:before_run_failed, :timeout, message, {:workspace_hook_timeout, "before_run", 50}} =
-               Aiur.AgentRunner.BeforeRun.run(workspace, issue, [], nil, fn -> flunk("session must not start") end)
-
-      assert message =~ "timed out after 50 ms"
+             "expected one timed-out before_run and one explicit post-resume before_run; got #{inspect(trace_lines)}"
     after
       File.rm_rf(test_root)
     end
