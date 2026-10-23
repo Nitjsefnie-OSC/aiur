@@ -1,7 +1,7 @@
 # Configuration reference
 Configuration lives in `.aiur/config` (YAML), and `prompt_file:` and `hooks_file:` point at sibling files. With no local config, Aiur uses `~/.aiur/config` without per-repository init. Global GitHub startup announces its current-origin target and ensures workflow/marker and complexity labels, without creating model labels. Omit `tracker.github.repo` for portable defaults; a conflicting explicit repo fails safely. Shared credentials can live in `~/.aiur/.env` using the precedence below. Older root-level config files are rejected. When moving one, also move the files it references, or rewrite their paths so they still resolve from the new config directory. Supported secret and workspace-root fields resolve `~` and `$VAR` values; other path fields do not generally expand environment references.
-## Environment variables
 
+## Environment variables
 Environment variables are declared once in the env schema (`Aiur.Env.Schema`), which validates them at startup and generates the checked-in `.env.example` (run `mix aiur.env.example` from `src/` to regenerate; a CI check fails when the example drifts from the schema).
 
 - **Layering.** Shell exports win, then `./.env`, then `~/.aiur/.env`: the launcher reads the repository file first and each file fills only unset names, so the home file only fills the gaps. A blank value such as the `GITHUB_TOKEN=` placeholder `aiur init` writes is not a setting and shadows nothing. GitHub credentials (`GITHUB_TOKEN` and the `GITHUB_APP_*` set) resolve as one group: when `./.env` sets any of them, every GitHub credential in `~/.aiur/.env` is ignored, so a machine-wide App never outranks the token a repository configured for itself. When the home value loses either way, the daemon logs a startup warning naming the variable (never its value).
@@ -12,6 +12,7 @@ Environment variables are declared once in the env schema (`Aiur.Env.Schema`), w
 - **Dashboard credentials/key.** Set `AIUR_DASHBOARD_USERNAME` / `AIUR_DASHBOARD_PASSWORD` for machine Basic Auth and optional browser fallback. Google browser sign-in uses `AIUR_GOOGLE_CLIENT_ID` / `AIUR_GOOGLE_CLIENT_SECRET` together with `dashboard_auth.google.allowed_emails` and HTTPS `server.public_url` ([GUI](/guide/gui)). `AIUR_SECRET_KEY_BASE` (at least 64 bytes, e.g. `openssl rand -base64 48`) overrides the cookie key; otherwise Aiur persists a mode-0600 key per instance under `~/.aiur/instances/`.
 
 The generated `.env.example` groups variables under `## Required`, `## Optional - ...` (one section per integration), `## Runtime - launcher-managed`, and `## Development and debugging` headers, with a one-line purpose above each key and a terse right-hand "how to fetch" note aligned to a common column.
+
 ## Top-level
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-00 -->
 | --- | --- | --- | --- |
@@ -24,10 +25,11 @@ The generated `.env.example` groups variables under `## Required`, `## Optional 
 | `max_vertical_panes` | integer | 3 | Caps visible agent chat panes. |
 | `pre_warmed_sessions` | integer | 3 | Number of opencode sessions booted early; 0 disables pre-warm. |
 | `prompt_file` | string | nil | Per-repository Liquid prompt template. |
+
 ## executor takeover alerts
 | `executor.sweep.unreviewed_pr_minutes` | integer | 10 | Minutes an open, non-draft PR may wait without a review on its current head before the Executor sweep reports it, whatever its ticket state; the finding names that state. Must be positive. |
-## executor
 
+## executor
 Aiur watches nonterminal tickets in the run scope and, once a ticket's **convergence age** crosses a configurable threshold, raises an advisory `needs_attention` alert visible in `aiurdev alerts --needs-attention` and the watch actionable section. The alerts are advisory takeover prompts — they never perform a takeover automatically.
 
 - `executor_takeover_first_alert_hours` (default `8`) — a nonterminal ticket first raises the advisory once its convergence age reaches this value.
@@ -49,8 +51,8 @@ The alert carries actionable evidence.
 | CI | Current state when available, for tickets already alerted. |
 
 A ticket that becomes terminal or leaves the run scope resolves its active advisory and forgets its convergence state; a re-opened ticket starts a fresh episode.
-## tracker
 
+## tracker
 The [analysis-ticket exception](/apis/github-auth#who-aiur-trusts) requires a matching open local request and nonce; daemon authorship alone grants no trust.
 
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-01 -->
@@ -95,8 +97,8 @@ The [analysis-ticket exception](/apis/github-auth#who-aiur-trusts) requires a ma
 | `tracker.restack_after_blocker_merge` | boolean | true | Fast-forward restack idle GitHub dependents after a blocker squash-merges. Requires git 2.40+. Live agents restack themselves; false disables only the daemon path. |
 | `tracker.terminal_fence_grace_seconds` | integer | 30 | How long a terminal tracker observation remains lifecycle-fenced while an authoritative queued item is still undelivered. |
 | `tracker.terminal_states` | array | tracker-specific | States that stop work. GitHub values are lifecycle label slugs such as `done`. |
-## polling
 
+## polling
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-02 -->
 | --- | --- | --- | --- |
 | `polling.idle_widen_factor` | float | 5.0 | Multiplier applied while no agents are actively running. Must be between 1.0 and 100.0. |
@@ -152,13 +154,13 @@ Freshness thresholds follow this cadence. You do not set them separately.
   a freshly restarted fleet starts at the base interval, and a live fleet with
   dispatchable tickets keeps the base interval so work is not left waiting
   behind a backed-off sweep (#2138).
-## monitoring
 
+## monitoring
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-03 -->
 | --- | --- | --- | --- |
 | `monitoring.daemon_heartbeat_stale_ms` | integer | 3,600,000 | Threshold in milliseconds for recording a retrospective daemon heartbeat gap on Executor startup. A durable `system.daemon.gap` informational event is emitted only when a stale heartbeat is corroborated by the lifecycle journal; its cause is `clean_shutdown` when a stop was recorded and `unknown` for an unclosed start. Missing heartbeat files are ignored. This is not live monitoring and cannot alert while Aiur is stopped. Default is 1 hour (3,600,000 ms). |
-## webhooks
 
+## webhooks
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-04 -->
 | --- | --- | --- | --- |
 | `webhooks.poll_widen_factor` | float | 2.0 | Multiplier applied to `polling.interval_seconds` for repos proven webhook-backed. Values below 1.0 are rejected. |
@@ -167,8 +169,8 @@ Freshness thresholds follow this cadence. You do not set them separately.
 | `webhooks.sweep_interval_seconds` | integer | 60 | How often proven repos are checked for silence. |
 
 See [GitHub polling and webhooks](/apis/github-polling) for the setup story and runtime states.
-## workspace
 
+## workspace
 The `wip_*` keys bound the save of uncommitted work described in [Saved uncommitted work](/reference/cli#saved-uncommitted-work).
 
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-05 -->
@@ -182,14 +184,14 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 | `workspace.wip_max_file_bytes` | integer | 10485760 | An untracked file larger than this (10 MiB) is skipped in a save. |
 | `workspace.wip_retention_bytes` | integer | 2147483648 | Cap in bytes of all of `wip-preserved/` (2 GiB). Closed tickets' saves are pruned first. |
 | `workspace.wip_retention_days` | integer | 14 | Saves older than this are pruned. The newest save of an open ticket is never pruned. |
-## worker
 
+## worker
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-06 -->
 | --- | --- | --- | --- |
 | `worker.max_concurrent_agents_per_host` | integer or nil | nil | Per-host concurrent-agent cap. |
 | `worker.ssh_hosts` | array | `[]` | SSH hosts available for remote execution. Each server must allow `BASH_ENV`, `ENV`, `HOME`, and `ZDOTDIR` through OpenSSH `AcceptEnv`; Aiur neutralizes them before the account shell starts and fails closed if the server rejects them. |
-## hooks
 
+## hooks
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-07 -->
 | --- | --- | --- | --- |
 | `hooks.after_create` | string or nil | nil | Command after workspace creation. |
@@ -197,8 +199,8 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 | `hooks.before_remove` | string or nil | nil | Command before workspace removal. |
 | `hooks.before_run` | string or nil | nil | Command before each agent run. |
 | `hooks.timeout_ms` | integer | 600000 | Per-hook timeout; 10 minutes by default. |
-## prewarm
 
+## prewarm
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-08 -->
 | --- | --- | --- | --- |
 | `prewarm.base_build` | string | none | One-time base build command. |
@@ -224,15 +226,15 @@ The alert fires only once a hold has persisted past the routine bound: a probe
 that fails or exceeds its own timeout, a build that genuinely holds the fleet,
 or a stalled hold the watchdog releases. Its `.resolved` fires when the gate
 clears.
-## pr_watch
 
+## pr_watch
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-09 -->
 | --- | --- | --- | --- |
 | `pr_watch.command_prefix` | string | `/aiur` | One-off trusted comment command prefix. |
 | `pr_watch.enabled` | boolean | false | Enables trusted PR comment watching. |
 | `pr_watch.watch_label` | string | `watch` | Label suffix enrolling a PR for watching. |
-## pr_health
 
+## pr_health
 Periodic scan of open pull requests for conditions that stall PRs silently: a
 PR authored by a configured human merger (unmergeable by construction, since
 GitHub blocks self-approval), a non-draft PR older than `stale_hours` with no
@@ -267,15 +269,15 @@ write, so the re-queue retries on the next tick instead of silently stranding th
 | `pr_health.enabled` | boolean | false | Enables the PR-health scan and the rework re-queue. |
 | `pr_health.interval_seconds` | integer | 1800 | How often the scan lists open PRs. |
 | `pr_health.stale_hours` | integer | 24 | A non-draft PR older than this with no review is flagged. |
-## events
 
+## events
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-11 -->
 | --- | --- | --- | --- |
 | `events.block_state_debounce_seconds` | integer | 10 | Debounces blocked/unblocked transitions. |
 | `events.codeowners_refresh_seconds` | integer | 3600 | CODEOWNERS refresh interval. |
 | `events.custom_events_per_turn_max` | integer | 5 | Caps custom events per turn. |
-## upgrade
 
+## upgrade
 The `aiur run` upgrade-version notice is optional and opt-out: it caches with a
 TTL (the registry is contacted at most once a day), fails open and silent when
 unreachable, never runs under `aiurdev`, and is channel-aware — a `nightly` or
@@ -287,16 +289,16 @@ unreachable, never runs under `aiurdev`, and is channel-aware — a `nightly` or
 
 `AIUR_UPGRADE_CHECK_DISABLED` (and the legacy `AIUR_NO_UPDATE_NOTIFIER`) are the
 environment-variable equivalents; the check also stays silent in CI runs.
-## alerts
 
+## alerts
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-13 -->
 | --- | --- | --- | --- |
 | `alerts.alerts_file` | string path or nil | bundled alerts file | Topic-to-sound YAML map. |
 | `alerts.enabled` | boolean | true | Master alert-sound switch. |
 | `alerts.sound_dir` | string path or nil | nil | Directory for custom sound files. |
 | `alerts.use_os_default_sounds` | boolean | false | Uses built-in OS sounds by category. |
-## elevenlabs
 
+## elevenlabs
 Both capture clients stream audio to Aiur, and Aiur calls ElevenLabs with the credential below; interactive conversation also streams speech audio back to the browser. This is the only place the credential is configured, and neither the sidecar nor the browser holds it.
 
 This optional section configures voice features; `aiur init` records declines as `enabled: false` and skips them on resume.
@@ -313,8 +315,8 @@ This optional section configures voice features; `aiur init` records declines as
 The key is a secret. Keep it in `.env` and leave the `$ELEVENLABS_API_KEY` reference in the config file rather than pasting the value there. Aiur never logs the key, and the daemon scrubs every `*_API_KEY` variable, `ELEVENLABS_API_KEY` included, from agent process environments, local and SSH-launched alike, so no coding agent inherits it.
 
 Configuring the key also adds an ElevenLabs meter beside the GitHub API meter on the Build page [usage strip](/concepts/build-history#usage-strip) and the Units [API meters](/concepts/units#api-meters). It reads the account credit quota and next-invoice amount due from `GET /v1/user/subscription`; with no key configured the meter is absent entirely.
-## compaction
 
+## compaction
 Optional Codex thread compaction runs synchronously at the `human-review` handoff via `thread/compact/start`; other providers are unsupported, and token thresholds use cumulative usage measured by Aiur at handoff.
 
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-15 -->
@@ -346,6 +348,7 @@ compaction:
     enabled: true
     token_threshold: 50000
 ```
+
 ## observability
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-16 -->
 | --- | --- | --- | --- |
@@ -377,16 +380,16 @@ An unavailable or unparseable Tailscale status raises `system.build_order_funnel
 The supervising-Executor Decision API uses the separate `AIUR_SUPERVISOR_TOKEN` bearer credential. Generate it with `openssl rand -base64 32`, then put `AIUR_SUPERVISOR_TOKEN=<generated-token>` in `~/.aiur/.env` (global) or the repository `.env` (project-local).
 
 An exported value wins, followed by the global file and then the repository file. The value must be at least 32 bytes, bearer-safe, and free of surrounding whitespace. A present non-empty invalid value aborts startup; an absent or empty value leaves the API disabled.
-## decisions
 
+## decisions
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-17 -->
 | --- | --- | --- | --- |
 | `decisions.supervisor_allow_non_reversible` | boolean | false | Allows supervisor policy to cover partially reversible or irreversible decisions. |
 | `decisions.supervisor_allowed_kinds` | array | `[]` | Decision kinds an authenticated supervising Executor may answer. Empty means none. |
 
 These policy keys never grant transport access by themselves. The supervisor API also requires `AIUR_SUPERVISOR_TOKEN`; mutations require the writable and origin gates described above.
-## server
 
+## server
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-18 -->
 | --- | --- | --- | --- |
 | `server.allowed_hosts` | array | derived | Additional accepted Host names; the public URL host and loopback addresses are always accepted. |
@@ -412,8 +415,8 @@ The target probe is a bounded liveness check, not proof of daemon identity or ro
 A fixed `server.port` that is already bound — for example a second `aiur` instance on the same host — does not crash the daemon. The second instance logs an explicit startup message naming the port and the conflict, disables only its own dashboard, and keeps running agents.
 
 The durable repository Executor state also records every daemon start and stop in `<repo>.control-lifecycle.json`, with the invoking process's OS pid, parent pid, and hostname. All runs for that repository share the journal, so a second instance or a crash is identifiable after the fact even when each run has a different log directory.
-## dashboard auth
 
+## dashboard auth
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-19 -->
 | --- | --- | --- | --- |
 | `dashboard_auth.browser_basic_auth` | boolean | true | Allows Basic Auth fallback on browser pages; API and Stream Deck machine clients keep Basic Auth. |
@@ -422,8 +425,8 @@ The durable repository Executor state also records every daemon start and stop i
 | `dashboard_auth.session_max_age_days` | integer | 30 | Maximum dashboard browser session age in days. |
 
 Google and passkeys require a valid HTTPS `server.public_url`. Keep browser Basic Auth enabled until Google sign-in and passkey enrollment are verified. The Google client credentials are optional as a pair; a partial pair fails startup validation.
-## opencode
 
+## opencode
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-19 -->
 | --- | --- | --- | --- |
 | `opencode.bridge_host` | string | `127.0.0.1` | Aiur↔opencode bridge host. |
@@ -432,6 +435,7 @@ Google and passkeys require a valid HTTPS `server.public_url`. Keep browser Basi
 | `opencode.model_prefix` | string | `aiur` | Prefix for registered synthetic models. |
 | `opencode.prewarm_disabled` | boolean | false | Disables opencode session pre-warming. |
 | `opencode.serve_args` | array | `[]` | Extra `opencode serve` arguments. |
+
 ## experiments
 The daemon owns [experiment](../concepts/experiments) writes through control RPC.
 
@@ -461,6 +465,7 @@ The daemon owns [experiment](../concepts/experiments) writes through control RPC
 | `experiments.max_snapshot_observations` | integer | 50000 | Maximum observations in a snapshot; positive, reserved for snapshot capture. |
 | `experiments.pack_dirs` | string list | [".aiur/experiments/packs"] | Consumer metric pack directories, relative to the base checkout; reserved for metric packs. |
 | `experiments.script_timeout_ms` | integer | 60000 | Script metric timeout in milliseconds; positive, reserved for metric packs. |
+
 ## build_queue
 Build queue configuration for GitHub workflows (Linear is unsupported); the daemon reconciles stored queue membership after tracker signals or on the configured interval, with a two-second debounce.
 
@@ -478,7 +483,7 @@ Build queue configuration for GitHub workflows (Linear is unsupported); the daem
 | `build_queue.set_order` | string | `none` | `none` preserves ordinary candidate ordering. Opt into `ranked` to prefer queue sets by persisted rank (creation order by default); ready members follow list position, while optimistic members retain deepest-first ordering within each set. Ready work always precedes optimistic work. With a cap or reserve configured, earlier unknown or stale readiness blocks ranked spill because it may have ready work. Held sets remain stopped. Main CI fixer tickets dispatch ahead of ranked sets. |
 | `build_queue.spill_reserve_slots` | integer | 0 | Slots kept free for the earliest unfinished, unheld set before admitting later-set work; minimum 0. Reserve applies even while that set waits on review. Set-policy waits appear as `queue_set_order` in status and queue show. |
 | `build_queue.start_trigger` | string | `pr_merged` | Prerequisite stage needed for queue promotion: `issue_closed`, `pr_merged`, `pr_approved`, `pr_ci_green`, or `pr_opened`. Also governs native dependency dispatch. Override with `queue add --start-on` or `queue set NAME --start-on`; `default` follows config. Missing or stale evidence never releases dependents. Optimistic stages combine lifecycle labels with retained per-PR progress. `pr_approved` adds one conditional review read per watched blocker. Linear dependency dispatch supports only `issue_closed` and `pr_merged`. See [Start trigger](/concepts/build-orders#start-trigger). |
-## Further sections
 
+## Further sections
 - [`agent`, host-pressure admission, `agent.claude`, `agent.codex`, model discovery](/reference/configuration-agent)
 - [`build_order` and resolution notes](/reference/configuration-build-order)

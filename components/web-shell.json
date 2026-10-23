@@ -41,12 +41,15 @@
   "owns": {
     "config": [
       "observability",
-      "server"
+      "server",
+      "dashboard_auth"
     ],
     "env": [
       "AIUR_DASHBOARD_PASSWORD",
       "AIUR_DASHBOARD_USERNAME",
-      "AIUR_SECRET_KEY_BASE"
+      "AIUR_SECRET_KEY_BASE",
+      "AIUR_GOOGLE_CLIENT_ID",
+      "AIUR_GOOGLE_CLIENT_SECRET"
     ],
     "state": [],
     "capabilities": []
@@ -65,12 +68,15 @@
   ],
   "config": [
     "observability",
-    "server"
+    "server",
+    "dashboard_auth"
   ],
   "env": [
     "AIUR_DASHBOARD_PASSWORD",
     "AIUR_DASHBOARD_USERNAME",
-    "AIUR_SECRET_KEY_BASE"
+    "AIUR_SECRET_KEY_BASE",
+    "AIUR_GOOGLE_CLIENT_ID",
+    "AIUR_GOOGLE_CLIENT_SECRET"
   ],
   "capabilities": []
 }
