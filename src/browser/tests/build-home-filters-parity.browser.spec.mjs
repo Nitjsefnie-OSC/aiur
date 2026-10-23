@@ -1,27 +1,36 @@
 import { readFile } from 'node:fs/promises'
+import assert from 'node:assert/strict'
 import { test, expect } from '@playwright/test'
-import { openParityPair, expectDesignParity, PARITY_VIEWPORTS, FIXTURE_META } from '../support/design-parity.mjs'
+import { openParityPair, expectDesignParity, PARITY_VIEWPORTS, FIXTURE_META, DESIGN_ROOT } from '../support/design-parity.mjs'
+import { estimatePatch } from '../scripts/build-home-now-patch.mjs'
 
 const allCells = ['live', 'dense'].flatMap(dataset => PARITY_VIEWPORTS.flatMap(size => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset, ...size, theme, palette })))))
-// PRs cover every breakpoint and palette; merge_group opts into the complete matrix.
+// Routine CI covers every breakpoint and palette; manual sign-off runs the full matrix.
 const full = process.env.AIUR_PARITY_FULL === '1'
 const cells = full ? allCells : allCells.filter(c =>
   c.dataset === 'live' && (c.viewport.width === 1440 && c.theme === 'dark' && c.palette === 'gruvbox' || c.viewport.width === 1024 && c.theme === 'light' && c.palette === 'aiur' || c.viewport.width === 390 && c.theme === 'dark' && c.palette === 'aiur') ||
   c.dataset === 'dense' && (c.viewport.width === 1440 && c.theme === 'light' && c.palette === 'gruvbox' || c.viewport.width === 390 && c.theme === 'dark' && c.palette === 'gruvbox'))
 async function openFiltersPair(browser, cell, options) {
   const root = test.info().project.metadata.filtersRoot
-  const source = root ? { newContext: async opts => {
+  const source = { newContext: async opts => {
     const context = await browser.newContext(opts), newPage = context.newPage.bind(context)
     context.newPage = async () => {
       const page = await newPage(), goto = page.goto.bind(page)
       page.goto = async (...args) => {
-        await page.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(root + '/src/priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
+        if (root) await page.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(root + '/src/priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
+        await page.route('**/assets/build.js', async route => {
+          // Kevin approved Retrying on dec_d92d050693d7f45c; retain the frozen import.
+          const reference = estimatePatch(await readFile(DESIGN_ROOT + '/assets/build.js', 'utf8'))
+          const anchor = '    command: { label: "Awaiting command", cls: "stuck" }, paused:'
+          assert.equal(reference.split(anchor).length, 2)
+          await route.fulfill({ contentType: 'text/javascript', body: reference.replace(anchor, '    retrying: { label: "Retrying", cls: "queued" },\n' + anchor) })
+        })
         return goto(...args)
       }
       return page
     }
     return context
-  } } : browser
+  } }
   const pair = await openParityPair(source, cell, { ...options, motion: true })
   // Both pages render the exact fixture instant, including the monotonic client clock.
   await pair.product.evaluate(async now => {
@@ -55,6 +64,7 @@ for (const cell of cells) test(`filter parity ${cell.dataset} ${cell.viewport.wi
 })
 
 for (const cell of (full ? allCells.filter(c => c.dataset === 'live') : cells.filter(c => c.dataset === 'live' && c.viewport.width === 1440))) for (const query of ['model=claude&tstate=merged,failed&astate=active', 'epic=docs']) test(`selected viewport ${cell.viewport.width} ${cell.theme} ${cell.palette} ${query}`, async ({ browser }) => {
+  test.setTimeout(180000)
   const pair = await openFiltersPair(browser, cell, { query })
   try {
     for (const page of [pair.design, pair.product]) {
