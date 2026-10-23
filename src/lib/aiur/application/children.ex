@@ -284,13 +284,13 @@ defmodule Aiur.Application.Children do
         Aiur.Experiments.window_children(recording?) ++
         quarantine_lifter_children(primary_instance?, github_tracker?) ++
         dashboard_cache_children(dashboard?) ++
-        dashboard_final_children(dashboard?, build_index?)
+        dashboard_final_children(dashboard?, build_index?, opts)
     )
   end
 
-  defp dashboard_final_children(dashboard?, build_index?) do
+  defp dashboard_final_children(dashboard?, build_index?, opts) do
     List.wrap(if(dashboard?, do: AiurWeb.DashboardAuth.ChallengeStore)) ++
-      List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
+      BuildOrders.child_specs(:estimates, opts) ++ List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
   end
 
   defp dashboard_cache_children(dashboard?) do
