@@ -13,9 +13,13 @@ export const setupSeconds = 600
 export const tailSeconds = 120
 export const recordedSeconds = {
   // Governed local full commands (2026-10-23), including startup and build-gate waits:
-  // unfiled 10 cases: 57.170s; unfiled modal parity 12 cells: 676.729s. Round up.
+  // unfiled 10 functional cases: 57.170s; row parity: 4 cells per width. Round up.
   'test:build-home-unfiled': 58,
-  'test:build-home-unfiled-parity': 677,
+  // Final b02b8d2ad parity matrix: 12 modal cells, plus 4 row cells per width.
+  'test:build-home-unfiled-parity:modal': 471,
+  'test:build-home-unfiled-parity:1440': 389,
+  'test:build-home-unfiled-parity:1024': 453,
+  'test:build-home-unfiled-parity:390': 585,
   // CI run 39616972873 (2026-10-21), jobs 119280971812/119280971969:
   // document functional 43.8s and parity 150.5s suite wall time, rounded up.
   'test:build-home-modal-doc': 44,
