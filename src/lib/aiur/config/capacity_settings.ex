@@ -54,10 +54,9 @@ defmodule Aiur.Config.CapacitySettings do
   ceiling under pressure; it is not a guaranteed concurrency target.
   """
   @spec default_max_concurrent_agents() :: pos_integer()
-  @spec default_max_concurrent_agents(integer()) :: pos_integer()
-  @spec default_max_concurrent_agents(integer(), integer() | :unavailable) :: pos_integer()
-  def default_max_concurrent_agents(), do: default_max_concurrent_agents(default_capacity_schedulers(), SystemCgroup.memory_max_bytes())
+  def default_max_concurrent_agents, do: default_max_concurrent_agents(default_capacity_schedulers(), SystemCgroup.memory_max_bytes())
 
+  @spec default_max_concurrent_agents(integer()) :: pos_integer()
   def default_max_concurrent_agents(schedulers)
       when is_integer(schedulers) and schedulers > 0 do
     cpu_concurrency_limit(schedulers)
@@ -65,6 +64,7 @@ defmodule Aiur.Config.CapacitySettings do
 
   def default_max_concurrent_agents(_schedulers), do: 2
 
+  @spec default_max_concurrent_agents(integer(), integer() | :unavailable) :: pos_integer()
   def default_max_concurrent_agents(schedulers, memory_max_bytes) do
     cpu_limit = cpu_concurrency_limit(schedulers)
 
