@@ -124,15 +124,8 @@ Freshness thresholds follow this cadence. You do not set them separately.
   | `planning` | Build Order catalog, pack status, ad-hoc listings | The most expensive reads and the least urgent. Recommended value `0` (on-demand): the catalog's only consumers are web pages and it is demand-gated, so it needs no timer. |
   | `firehose` | repo events | Already self-regulating via GitHub's `X-Poll-Interval`; the class exists so status can show its configured cadence, not to change its loop. The firehose loop is **not gated** on a class cadence — it rides the dispatch tick — so no value is recommended: leave it unset to inherit `interval_seconds`. An entry would be a dead knob. |
 
-- The dashboard, the Units catalog and Build Order ticket history all judge
-  staleness against the effective interval of the class they mean: the
-  orchestrator snapshot readers derive from `dispatch`, Build Order catalog and
-  ticket history from `planning`.
-- Build Order's remaining `graph_catalog_refresh_ms` — the failure-backoff base
-  for the catalog scope, the window after which the catalog snapshot is shown
-  as ageing, and the floor the labelled-read cadence rides on — is derived from
-  the effective `planning` interval, so an idle fleet widens the Build Order
-  backoff exactly as it widens the tracker poll.
+- The dashboard, the Units catalog and Build Order ticket history all judge staleness against the effective interval of the class they mean: the orchestrator snapshot readers derive from `dispatch`, Build Order catalog and ticket history from `planning`.
+- Build Order's remaining `graph_catalog_refresh_ms` — the failure-backoff base for the catalog scope, the window after which the catalog snapshot is shown as ageing, and the floor the labelled-read cadence rides on — is derived from the effective `planning` interval, so an idle fleet widens the Build Order backoff exactly as it widens the tracker poll.
 - The catalog itself is event-sourced (#2313): the page renders the store
   projection, there is no recurring sweep, and the only GitHub reads are the
   rare reconciliation (daemon boot and degraded webhook delivery). It is not

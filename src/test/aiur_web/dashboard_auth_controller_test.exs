@@ -11,6 +11,9 @@ defmodule AiurWeb.DashboardAuthControllerTest do
 
   setup do
     previous_workflow_override = Process.get(:workflow_file_path_override)
+    previous_endpoint = Application.get_env(:aiur, AiurWeb.Endpoint)
+    previous_username = System.get_env("AIUR_DASHBOARD_USERNAME")
+    previous_password = System.get_env("AIUR_DASHBOARD_PASSWORD")
     config_dir = Aiur.TestSupport.tmp_root!("dashboard-auth-controller")
     File.mkdir_p!(config_dir)
     config_path = Path.join(config_dir, "config")
@@ -26,6 +29,9 @@ defmodule AiurWeb.DashboardAuthControllerTest do
 
     File.write!(config_path, config <> "\ndashboard_auth:\n  passkeys: true\n  google:\n    allowed_emails: [operator@example.test]\n")
     Process.put(:workflow_file_path_override, config_path)
+    Application.put_env(:aiur, AiurWeb.Endpoint, Keyword.put(previous_endpoint || [], :secret_key_base, String.duplicate("s", 64)))
+    System.put_env("AIUR_DASHBOARD_USERNAME", "operator")
+    System.put_env("AIUR_DASHBOARD_PASSWORD", "secret")
 
     on_exit(fn ->
       if previous_workflow_override do
@@ -33,6 +39,15 @@ defmodule AiurWeb.DashboardAuthControllerTest do
       else
         Process.delete(:workflow_file_path_override)
       end
+
+      if previous_endpoint do
+        Application.put_env(:aiur, AiurWeb.Endpoint, previous_endpoint)
+      else
+        Application.delete_env(:aiur, AiurWeb.Endpoint)
+      end
+
+      Aiur.TestSupport.restore_env("AIUR_DASHBOARD_USERNAME", previous_username)
+      Aiur.TestSupport.restore_env("AIUR_DASHBOARD_PASSWORD", previous_password)
 
       Aiur.TestCleanup.rm_rf!(config_dir)
       FinancialDataAccess.Generation.invalidate()

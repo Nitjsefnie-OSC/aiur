@@ -5,9 +5,9 @@ defmodule AiurWeb.FinancialDataAccessTest do
   import Plug.Test
 
   alias Aiur.TestSupport.EndpointStubs
+  alias AiurWeb.DashboardAuthController
   alias AiurWeb.{Endpoint, FinancialDataAccess}
   alias AiurWeb.FinancialDataAccess.Proof
-  alias AiurWeb.DashboardAuthController
   alias AiurWeb.Session
 
   @session_options Plug.Session.init(

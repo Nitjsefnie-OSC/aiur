@@ -50,6 +50,7 @@ defmodule AiurWeb.DashboardAuthController do
   end
 
   @doc false
+  @spec complete_google_sign_in(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def complete_google_sign_in(conn, user) do
     with true <- allowed_google_user?(user, Config.settings!().dashboard_auth.google.allowed_emails),
          {:ok, marker} <- FinancialDataAccess.new_browser_session_marker() do
