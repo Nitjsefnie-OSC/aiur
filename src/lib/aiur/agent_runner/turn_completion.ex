@@ -111,14 +111,14 @@ defmodule Aiur.AgentRunner.TurnCompletion do
   @doc "Handoff for a no-op turn; the bound and the park share these opts (#3971)."
   @spec noop_handoff(map(), Aiur.Issue.t()) :: {:handoff, term()} | :none | {:error, term()}
   def noop_handoff(turn_context, issue) do
-    opts = Keyword.put(turn_context.opts, :superseded_review_handoff?, noop_failure_state(issue) == "error")
+    opts = Keyword.put(turn_context.opts, :superseded_review_handoff?, noop_failure_state(issue, turn_context.opts) == "error")
     transition_agent_handoff(%{turn_context | opts: opts}, issue)
   end
 
   defp complete_noop_bound_without_handoff(turn_context, issue, progress, witness, cap) do
     %{workspace: workspace, worker_host: worker_host, turn_number: turn_number} = turn_context
 
-    case noop_failure_state(issue) do
+    case noop_failure_state(issue, turn_context.opts) do
       nil ->
         emit_noop_bound_alert(issue, workspace, worker_host, progress, witness, cap, turn_number)
         TurnLoop.return_completed(turn_context, issue)
@@ -210,9 +210,9 @@ defmodule Aiur.AgentRunner.TurnCompletion do
     )
   end
 
-  defp noop_failure_state(issue) do
+  defp noop_failure_state(issue, opts) do
     case DispatchPolicy.normalize_issue_state(issue.state) do
-      "rework" -> "error"
+      "rework" -> if open_review_findings(issue, opts) == [], do: "error", else: nil
       _ -> nil
     end
   end

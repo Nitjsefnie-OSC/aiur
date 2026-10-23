@@ -150,7 +150,7 @@ defmodule Aiur.AgentRunner.TurnAlerts do
   @spec emit_rework_findings_open_alert(Issue.t(), Path.t() | nil, String.t() | nil, [map()]) :: :ok
   def emit_rework_findings_open_alert(%Issue{} = issue, workspace, worker_host, findings) do
     message =
-      "Agent stopped after pushing work for #{issue.identifier} without answering the latest review's findings; the ticket stays in rework. Remaining: " <>
+      "Agent stopped after pushing work for #{issue.identifier} without answering the latest review's findings; the ticket stays in agent:#{issue.state}. Remaining: " <>
         Enum.map_join(findings, "; ", &"#{&1.id}. #{&1.ask}")
 
     Signal.alert(
