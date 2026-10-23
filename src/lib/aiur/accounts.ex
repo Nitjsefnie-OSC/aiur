@@ -1,9 +1,6 @@
 defmodule Aiur.Accounts do
   @moduledoc "Machine-local harness accounts and pure account selection."
 
-  alias Aiur.Env
-  alias Aiur.Init.Dotenv
-
   @registry "machine"
 
   @type account :: %{required(:name) => String.t(), required(:harness) => String.t(), optional(:profile_dir) => Path.t() | nil, optional(:api_key_env) => String.t()}
@@ -694,26 +691,7 @@ defmodule Aiur.Accounts do
     end)
   end
 
-  defp local_env_value(name) do
-    if Env.secrets_from_env?() do
-      System.get_env(name)
-    else
-      path = Path.join(System.get_env("HOME") || Path.expand("~"), ".aiur/.env")
-
-      case File.read(path) do
-        {:ok, contents} ->
-          find_env_value(Dotenv.parse(contents), name)
-
-        _ ->
-          nil
-      end
-    end
-  end
-
-  defp find_env_value(entries, name), do: Enum.find_value(entries, fn {key, value} -> if key == name, do: nonempty(value), else: nil end)
-
-  defp nonempty(""), do: nil
-  defp nonempty(value), do: value
+  defp local_env_value(name), do: Aiur.Accounts.EnvKey.read(name)
 
   defp write_registry(accounts) do
     path = machine_path()

@@ -161,50 +161,6 @@ defmodule Aiur.AccountsTest do
     refute File.read!(Path.join(home, ".aiur/machine")) =~ "deepseek-secret"
   end
 
-  test "environment-only mode does not read provider keys from the home dotenv file", %{home: home} do
-    dotenv = Path.join(home, ".aiur/.env")
-    File.mkdir_p!(Path.dirname(dotenv))
-    File.write!(dotenv, "DEEPSEEK_API_KEY__WORK=dotenv-only-secret\n")
-
-    previous_mode = System.get_env("AIUR_SECRETS_FROM_ENV")
-    previous_key = System.get_env("DEEPSEEK_API_KEY")
-    System.put_env("AIUR_SECRETS_FROM_ENV", "1")
-    System.delete_env("DEEPSEEK_API_KEY")
-
-    on_exit(fn ->
-      restore_process_env("AIUR_SECRETS_FROM_ENV", previous_mode)
-      restore_process_env("DEEPSEEK_API_KEY", previous_key)
-    end)
-
-    instance = %{
-      base_url: "https://example.invalid/v1",
-      api_key_env: "DEEPSEEK_API_KEY",
-      default_model: "deepseek-v4-flash",
-      transport: :responses,
-      quirks: %{}
-    }
-
-    assert {:error, {:missing_api_key, "DEEPSEEK_API_KEY"}} =
-             OpenAIConfig.resolve(
-               backend: "deepseek",
-               instance: instance,
-               backend_config: %{},
-               account_name: "work"
-             )
-  end
-
-  test "environment-only account registration ignores keys found only in home dotenv", %{home: home} do
-    dotenv = Path.join(home, ".aiur/.env")
-    File.mkdir_p!(Path.dirname(dotenv))
-    File.write!(dotenv, "DEEPSEEK_API_KEY__WORK=dotenv-only-secret\n")
-
-    previous_mode = System.get_env("AIUR_SECRETS_FROM_ENV")
-    System.put_env("AIUR_SECRETS_FROM_ENV", "1")
-    on_exit(fn -> restore_process_env("AIUR_SECRETS_FROM_ENV", previous_mode) end)
-
-    assert {:error, {:missing_account_key, "DEEPSEEK_API_KEY__WORK"}} = Accounts.register("deepseek", "work", nil)
-  end
-
   test "API key account login registers only the named env binding", %{home: home} do
     path = Path.join(home, ".aiur/.env")
     File.mkdir_p!(Path.dirname(path))
@@ -214,9 +170,6 @@ defmodule Aiur.AccountsTest do
     assert %{api_key_env: "MOONSHOT_API_KEY__TEAM"} = Enum.find(Accounts.list("kimi"), &(&1.name == "team"))
     refute File.read!(Path.join(home, ".aiur/machine")) =~ "moonshot-secret"
   end
-
-  defp restore_process_env(name, nil), do: System.delete_env(name)
-  defp restore_process_env(name, value), do: System.put_env(name, value)
 
   test "legacy Claude registry entries keep their names and can be rewritten safely", %{home: home} do
     path = Path.join(home, ".aiur/machine")

@@ -9,7 +9,6 @@ defmodule Aiur.Application.StartupChecks do
   alias Aiur.CodingAgent.RouteCredentials
   alias Aiur.Config, as: AiurConfig
   alias Aiur.Config.RoutingValue
-  alias Aiur.Env
 
   @doc false
   @spec maybe_validate_environment() :: :ok
@@ -32,7 +31,7 @@ defmodule Aiur.Application.StartupChecks do
   def validate_secrets({:ok, settings}, env), do: validate_secrets(settings, env)
 
   def validate_secrets(settings, env) when is_map(settings) and is_map(env) do
-    if Env.secrets_from_env?(env) do
+    if Aiur.Secrets.secrets_from_env?(env) do
       missing =
         []
         |> maybe_missing(github_tracker?(settings), github_secret_names(env), env)
@@ -64,7 +63,7 @@ defmodule Aiur.Application.StartupChecks do
   @doc "Runs the same hosted secret validation on demand."
   @spec validate_hosted_secrets() :: :ok | {:error, [String.t()]}
   def validate_hosted_secrets do
-    if Env.secrets_from_env?() do
+    if Aiur.Secrets.secrets_from_env?() do
       result = validate_secrets(Aiur.Config.settings_uncached(), System.get_env())
       if result == :ok, do: :ok, else: result
     else
@@ -114,7 +113,7 @@ defmodule Aiur.Application.StartupChecks do
   defp webhooks_enabled?(%{webhooks: %{repos: repos}}), do: is_list(repos) and repos != []
   defp webhooks_enabled?(_), do: false
 
-  defp non_persistent_state?(env), do: not Env.truthy?(env["AIUR_STATE_PERSISTENT"])
+  defp non_persistent_state?(env), do: not Aiur.Secrets.truthy?(env["AIUR_STATE_PERSISTENT"])
 
   defp configured_route_secrets(%{agent: %{priority: routes} = agent}, env) when is_list(routes) do
     routes = if routes == [], do: [Map.get(agent, :kind)], else: routes
