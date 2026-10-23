@@ -127,7 +127,8 @@ picks one of four, by precedence `resumed` > rework > `prior_work` > cold:
   `ce-brainstorm`/`ce-plan`, planning→work authorization, reconcile the
   workspace. Rework and prior_work differ only in three interpolated strings
   (`turn_prompt.ex:106-123`); notably the rework variant forbids a liveness
-  push that would dismiss a stale approval.
+  push that would dismiss a stale approval. A dirty kept workspace appends
+  "Resuming from a stopped session": at most 200 `git status --short` lines (with an overflow count) and the last agent message capped at 2,000 characters.
 - `:resumed` (session reattached after an aiur restart) — a short nudge with no
   ticket context at all (`turn_prompt.ex:65-79`).
 - Turn N>1 — short continuation guidance (`turn_prompt.ex:19-34`).
@@ -333,7 +334,7 @@ recorded, or one that it could have recorded itself. Otherwise it must run
 
 ## Step 5 — PR opened, agent pauses
 
-The agent opens a `Closes #<issue>` **draft** PR. Aiur PRs, draft or ready, run fast CI; the aggregate `ci gate` requires the full suite in the merge queue or when `merge_policy.full_ci_labels` or `full_ci_paths` force a full run. After self-review, the agent marks work ready; `agent:ci-wait` releases the turn and dispatch slot. Main has no `ci` push run.
+The agent opens a `Closes #<issue>` **draft** PR. PRs run fast CI until approved. `ci:full`, a configured full-CI label, or an approved PR matching `full_ci_paths` selects the full suite. The merge queue always runs it. After self-review, the agent marks work ready; `agent:ci-wait` releases the turn and dispatch slot. Main has no `ci` push run.
 
 Aiur refuses `ci-wait` and `human-review` hand-offs for drafts; pending drafts already in human review stay there instead of moving to CI wait.
 
