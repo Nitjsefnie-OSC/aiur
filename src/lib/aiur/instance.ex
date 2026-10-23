@@ -2,18 +2,19 @@ defmodule Aiur.Instance do
   @moduledoc """
   Ticket ownership filter for multi-instance runs (`instance.ignore`).
 
-  A ticket is *foreign* when another daemon owns it: its number is listed in
+  A ticket is *foreign* when another daemon owns it: a shared lease belongs to
+  another instance (or cannot be read), or its number is listed in
   `instance.ignore.tickets`, it carries a label in `instance.ignore.labels`, or
   it carries a `<prefix>:*` label for a prefix in `instance.ignore.label_prefixes`.
   Per-ticket observers and the Executor wake projection skip foreign tickets.
-  Dispatch is scoped separately by `tracker.github.label_prefix` and never
-  consults this module. Rules are read from the live config on every call, so
-  they hot-reload.
+  Dispatch takes a shared lease after its tracker-label eligibility check.
+  Ignore rules are read from the live config on every call, so they hot-reload.
   """
 
   require Logger
 
   alias Aiur.Config.Schema.Instance.Ignore
+  alias Aiur.Instance.LeaseStore
 
   @counter_key {__MODULE__, :ignored}
 
@@ -21,7 +22,7 @@ defmodule Aiur.Instance do
   True when `ticket` is owned by another instance. `labels` may be omitted when
   the caller does not have them; label rules then fall back to the open-ticket
   snapshot. If config or the label snapshot is unavailable, filtering fails
-  closed while ownership rules are active.
+  closed while ownership rules or shared coordination are active.
   """
   @spec foreign?(term(), [String.t() | map()] | nil) :: boolean()
   def foreign?(ticket, labels \\ nil) do
@@ -34,6 +35,10 @@ defmodule Aiur.Instance do
   @doc false
   @spec foreign?(term(), [String.t() | map()] | nil, Ignore.t()) :: boolean()
   def foreign?(ticket, labels, %Ignore{} = rules) do
+    foreign_by_shared_lease?(ticket) or foreign_by_rules?(ticket, labels, rules)
+  end
+
+  defp foreign_by_rules?(ticket, labels, rules) do
     number = number(ticket)
 
     cond do
@@ -58,8 +63,12 @@ defmodule Aiur.Instance do
   @spec foreign_pr?([term()] | nil) :: boolean()
   def foreign_pr?(closing) when is_list(closing) do
     case rules_result() do
-      {:ok, rules} -> not empty?(rules) and Enum.any?(closing, &foreign?(&1, nil, rules))
-      {:error, _reason} -> closing != []
+      {:ok, rules} ->
+        (not empty?(rules) and Enum.any?(closing, &foreign?(&1, nil, rules))) or
+          Enum.any?(closing, &foreign_by_shared_lease?/1)
+
+      {:error, _reason} ->
+        closing != []
     end
   end
 
@@ -122,18 +131,41 @@ defmodule Aiur.Instance do
   @doc "One `aiur status` line naming the active ignore rules and the since-boot ignored count."
   @spec status_line(map()) :: String.t()
   def status_line(status \\ status()) do
-    rules = Enum.map_join([:tickets, :labels, :label_prefixes], " ", &"#{&1}=[#{Enum.join(status[&1], ",")}]")
+    rules =
+      Enum.map_join(
+        [:tickets, :labels, :label_prefixes],
+        " ",
+        &"#{&1}=[#{Enum.join(status[&1], ",")}]"
+      )
+
     "INSTANCE IGNORE #{rules} ignored_since_boot=#{status.ignored_since_boot}"
   end
 
   defp empty?(%Ignore{tickets: [], labels: [], label_prefixes: []}), do: true
   defp empty?(_rules), do: false
 
+  defp foreign_by_shared_lease?(ticket) do
+    case LeaseStore.owned?(ticket_key(ticket)) do
+      value when value in [:disabled, true] -> false
+      false -> true
+      :unknown -> true
+    end
+  end
+
+  defp ticket_key(%{identifier: identifier}) when is_binary(identifier), do: identifier
+  defp ticket_key(%{"identifier" => identifier}) when is_binary(identifier), do: identifier
+  defp ticket_key(ticket) when is_binary(ticket), do: ticket
+  defp ticket_key(ticket) when is_integer(ticket), do: "#{Aiur.GitHub.Config.repo()}##{ticket}"
+  defp ticket_key(ticket), do: inspect(ticket)
+
   defp label_matches?(label, rules) do
     label = label |> label_name() |> String.downcase()
 
     Enum.any?(rules.labels, &(String.downcase(&1) == label)) or
-      Enum.any?(rules.label_prefixes, &String.starts_with?(label, String.downcase(String.trim_trailing(&1, ":")) <> ":"))
+      Enum.any?(
+        rules.label_prefixes,
+        &String.starts_with?(label, String.downcase(String.trim_trailing(&1, ":")) <> ":")
+      )
   end
 
   defp label_name(%{"name" => name}), do: to_string(name)

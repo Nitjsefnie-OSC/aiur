@@ -10,6 +10,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   alias Aiur.BuildOrder.History
   alias Aiur.CodingAgent
   alias Aiur.Commands
+  alias Aiur.Instance.DispatchClaim
   alias Aiur.Issue
   alias Aiur.Orchestrator
   alias Aiur.Orchestrator.Dispatcher.Budgets
@@ -85,6 +86,28 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   @doc false
   @spec do_dispatch_issue(State.t(), term(), term(), term(), keyword()) :: State.t()
   def do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, opts) when is_list(opts) do
+    dispatch = fn -> dispatch_issue_with_lease(state, issue, attempt, preferred_worker_host, opts) end
+
+    if is_binary(issue.pr_head_ref) do
+      dispatch.()
+    else
+      key = issue.identifier || to_string(issue.id)
+
+      case DispatchClaim.call(key, dispatch) do
+        {:ok, _lease, next_state} ->
+          next_state
+
+        {:error, :shared_lease_held} ->
+          Candidates.emit_dispatch_attempt_decline(state, issue, :shared_lease_held, false)
+
+        {:error, {:shared_lease_unavailable, reason}} ->
+          Logger.warning("Shared ticket lease unavailable for #{State.issue_context(issue)}: #{inspect(reason)}; holding dispatch")
+          Candidates.emit_dispatch_attempt_decline(state, issue, :shared_lease_unavailable, true)
+      end
+    end
+  end
+
+  defp dispatch_issue_with_lease(state, issue, attempt, preferred_worker_host, opts) do
     with false <- Aiur.Handoff.dispatch_held?(),
          {:ok, prepared} <- OptimisticDispatch.prepare_for_dispatch(issue, opts),
          {:ok, selected_issue} <- CodingAgent.select_for_dispatch(prepared) do

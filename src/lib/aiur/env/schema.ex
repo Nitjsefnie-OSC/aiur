@@ -49,6 +49,7 @@ defmodule Aiur.Env.Schema do
       voice: "Optional - Voice. Mic input and spoken replies on dashboard and Stream Deck.",
       dashboard: "Optional - Aiur dashboard. Web UI at :4000; CLI and TUI work without it.",
       decision_api: "Optional - Supervisor Decision API. Dedicated bearer credential for Executor automation.",
+      coordination: "Optional - Shared PostgreSQL instance coordination for multi-instance dispatch.",
       provider_keys: "Optional - Provider API keys. Named by agent.backend_configs.<backend>.api_key_env.",
       runtime: "Runtime - launcher-managed. Normally set by `aiur` itself, not by hand.",
       dev: "Development and debugging.",
@@ -166,6 +167,10 @@ defmodule Aiur.Env.Schema do
     {"AIUR_DASHBOARD_PASSWORD", type: :secret, group: :dashboard, purpose: "Dashboard Basic Auth password; unset makes the dashboard refuse all requests.", fetch: "see guide/gui"},
     {"AIUR_SECRET_KEY_BASE", type: :secret, group: :dashboard, purpose: "Optional persistent dashboard signing key; otherwise Aiur stores one per instance.", fetch: "openssl rand -base64 48"},
 
+    # --- Multi-instance coordination ---
+    {"AIUR_LEASE_DATABASE_URL",
+     type: :secret, group: :coordination, purpose: "PostgreSQL URL shared by instances; enables atomic ticket leases and live-instance heartbeats.", fetch: "configure a TLS PostgreSQL connection URL"},
+
     # --- Supervisor Decision API ---
     {"AIUR_SUPERVISOR_TOKEN",
      type: :secret, group: :decision_api, purpose: "Bearer-safe token (at least 32 bytes) for the Supervisor Decision API; generate one with `openssl rand -base64 32`; unset or empty disables it."},
@@ -280,7 +285,8 @@ defmodule Aiur.Env.Schema do
 
   @doc "The spec for `name`, or `nil` when it is not declared."
   @spec spec_for(String.t()) :: spec() | nil
-  def spec_for(name), do: Enum.find_value(@validated_specs, fn {n, spec} -> if n == name, do: spec end)
+  def spec_for(name),
+    do: Enum.find_value(@validated_specs, fn {n, spec} -> if n == name, do: spec end)
 
   @doc "Specs whose value should be rendered in `.env.example` (non-ambient, non-launcher-internal)."
   @spec example_specs() :: [{String.t(), spec()}]
