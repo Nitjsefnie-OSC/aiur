@@ -39,7 +39,7 @@ defmodule Aiur.LandingWatch.PrRerun do
 
       Enum.any?(failed, &PrRerunClassifier.stale_merge_ref?(&1, opts)) ->
         stale = Enum.filter(failed, &PrRerunClassifier.stale_merge_ref?(&1, opts))
-        request_remedy(observation, stale, :refresh, "base input fix event main-recovery:#{red_since}:#{recovered_at}; merge ref predates a fix on the base branch", opts)
+        request_remedy(observation, stale, :refresh, "base input fix event red-window:#{red_since}:#{recovered_at}; merge ref predates a fix on the base branch", opts)
 
       true ->
         request_remedy(observation, failed, :rerun, "main CI recovered", opts)

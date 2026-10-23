@@ -64,7 +64,7 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
         {:ok, {:rerun, "infrastructure failure"}}
 
       is_binary(stale_event) ->
-        {:ok, {:refresh, "merge ref predates a fix on the base branch; base input fix event main-history:#{stale_event}"}}
+        {:ok, {:refresh, "merge ref predates a fix on the base branch; base input fix event base-history:#{stale_event}"}}
 
       is_binary(base_fix) ->
         {:ok, {:refresh, "base input fix event #{base_fix}"}}
