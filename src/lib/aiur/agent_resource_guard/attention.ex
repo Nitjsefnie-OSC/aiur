@@ -6,7 +6,7 @@ defmodule Aiur.AgentResourceGuard.Attention do
   @doc false
   @spec reconcile(keyword()) :: :ok
   def reconcile(opts) do
-    active_attentions_fun = Keyword.get(opts, :active_attentions_fun, fn -> Aiur.AlertFeed.list(needs_attention: true) end)
+    active_attentions_fun = Keyword.get(opts, :active_attentions_fun, &Aiur.Signal.active_attention_alerts/0)
     alert_fun = Keyword.get(opts, :alert_fun, &Aiur.Signal.alert/2)
     process_info_fun = Keyword.fetch!(opts, :process_info_fun)
 
