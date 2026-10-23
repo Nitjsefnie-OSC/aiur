@@ -68,17 +68,20 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
   # against the current head (not stale, not an APPROVED pull request), by a
   # CODEOWNERS-trusted author.
   defp changes_requested_review_event(issue) do
+    submitted_at = DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.to_iso8601()
+    head_committed_at = DateTime.utc_now() |> DateTime.add(-120, :second) |> DateTime.to_iso8601()
+
     %{
       author_trusted?: true,
       comment: %{
         "state" => "CHANGES_REQUESTED",
         "body" => "please fix the ranking test",
-        "submitted_at" => "2026-08-22T21:30:00Z",
+        "submitted_at" => submitted_at,
         "user" => %{"login" => "its-everdred"}
       },
       pull_request: %{
         "review_decision" => "CHANGES_REQUESTED",
-        "head_committed_at" => "2026-08-22T20:00:00Z"
+        "head_committed_at" => head_committed_at
       },
       issue_state_fetcher: fn _ids -> {:ok, [issue]} end,
       open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 2337}} end,
@@ -120,6 +123,42 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 1_000
   end
 
+  test "a CHANGES_REQUESTED review without a reviewer login is ignored" do
+    write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
+
+    issue = human_review_issue()
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
+    Application.put_env(:aiur, :memory_tracker_recipient, self())
+
+    event = changes_requested_review_event(issue)
+    event = update_in(event, [:comment], &Map.delete(&1, "user"))
+
+    CommentWake.maybe_transition_idle_issue_to_rework(
+      base_state(),
+      @issue_number,
+      :pr_review,
+      event,
+      1
+    )
+
+    refute_receive {:memory_tracker_state_update, @issue_number, "rework"}, 100
+  end
+
+  test "a CHANGES_REQUESTED review from a non-merger is ignored" do
+    write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
+
+    issue = human_review_issue()
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
+    Application.put_env(:aiur, :memory_tracker_recipient, self())
+
+    event = changes_requested_review_event(issue)
+    event = Map.put(event, :human_merger_allowed_fun, fn _login -> false end)
+
+    CommentWake.maybe_transition_idle_issue_to_rework(base_state(), @issue_number, :pr_review, event, 1)
+
+    refute_receive {:memory_tracker_state_update, @issue_number, "rework"}, 100
+  end
+
   test "an APPROVED review does not move a human-review ticket to rework" do
     write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
 
@@ -131,12 +170,25 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
 
     event =
       changes_requested_review_event(issue)
-      |> Map.put(:comment, %{"state" => "APPROVED", "body" => "nice work", "submitted_at" => "2026-08-22T21:30:00Z"})
-      |> Map.put(:pull_request, %{"review_decision" => "APPROVED", "head_committed_at" => "2026-08-22T20:00:00Z"})
+      |> Map.put(:comment, %{
+        "state" => "APPROVED",
+        "body" => "nice work",
+        "submitted_at" => "2026-08-22T21:30:00Z"
+      })
+      |> Map.put(:pull_request, %{
+        "review_decision" => "APPROVED",
+        "head_committed_at" => "2026-08-22T20:00:00Z"
+      })
 
     log =
       capture_log(fn ->
-        CommentWake.maybe_transition_idle_issue_to_rework(state, @issue_number, :pr_review, event, 1)
+        CommentWake.maybe_transition_idle_issue_to_rework(
+          state,
+          @issue_number,
+          :pr_review,
+          event,
+          1
+        )
       end)
 
     refute_received {:memory_tracker_state_update, @issue_number, "rework"}
