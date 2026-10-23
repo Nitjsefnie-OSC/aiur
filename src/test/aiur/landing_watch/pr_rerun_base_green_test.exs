@@ -101,7 +101,7 @@ defmodule Aiur.LandingWatch.PrRerunBaseGreenTest do
     run = %{"run_id" => nil, "name" => "test", "status" => "completed", "conclusion" => "failure", "started_at" => @started}
     history = [%{completed_at: @started_ms + 60_000, checks: [%{name: "test", conclusion: "success"}]}]
 
-    assert {:ok, {:refresh, "same check failed on approved PRs with disjoint changes"}} =
+    assert {:ok, {:refresh, reason}} =
              PrRerunClassifier.classify(%{number: 18}, %{failures: [%{name: "test"}]}, [run],
                current_pr: 18,
                all_observations: observations,
@@ -112,6 +112,9 @@ defmodule Aiur.LandingWatch.PrRerunBaseGreenTest do
                  19, _ -> {:ok, ["src/two.ex"]}
                end
              )
+
+    assert reason =~ "same check failed on approved PRs with disjoint changes"
+    assert reason =~ "base input fix event"
   end
 
   test "a merged dependency input is recorded for green-main base-fix detection" do
@@ -128,5 +131,24 @@ defmodule Aiur.LandingWatch.PrRerunBaseGreenTest do
 
     merged_at = @started_ms + 3_600_000
     assert {:ok, [%{"pr" => 5921, "paths" => ["mix.lock"], "merged_at_ms" => ^merged_at}]} = Journal.ci_merges(journal_path: path)
+  end
+
+  test "a main check that finished before the input fix does not make the PR ref stale" do
+    history = [%{completed_at: @started_ms + 60_000, checks: [%{name: "audit", conclusion: "success"}]}]
+
+    run = %{
+      "run_id" => nil,
+      "name" => "audit",
+      "status" => "completed",
+      "conclusion" => "failure",
+      "started_at" => @started,
+      "workflow_jobs" => [%{"name" => "audit", "conclusion" => "failure"}]
+    }
+
+    assert {:ok, :rework} =
+             PrRerunClassifier.classify(%{number: 18}, %{failures: [%{name: "audit"}]}, [run],
+               main_history_fun: fn -> history end,
+               ci_merges_fun: fn _ -> {:ok, [%{"pr" => 5913, "merged_at_ms" => @started_ms + 120_000, "paths" => ["mix.lock"]}]} end
+             )
   end
 end

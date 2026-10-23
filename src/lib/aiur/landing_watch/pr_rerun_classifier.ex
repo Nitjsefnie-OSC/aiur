@@ -57,14 +57,26 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
     started = timestamp_ms(run["started_at"])
     stale_event = stale_merge_event(jobs, started, opts)
     base_fix = base_input_fix?(jobs, started, opts)
+    shared_failure_event = concurrent_approved_failure_event(run, jobs, opts)
 
     cond do
-      Classifier.infrastructure_run?(run) -> {:ok, {:rerun, "infrastructure failure"}}
-      is_binary(stale_event) -> {:ok, {:refresh, "merge ref predates a fix on the base branch; base input fix event main-history:#{stale_event}"}}
-      is_binary(base_fix) -> {:ok, {:refresh, "base input fix event #{base_fix}"}}
-      concurrent_approved_failures?(run, jobs, opts) -> {:ok, {:refresh, "same check failed on approved PRs with disjoint changes"}}
-      not is_integer(run["run_id"]) -> {:ok, nil}
-      true -> explain_from_workflow(run, jobs, started, observation, opts)
+      Classifier.infrastructure_run?(run) ->
+        {:ok, {:rerun, "infrastructure failure"}}
+
+      is_binary(stale_event) ->
+        {:ok, {:refresh, "merge ref predates a fix on the base branch; base input fix event main-history:#{stale_event}"}}
+
+      is_binary(base_fix) ->
+        {:ok, {:refresh, "base input fix event #{base_fix}"}}
+
+      is_binary(shared_failure_event) ->
+        {:ok, {:refresh, "same check failed on approved PRs with disjoint changes; base input fix event #{shared_failure_event}"}}
+
+      not is_integer(run["run_id"]) ->
+        {:ok, nil}
+
+      true ->
+        explain_from_workflow(run, jobs, started, observation, opts)
     end
   end
 
@@ -139,9 +151,14 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
 
     with {:ok, merges} when is_list(merges) <- merges,
          history <- Keyword.get(opts, :main_history_fun, &main_history/0).(),
-         latest when is_map(latest) <- Enum.filter(history, &(is_integer(&1.completed_at) and &1.completed_at > started)) |> List.last() do
+         latest when is_map(latest) <-
+           history
+           |> Enum.filter(&(is_integer(&1.completed_at) and &1.completed_at > started))
+           |> Enum.sort_by(& &1.completed_at)
+           |> List.last() do
       Enum.find_value(merges, fn merge ->
         (is_integer(merge["merged_at_ms"]) and merge["merged_at_ms"] > started and
+           latest.completed_at > merge["merged_at_ms"] and
            relevant_base_inputs?(Map.get(merge, "paths", [])) and
            Enum.all?(jobs, &(conclusion(latest, &1["name"]) in @passing))) &&
           "#{merge["pr"]}:#{merge["merged_at_ms"]}"
@@ -159,21 +176,30 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
 
   defp relevant_base_inputs?(_), do: false
 
-  defp concurrent_approved_failures?(run, jobs, opts) do
+  defp concurrent_approved_failure_event(run, jobs, opts) do
     prs = Keyword.get_lazy(opts, :disjoint_failure_prs, fn -> disjoint_failure_prs(Keyword.get(opts, :all_observations, []), opts) end)
 
     case prs do
       prs when is_list(prs) ->
-        is_binary(run["started_at"]) and Enum.any?(jobs, &has_disjoint_peer?(&1, prs, Keyword.get(opts, :current_pr)))
+        if is_binary(run["started_at"]), do: Enum.find_value(jobs, &disjoint_failure_event(&1, prs, Keyword.get(opts, :current_pr)))
 
       _ ->
-        false
+        nil
     end
   end
 
-  defp has_disjoint_peer?(job, prs, current_pr) do
+  defp disjoint_failure_event(job, prs, current_pr) do
     current = Enum.find(prs, &(&1.pr == current_pr and job["name"] in &1.checks))
-    is_map(current) and Enum.any?(prs, &disjoint_peer?(&1, current, job["name"], current_pr))
+
+    if is_map(current) do
+      peers = Enum.filter(prs, &disjoint_peer?(&1, current, job["name"], current_pr))
+
+      if peers != [] do
+        prs = Enum.map([current | peers], & &1.pr) |> Enum.sort() |> Enum.join("-")
+        check = :crypto.hash(:sha256, job["name"]) |> Base.encode16(case: :lower)
+        "approved-prs-#{check}-#{prs}"
+      end
+    end
   end
 
   defp disjoint_peer?(other, current, check, current_pr) do
