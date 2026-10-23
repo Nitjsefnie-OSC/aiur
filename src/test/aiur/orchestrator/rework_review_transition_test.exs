@@ -73,14 +73,16 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
       comment: %{
         "state" => "CHANGES_REQUESTED",
         "body" => "please fix the ranking test",
-        "submitted_at" => "2026-08-22T21:30:00Z"
+        "submitted_at" => "2026-08-22T21:30:00Z",
+        "user" => %{"login" => "its-everdred"}
       },
       pull_request: %{
         "review_decision" => "CHANGES_REQUESTED",
         "head_committed_at" => "2026-08-22T20:00:00Z"
       },
       issue_state_fetcher: fn _ids -> {:ok, [issue]} end,
-      open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 2337}} end
+      open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 2337}} end,
+      human_merger_allowed_fun: &(&1 == "its-everdred")
     }
   end
 
@@ -111,7 +113,9 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
 
     event = changes_requested_review_event(issue)
 
-    CommentWake.maybe_transition_idle_issue_to_rework(base_state(), @issue_number, :pr_review, event, 1)
+    state = %{base_state() | claimed: MapSet.new([@issue_number])}
+
+    CommentWake.maybe_transition_idle_issue_to_rework(state, @issue_number, :pr_review, event, 1)
 
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 1_000
   end
