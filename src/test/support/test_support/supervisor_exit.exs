@@ -5,9 +5,11 @@ defmodule Aiur.TestSupport.SupervisorExit do
   @monitor_key {__MODULE__, :monitor}
   @pid_key {__MODULE__, :pid}
   @name_key {__MODULE__, :name}
+  @notify_key {__MODULE__, :notify}
 
-  def start_monitoring(name \\ Aiur.Supervisor) do
+  def start_monitoring(name \\ Aiur.Supervisor, notify_pid \\ nil) do
     :persistent_term.put(@name_key, name)
+    :persistent_term.put(@notify_key, notify_pid)
     :persistent_term.put(@reason_key, nil)
     monitor(Process.whereis(name))
   end
@@ -17,6 +19,7 @@ defmodule Aiur.TestSupport.SupervisorExit do
   def handle_info({:DOWN, ref, :process, _object, reason}, state) do
     if ref == :persistent_term.get(@monitor_key) do
       record_exit(reason, :persistent_term.get(@pid_key))
+      notify({:supervisor_exit, reason})
     end
 
     {:noreply, state}
@@ -30,6 +33,7 @@ defmodule Aiur.TestSupport.SupervisorExit do
         if pid != :persistent_term.get(@pid_key) do
           monitor(pid)
           :persistent_term.put(@reason_key, nil)
+          notify({:supervisor_monitor_restored, pid})
         end
 
       _ ->
@@ -55,5 +59,12 @@ defmodule Aiur.TestSupport.SupervisorExit do
     :persistent_term.put(@reason_key, reason)
     Process.send_after(self(), :refresh_supervisor_monitor, 250)
     :persistent_term.put(@pid_key, pid)
+  end
+
+  defp notify(message) do
+    case :persistent_term.get(@notify_key, nil) do
+      pid when is_pid(pid) -> send(pid, message)
+      _ -> :ok
+    end
   end
 end

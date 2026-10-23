@@ -62,15 +62,16 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def handle_info(message, last), do: Aiur.TestSupport.SupervisorExit.handle_info(message, last)
 
   @impl true
-  def handle_call({:monitor_supervisor, name}, _from, last) do
-    Aiur.TestSupport.SupervisorExit.start_monitoring(name)
+  def handle_call({:monitor_supervisor, name, notify_pid}, _from, last) do
+    Aiur.TestSupport.SupervisorExit.start_monitoring(name, notify_pid)
     {:reply, :ok, last}
   end
 
   def handle_call(:last_finished, _from, last), do: {:reply, last, last}
 
   @doc false
-  def monitor_supervisor(name), do: GenServer.call(__MODULE__, {:monitor_supervisor, name})
+  def monitor_supervisor(name, notify_pid \\ nil),
+    do: GenServer.call(__MODULE__, {:monitor_supervisor, name, notify_pid})
 
   @doc "Fails the suite when a plain ExUnit case leaked the orchestrator. Runs after the formatters stop."
   @spec verify_suite!() :: :ok

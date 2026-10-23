@@ -14,17 +14,22 @@ defmodule Aiur.TestSupportTest do
     name = Module.concat(__MODULE__, "ExitProbe#{System.unique_integer([:positive])}")
     assert {:ok, pid} = Supervisor.start_link([], strategy: :one_for_one, name: name)
     Process.unlink(pid)
-    down_ref = Process.monitor(pid)
 
     on_exit(fn ->
+      if replacement = Process.whereis(name), do: Supervisor.stop(replacement, :normal)
       if Process.alive?(pid), do: Process.exit(pid, :kill)
       OrchestratorGuard.monitor_supervisor(Aiur.Supervisor)
     end)
 
-    assert :ok = OrchestratorGuard.monitor_supervisor(name)
+    assert :ok = OrchestratorGuard.monitor_supervisor(name, self())
     Process.exit(pid, :kill)
-    assert_receive {:DOWN, ^down_ref, :process, ^pid, :killed}
-    assert_supervisor_exit_eventually(fn -> SupervisorExit.exit_reason() == :killed end)
+    assert_receive {:supervisor_exit, :killed}, 5_000
+    assert SupervisorExit.exit_reason() == :killed
+
+    assert {:ok, replacement} = Supervisor.start_link([], strategy: :one_for_one, name: name)
+    Process.unlink(replacement)
+    assert_receive {:supervisor_monitor_restored, ^replacement}, 5_000
+    assert SupervisorExit.exit_reason() == nil
   end
 
   test "receive_barrier selectively receives and exports bindings without a clock" do
@@ -127,7 +132,6 @@ defmodule Aiur.TestSupportTest do
     # one's DOWN rather than guessing how long the exit signals take.
     Process.exit(hd(collapsing), :kill)
     for pid <- collapsing, do: assert(:ok = Aiur.TestSupport.await_process_down(pid, 5_000))
-    assert_supervisor_exit_eventually(fn -> not is_nil(Aiur.TestSupport.SupervisorExit.exit_reason()) end)
 
     assert is_nil(Process.whereis(Aiur.Supervisor))
     assert is_nil(Process.whereis(Aiur.PubSub))
@@ -137,7 +141,6 @@ defmodule Aiur.TestSupportTest do
     capture_log(fn -> assert :ok = Aiur.TestSupport.ensure_pubsub_running() end)
 
     assert is_pid(Process.whereis(Aiur.Supervisor))
-    assert_supervisor_exit_eventually(fn -> Aiur.TestSupport.SupervisorExit.exit_reason() == nil end)
     assert is_pid(Process.whereis(Aiur.PubSub))
     assert Aiur.Supervisor in process_ancestors(Process.whereis(Aiur.PubSub))
     assert is_pid(Process.whereis(ReadCache))
@@ -233,21 +236,5 @@ defmodule Aiur.TestSupportTest do
   defp process_ancestors(pid) do
     {:dictionary, dictionary} = Process.info(pid, :dictionary)
     Keyword.get(dictionary, :"$ancestors", [])
-  end
-
-  defp assert_supervisor_exit_eventually(fun, attempts \\ 30)
-
-  defp assert_supervisor_exit_eventually(fun, attempts) do
-    cond do
-      fun.() ->
-        :ok
-
-      attempts > 1 ->
-        Process.sleep(25)
-        assert_supervisor_exit_eventually(fun, attempts - 1)
-
-      true ->
-        flunk("supervisor exit state did not settle")
-    end
   end
 end
