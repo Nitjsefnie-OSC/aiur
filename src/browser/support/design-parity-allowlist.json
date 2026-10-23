@@ -420,7 +420,7 @@
     "cells": {
       "dataset": "live"
     },
-    "reason": "S-27: fixed transparent body markers mask paired measured identity bounds for these 16 rows; they survive renderer replacement and never change row layout. Markers reset display, margin, padding and border; current owned bounds are checked before capture. The reference ink mask extends at most one device pixel left, strictly after the adjacent unmasked icon.",
+    "reason": "S-27: fixed transparent body markers mask paired measured identity bounds for these 16 rows; they survive renderer replacement and never change row layout. Markers reset display, margin, padding and border; bounds round outward only to the native 1/64 CSS-pixel grid, while horizontal fringes round inward. Current owned bounds are checked before capture. The reference ink mask extends at most one device pixel left, strictly after the adjacent unmasked icon.",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -437,7 +437,7 @@
     "cells": {
       "dataset": "live"
     },
-    "reason": "S-27: fixed transparent body markers mask paired measured identity bounds for these 16 rows; they survive renderer replacement and never change row layout. Markers reset display, margin, padding and border; current owned bounds are checked before capture. Only GitHub references, queue facts and status copy differ; all adjacent content remains unmasked.",
+    "reason": "S-27: fixed transparent body markers mask paired measured identity bounds for these 16 rows; they survive renderer replacement and never change row layout. Markers reset display, margin, padding and border; bounds round outward only to the native 1/64 CSS-pixel grid, while horizontal fringes round inward. Current owned bounds are checked before capture. Only GitHub references, queue facts and status copy differ; all adjacent content remains unmasked.",
     "approval": {
       "status": "pending-sign-off",
       "by": null,
@@ -454,7 +454,7 @@
     "cells": {
       "dataset": "live"
     },
-    "reason": "S-27: fixed transparent body markers mask paired measured identity bounds for these 16 rows; they survive renderer replacement and never change row layout. Markers reset display, margin, padding and border; current owned bounds are checked before capture. The reference ink mask extends at most one device pixel on each horizontal edge, strictly between the preceding dot and following unmasked title.",
+    "reason": "S-27: fixed transparent body markers mask paired measured identity bounds for these 16 rows; they survive renderer replacement and never change row layout. Markers reset display, margin, padding and border; bounds round outward only to the native 1/64 CSS-pixel grid, while horizontal fringes round inward. Current owned bounds are checked before capture. The reference ink mask extends at most one device pixel on each horizontal edge, strictly between the preceding dot and following unmasked title.",
     "approval": {
       "status": "pending-sign-off",
       "by": null,

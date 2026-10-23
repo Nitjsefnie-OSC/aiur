@@ -87,9 +87,13 @@ async function maskRow(pair,kind,num,slots) {
       const preceding=title?el.previousElementSibling:el.matches('.bd-id')?el.previousElementSibling:null
       const left=preceding?Math.min(1/devicePixelRatio,Math.max(0,(box.left-preceding.getBoundingClientRect().right)/2)):0
       const right=title?Math.min(1/devicePixelRatio,Math.max(0,title.getBoundingClientRect().left-box.right)):0
+      const floor=value=>Math.floor(value*64)/64,ceil=value=>Math.ceil(value*64)/64
+      const x=left?ceil(box.left-left):floor(box.left),y=floor(box.top)
+      const endX=size.width?(right?floor(box.left+size.width+right):ceil(box.left+size.width)):x
+      const endY=size.height?ceil(box.top+size.height):y
       const mask=document.createElement('span')
       Object.assign(mask.dataset,{unfiledMask:kind,rowId:el.closest('[data-id]').dataset.id,slot:String(slotIndex),ownedSlot:slot,parityRegion:kind==='bd-tn'?'.bd-tree-s':'#bd-vp'})
-      Object.assign(mask.style,{position:'fixed',display:'block',boxSizing:'border-box',margin:'0',padding:'0',border:'0',left:box.left-left+'px',top:box.top+'px',width:size.width+left+right+'px',height:size.height+'px',background:'transparent',pointerEvents:'none',zIndex:'2147483647'})
+      Object.assign(mask.style,{position:'fixed',display:'block',boxSizing:'border-box',margin:'0',padding:'0',border:'0',left:x+'px',top:y+'px',width:endX-x+'px',height:endY-y+'px',background:'transparent',pointerEvents:'none',zIndex:'2147483647'})
       document.body.append(mask)
       const m=mask.getBoundingClientRect()
       if(title&&m.right>=title.getBoundingClientRect().left) throw new Error('Identity mask overlaps the unmasked title')
@@ -107,15 +111,29 @@ async function maskVisible(pair,kind,slots) {
   }
 }
 async function assertMaskGeometry(pair,kind) {
-  for(const page of [pair.design,pair.product]) expect(await page.locator('body > [data-unfiled-mask]').evaluateAll((markers,kind)=>markers.length>0&&markers.every(marker=>{
-    const owned=document.querySelector('.'+kind+'[data-id="'+marker.dataset.rowId+'"]')?.querySelector(marker.dataset.ownedSlot)
-    if(!owned) return false
-    const a=owned.getBoundingClientRect(),b=marker.getBoundingClientRect()
-    if(!a.width&&!a.height) return !b.width&&!b.height
-    const title=owned.matches('.bd-tn1 b')?owned.nextElementSibling:null,preceding=title?owned.previousElementSibling:owned.matches('.bd-id')?owned.previousElementSibling:null
-    return b.width>0&&b.height>0&&Math.abs(a.top-b.top)<1/64&&b.left<=a.left&&b.right>=a.right&&b.bottom>=a.bottom
-      &&(!title||b.right<title.getBoundingClientRect().left)&&(!preceding||b.left>preceding.getBoundingClientRect().right)
-  }),kind),'body identity masks match current owned slots without covering titles or icons').toBe(true)
+  for(const [side,page] of [['design',pair.design],['product',pair.product]]) {
+    const failures=await page.locator('body > [data-unfiled-mask]').evaluateAll((markers,kind)=>{
+      if(!markers.length) return [{reason:'no markers'}]
+      return markers.flatMap(marker=>{
+        const owned=document.querySelector('.'+kind+'[data-id="'+marker.dataset.rowId+'"]')?.querySelector(marker.dataset.ownedSlot)
+        const detail={row:marker.dataset.rowId,surface:kind,slot:marker.dataset.ownedSlot}
+        if(!owned) return [{...detail,reason:'owned slot missing'}]
+        const a=owned.getBoundingClientRect(),b=marker.getBoundingClientRect()
+        const title=owned.matches('.bd-tn1 b')?owned.nextElementSibling:null,preceding=title?owned.previousElementSibling:owned.matches('.bd-id')?owned.previousElementSibling:null
+        const reasons=[]
+        if(!a.width||!a.height) {if(b.width&&b.height) reasons.push('empty slot has visible mask')}
+        else {
+          if(!(b.width>0&&b.height>0)) reasons.push('mask empty')
+          if(Math.abs(a.top-b.top)>=1/64) reasons.push('top differs')
+          if(b.left>a.left||b.right<a.right||b.bottom<a.bottom) reasons.push('owned slot not contained')
+          if(title&&b.right>=title.getBoundingClientRect().left) reasons.push('title overlap')
+          if(preceding&&b.left<=preceding.getBoundingClientRect().right) reasons.push('icon or dot overlap')
+        }
+        return reasons.length?[{...detail,reasons,owned:a.toJSON(),marker:b.toJSON(),title:title?.getBoundingClientRect().toJSON(),preceding:preceding?.getBoundingClientRect().toJSON()}]:[]
+      })
+    },kind)
+    expect(failures,side+' current identity mask geometry').toEqual([])
+  }
 }
 const ids = Array.from({length:16}, (_,i) => 645+i)
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) for (const palette of ['aiur','gruvbox']) {
