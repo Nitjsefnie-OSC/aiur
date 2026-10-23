@@ -1,3 +1,6 @@
+# Cohesion: shared suite state, test lifecycle events, and leak reporting all
+# belong here because the formatter and ExUnit callbacks must agree on the
+# same test identity and recovery ledger.
 defmodule Aiur.TestSupport.OrchestratorGuard do
   @moduledoc """
   Names the test that leaves the shared `Aiur.Orchestrator` down (#4909).
