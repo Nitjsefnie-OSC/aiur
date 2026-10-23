@@ -76,14 +76,12 @@ defmodule Aiur.Workspace.StaleGitLock do
   end
 
   defp open_file_holders(path) do
-    expected_uid = File.stat!(path).uid
-
-    case File.ls("/proc") do
-      {:ok, entries} ->
-        scan_processes(entries, path, expected_uid)
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, %File.Stat{uid: expected_uid}} <- File.stat(path),
+         {:ok, entries} <- File.ls("/proc") do
+      scan_processes(entries, path, expected_uid)
+    else
+      {:error, :enoent} -> {:ok, []}
+      {:error, reason} -> {:error, reason}
     end
   end
 
