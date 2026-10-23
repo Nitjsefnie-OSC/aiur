@@ -81,3 +81,49 @@ test('board and dependency tree use the same unfiled identity', async ({page}) =
   await expect(node.locator('b')).toHaveText('—'); await expect(node.locator('em')).toContainText('Not filed')
   await expect(node).not.toContainText(/null|undefined|NaN/)
 })
+
+test('an alias in a replacement snapshot promotes the open pack modal', async ({page}) => {
+  await open(page); const t = await modules(page)
+  await page.evaluate(async t => {
+    const {ctx} = await import('/build-home/state.js'), {receive} = await import('/build-home/hook.js')
+    const snapshot = structuredClone(ctx.snap)
+    snapshot.generation = ctx.proto.generation + 1
+    snapshot.sections.plan = snapshot.sections.plan.filter(row => row.id !== t.id)
+    snapshot.sections.plan.push({...t,id:'57',num:57,qpos:3,src:null,was:t.id})
+    receive(snapshot)
+  },t)
+  await expect(page.locator('.bm-num')).toHaveText('#57')
+  await expect.poll(() => new URL(page.url()).searchParams.get('ticket')).toBe('57')
+})
+test('empty planned list retains pack failure count and checked time', async ({page}) => {
+  await open(page,'unfiled_unavailable','?view=list')
+  await page.evaluate(async () => {
+    const {ctx} = await import('/build-home/state.js'), {receive} = await import('/build-home/hook.js')
+    receive({v:1,kind:'diff',epoch:ctx.proto.epoch,generation:ctx.proto.generation+1,now:ctx.snap.now,
+      remove:ctx.D.plan.map(t => t.id),upsert:[],set:{}})
+  })
+  const head = page.locator('.lh[data-sec="plan"]')
+  await expect(head).toContainText('Planning packs unavailable')
+  await expect(head).toContainText('1 of 2'); await expect(head).toContainText('checked')
+})
+
+test('resync reads an old pack alias when its filed row is outside the loaded window', async ({page}) => {
+  await open(page); const t = await modules(page)
+  await page.evaluate(async t => {
+    const {ctx} = await import('/build-home/state.js'), {receive} = await import('/build-home/hook.js')
+    const original = ctx.push, filed = {...t,id:'57',num:57,qpos:null,src:null,was:t.id,sec:'hist',status:'done'}
+    ctx.push = (event,payload) => {
+      if (event === 'open-ticket' && payload.id === t.id && !payload.loaded) {
+        window.aliasRead = payload.id
+        return Promise.resolve({v:1,kind:'ticket',epoch:ctx.proto.epoch,generation:ctx.proto.generation,row:filed})
+      }
+      return original(event,payload)
+    }
+    const snapshot = structuredClone(ctx.snap); snapshot.generation++
+    snapshot.sections.plan = snapshot.sections.plan.filter(row => row.id !== t.id)
+    receive(snapshot)
+  },t)
+  await expect.poll(() => page.evaluate(() => window.aliasRead)).toBe(t.id)
+  await expect(page.locator('.bm-num')).toHaveText('#57')
+  await expect.poll(() => new URL(page.url()).searchParams.get('ticket')).toBe('57')
+})

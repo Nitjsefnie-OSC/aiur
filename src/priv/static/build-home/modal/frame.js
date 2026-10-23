@@ -1,4 +1,4 @@
-import { findWas } from '../unfiled.js';
+import { findWas, isUnfiled } from '../unfiled.js';
 import { S, ctx, fx, onReset } from '../state.js';
 import { writeURL } from '../url.js';
 import { $, $$ } from '../dom.js';
@@ -98,9 +98,10 @@ export function modalSync(msg) {
   if (!shown() || !id) return;
   if (msg.upsert?.some(t => t.id === id)) {
     MS.t = ctx.D.byId[id]; MS.state = 'row'; renderHead(MS.t);
-  } else if (msg.remove?.includes(id)) {
+  } else if (!ctx.D.byId[id] && (msg.remove?.includes(id) || msg.snapshot && isUnfiled(MS.t) || findWas(Object.values(ctx.D.byId), id))) {
     const replacement = findWas(Object.values(ctx.D.byId), id);
     if (replacement) { begin(replacement.id); renderRow(replacement, {}); }
+    else if (isUnfiled(MS.t)) openById(id);
     else { cleanup(); error(id, 'not_found'); }
   }
   else if (MS.t && ['repo', 'epics', 'features'].some(key => Object.hasOwn(msg.set || {}, key))) renderHead(MS.t);

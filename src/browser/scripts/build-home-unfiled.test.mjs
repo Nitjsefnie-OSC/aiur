@@ -38,3 +38,14 @@ test('pack-only first wave is not ready and unavailable packs retain the marker'
   assert.equal(healthy.secs.plan.marks.length,0);
   assert.ok(Math.abs(L.secs.plan.h - healthy.secs.plan.h - 104) < 0.001);
 });
+test('an empty planned list preserves escaped pack failures and observation time', async () => {
+  const { listHTML } = await import('../../priv/static/build-home/list.js');
+  const { resetState, S } = await import('../../priv/static/build-home/state.js');
+  resetState();
+  const D = {hist:[],now:[],plan:[],nq:[],epics:{},features:{},children:{}};
+  const sources = {queue:{state:'ok'},index:{state:'ok'},history:{state:'ok'},packs:{state:'unavailable',observed_at:0,reason:'1 of 2 <broken> packs'}};
+  const html = listHTML(D,S,{more:false},{sources},0);
+  assert.match(html, /data-sec="plan"/);
+  assert.match(html, /Planning packs unavailable.*1 of 2 &lt;broken&gt; packs.*checked/);
+  assert.doesNotMatch(html, /<broken>/);
+});

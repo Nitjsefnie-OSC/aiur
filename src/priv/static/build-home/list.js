@@ -1,3 +1,4 @@
+import { fmtT } from './util.js';
 import { isUnfiled, refText, refTitle, queueText } from './unfiled.js';
 // Port of design build.js:1152–1181, with explicit unknowns and delegated input.
 import { S, ctx, fx } from './state.js';
@@ -67,11 +68,14 @@ function secHead(sec, label, sub, rows, extra, D, state, history, P, now) {
   const index = open?.state === 'unsupported' ? { ...open, state: 'unavailable' } : open;
   const payload = sec === 'nq' ? { ...P, sources: { ...P.sources, index } } : P;
   const st = sectionState(payload, D, history, sec, rows), note = headNote(sec, st, now);
-  if (!rows.length && !extra && st.src.state === 'ok') return '';
+  const packs = sec === 'plan' && P.sources?.packs?.state === 'unavailable' ? P.sources.packs : null;
+  if (!rows.length && !extra && st.src.state === 'ok' && !packs) return '';
   if (!rows.length && ['unavailable', 'incomplete', 'disabled'].includes(st.src.state)) {
     sub = note + ' · ' + reasonText(st.src.reason) + (st.src.state === 'disabled' ? '' : ' · ' + ageText(st.src, now));
   } else if (note) sub += ' · ' + note;
   if (sec === 'hist' && history.state === 'error') sub += ' · earlier days could not load';
+  if (packs) sub += ' · Planning packs unavailable · ' + (packs.reason || 'unknown cause') +
+    ' · checked ' + (Number.isFinite(packs.observed_at) ? fmtT(packs.observed_at) : 'unknown');
   return '<div class="lh" role="row" data-sec="' + sec + '"' + (st.src.state !== 'ok' ? ' data-st="' + esc(st.src.state) + '"' : '') +
     '><b role="cell">' + label + '</b><em role="cell">' + esc(sub) + '</em></div>' + rows.map(t => rowHTML(t, D, state)).join('') + extra;
 }
