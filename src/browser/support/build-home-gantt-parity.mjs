@@ -3,11 +3,12 @@ import { expect } from '@playwright/test'
 import { alignBoard, primeBoardPaint } from './build-home-band-canvas.mjs'
 import { installScrollPaint, flushScrollPaint } from './build-home-scroll-paint.mjs'
 import { waitParityReady, FIXTURE_META } from './design-parity.mjs'
+import { estimatePatch } from '../scripts/build-home-now-patch.mjs'
 
 const source = await readFile(new URL('../../test/fixtures/build_home/design-source/assets/build.js', import.meta.url), 'utf8')
 const anchor = '  window.AiurBuild = {'
 expect(source.split(anchor)).toHaveLength(2)
-const probe = source.replace(anchor, `window.__ganttComposition = {
+const probe = estimatePatch(source).replace(anchor, `window.__ganttComposition = {
   geometry() { return { state: { view:S.view, span:S.span, flow:S.flow, K:S.K, histFrom:S.histFrom }, dims: { w:vp.clientWidth,h:vp.clientHeight }, rows:{hist:D.hist,now:D.now,plan:D.plan}, order:D.order, layout:L, offsets:Object.fromEntries(['hist','plan'].map(k=>[k,{top:secs[k].el.offsetTop,height:secs[k].el.offsetHeight}])) }; },
   stop() { S.ready = false; snapping = true; },
   allHistory() { S.histFrom = 0; relayout(); update(); },
