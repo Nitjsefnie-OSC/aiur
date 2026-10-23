@@ -256,9 +256,10 @@ minimum of one.
 | Codex turn | Pending | Pending | Post-deploy run |
 | Build or test step | Pending | Pending | Post-deploy run |
 
-The CPU rule was calibrated from a 2026-07-31 run on a 16-core host that
-saturated near 19–20 agents. An explicit `agent.max_concurrent_agents` always
-wins.
+The CPU sizing estimate permits up to 1.25 agents per scheduler (16 schedulers
+to 20 agents), based on a 2026-07-31 16-core host run that saturated near
+19–20 agents. This is not a per-turn CPU-use measurement. An explicit
+`agent.max_concurrent_agents` always wins.
 
 To measure a deployment, run representative Claude and Codex turns and a build
 or test step.
