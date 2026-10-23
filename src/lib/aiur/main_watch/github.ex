@@ -197,10 +197,12 @@ defmodule Aiur.MainWatch.GitHub do
 
     with {:ok, push_runs} <- runs_page(url, token, dates, opts),
          {:ok, queue_runs} <- runs_page(queue_url, token, dates, opts) do
-      runs = Enum.filter(push_runs, &(&1["event"] == "push" and &1["head_branch"] == branch and (workflows == [] or &1["name"] in workflows)))
-      active_merge_groups = Enum.filter(queue_runs, &(&1["event"] == "merge_group" and queue_run?(&1, branch, workflows) and &1["status"] in @active_statuses))
-      completed_merge_groups = Enum.filter(queue_runs, &(&1["event"] == "merge_group" and &1["head_sha"] in commits and queue_run?(&1, branch, workflows)))
-      {:ok, {runs |> Enum.filter(&watched?(&1, commits, branch, workflows)) |> sort_normalized(), sort_normalized(active_merge_groups ++ completed_merge_groups)}}
+      # A queue success ran the full matrix on the exact SHA that landed, so it stands in for a superseded push run (#5758).
+      # Queue failures stay out: a failed group's SHA can still land through a later passing group (#4663).
+      landed = Enum.filter(queue_runs, &(queue_run?(&1, branch, workflows) and &1["head_sha"] in commits and &1["status"] == "completed" and &1["conclusion"] == "success"))
+      # Active queue runs are reported for the sweep only; they never count as main coverage.
+      merge_groups = Enum.filter(queue_runs, &(queue_run?(&1, branch, workflows) and &1["status"] in @active_statuses))
+      {:ok, {sort_normalized(Enum.filter(push_runs, &watched?(&1, commits, branch, workflows)) ++ landed), sort_normalized(merge_groups)}}
     end
   end
 
