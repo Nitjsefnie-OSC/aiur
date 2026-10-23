@@ -23,12 +23,15 @@ export async function prepareFeatureMotion(pair) {
     // Isolate the board from the exterior shell's scrollbar gutter (reference HTML:154).
     await page.locator('#build-root').evaluate((root, width) => { root.style.width = width + 'px' }, width)
     await page.clock.runFor(800)
-    await page.evaluate(() => {
-      // Sample history, away from the independently tested Live-band snap guard.
-      document.querySelector('#bd-vp').scrollTop = 500
-    })
+    await page.locator('#bd-vp').evaluate(vp => new Promise(resolve => {
+      if (vp.scrollTop === 500) return resolve()
+      vp.addEventListener('scroll', resolve, { once: true }); vp.scrollTop = 500
+    }))
     await page.clock.runFor(800)
     await page.clock.setSystemTime(FIXTURE_META.now)
+    // Establish pointer focus before the atomic DOM activation used by cssMotion.
+    await page.locator('[data-g="feature"]').click(); await page.locator('[data-g="feature"]').click()
     await page.evaluate(() => document.getAnimations().forEach(a => { if (Number.isFinite(a.effect?.getComputedTiming().endTime)) a.finish() }))
+    await page.screenshot({ animations: 'allow' })
   }
 }

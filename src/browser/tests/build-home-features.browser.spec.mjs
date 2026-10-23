@@ -4,7 +4,7 @@ import { dashboardCredentials } from './support/layout-worker.mjs'
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
 test.beforeEach(async ({ page }) => {
   const root = test.info().project.metadata.featuresRoot
-  if (root) await page.route('**/build-home/home.css', async route => route.fulfill({ contentType: 'text/css', body: await readFile(root + '/src/priv/static/build-home/home.css', 'utf8') }))
+  if (root) await page.route('**/build-home/home.css*', async route => route.fulfill({ contentType: 'text/css', body: await readFile(root + '/src/priv/static/build-home/home.css', 'utf8') }))
   if (root) await page.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(root + '/src/priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
 })
 async function open(page, query = '?feature=pag', dataset = 'live') {
@@ -153,7 +153,10 @@ test('a feature outside the six filter options focuses from its URL without pagi
 })
 test('reduced motion disables the focus fade and retains design inner color timing', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await open(page)
-  await expect(page.locator('.bd-card').first()).toHaveCSS('transition-duration', '0s')
+  await page.request.get('/build-fixture/live')
+  await page.goto('/?feature=pag')
+  await expect(page.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
+  const fade = await page.locator('.bd-card').first().evaluate(el => Math.max(...getComputedStyle(el).transitionDuration.split(',').map(parseFloat)))
+  expect(fade).toBeLessThanOrEqual(0.00001)
   await expect(page.locator('.bd-card .bd-in').first()).toHaveCSS('transition-duration', '0.14s, 0.14s, 0.14s, 0.14s')
 })

@@ -27,7 +27,7 @@ export function layoutExt(D, state) {
 let spanRun = 0;
 onReset(() => { spanRun++; });
 export function loadFeatureSpan(k) {
-  const run = ++spanRun, f = activeFeature() === k ? ctx.D.features[k] : null;
+  const run = ++spanRun, f = k && activeFeature() === k ? ctx.D.features[k] : null;
   if (f?.oldest == null) return Promise.resolve();
   const life = ctx.life;
   return ensureFrom(f.oldest, () => run === spanRun && activeFeature() === k && ctx.life === life && !life.disposed);
