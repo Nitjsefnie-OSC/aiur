@@ -57,6 +57,8 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
 
     configure_completed_revalidation!([issue | p1_tickets], max_concurrent_agents: 3, tracker_active_states: ["todo", "in-progress", "rework"])
     {state, entry, worker, _item_ids} = completed_retention_fixture(issue)
+    entry = Map.put(entry, :completed_provenance, true)
+    state = put_in(state.running[issue.id], entry)
     state = %{state | last_polled_issues: Map.new(p1_tickets, &{&1.id, &1})}
     runners_before = RunnerTasks.capture()
 
