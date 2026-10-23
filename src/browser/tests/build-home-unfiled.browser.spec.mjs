@@ -59,3 +59,20 @@ test('filing a row replaces the open modal and URL through its alias', async ({p
   await expect(page.locator('.bm-num')).toHaveText('#57')
   await expect.poll(() => new URL(page.url()).searchParams.get('ticket')).toBe('57')
 })
+test('board and dependency tree use the same unfiled identity', async ({page}) => {
+  await open(page)
+  const id = await page.evaluate(async () => {
+    const {ctx,fx} = await import('/build-home/state.js')
+    const t = ctx.D.plan.find(t => t.src?.kind === 'pack')
+    const it = ctx.L.secs.plan.items.find(it => it.t.id === t.id)
+    fx.scrollVP(ctx.secs.plan.el.offsetTop + it.y - 70, false); fx.update()
+    return t.id
+  })
+  const card = page.locator('.bd-card[data-id="' + id + '"]')
+  await expect(card.locator('.bd-status > span').first()).toHaveText('Not filed')
+  await expect(card).not.toContainText(/null|undefined|NaN/)
+  await page.evaluate(async id => (await import('/build-home/trees.js')).openTree(id), id)
+  const node = page.locator('.bd-tn[data-id="' + id + '"]')
+  await expect(node.locator('b')).toHaveText('—'); await expect(node.locator('em')).toContainText('Not filed')
+  await expect(node).not.toContainText(/null|undefined|NaN/)
+})

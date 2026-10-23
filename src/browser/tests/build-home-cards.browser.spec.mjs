@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 import { openParityPair, expectDesignParity, waitParityReady } from '../support/design-parity.mjs'
 
-// unknowns.json: live.json plus schema-valid rows 9001–9012 and pack:alpha.
+// unknowns.json: live.json plus schema-valid rows 9001–9012 and pack:unknowns/alpha.
 // Reproduce from repo root (frozen now retained; only schema-valid values):
 // jq -c '
 // def add($s;$n;$x): . as $d | .sections[$s] += [($d.sections[$s][0] + {id:($n|tostring),num:$n,ord:($d.sections[$s]|length)} + $x)];
@@ -11,7 +11,7 @@ import { openParityPair, expectDesignParity, waitParityReady } from '../support/
 // add("plan";9005;{est:null,pts:2,override:null}) | add("now";9006;{agent:{model:null,name:null,state:"active",effort:null}}) |
 // add("now";9007;{agent:{model:"muse",name:null,state:"active",effort:null}}) | add("now";9008;{agent:{model:"claude",name:null,state:null,effort:null}}) |
 // add("now";9009;{agent:null}) | add("hist";9010;{status:"not_planned",end:.now}) | add("hist";9011;{status:"closed",end:.now}) |
-// add("plan";9012;{}) | .sections.plan[-1].cue.failed={by:7,blocks:[]} | add("plan";9013;{id:"pack:alpha",num:null,qpos:null}) |
+// add("plan";9012;{}) | .sections.plan[-1].cue.failed={by:7,blocks:[]} | add("plan";9013;{id:"pack:unknowns/alpha",num:null,qpos:null}) |
 // .history.total=(.sections.hist|length)' src/test/fixtures/build_home/live.json > src/test/fixtures/build_home/unknowns.json
 // Non-Gantt density belongs to layout.js: span 1 is full. Element parity below
 // covers line/mini/bar independently of the unfinished columns and Now band.
