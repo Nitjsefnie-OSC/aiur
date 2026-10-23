@@ -105,16 +105,6 @@ defmodule AiurWeb.FinancialDataAccessTest do
     assert :error = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => marker})
   end
 
-  test "Google callback with a mismatched state does not create a session marker" do
-    conn =
-      session_conn()
-      |> put_session(:google_session_params, %{state: "expected-state", nonce: "expected-nonce"})
-      |> DashboardAuthController.google_callback(%{"state" => "attacker-state", "code" => "unused"})
-
-    assert conn.status == 401
-    assert get_session(conn, FinancialDataAccess.session_key()) == nil
-  end
-
   test "unconfigured dashboard authentication refuses the request with its cause" do
     conn = FinancialDataAccess.call(session_conn(), [])
 

@@ -72,6 +72,16 @@ defmodule AiurWeb.DashboardAuthControllerTest do
     assert get_session(conn, FinancialDataAccess.session_key()) == nil
   end
 
+  test "Google callback rejects mismatched state without a session marker" do
+    conn =
+      session_conn()
+      |> put_session(:google_session_params, %{state: "expected-state", nonce: "expected-nonce"})
+      |> DashboardAuthController.google_callback(%{"state" => "attacker-state", "code" => "unused"})
+
+    assert conn.status == 401
+    assert get_session(conn, FinancialDataAccess.session_key()) == nil
+  end
+
   test "authentication finish consumes its challenge before refusing a replay" do
     assert Passkeys.enabled?()
     challenge = Wax.new_authentication_challenge(origin: "https://aiur.example.test:4001", rp_id: "aiur.example.test")
