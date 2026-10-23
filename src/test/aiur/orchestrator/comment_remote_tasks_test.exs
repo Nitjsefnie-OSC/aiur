@@ -170,6 +170,7 @@ defmodule Aiur.Orchestrator.CommentRemoteTasksTest do
     pending = CommentWake.maybe_transition_idle_issue_to_rework(state, "42", :pr_review, event, 1)
     pending = apply_only_task(pending)
     receive_barrier({:checking_threads, gate_worker})
+    [gate_ref] = Map.keys(pending.tracker_tasks)
 
     running = %{
       identifier: "42",
@@ -180,11 +181,14 @@ defmodule Aiur.Orchestrator.CommentRemoteTasksTest do
 
     pending = %{pending | running: %{"42" => running}}
     send(gate_worker, :release)
-    pending = apply_only_task(pending)
-    receive_barrier({:writing, write_worker})
+    assert_receive {^gate_ref, gate_result}, 2_000
+    {:handled, pending} = TrackerTasks.result(pending, gate_ref, gate_result)
+    assert_receive {:writing, write_worker}, 2_000
     send(write_worker, :release)
 
-    applied = apply_only_task(pending)
+    [write_ref] = Map.keys(pending.tracker_tasks)
+    assert_receive {^write_ref, write_result}, 2_000
+    {:handled, applied} = TrackerTasks.result(pending, write_ref, write_result)
 
     assert [digest] = Aiur.AgentQueueStore.list_pending(applied.queue_store, "42")
     assert digest.body.events == [event]
