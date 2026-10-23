@@ -10,6 +10,7 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
   @spec write_if_current(String.t(), String.t(), keyword()) :: :ok | :skipped | {:error, term()}
   def write_if_current(identifier, target, opts \\ []) do
     fetch_issue_states_fun = Keyword.get(opts, :fetch_issue_states_fun, &Tracker.fetch_issue_states_by_ids/1)
+    foreign_state_label_fun = Keyword.get(opts, :foreign_state_label_fun, &Tracker.foreign_state_label?/1)
     tracker = Keyword.get(opts, :tracker, Tracker)
 
     case fetch_issue_states_fun.([to_string(identifier)]) do
@@ -22,7 +23,7 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
         )
 
       {:ok, [%Issue{labels: labels}]} ->
-        if StatePolicy.terminal_state_name?(target) and Tracker.foreign_state_label?(labels) do
+        if StatePolicy.terminal_state_name?(target) and foreign_state_label_fun.(labels) do
           :skipped
         else
           {:error, :merge_issue_state_unavailable}
