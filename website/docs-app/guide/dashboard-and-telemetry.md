@@ -246,6 +246,8 @@ The `/post-deploy` page lists manual checks from merged PRs. Add `Post-deploy ch
 
 Select a Feature filter or open `/build?feature=<slug>` to show its whole-feature
 Done, Weighted, and scope figures. Unknown figures show `—` with a reason on
-hover. Focus dims unrelated tickets; Compact replaces unrelated runs with gap
+hover.
+
+Focus dims unrelated tickets; Compact replaces unrelated runs with gap
 markers and retains loaded dependencies as dashed ghost cards. Earlier history
 loads back to the feature’s oldest closed member. Clear the feature with ×.

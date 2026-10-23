@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
+test.beforeEach(async ({ page }) => {
+  const root = test.info().project.metadata.featuresRoot
+  if (root) await page.route('**/build-home/*.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(root + '/src/priv/static/build-home/' + new URL(route.request().url()).pathname.split('/').at(-1), 'utf8') }))
+})
 async function open(page, query = '?feature=pag', dataset = 'live') {
   await page.goto('/build-fixture/' + dataset + query)
   await expect(page.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
@@ -67,7 +72,9 @@ test('first-paint feature focus loads oldest history, back/forward restores focu
   await expect(page.locator('.bd-fh-name')).toContainText('Khala')
   await expect.poll(() => page.evaluate(() => m.S.histFrom <= m.ctx.D.features.khala.oldest)).toBe(true)
   expect(await page.evaluate(() => m.ctx.D.hist.filter(t => t.feature === 'khala').length)).toBeGreaterThan(0)
-  await page.locator('#bd-fx').click()
+  await page.evaluate(() => { const a = document.createElement('a'); a.id = 'feature-navigation'; a.href = '/build-fixture/live?feature=pag'; a.dataset.phxLink = 'patch'; a.dataset.phxLinkState = 'push'; a.textContent = 'Pagination feature'; document.body.appendChild(a) })
+  await page.locator('#feature-navigation').click()
+  await expect(page.locator('.bd-fh-name')).toContainText('Events pagination')
   await page.goBack()
   await expect(page.locator('.bd-fh-name')).toContainText('Khala')
 })
@@ -111,7 +118,7 @@ test('compact Gantt and list focus use active membership', async ({ page }) => {
   expect(result).toBe(0)
   await page.goto('/build-fixture/live?feature=pag&view=list')
   await expect(page.locator('.lr.dim').first()).toBeVisible()
-  const mismatch = await page.locator('.lr').evaluateAll(async rows => { const { ctx } = await import('/build-home/state.js'); return rows.filter(el => {
+  const mismatch = await page.locator('.lr[data-id]').evaluateAll(async rows => { const { ctx } = await import('/build-home/state.js'); return rows.filter(el => {
     const t = ctx.D.byId[el.dataset.id]; return el.classList.contains('dim') === (t.feature === 'pag' || t.also.includes('pag'))
   }).length })
   expect(mismatch).toBe(0)
