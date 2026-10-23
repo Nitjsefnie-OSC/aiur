@@ -147,7 +147,8 @@ defmodule Aiur.Orchestrator.RetryEngine.Scheduling do
               # does not round-trip it — the retry path reclassifies the failure
               # it sees at dispatch time rather than trusting stale metadata.
               delay_type: metadata[:delay_type],
-              local_budget_hold: metadata[:local_budget_hold]
+              local_budget_hold: metadata[:local_budget_hold],
+              stalled_alert_outstanding: metadata[:stalled_alert_outstanding] == true
             })
       }
       |> record_hold_deferral(issue_id, identifier, metadata, now_ms)
@@ -192,7 +193,8 @@ defmodule Aiur.Orchestrator.RetryEngine.Scheduling do
           priority: Map.get(retry_entry, :priority),
           issue_state: Map.get(retry_entry, :issue_state),
           terminal_membership_pending?: Map.get(retry_entry, :terminal_membership_pending?, false),
-          rework_head_sha: Map.get(retry_entry, :rework_head_sha)
+          rework_head_sha: Map.get(retry_entry, :rework_head_sha),
+          stalled_alert_outstanding: Map.get(retry_entry, :stalled_alert_outstanding, false)
         }
 
         {:ok, attempt, metadata, %{state | retry_attempts: Map.delete(state.retry_attempts, issue_id)}}

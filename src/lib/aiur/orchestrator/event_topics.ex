@@ -19,6 +19,7 @@ defmodule Aiur.Orchestrator.EventTopics do
     State
   }
 
+  alias Aiur.Alerts
   alias Aiur.Commands
 
   @spec route(State.t(), map(), keyword()) :: State.t()
@@ -57,6 +58,9 @@ defmodule Aiur.Orchestrator.EventTopics do
 
   defp route_classified(state, {:pause_request, identifier}, event, _opts),
     do: PushRouting.maybe_pause_on_request(state, identifier, event)
+
+  defp route_classified(state, {:agent_progress, identifier}, event, opts),
+    do: resolve_stalled_alert(state, identifier, event, opts)
 
   # Answering a blocking Command releases the dispatch gate in DecisionStore.
   # Refresh the local gate for control calls, then wake the poll to reclaim a worker that
@@ -233,6 +237,7 @@ defmodule Aiur.Orchestrator.EventTopics do
          :nomatch <- tag_topic(:ci_failed, parse_ci_failed_topic(topic)),
          :nomatch <- tag_topic(:ci_passed, parse_ci_passed_topic(topic)),
          :nomatch <- tag_topic(:pause_request, parse_pause_request_topic(topic)),
+         :nomatch <- tag_topic(:agent_progress, parse_agent_progress_topic(topic)),
          :nomatch <- tag_topic(:decision_answered, parse_decision_answered_topic(topic)),
          :nomatch <- tag_topic(:agent_unblocked, parse_agent_unblocked_topic(topic)),
          :nomatch <- tag_topic(:optimistic_integrated, parse_optimistic_integrated_topic(topic)),
@@ -240,6 +245,50 @@ defmodule Aiur.Orchestrator.EventTopics do
       tag_topic(:system_branch_push, parse_system_branch_push_topic(topic))
     end
   end
+
+  @spec parse_agent_progress_topic(String.t()) :: {:ok, String.t()} | :nomatch
+  def parse_agent_progress_topic(topic) do
+    case Regex.run(~r{\Aticket\.([^.]+)\.agent\.progress(?:\.(?:checkin|phase))?\z}, topic) do
+      [_, identifier] -> {:ok, identifier}
+      _ -> :nomatch
+    end
+  end
+
+  defp resolve_stalled_alert(state, identifier, event, opts) do
+    case retry_with_stalled_alert(state, identifier) do
+      nil ->
+        state
+
+      retry ->
+        emitter = Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2)
+
+        case emitter.("ticket.#{identifier}.agent.stalled.resolved",
+               message: "Agent reported progress after the stalled worker was retried.",
+               issue: event_issue(event),
+               reason: "The retried agent reported progress.",
+               needs_attention: false,
+               severity: "info",
+               durable: true
+             ) do
+          :ok ->
+            updated = Map.put(state.retry_attempts[retry.issue_id], :stalled_alert_outstanding, false)
+            %{state | retry_attempts: Map.put(state.retry_attempts, retry.issue_id, updated)}
+
+          _error ->
+            state
+        end
+    end
+  end
+
+  defp retry_with_stalled_alert(state, identifier) do
+    Enum.find_value(state.retry_attempts, fn {issue_id, retry} ->
+      if Map.get(retry, :identifier) == identifier and Map.get(retry, :stalled_alert_outstanding) do
+        %{issue_id: issue_id}
+      end
+    end)
+  end
+
+  defp event_issue(event), do: Map.get(event, :issue, Map.get(event, "issue"))
 
   @spec parse_optimistic_blocker_topic(String.t()) :: {:ok, String.t()} | :nomatch
   def parse_optimistic_blocker_topic(topic) do

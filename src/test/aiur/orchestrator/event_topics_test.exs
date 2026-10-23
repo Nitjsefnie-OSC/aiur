@@ -58,6 +58,44 @@ defmodule Aiur.Orchestrator.EventTopicsTest do
     assert :atomics.get(emitted, 1) == 1
   end
 
+  test "retry progress resolves an outstanding stalled alert once" do
+    identifier = "stall-progress-#{System.unique_integer([:positive])}"
+    test_pid = self()
+
+    emitter = fn topic, opts ->
+      send(test_pid, {:resolved, topic, opts})
+      :ok
+    end
+
+    state = %State{retry_attempts: %{"issue-1" => %{identifier: identifier, stalled_alert_outstanding: true}}}
+
+    next =
+      EventTopics.route(state, %{topic: "ticket.#{identifier}.agent.progress", issue: "issue"}, alert_emitter: emitter)
+
+    assert_received {:resolved, "ticket.#{identifier}.agent.stalled.resolved", opts}
+    assert opts[:needs_attention] == false
+    refute next.retry_attempts["issue-1"].stalled_alert_outstanding
+
+    EventTopics.route(next, %{topic: "ticket.#{identifier}.agent.progress.checkin"}, alert_emitter: emitter)
+    refute_received {:resolved, _, _}
+  end
+
+  test "progress without an outstanding stalled alert emits no resolution" do
+    identifier = "healthy-progress-#{System.unique_integer([:positive])}"
+    test_pid = self()
+
+    emitter = fn topic, _opts ->
+      send(test_pid, {:resolved, topic})
+      :ok
+    end
+
+    next =
+      EventTopics.route(%State{}, %{topic: "ticket.#{identifier}.agent.progress.phase"}, alert_emitter: emitter)
+
+    assert next.retry_attempts == %{}
+    refute_received {:resolved, _}
+  end
+
   test "a branch push does not alert when the PR body already names its head" do
     identifier = Integer.to_string(System.unique_integer([:positive]))
     pushed_sha = String.duplicate("c", 40)
