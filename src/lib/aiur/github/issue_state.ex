@@ -10,9 +10,14 @@ defmodule Aiur.GitHub.IssueState do
   """
 
   alias Aiur.GitHub.Config
-  alias Aiur.GitHub.{Errors, HumanReviewGate, Issues, Labels, LocalHold, StatePolicy, Transport, WriteThrough}
+  alias Aiur.GitHub.{Errors, HumanReviewGate, Issues, Labels, LocalHold, StateLabels, StatePolicy, Transport, WriteThrough}
   alias Aiur.GitHub.IssueState.ClosedIssue
   require Logger
+
+  @spec foreign_tracker_state_label?([String.t()], String.t()) :: boolean()
+  def foreign_tracker_state_label?(labels, prefix) do
+    StateLabels.foreign_candidate_state_label?(labels, prefix, MapSet.new())
+  end
 
   @spec update_issue_state(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
   def update_issue_state(issue_number, state_name, opts \\ [])

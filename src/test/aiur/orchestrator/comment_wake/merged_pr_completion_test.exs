@@ -36,6 +36,21 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
   end
 
   describe "mark_pr_merged_issue_done/2" do
+    test "skips merged-PR completion for an issue owned by another GitHub label prefix" do
+      state = base_state()
+      issue = %Issue{id: "3163", identifier: "3163", state: nil, labels: ["nuc:done"]}
+
+      result =
+        CommentWake.mark_pr_merged_issue_done(state, "3163",
+          pr_body: "Closes #3163",
+          fetch_issue_states_fun: fn ["3163"] -> {:ok, [issue]} end,
+          emit_alert_fun: fn _, _ -> flunk("foreign-lane issue must not raise a transition alert") end,
+          open_pull_requests_fun: fn _identifier -> {:ok, []} end
+        )
+
+      assert result == state
+    end
+
     test "returns state unchanged when no matching running entry exists" do
       state = base_state()
 
