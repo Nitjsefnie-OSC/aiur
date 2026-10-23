@@ -14,6 +14,7 @@ defmodule Aiur.Regression.WorkspaceLifecycleRefreshTest do
         lock = Path.join([workspace, ".git", "index.lock"])
         File.write!(lock, "live writer")
         set_mtime!(lock, DateTime.add(DateTime.utc_now(), -180, :second))
+        {:ok, lock_io} = File.open(lock, [:read])
 
         issue = %Issue{
           id: "issue-lock-held-1",
@@ -23,11 +24,13 @@ defmodule Aiur.Regression.WorkspaceLifecycleRefreshTest do
           labels: ["agent:in-progress"]
         }
 
-        assert {:error, {:git_index_lock_held, ^lock, age, 11, pid}} =
-                 Workspace.run_before_run_hook(workspace, issue)
+        result = Workspace.run_before_run_hook(workspace, issue)
+        :ok = File.close(lock_io)
+
+        assert {:error, {:git_index_lock_held, ^lock, age, 11, pid}} = result
 
         assert age >= 120
-        assert is_integer(pid)
+        assert pid == String.to_integer(System.pid())
         assert File.read!(lock) == "live writer"
       after
         Aiur.TestCleanup.rm_rf!(test_root)
@@ -39,7 +42,7 @@ defmodule Aiur.Regression.WorkspaceLifecycleRefreshTest do
 
       try do
         {workspace, trace_file} = bootstrap_dirty_refresh_workspace!(test_root, "REG-LOCK-1")
-        git!(["-C", workspace, "checkout", "--", "README.md"])
+        File.write!(Path.join(workspace, "README.md"), "initial\n")
         lock = Path.join([workspace, ".git", "index.lock"])
         File.write!(lock, "")
         set_mtime!(lock, DateTime.add(DateTime.utc_now(), -180, :second))
