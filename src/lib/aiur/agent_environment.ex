@@ -16,6 +16,10 @@ defmodule Aiur.AgentEnvironment do
   # does not export it today, but any wrapping harness might).
   @erlang_distribution_env_names ~w(ERL_AFLAGS ERL_LIBS RELEASE_NODE RELEASE_COOKIE AIUR_RELEASE_NODE AIUR_INSTANCE_KEY AIUR_REPO_ROOT)
   @daemon_dump_env_names ~w(ERL_CRASH_DUMP ERL_CRASH_DUMP_SECONDS)
+  # A build lease proves admission only for the process that acquired it. A
+  # child must acquire its own lease; inheriting these values can either point
+  # at a different gate root and fail closed, or skip admission when roots match.
+  @build_gate_lease_env_names ~w(AIUR_BUILD_GATE_LEASE_PATH AIUR_BUILD_GATE_LEASE_TOKEN)
   @aiur_distribution_env_pattern ~r/\AAIUR(?:_.*)?_(?:NODE_NAME|COOKIE)\z/
   # `aiurdev` exports AIUR_RESTART_BUILD_CMD for the duration of an `aiur restart`
   # so the engine can run this checkout's rebuild between the stop and the start.
@@ -130,6 +134,7 @@ defmodule Aiur.AgentEnvironment do
        Enum.join(
          @erlang_distribution_env_names ++
            @daemon_dump_env_names ++
+           @build_gate_lease_env_names ++
            @restart_build_env_names ++
            @parent_log_env_names ++
            @operator_only_env_names ++
@@ -254,6 +259,7 @@ defmodule Aiur.AgentEnvironment do
       Enum.map(
         @erlang_distribution_env_names ++
           @daemon_dump_env_names ++
+          @build_gate_lease_env_names ++
           @restart_build_env_names ++
           @parent_log_env_names ++
           @operator_only_env_names ++

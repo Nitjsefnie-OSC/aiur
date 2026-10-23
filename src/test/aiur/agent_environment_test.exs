@@ -70,6 +70,28 @@ defmodule Aiur.AgentEnvironmentTest do
     assert output == "OTHER_COOKIE=keep\n"
   end
 
+  test "workspace child environment does not inherit its parent's build lease" do
+    original_path = System.get_env("AIUR_BUILD_GATE_LEASE_PATH")
+    original_token = System.get_env("AIUR_BUILD_GATE_LEASE_TOKEN")
+
+    on_exit(fn ->
+      for {name, value} <- [
+            {"AIUR_BUILD_GATE_LEASE_PATH", original_path},
+            {"AIUR_BUILD_GATE_LEASE_TOKEN", original_token}
+          ] do
+        if value, do: System.put_env(name, value), else: System.delete_env(name)
+      end
+    end)
+
+    System.put_env("AIUR_BUILD_GATE_LEASE_PATH", "/parent/gate/slot-1.owner")
+    System.put_env("AIUR_BUILD_GATE_LEASE_TOKEN", "parent-lease")
+
+    child_env = AgentEnvironment.workspace_env("/work/aiur/5896")
+
+    assert {~c"AIUR_BUILD_GATE_LEASE_PATH", false} in child_env
+    assert {~c"AIUR_BUILD_GATE_LEASE_TOKEN", false} in child_env
+  end
+
   test "scrub_shell_command can retain an Aiur-owned build hook" do
     command = AgentEnvironment.scrub_shell_command("printf ready", trusted_bash_env: true)
 
