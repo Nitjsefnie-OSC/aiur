@@ -210,7 +210,8 @@ defmodule Aiur.AgentRunner.TurnCompletion do
     )
   end
 
-  defp noop_failure_state(issue, opts) do
+  @doc false
+  def noop_failure_state(issue, opts) do
     case DispatchPolicy.normalize_issue_state(issue.state) do
       "rework" -> if open_review_findings(issue, opts) == [], do: "error", else: nil
       _ -> nil

@@ -45,6 +45,38 @@ defmodule Aiur.AgentRunner.StoppedReworkHandoffEvidenceTest do
     refute_received {:memory_tracker_state_update, ^identifier, "human-review"}
   end
 
+  test "no-op bound keeps rework when the blocking review still has findings" do
+    identifier = "5746-noop-#{System.unique_integer([:positive])}"
+    issue = %Aiur.Issue{id: "gid-#{identifier}", identifier: identifier, state: "rework", labels: ["agent:rework"]}
+    head = "d76116f7b7902fd10a52bdb78e0f478000b7951c"
+
+    review = %{
+      "state" => "CHANGES_REQUESTED",
+      "body" => "1. turn_completion.ex:162 keep the finding open",
+      "commit_id" => head,
+      "submitted_at" => "2026-10-22T05:46:21Z",
+      "id" => 1,
+      "user" => %{"login" => "r"},
+      authoritative: true
+    }
+
+    assert :none =
+             TurnLoop.noop_handoff(
+               %{
+                 workspace: nil,
+                 worker_host: nil,
+                 opts: [
+                   rework_head_sha: head,
+                   open_pr_fetcher: fn _ -> {:ok, %{"number" => 5747, "head" => %{"sha" => head}}} end,
+                   reviews_fetcher: fn _ -> {:ok, [review]} end
+                 ]
+               },
+               issue
+             )
+
+    assert Aiur.AgentRunner.TurnCompletion.noop_failure_state(issue, reviews_fetcher: fn _ -> {:ok, [review]} end) == nil
+  end
+
   # #5746: a run that hit agent.max_turns after fixing one of two findings stays in rework.
   test "a stopped rework run with unanswered review findings is not handed back" do
     identifier = "5746-#{System.unique_integer([:positive])}"

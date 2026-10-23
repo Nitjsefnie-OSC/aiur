@@ -319,41 +319,6 @@ defmodule Aiur.AgentRunner.TurnLoopNoopBoundTest do
       assert identifier == issue.identifier
     end
 
-    test "keeps rework with open findings in rework at the no-op bound", ctx do
-      use_memory_tracker!(self())
-      issue = %{ctx.issue | state: "rework", labels: ["agent:rework"]}
-
-      review = %{
-        "state" => "CHANGES_REQUESTED",
-        "body" => "1. turn_completion.ex:162 keep the finding open",
-        "submitted_at" => "2026-10-22T05:46:21Z",
-        "id" => 1,
-        "user" => %{"login" => "r"},
-        "commit_id" => "same-head",
-        authoritative: true
-      }
-
-      parent = self()
-
-      assert {:completed, %{state: "rework"}} =
-               run_loop(%{ctx | issue: issue},
-                 run_turn: fn _s, _p, _i, _o ->
-                   send(parent, {:noop_open_findings_alert, issue.identifier})
-                   {:ok, %{session_id: "noop-open-findings"}}
-                 end,
-                 max_turns: nil,
-                 workspace_probe: unchanging_probe(),
-                 max_consecutive_noop_turns: 3,
-                 noop_backoff_ms: 0,
-                 open_pr_fetcher: fn _ -> {:ok, %{"number" => 42, "head" => %{"sha" => "same-head"}}} end,
-                 reviews_fetcher: fn 42 -> {:ok, [review]} end,
-                 rework_head_sha: "same-head"
-               )
-
-      assert_receive {:noop_open_findings_alert, identifier}, 1000
-      assert identifier == issue.identifier
-    end
-
     # #3971: the fixes were pushed by an earlier run, so the head never moves in this one.
     test "hands a rework whose head is newer than its blocking review to review despite red CI", ctx do
       use_memory_tracker!(self())
