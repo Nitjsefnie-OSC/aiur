@@ -22,6 +22,7 @@ defmodule Aiur.AgentResourceGuard do
 
   use GenServer
 
+  alias Aiur.AgentResourceGuard.Attention
   alias Aiur.AgentResourceGuard.BusyLoop
   alias Aiur.AgentResourceGuard.RunawayGroups
   alias Aiur.ProcessTree
@@ -96,6 +97,7 @@ defmodule Aiur.AgentResourceGuard do
         |> Enum.reject(&(&1.killed == [] and &1.reported == []))
 
       Enum.each(results, &report(&1, opts))
+      Attention.reconcile(Keyword.put_new(opts, :process_info_fun, &proc_info/1))
       {results, Map.put(tracked, :reported, found |> Enum.flat_map(& &1.reported) |> MapSet.new())}
     end
   end
