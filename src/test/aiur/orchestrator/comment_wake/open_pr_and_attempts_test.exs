@@ -144,8 +144,10 @@ defmodule Aiur.Orchestrator.CommentWake.OpenPrAndAttemptsTest do
         comment: %{
           "body" => "This needs changes before it can merge.",
           "state" => "CHANGES_REQUESTED",
+          "user" => %{"login" => "its-everdred"},
           "submitted_at" => "2026-09-01T02:03:20Z"
         },
+        human_merger_allowed_fun: &(&1 == "its-everdred"),
         issue_state_fetcher: fn _ids -> {:ok, [rework_labelled_issue("2473")]} end,
         open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 42, "head" => %{"sha" => "abc123"}}} end,
         unresolved_threads_fetcher: fn _pr -> {:ok, []} end
@@ -180,7 +182,12 @@ defmodule Aiur.Orchestrator.CommentWake.OpenPrAndAttemptsTest do
 
       event = %{
         author_trusted?: true,
-        comment: %{"body" => "This needs changes.", "state" => "CHANGES_REQUESTED"},
+        comment: %{
+          "body" => "This needs changes.",
+          "state" => "CHANGES_REQUESTED",
+          "user" => %{"login" => "its-everdred"}
+        },
+        human_merger_allowed_fun: &(&1 == "its-everdred"),
         issue_state_fetcher: fn _ids -> {:ok, [rework_labelled_issue("2473")]} end,
         open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 42, "head" => %{"sha" => "abc123"}}} end,
         unresolved_threads_fetcher: fn _pr -> {:ok, []} end,
@@ -205,7 +212,12 @@ defmodule Aiur.Orchestrator.CommentWake.OpenPrAndAttemptsTest do
 
       event = %{
         author_trusted?: true,
-        comment: %{"body" => "please fix", "state" => "changes_requested"},
+        comment: %{
+          "body" => "please fix",
+          "state" => "changes_requested",
+          "user" => %{"login" => "its-everdred"}
+        },
+        human_merger_allowed_fun: &(&1 == "its-everdred"),
         issue_state_fetcher: fn _ids -> {:ok, [rework_labelled_issue("2473")]} end,
         open_pr_fetcher: fn _issue_key -> {:ok, %{"number" => 42, "head" => %{"sha" => "abc123"}}} end,
         unresolved_threads_fetcher: fn _pr -> {:ok, []} end
