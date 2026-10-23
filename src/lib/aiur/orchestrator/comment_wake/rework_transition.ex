@@ -3,6 +3,7 @@
 defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
   @moduledoc "Asynchronous review gates and bounded rework state writes."
 
+  alias Aiur.GitHub.Config
   alias Aiur.Orchestrator.CommentWake
   alias Aiur.Orchestrator.CommentWake.ReworkRetries
   alias Aiur.Orchestrator.OperatorMessages
@@ -13,7 +14,6 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
   alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Orchestrator.TrackerTasks
   alias Aiur.Signal
-  alias Aiur.GitHub.Config
 
   @doc false
   @spec with_comment_transition(State.t(), String.t() | integer(), String.t() | integer(), String.t() | atom(), map(), term(), pos_integer(), function()) :: State.t()

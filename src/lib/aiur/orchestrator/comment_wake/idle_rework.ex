@@ -95,21 +95,18 @@ defmodule Aiur.Orchestrator.CommentWake.IdleRework do
           DispatchPolicy.normalize_issue_state(issue.state) == "" ->
             {:skip, :unlabeled_issue}
 
-          # Same argument as the unlabelled case, one state further along: a
-          # `todo` ticket has not been worked either, so there is no prior
-          # implementation for "rework" to mean anything about. Flipping it
-          # discards the true state — nothing restores `todo` afterwards — and
-          # makes an operator's own triage note indistinguishable from a
-          # reviewer rejecting the work.
+          # Ordinary comments on a `todo` ticket remain briefing material:
+          # there is no prior implementation to rework, and flipping the state
+          # would discard operator triage. A formal live review is the narrow
+          # exception because it proves an existing PR was rejected.
           #
           # Observed repeatedly: promoting a ticket to `agent:todo` and then
           # commenting to say why reliably un-promoted it on the next poll, so
           # promotion and commentary could not be done in the same breath.
           #
-          # This skip still seeds the event digest below, unlike the two above:
-          # the ticket is about to be dispatched, so the comment is briefing
-          # material the agent must read on its first turn.
-          DispatchPolicy.normalize_issue_state(issue.state) == "todo" and not ReworkTransition.changes_requested_review?(event) ->
+          # The skip seeds the event digest below so the dispatched agent gets
+          # the operator's briefing on its first turn.
+          not_yet_attempted?(issue, event) ->
             {:skip, :not_yet_attempted}
 
           true ->
@@ -127,6 +124,11 @@ defmodule Aiur.Orchestrator.CommentWake.IdleRework do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp not_yet_attempted?(%Issue{} = issue, event) do
+    DispatchPolicy.normalize_issue_state(issue.state) == "todo" and
+      not ReworkTransition.changes_requested_review?(event)
   end
 
   # Prefer the polled view already held in orchestrator state; fall back to an
