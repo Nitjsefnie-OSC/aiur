@@ -28,7 +28,7 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
     nonce = Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)
     root = Aiur.TestSupport.tmp_root!("keep-agents-engine-#{nonce}")
     File.mkdir_p!(Path.join(root, "run"))
-    endpoint = Path.join(System.tmp_dir!(), "k4-#{nonce}")
+    endpoint = Path.join("/tmp", "k4-#{nonce}")
     {:ok, socket} = :gen_udp.open(0, [:binary, {:ifaddr, {:local, endpoint}}, {:active, true}])
     File.write!(Path.join(root, "endpoint"), endpoint)
     on_exit(fn -> File.rm(endpoint) end)
