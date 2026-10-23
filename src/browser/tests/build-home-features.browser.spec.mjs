@@ -140,15 +140,13 @@ test('a feature with only also-affects members shows no invented weighted figure
   await mode(page, 'compact').click()
   expect(await page.evaluate(() => m.ctx.L.secs.plan.items.filter(it => it.t.also.includes('alsoonly') && !it.ghost).length)).toBe(1)
 })
-test('an older feature outside the six filter options focuses directly from its URL', async ({ page }) => {
-  let calls = 0
-  page.on('websocket', ws => ws.on('framesent', e => { if (String(e.payload).includes('"load-earlier"')) calls++ }))
-  await page.request.get('/build-control/earlier?delay=2000')
-  try {
-    await open(page, '?feature=d0', 'dense')
-    await expect(page.locator('.bd-fh-name')).toHaveText(await page.evaluate(() => m.ctx.D.features.d0.label))
-    await expect.poll(() => calls).toBeGreaterThan(0)
-    await page.locator('#bd-fx').click()
-    await expect(page.locator('#bd-fh')).toBeEmpty()
-  } finally { await page.request.get('/build-control/earlier') }
+test('a feature outside the six filter options focuses from its URL without paging empty membership', async ({ page }) => {
+  await open(page, '?feature=d0', 'dense')
+  await expect(page.locator('.bd-fh-name')).toHaveText('Auth v2')
+  // The current design fixture retains d0 metadata but has no closed d0 members.
+  expect(await page.evaluate(() => m.ctx.D.features.d0.oldest)).toBeNull()
+  await expect(page.locator('#build-root')).toHaveAttribute('data-bd-paging', 'idle')
+  await expect(page.locator('.bd-kv b').nth(0)).toHaveText('0/0')
+  await page.locator('#bd-fx').click()
+  await expect(page.locator('#bd-fh')).toBeEmpty()
 })
