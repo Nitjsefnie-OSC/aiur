@@ -3,8 +3,8 @@ defmodule Aiur.OpenAICompat.Config do
 
   alias Aiur.CodingAgent
   alias Aiur.Config, as: AiurConfig
-  alias Aiur.Init.Dotenv
   alias Aiur.Env
+  alias Aiur.Init.Dotenv
 
   @required ~w(base_url api_key_env transport)a
 
