@@ -38,7 +38,7 @@ defmodule Aiur.AgentEnvironmentTest do
   test "scrub_shell_command clears Erlang distribution environment before exec" do
     command =
       AgentEnvironment.scrub_shell_command(
-        "env | grep -E '^(ERL_AFLAGS|ERL_LIBS|ERL_CRASH_DUMP|ERL_CRASH_DUMP_SECONDS|RELEASE_NODE|RELEASE_COOKIE|AIUR_NODE_NAME|AIUR_AGENT_NODE_NAME|AIUR_COOKIE|AIUR_ERLANG_COOKIE|AIUR_RELEASE_NODE|AIUR_INSTANCE_KEY|AIUR_REPO_ROOT|ROOTDIR|BINDIR|EMU|PROGNAME|OTHER_COOKIE)=' | sort"
+        "env | grep -E '^(ERL_AFLAGS|ERL_LIBS|ERL_CRASH_DUMP|ERL_CRASH_DUMP_SECONDS|RELEASE_NODE|RELEASE_COOKIE|AIUR_NODE_NAME|AIUR_AGENT_NODE_NAME|AIUR_COOKIE|AIUR_ERLANG_COOKIE|AIUR_CONTAINER|AIUR_RELEASE_NODE|AIUR_INSTANCE_KEY|AIUR_REPO_ROOT|ROOTDIR|BINDIR|EMU|PROGNAME|OTHER_COOKIE)=' | sort"
       )
 
     {output, 0} =
@@ -54,6 +54,7 @@ defmodule Aiur.AgentEnvironmentTest do
           {"AIUR_AGENT_NODE_NAME", "aiur@test"},
           {"AIUR_COOKIE", "secret"},
           {"AIUR_ERLANG_COOKIE", "secret"},
+          {"AIUR_CONTAINER", "1"},
           # #431 per-instance identity inputs — must not leak into an inner aiur.
           {"AIUR_RELEASE_NODE", "aiur-kevin-abc1230000@127.0.0.1"},
           {"AIUR_INSTANCE_KEY", "abc1230000"},

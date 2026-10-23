@@ -221,19 +221,31 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
 
   const vsnDir = path.join(releaseDir, "releases", "0.1.1");
   const argvCapture = path.join(root, "argv.txt");
+  const distributionCapture = path.join(root, "distribution.txt");
+  const readyFile = path.join(root, "control-ready");
   const elixir = path.join(vsnDir, "elixir");
   writeFileSync(elixir, [
     "#!/usr/bin/env bash",
     'printf "%s\\n" "$(cat \"$AIUR_ARGV_FILE\")" >"$AIUR_TEST_ARGV_CAPTURE"',
+    'printf "%s\\n" "$RELEASE_DISTRIBUTION|$RELEASE_NODE|$RELEASE_COOKIE|$ERL_AFLAGS|$ERL_EPMD_ADDRESS" >>"$AIUR_TEST_DISTRIBUTION_CAPTURE"',
+    'touch "$AIUR_TEST_READY_FILE"',
     'echo "__AIUR_CONFIG_PATH__:/tmp/container-config"',
     'echo "container-release-output"',
-    "trap 'exit 0' TERM INT HUP",
+    'trap \'rm -f "$AIUR_TEST_READY_FILE"; exit 0\' TERM INT HUP',
     "while sleep 0.05; do :; done",
     "",
   ].join("\n"));
   chmodSync(elixir, 0o755);
-  writeFileSync(path.join(releaseDir, "bin", "aiur"), "#!/usr/bin/env bash\necho __AIUR_CONTROL_READY__\n");
+  writeFileSync(path.join(releaseDir, "bin", "aiur"), [
+    "#!/usr/bin/env bash",
+    'if [ -f "$AIUR_TEST_READY_FILE" ]; then echo __AIUR_CONTROL_READY__; else echo __AIUR_CONTROL_NOT_READY__; exit 1; fi',
+    "",
+  ].join("\n"));
   chmodSync(path.join(releaseDir, "bin", "aiur"), 0o755);
+  const fakeEpmd = path.join(releaseDir, "erts-test", "bin", "epmd");
+  mkdirSync(path.dirname(fakeEpmd), { recursive: true });
+  writeFileSync(fakeEpmd, "#!/usr/bin/env bash\necho 'epmd: up and running on port 4369 with data:'\n");
+  chmodSync(fakeEpmd, 0o755);
 
   const logsRoot = path.join(root, "logs");
   const pathWithoutTmux = path.join(root, "path-without-tmux");
@@ -249,6 +261,11 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
   const launchEnv = {
     ...process.env,
     AIUR_RELEASE_DIR: releaseDir,
+    AIUR_INSTANCE_KEY: path.basename(root),
+    AIUR_RELEASE_NODE: "aiur-container-test@127.0.0.1",
+    AIUR_ERLANG_COOKIE: "container-env-cookie-5939",
+    AIUR_TEST_DISTRIBUTION_CAPTURE: distributionCapture,
+    AIUR_TEST_READY_FILE: readyFile,
     AIUR_TEST_ARGV_CAPTURE: argvCapture,
     AIUR_BG_STATE_DIR: path.join(root, "state"),
     AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
@@ -277,6 +294,9 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
     expect(output).toContain("container-release-output");
     expect(readFileSync(argvCapture, "utf8")).toContain("--headless");
     expect(readFileSync(argvCapture, "utf8")).not.toContain("--no-dashboard");
+    const distribution = readFileSync(distributionCapture, "utf8");
+    expect(distribution).toContain("name|aiur-container-test@127.0.0.1|container-env-cookie-5939|");
+    expect(distribution).toContain("-kernel inet_dist_use_interface {127,0,0,1}|127.0.0.1");
     expect(existsSync(path.join(pathWithoutTmux, "tmux"))).toBe(false);
     child.kill("SIGTERM");
     const result = await Promise.race([
@@ -287,8 +307,11 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
     expect(result).toEqual({ code: 0, signal: null });
     expect(readFileSync(path.join(logsRoot, "log", "boot.out.log"), "utf8")).toContain("container-release-output");
 
+    writeFileSync(path.join(root, "state", "cookie"), "container-volume-cookie-5939");
     writeFileSync(elixir, [
       "#!/usr/bin/env bash",
+      'printf "%s\\n" "$RELEASE_DISTRIBUTION|$RELEASE_NODE|$RELEASE_COOKIE|$ERL_AFLAGS|$ERL_EPMD_ADDRESS" >>"$AIUR_TEST_DISTRIBUTION_CAPTURE"',
+      'touch "$AIUR_TEST_READY_FILE"',
       'echo "$$" >"$AIUR_STUBBORN_PID_FILE"',
       'echo "stubborn-container-release-output"',
       "trap '' TERM",
@@ -299,6 +322,7 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
       stdio: ["ignore", "pipe", "pipe"],
       env: {
         ...launchEnv,
+        AIUR_ERLANG_COOKIE: "",
         AIUR_CONTAINER_STOP_GRACE_TICKS: "2",
         AIUR_STUBBORN_PID_FILE: path.join(root, "stubborn-release.pid"),
       },
@@ -312,6 +336,7 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(stubbornOutput).toContain("stubborn-container-release-output");
+    expect(readFileSync(distributionCapture, "utf8")).toContain("name|aiur-container-test@127.0.0.1|container-volume-cookie-5939|");
     stubbornProcess.kill("SIGTERM");
     const stubbornResult = await Promise.race([
       stubbornExited,
@@ -325,6 +350,7 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
     expect(stubbornResult).not.toBeNull();
     expect(stubbornOutput).toContain("sending SIGKILL");
 
+    rmSync(readyFile, { force: true });
     writeFileSync(elixir, "#!/usr/bin/env bash\nexit 7\n");
     const crashed = spawn(process.execPath, [shim, "run", "--container"], {
       stdio: ["ignore", "ignore", "ignore"],
@@ -344,6 +370,77 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
     }
     await exited;
   }
+}, 60_000);
+
+test("container launch refuses an existing or indeterminate distribution node", () => {
+  const { launcher, releaseDir } = setupRealLauncher();
+  const node = "aiur-container-safety-test@127.0.0.1";
+  const launchMarker = path.join(root, "release-launched");
+  const releaseElixir = path.join(releaseDir, "releases", "0.1.1", "elixir");
+  writeFileSync(releaseElixir, `#!/usr/bin/env bash\ntouch ${launchMarker}\n`);
+  chmodSync(releaseElixir, 0o755);
+  writeFileSync(path.join(releaseDir, "bin", "aiur"), "#!/usr/bin/env bash\nexit 1\n");
+  chmodSync(path.join(releaseDir, "bin", "aiur"), 0o755);
+
+  const fakeEpmd = path.join(releaseDir, "erts-test", "bin", "epmd");
+  mkdirSync(path.dirname(fakeEpmd), { recursive: true });
+  writeFileSync(fakeEpmd, [
+    "#!/usr/bin/env bash",
+    'if [ "$AIUR_TEST_EPMD_STATE" = "unknown" ]; then exit 1; fi',
+    `echo 'name ${node.split("@")[0]} at port 4369'`,
+    "",
+  ].join("\n"));
+  chmodSync(fakeEpmd, 0o755);
+
+  for (const state of ["up", "unknown"]) {
+    const result = spawnSync(launcher, ["run", "--container"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AIUR_RELEASE_DIR: releaseDir,
+        AIUR_RELEASE_NODE: node,
+        AIUR_INSTANCE_KEY: path.basename(root),
+        AIUR_ERLANG_COOKIE: "container-test-cookie-5939",
+        AIUR_TEST_EPMD_STATE: state,
+        AIUR_BG_STATE_DIR: path.join(root, "state"),
+        AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
+        AIUR_SESSION_PREFIX: "container-safety-test",
+        XDG_RUNTIME_DIR: root,
+        TMPDIR: root,
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`is ${state}`);
+    expect(existsSync(launchMarker)).toBe(false);
+  }
+});
+
+test("container launch requires its own cookie instead of using the release cookie", () => {
+  const { launcher, releaseDir } = setupRealLauncher();
+  const launchMarker = path.join(root, "release-launched");
+  const releaseElixir = path.join(releaseDir, "releases", "0.1.1", "elixir");
+  writeFileSync(releaseElixir, `#!/usr/bin/env bash\ntouch ${launchMarker}\n`);
+  chmodSync(releaseElixir, 0o755);
+  writeFileSync(path.join(releaseDir, "releases", "COOKIE"), "baked-release-cookie-should-not-be-used");
+
+  const result = spawnSync(launcher, ["run", "--container"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      AIUR_RELEASE_DIR: releaseDir,
+      AIUR_INSTANCE_KEY: path.basename(root),
+      AIUR_BG_STATE_DIR: path.join(root, "state"),
+      AIUR_COOKIE_FILE: path.join(root, "missing-volume", "cookie"),
+      AIUR_ERLANG_COOKIE: "",
+      XDG_RUNTIME_DIR: root,
+      TMPDIR: root,
+    },
+  });
+
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain("requires AIUR_ERLANG_COOKIE or a readable AIUR_COOKIE_FILE volume");
+  expect(existsSync(launchMarker)).toBe(false);
 });
 
 test("launcher dotenv keeps shell exports and prefers repo-local provider credentials", () => {

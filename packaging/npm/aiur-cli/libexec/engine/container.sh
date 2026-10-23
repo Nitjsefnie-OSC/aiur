@@ -8,12 +8,24 @@ run_session_container() {
   local launcher="" inner_cmd="" launch_tempfiles=() status=0 child=""
 
   validate_container_options "$@"
+  export AIUR_CONTAINER=1
   aiur_resolve_identity
   prepare_distribution
   launch_lock="$(aiur_launch_lock_path)"
   acquire_aiur_launch_lock "$launch_lock" || return 1
+
+  local control_state node_state
+  control_state="$(probe_control_liveness)"
+  node_state="$(probe_node_liveness)"
+  if [ "$control_state" = "up" ] || [ "$node_state" != "down" ]; then
+    echo "aiur container cannot start: node ${AIUR_RELEASE_NODE} is ${node_state} (control plane ${control_state}); leaving it untouched" >&2
+    release_aiur_launch_lock "$launch_lock"
+    return 1
+  fi
+
   run_session_prepare_env "$@"
   run_session_write_pane_launcher
+  # A node absent from EPMD is confirmed down. Reclaim only its orphaned BEAM.
   kill_beams_matching "-name ${AIUR_RELEASE_NODE}"
   sweep_stale_tmp_artifacts || true
   sweep_orphan_test_private_dirs || true
@@ -22,7 +34,7 @@ run_session_container() {
   trap 'session_cleanup' EXIT
   trap 'container_shutdown' TERM INT HUP
   start_container_daemon
-  wait_container_startup || return 1
+  wait_container_startup || { status=$?; return "$status"; }
   mark_container_ready "$session" "$socket" "$launch_lock"
   if wait "$child"; then status=0; else status=$?; fi
   child=""
