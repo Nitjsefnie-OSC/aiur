@@ -24,12 +24,13 @@ defmodule AiurWeb.FinancialDataAccess do
   defmodule Context do
     @moduledoc false
 
-    @enforce_keys [:configuration_generation, :connection_generation, :proof]
-    defstruct [:configuration_generation, :connection_generation, :proof]
+    @enforce_keys [:configuration_generation, :connection_generation, :issued_at, :proof]
+    defstruct [:configuration_generation, :connection_generation, :issued_at, :proof]
 
     @type t :: %__MODULE__{
             configuration_generation: String.t(),
             connection_generation: String.t(),
+            issued_at: integer(),
             proof: String.t()
           }
   end

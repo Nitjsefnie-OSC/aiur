@@ -42,10 +42,19 @@ defmodule AiurWeb.DashboardAuthController do
     session_params = get_session(conn, :google_session_params)
 
     with true <- is_map(session_params),
-         {:ok, %{user: user}} <- Google.callback(Keyword.put(google_config(), :session_params, session_params), params),
-         true <- allowed_google_user?(user, Config.settings!().dashboard_auth.google.allowed_emails),
+         {:ok, %{user: user}} <- Google.callback(Keyword.put(google_config(), :session_params, session_params), params) do
+      complete_google_sign_in(conn, user)
+    else
+      _ -> google_sign_in_failed(conn)
+    end
+  end
+
+  @doc false
+  def complete_google_sign_in(conn, user) do
+    with true <- allowed_google_user?(user, Config.settings!().dashboard_auth.google.allowed_emails),
          {:ok, marker} <- FinancialDataAccess.new_browser_session_marker() do
       conn
+      |> configure_session(renew: true)
       |> delete_session(:google_session_params)
       |> put_session(FinancialDataAccess.session_key(), marker)
       |> put_session(:google_authenticated_at, System.system_time(:second))
@@ -53,17 +62,22 @@ defmodule AiurWeb.DashboardAuthController do
       |> put_resp_header("cache-control", "no-store")
       |> redirect(to: if(Passkeys.enabled?(), do: "/auth/login", else: "/"))
     else
-      _ ->
-        conn
-        |> clear_session()
-        |> put_resp_header("cache-control", "no-store")
-        |> put_status(:unauthorized)
-        |> text("Google sign-in failed. Return to /auth/login and try again.")
+      _ -> google_sign_in_failed(conn)
     end
+  end
+
+  defp google_sign_in_failed(conn) do
+    conn
+    |> clear_session()
+    |> put_resp_header("cache-control", "no-store")
+    |> put_status(:unauthorized)
+    |> text("Google sign-in failed. Return to /auth/login and try again.")
   end
 
   @spec logout(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def logout(conn, _params) do
+    :ok = FinancialDataAccess.Generation.invalidate()
+
     conn
     |> clear_session()
     |> put_resp_header("cache-control", "no-store")
@@ -91,6 +105,7 @@ defmodule AiurWeb.DashboardAuthController do
          true <- Passkeys.allowed_user?(credential),
          {:ok, marker} <- FinancialDataAccess.new_browser_session_marker() do
       conn
+      |> configure_session(renew: true)
       |> delete_session(:passkey_authentication_challenge)
       |> put_session(FinancialDataAccess.session_key(), marker)
       |> put_session(:passkey_authenticated_at, System.system_time(:second))

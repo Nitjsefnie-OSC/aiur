@@ -219,7 +219,10 @@ generate one with `openssl rand -base64 32`. The value must be at least 32
 bearer-safe bytes with no surrounding whitespace. An absent or empty value
 disables the API, while a present non-empty unusable value aborts startup.
 Google browser sign-in uses `AIUR_GOOGLE_CLIENT_ID` and `AIUR_GOOGLE_CLIENT_SECRET`
-from `~/.aiur/.env` or the repository `.env`; configure both together. Provider keys use
+from `~/.aiur/.env` or the repository `.env`; configure both together. It also
+requires `AIUR_DASHBOARD_USERNAME` and `AIUR_DASHBOARD_PASSWORD`, which remain
+the machine Basic Auth credentials. Changes to `dashboard_auth` settings take
+effect after restarting Aiur. Provider keys use
 `MOONSHOT_API_KEY`, `DEEPSEEK_API_KEY`,
 `OPENROUTER_API_KEY`, and (for the credits meter) `OPENROUTER_MANAGEMENT_KEY`.
 `AIUR_SECRET_KEY_BASE` (at least 64 bytes) overrides the dashboard signing key; otherwise Aiur stores a persistent mode-0600 key per instance under `~/.aiur/instances/`.

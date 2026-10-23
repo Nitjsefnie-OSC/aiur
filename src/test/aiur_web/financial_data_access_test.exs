@@ -6,6 +6,8 @@ defmodule AiurWeb.FinancialDataAccessTest do
 
   alias Aiur.TestSupport.EndpointStubs
   alias AiurWeb.{Endpoint, FinancialDataAccess}
+  alias AiurWeb.FinancialDataAccess.Proof
+  alias AiurWeb.DashboardAuthController
   alias AiurWeb.Session
 
   @session_options Plug.Session.init(
@@ -79,6 +81,38 @@ defmodule AiurWeb.FinancialDataAccessTest do
     refute browser_request.halted
     assert browser_request.status == nil
     assert get_session(browser_request, FinancialDataAccess.session_key()) == marker
+  end
+
+  test "a correctly signed marker older than the configured session age expires server-side" do
+    configure_credentials("operator", "financial-auth-secret")
+    configure_endpoint(dashboard_auth_required: true, dashboard_writable: false)
+    {:ok, config} = Proof.configuration([], 1)
+    max_age = Aiur.Config.settings!().dashboard_auth.session_max_age_days * 86_400
+    old_marker = Proof.new_session_marker(config, 1, System.system_time(:second) - max_age - 1)
+
+    assert :error = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => old_marker})
+  end
+
+  test "logging out revokes copied markers on the server" do
+    configure_credentials("operator", "financial-auth-secret")
+    configure_endpoint(dashboard_auth_required: true, dashboard_writable: false)
+    authenticated = authenticated_conn("operator", "financial-auth-secret")
+    marker = get_session(authenticated, FinancialDataAccess.session_key())
+    assert {:ok, _context} = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => marker})
+
+    DashboardAuthController.logout(session_conn(), %{})
+
+    assert :error = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => marker})
+  end
+
+  test "Google callback with a mismatched state does not create a session marker" do
+    conn =
+      session_conn()
+      |> put_session(:google_session_params, %{state: "expected-state", nonce: "expected-nonce"})
+      |> DashboardAuthController.google_callback(%{"state" => "attacker-state", "code" => "unused"})
+
+    assert conn.status == 401
+    assert get_session(conn, FinancialDataAccess.session_key()) == nil
   end
 
   test "unconfigured dashboard authentication refuses the request with its cause" do

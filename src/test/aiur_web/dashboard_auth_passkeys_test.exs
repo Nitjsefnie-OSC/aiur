@@ -19,6 +19,19 @@ defmodule AiurWeb.DashboardAuthPasskeysTest do
     assert {:error, :challenge_missing_or_replayed} = ChallengeStore.take(challenge_id, store)
   end
 
+  test "passkey challenge storage is bounded and releases expired slots" do
+    name = Module.concat(__MODULE__, BoundedChallengeStore)
+    store = start_supervised!({ChallengeStore, name: name, max_entries: 1, ttl_ms: 1})
+    challenge = Wax.new_registration_challenge(origin: "https://aiur.example.test", rp_id: "aiur.example.test", user_verification: "required")
+
+    assert {:ok, _challenge_id} = ChallengeStore.put(challenge, store)
+    assert {:error, :capacity_exceeded} = ChallengeStore.put(challenge, store)
+
+    Process.sleep(2)
+
+    assert {:ok, _replacement_id} = ChallengeStore.put(challenge, store)
+  end
+
   test "authenticator counters allow unsupported 0-to-0 and reject a decrease" do
     assert Passkeys.sign_count_valid?(0, 0)
     assert Passkeys.sign_count_valid?(8, 9)
