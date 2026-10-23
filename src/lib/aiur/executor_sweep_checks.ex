@@ -12,6 +12,7 @@ defmodule Aiur.ExecutorSweep.Checks do
     stale_minutes = Keyword.get(opts, :merge_group_stale_minutes, 15)
     github_freshness_ms = Keyword.get(opts, :github_freshness_ms, 5 * 60_000)
     label_prefix = Keyword.get(opts, :label_prefix, "agent")
+
     [
       {"unreviewed_prs", [:pull_requests, :tickets], fn -> unreviewed_prs(snapshot, now, unreviewed_minutes) end},
       {"old_decisions", [:decisions], fn -> old_decisions(snapshot, now) end},
