@@ -1,9 +1,9 @@
 defmodule Aiur.GitHub.HumanReviewEvidence do
   @moduledoc false
 
-alias Aiur.Events.GithubCIPoller.ApprovalCarry
-alias Aiur.GitHub.Transport
-alias Aiur.LocalTestEvidence
+  alias Aiur.Events.GithubCIPoller.ApprovalCarry
+  alias Aiur.GitHub.Transport
+  alias Aiur.LocalTestEvidence
 
   @spec verify(map(), map()) :: :ok | {:error, term()}
   def verify(context, %{"head" => %{"sha" => head}, "body" => body} = pr)
