@@ -7,6 +7,14 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
 
   @moduletag :integration
   @tag timeout: 180_000
+  setup_all do
+    # An interrupted prior run may leave test-owned tmux servers behind.
+    # Sweep only the exact namespace this module creates.
+    cleanup_tmux_sockets("keep-agents-test-")
+
+    :ok
+  end
+
   test "four mid-turn providers survive the real engine restart and polling admits a fifth" do
     restart_case(false)
   end
@@ -94,6 +102,8 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
 
     on_exit(fn ->
       run_engine(["stop"], env)
+      cleanup_tmux_sockets("keep-agents-test-#{nonce}")
+      refute Enum.any?(tmux_sockets(), &String.starts_with?(&1, "keep-agents-test-#{nonce}"))
       TestCleanup.rm_rf!(root)
     end)
 
@@ -159,6 +169,35 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
       event = wait_dispatch(socket, "5")
       assert event["ticket"] == "5"
       assert event["timestamp_ms"] - String.to_integer(added_at) <= 5_000
+    end
+  end
+
+  defp tmux_sockets do
+    {uid, 0} = System.cmd("id", ["-u"])
+    socket_dir = Path.join(System.tmp_dir!(), "tmux-#{String.trim(uid)}")
+    if File.dir?(socket_dir), do: File.ls!(socket_dir), else: []
+  end
+
+  defp cleanup_tmux_sockets(prefix) do
+    {uid, 0} = System.cmd("id", ["-u"])
+    socket_dir = Path.join(System.tmp_dir!(), "tmux-#{String.trim(uid)}")
+
+    if File.dir?(socket_dir) do
+      socket_dir
+      |> File.ls!()
+      |> Enum.filter(&String.starts_with?(&1, prefix))
+      |> Enum.each(fn socket ->
+        System.cmd("tmux", ["-L", socket, "kill-server"], stderr_to_stdout: true)
+        remove_tmux_socket!(Path.join(socket_dir, socket))
+      end)
+    end
+  end
+
+  defp remove_tmux_socket!(path) do
+    case File.rm(path) do
+      :ok -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> raise "cannot remove tmux socket #{path}: #{inspect(reason)}"
     end
   end
 
