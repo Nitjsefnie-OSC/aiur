@@ -55,6 +55,12 @@ for (const cell of cells) test(`filter parity ${cell.dataset} ${cell.viewport.wi
   try {
     const groups = cell.viewport.width === 1024 ? [] : cell.dataset === 'live' ? ['epic', 'feature', 'model', 'tstate', 'astate'] : ['feature']
     for (const key of [null, ...groups]) {
+      // The paused clock stops Phoenix's heartbeat; retain the real healthy transport.
+      await pair.product.evaluate(() => {
+        const socket = window.liveSocket.getSocket()
+        if (!socket.isConnected()) throw new Error('Frozen-clock filter parity lost its live transport')
+        socket.sendHeartbeat()
+      })
       if (key) for (const page of [pair.design, pair.product]) await page.locator(`[data-g="${key}"]`).dispatchEvent('click')
       expect(await normalize(pair.product)).toBe(await normalize(pair.design))
       await expectDesignParity(pair, { name: `toolbar-${key ?? 'closed'}-${cell.dataset}-${cell.viewport.width}-${cell.theme}-${cell.palette}`, region: '.bd-toolbar', preserveAnimations: true })
