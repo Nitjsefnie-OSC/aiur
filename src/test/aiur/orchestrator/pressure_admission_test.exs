@@ -89,19 +89,22 @@ defmodule Aiur.Orchestrator.PressureAdmissionTest do
     File.write!(Path.join(root, "cpu.pressure"), "some avg10=60 avg60=30 avg300=10 total=2\n")
     previous_root = Application.get_env(:aiur, :cgroup_root_override)
     previous_pressure = Application.get_env(:aiur, :cpu_pressure_source_override)
+    previous_load = Application.get_env(:aiur, :loadavg_source_override)
+
+    on_exit(fn ->
+      Aiur.TestCleanup.rm_rf!(root)
+      restore_app_env(:cgroup_root_override, previous_root)
+      restore_app_env(:cpu_pressure_source_override, previous_pressure)
+      restore_app_env(:loadavg_source_override, previous_load)
+    end)
+
     Application.put_env(:aiur, :cgroup_root_override, root)
     Application.put_env(:aiur, :cpu_pressure_source_override, fn -> {:ok, "some avg10=0 avg60=0 avg300=0 total=0"} end)
-    previous_load = Application.get_env(:aiur, :loadavg_source_override)
     Application.put_env(:aiur, :loadavg_source_override, fn -> {:ok, "0.01 0.01 0.01 1/1 1"} end)
 
     sample = PressureAdmission.sample()
     result = PressureAdmission.cpu_gate(Map.merge(sample, %{schedulers: 2, load_threshold: 1.5}))
     assert result == {:hold, %{signal: :cpu_pressure, measured: 30.0, threshold: 20.0}}
-
-    Aiur.TestCleanup.rm_rf!(root)
-    restore_app_env(:cgroup_root_override, previous_root)
-    restore_app_env(:cpu_pressure_source_override, previous_pressure)
-    restore_app_env(:loadavg_source_override, previous_load)
   end
 
   test "cgroup memory above the configured share holds new dispatch" do
@@ -265,4 +268,7 @@ defmodule Aiur.Orchestrator.PressureAdmissionTest do
       queued_demand?: true
     }
   end
+
+  defp restore_app_env(key, nil), do: Application.delete_env(:aiur, key)
+  defp restore_app_env(key, value), do: Application.put_env(:aiur, key, value)
 end
