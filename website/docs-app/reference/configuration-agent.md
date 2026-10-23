@@ -17,6 +17,7 @@ Sections of the [configuration reference](/reference/configuration) covering `ag
 | `agent.build_nice` | integer | 10 | CPU nice adjustment (0–19) applied once to admitted build commands and inherited by descendants; 0 preserves launch priority. Nested builds reuse the lease without another adjustment. Build processes under registered agent relays remain counted by soft load/run-queue admission; build capacity also counts them. |
 | `agent.build_start_stagger_seconds` | integer | 0 | Minimum spacing between local Mix build starts; 0 disables pacing. |
 | `agent.capacity_starvation_alert_after_seconds` | integer | 60 | Minimum seconds a ready-work capacity-starvation condition must persist before `system.dispatch.capacity_starved` / `system.fleet.capacity.starved` raise. The below-target dispatch ramp clears itself within a few poll cycles, so this dwell keeps the intended ramp quiet while a genuine gate that outlives the bound still raises. |
+| `agent.cgroup_memory_threshold` | float or nil | 0.8 | Holds new dispatch when cgroup v2 memory.current exceeds this share of memory.max. Null disables the container gate. |
 | `agent.ci_recovery_enabled` | boolean | true | Enables automatic CI recovery reruns; set `false` to disable them. |
 | `agent.ci_recovery_max_per_hour` | positive integer | 20 | Maximum recovery reruns admitted in a rolling hour. |
 | `agent.ci_recovery_max_per_poll` | positive integer | 5 | Maximum recovery reruns admitted by one CI poll. |
@@ -42,7 +43,6 @@ Sections of the [configuration reference](/reference/configuration) covering `ag
 | `agent.max_turns` | integer or nil | nil | Per-issue turn cap; nil is uncapped. |
 | `agent.max_turns_by_complexity` | map | `%{}` | Per-complexity turn caps. |
 | `agent.min_free_memory_mb` | integer or nil | nil | Linux `MemAvailable` floor shared by dispatch and the Mix build gate. |
-| `agent.cgroup_memory_threshold` | float or nil | 0.8 | In cgroup v2, hold new dispatch when `memory.current` exceeds this fraction of `memory.max`; null disables the cgroup memory gate. |
 | `agent.mix_scheduler_cap` | integer | 4 | Caps schedulers in agent-launched Mix BEAMs. |
 | `agent.non_closing_merge_marker` | string | `needs-triage` | Marker for a merged PR that references the ticket but does not close it. |
 | `agent.pricing_policy.avoid_peak_pricing` | boolean | `true` | Routes around peak-pricing windows through `agent.priority`; `false` follows the list exactly and never changes spend reporting. When the window cannot be determined, routing never moves work (it fails toward not rerouting). Inspect the current window and next boundary with `mix aiur.pricing_window`. |
