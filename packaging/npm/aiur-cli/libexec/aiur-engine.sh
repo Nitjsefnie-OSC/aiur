@@ -63,7 +63,7 @@ engine_source="${BASH_SOURCE[0]}"
 
 # Every other function lives in a sibling module. A missing one fails here, by
 # path, instead of as "command not found" halfway through a run.
-AIUR_ENGINE_MODULES="identity oneshot dotenv run processes reap instance session control commands executor_commands report_commands test-private-state lifecycle handoff upgrade pre_pr ticket_usage"
+AIUR_ENGINE_MODULES="identity oneshot dotenv run container processes reap instance session control commands executor_commands report_commands test-private-state lifecycle handoff upgrade pre_pr ticket_usage"
 for __aiur_engine_module in $AIUR_ENGINE_MODULES; do
   [ -f "$engine_dir/engine/$__aiur_engine_module.sh" ] ||
     die "missing engine module: $engine_dir/engine/$__aiur_engine_module.sh"
@@ -74,7 +74,7 @@ unset __aiur_engine_module
 usage() {
   cat <<'EOF'
 Usage: aiur [--interactive] [--no-dashboard] [--executor] [--pause] [--max-agents <n>] [--logs-root <path>] [--port <port>] [--host <host>] [config-path]
-       aiur run [--bg] [--no-dashboard] [--executor] [--debug]  explicit launch form (foreground unless --bg)
+       aiur run [--bg] [--container] [--no-dashboard] [--executor] [--debug]  explicit launch form
        aiur init [--force]   scaffold .aiur/config (interactive setup wizard)
        aiur login <harness> <name> [--dir <path>]  sign in to a supported backend account
        aiur accounts [<harness>] [--json]  list registered accounts
@@ -160,7 +160,11 @@ dispatch_run() {
   reject_legacy_config "$@"
 
   for arg in "$@"; do
-    if [ "$arg" = "--bg" ]; then
+    if [ "$arg" = "--container" ]; then
+      [ "$mode" != "background" ] || die "--container cannot be combined with --bg"
+      mode="container"
+    elif [ "$arg" = "--bg" ]; then
+      [ "$mode" != "container" ] || die "--container cannot be combined with --bg"
       mode="background"
     else
       args+=("$arg")

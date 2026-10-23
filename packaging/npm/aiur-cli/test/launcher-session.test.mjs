@@ -1,14 +1,16 @@
 import { test, expect } from "bun:test";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
   readdirSync,
+  copyFileSync,
   writeFileSync,
   readFileSync,
   existsSync,
   rmSync,
   chmodSync,
+  symlinkSync,
 } from "node:fs";
 import path from "node:path";
 import { root, captureFile, setupRealLauncher, useTempRoot } from "./launcher-support.mjs";
@@ -207,6 +209,122 @@ test("launcher routes init to a distribution-free foreground exec", () => {
   expect(capture).not.toContain("--cookie");
   // Argv crossed into the BEAM via the argv file.
   expect(capture).toContain("ARGV_FILE:init");
+});
+
+test("container launch runs without tmux and exits cleanly on SIGTERM", async () => {
+  const { launcher, releaseDir } = setupRealLauncher();
+  const shim = path.join(root, "bin", "aiur.js");
+  mkdirSync(path.dirname(shim), { recursive: true });
+  copyFileSync(new URL("../bin/aiur.js", import.meta.url), shim);
+  mkdirSync(path.join(root, "share"), { recursive: true });
+  writeFileSync(path.join(root, "share", "aiur.tmux.conf"), "# unused in container mode\n");
+
+  const vsnDir = path.join(releaseDir, "releases", "0.1.1");
+  const argvCapture = path.join(root, "argv.txt");
+  const elixir = path.join(vsnDir, "elixir");
+  writeFileSync(elixir, [
+    "#!/usr/bin/env bash",
+    'printf "%s\\n" "$(cat \"$AIUR_ARGV_FILE\")" >"$AIUR_TEST_ARGV_CAPTURE"',
+    'echo "__AIUR_CONFIG_PATH__:/tmp/container-config"',
+    'echo "container-release-output"',
+    "trap 'exit 0' TERM INT HUP",
+    "while sleep 0.05; do :; done",
+    "",
+  ].join("\n"));
+  chmodSync(elixir, 0o755);
+  writeFileSync(path.join(releaseDir, "bin", "aiur"), "#!/usr/bin/env bash\necho __AIUR_CONTROL_READY__\n");
+  chmodSync(path.join(releaseDir, "bin", "aiur"), 0o755);
+
+  const logsRoot = path.join(root, "logs");
+  const pathWithoutTmux = path.join(root, "path-without-tmux");
+  mkdirSync(pathWithoutTmux);
+  for (const name of readdirSync("/usr/bin")) {
+    if (name === "tmux") continue;
+    try {
+      symlinkSync(path.join("/usr/bin", name), path.join(pathWithoutTmux, name));
+    } catch (error) {
+      if (error.code !== "EEXIST") throw error;
+    }
+  }
+  const launchEnv = {
+    ...process.env,
+    AIUR_RELEASE_DIR: releaseDir,
+    AIUR_TEST_ARGV_CAPTURE: argvCapture,
+    AIUR_BG_STATE_DIR: path.join(root, "state"),
+    AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
+    AIUR_LOGS_ROOT: logsRoot,
+    AIUR_SESSION_PREFIX: "container-test",
+    AIUR_NODE_GRACE_TICKS: "100",
+    XDG_RUNTIME_DIR: root,
+    TMPDIR: root,
+    PATH: pathWithoutTmux,
+  };
+  const child = spawn(process.execPath, [shim, "run", "--container"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: launchEnv,
+  });
+
+  let output = "";
+  child.stdout.on("data", (chunk) => { output += chunk.toString(); });
+  child.stderr.on("data", (chunk) => { output += chunk.toString(); });
+  const exited = new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+  const deadline = Date.now() + 5000;
+  while (!output.includes("container-release-output") && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  try {
+    expect(output).toContain("container-release-output");
+    expect(readFileSync(argvCapture, "utf8")).toContain("--headless");
+    expect(readFileSync(argvCapture, "utf8")).not.toContain("--no-dashboard");
+    expect(existsSync(path.join(pathWithoutTmux, "tmux"))).toBe(false);
+    child.kill("SIGTERM");
+    const result = await Promise.race([
+      exited,
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+
+    expect(result).toEqual({ code: 0, signal: null });
+    expect(readFileSync(path.join(logsRoot, "log", "boot.out.log"), "utf8")).toContain("container-release-output");
+
+    writeFileSync(elixir, [
+      "#!/usr/bin/env bash",
+      'echo "stubborn-container-release-output"',
+      "trap '' TERM",
+      "while sleep 0.05; do :; done",
+      "",
+    ].join("\n"));
+    const stubborn = spawn(process.execPath, [shim, "run", "--container"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...launchEnv, AIUR_CONTAINER_STOP_GRACE_TICKS: "2" },
+    });
+    let stubbornOutput = "";
+    stubborn.stdout.on("data", (chunk) => { stubbornOutput += chunk.toString(); });
+    stubborn.stderr.on("data", (chunk) => { stubbornOutput += chunk.toString(); });
+    const stubbornExited = new Promise((resolve) => stubborn.once("exit", (code, signal) => resolve({ code, signal })));
+    const stubbornStartDeadline = Date.now() + 5000;
+    while (!stubbornOutput.includes("stubborn-container-release-output") && Date.now() < stubbornStartDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(stubbornOutput).toContain("stubborn-container-release-output");
+    stubborn.kill("SIGTERM");
+    const stubbornResult = await Promise.race([
+      stubbornExited,
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+    expect(stubbornResult).not.toBeNull();
+    expect(stubbornOutput).toContain("sending SIGKILL");
+
+    writeFileSync(elixir, "#!/usr/bin/env bash\nexit 7\n");
+    const crashed = spawn(process.execPath, [shim, "run", "--container"], {
+      stdio: ["ignore", "ignore", "ignore"],
+      env: launchEnv,
+    });
+    const crashResult = await new Promise((resolve) => crashed.once("exit", (code, signal) => resolve({ code, signal })));
+    expect(crashResult).toEqual({ code: 7, signal: null });
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    await exited;
+  }
 });
 
 test("launcher dotenv keeps shell exports and prefers repo-local provider credentials", () => {
