@@ -91,7 +91,7 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       issue_number: "3778",
       issue_url: "https://api.github.com/repos/owner/repo/issues/3778",
       prefix: "agent",
-      opts: [request_fun: request_fun]
+      opts: [request_fun: request_fun, clear_terminal_state_overrides: true]
     }
 
     updater = fn "3778", "done" ->
