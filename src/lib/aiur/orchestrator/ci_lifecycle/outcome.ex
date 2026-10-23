@@ -400,7 +400,9 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
       TicketTransition.write_state(
         to_string(issue.id || issue.identifier),
         @active_handoff_state,
-        Keyword.put(Transition.expected_state_opts(issue), :writer, :ci_lifecycle)
+        Transition.expected_state_opts(issue)
+        |> Keyword.put(:writer, :ci_lifecycle)
+        |> Keyword.put(:reason_modifiers, [])
       )
 
     if response == :ok, do: GithubCIPoller.record_pass(issue, result, result[:ci_recovery_opts] || [])

@@ -92,6 +92,28 @@ defmodule Aiur.Orchestrator.TicketTransition do
     end
   end
 
+  @doc "Returns a canonical prefixed label for a known reason suffix."
+  @spec reason_modifier_label(String.t()) :: String.t() | nil
+  def reason_modifier_label(suffix) do
+    if Labels.reason_modifier_suffix?(suffix), do: "#{Config.label_prefix()}:#{suffix}"
+  end
+
+  @doc "Maps a runtime cause to its canonical reason suffix."
+  @spec runtime_reason_modifier(term()) :: String.t() | nil
+  def runtime_reason_modifier(reason), do: Labels.runtime_reason_modifier(reason)
+
+  @doc "Removes transient runtime reasons, preserving the dependency blocker marker."
+  @spec clear_transient_reason_modifiers(String.t(), keyword()) :: :ok | {:error, term()}
+  def clear_transient_reason_modifiers(issue_id, opts) do
+    retained = ["blocked"]
+    removals = Labels.reason_modifier_suffixes() -- retained
+    prefix = Keyword.get(opts, :label_prefix, Config.label_prefix())
+    labels = Enum.map(removals, &"#{prefix}:#{&1}")
+    writer = Keyword.fetch!(opts, :writer)
+    tracker = Keyword.get(opts, :tracker, Tracker)
+    write_markers(issue_id, :remove, labels, Keyword.put(opts, :writer, writer) |> Keyword.put(:tracker, tracker))
+  end
+
   @spec write_marker(String.t(), :add | :remove, String.t(), keyword()) :: :ok | {:error, term()}
   def write_marker(issue_id, action, label, opts) when action in [:add, :remove] do
     writer = Keyword.fetch!(opts, :writer)

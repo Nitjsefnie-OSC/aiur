@@ -107,6 +107,15 @@ defmodule Aiur.Orchestrator.TicketTransitionTest do
     refute_received {:adapter_marker, _action, "7", _label}
   end
 
+  test "clearing transient runtime reasons preserves only the dependency blocker" do
+    labels = Labels.reason_modifier_labels("agent")
+    Application.put_env(:aiur, :memory_tracker_issues, [%Issue{id: "7", identifier: "7", state: "done", labels: labels}])
+
+    assert :ok = TicketTransition.clear_transient_reason_modifiers("7", writer: :agent_teardown)
+
+    assert {:ok, [%Issue{labels: ["agent:blocked"]}]} = Tracker.fetch_issue_states_by_ids(["7"])
+  end
+
   test "every canonical reason modifier can be added and cleared without changing the workflow state" do
     modifiers = Labels.reason_modifier_suffixes()
 

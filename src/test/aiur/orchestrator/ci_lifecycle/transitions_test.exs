@@ -231,7 +231,10 @@ defmodule Aiur.Orchestrator.CiLifecycle.TransitionsTest do
 
       assert_received {:recorded, 1, {:tracker_update, ^identifier, "in-progress", [expected_state: "ci-wait"]}}
 
-      assert_received {:recorded, 2,
+      assert_received {:recorded, 2, {:label_removed, ^identifier, "agent:merge-queued"}}
+      assert_received {:recorded, 3, {:label_removed, ^identifier, "agent:ci-red"}}
+
+      assert_received {:recorded, 4,
                        {:event,
                         %{
                           topic: ^topic,
@@ -241,8 +244,8 @@ defmodule Aiur.Orchestrator.CiLifecycle.TransitionsTest do
                           message: "CI passed for the current PR head"
                         }}}
 
-      assert_received {:recorded, 3, {:agent_queue_updated, ^identifier, _item_id, false}}
-      assert_received {:recorded, 4, {:resume_agent, _request_id, 101}}
+      assert_received {:recorded, 5, {:agent_queue_updated, ^identifier, _item_id, false}}
+      assert_received {:recorded, 6, {:resume_agent, _request_id, 101}}
 
       assert next.running[identifier].issue.state == "in-progress"
       assert next.running[identifier].control.status == :paused

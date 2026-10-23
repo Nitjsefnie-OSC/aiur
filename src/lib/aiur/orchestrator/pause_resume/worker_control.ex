@@ -3,8 +3,6 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
   Applies worker-reported control state and rejections to the running entry.
   """
 
-  alias Aiur.GitHub.Config, as: GitHubConfig
-  alias Aiur.GitHub.Labels
   alias Aiur.Orchestrator.ControlLifecycle
   alias Aiur.Orchestrator.Dispatcher
   alias Aiur.Orchestrator.DurationCapRelease
@@ -456,7 +454,7 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
   defp maybe_write_pause_reason_label(_identifier, _action, nil, _writer), do: :ok
 
   defp maybe_write_pause_reason_label(identifier, action, modifier, writer) when is_function(writer, 3),
-    do: writer.(identifier, action, "#{GitHubConfig.label_prefix()}:#{modifier}")
+    do: writer.(identifier, action, TicketTransition.reason_modifier_label(modifier))
 
   defp maybe_write_pause_reason_label(identifier, action, modifier, _writer),
     do: TicketTransition.write_reason_modifier(identifier, action, modifier, writer: :worker_control)
@@ -468,5 +466,5 @@ defmodule Aiur.Orchestrator.PauseResume.WorkerControl do
     state
   end
 
-  defp pause_reason_modifier(reason), do: Labels.runtime_reason_modifier(reason)
+  defp pause_reason_modifier(reason), do: TicketTransition.runtime_reason_modifier(reason)
 end
