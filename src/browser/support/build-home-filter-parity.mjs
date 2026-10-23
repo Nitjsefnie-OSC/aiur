@@ -23,6 +23,14 @@ export async function prepareFilterCapture(pair) {
     const viewport = page.viewportSize()
     await page.addStyleTag({ content: '.sidenav, .sidenav * { visibility: hidden !important } html, body { overflow-x: clip !important }' })
     expect(await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(viewport)
+    // Keep the usage raster's decode cache separate from smaller card logos.
+    // The server returns the identical PNG bytes for this query-only cache key.
+    await page.locator('#bd-usage img[src*="deepseek-logo.png"]').evaluateAll(images => Promise.all(images.map(async image => {
+      const url = new URL(image.currentSrc || image.src)
+      url.searchParams.set('parity-surface', 'usage')
+      image.src = url.href
+      await image.decode()
+    })))
     expect(await Promise.all(selectors.map(selector => page.locator(selector).boundingBox()))).toEqual(before)
   }
 }
