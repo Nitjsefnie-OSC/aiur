@@ -2,6 +2,7 @@ defmodule Aiur.EnvStartupChecksTest do
   use ExUnit.Case, async: false
 
   alias Aiur.Env
+  alias Aiur.Application.StartupChecks
 
   defmodule FirstCheck do
     @behaviour Aiur.Env.StartupCheck
@@ -43,6 +44,44 @@ defmodule Aiur.EnvStartupChecksTest do
     assert {:error, [type_error, group_error, "first: fixture", "second"]} = Env.validate(env)
     assert type_error == "AIUR_DEBUG must be a boolean (1, true, yes, 0, false, no), got \"banana\""
     assert group_error =~ "Set both or neither"
+  end
+
+  test "hosted preflight reports all missing secret names without echoing present values" do
+    settings = %{
+      tracker: %{kind: "github"},
+      server: %{host: "0.0.0.0"},
+      webhooks: %{repos: []},
+      agent: %{priority: []}
+    }
+
+    env = %{
+      "AIUR_SECRETS_FROM_ENV" => "1",
+      "GITHUB_APP_ID" => "app-id-value",
+      "AIUR_DASHBOARD_USERNAME" => "operator-name",
+      "AIUR_SECRET_KEY_BASE" => String.duplicate("x", 64),
+      "AIUR_STATE_PERSISTENT" => "0"
+    }
+
+    assert {:error, [message]} = StartupChecks.validate_secrets(settings, env)
+    assert message =~ "GITHUB_APP_INSTALLATION_ID"
+    assert message =~ "GITHUB_APP_PRIVATE_KEY"
+    assert message =~ "AIUR_DASHBOARD_PASSWORD"
+    refute message =~ "app-id-value"
+    refute message =~ "operator-name"
+    refute message =~ String.duplicate("x", 64)
+  end
+
+  test "hosted Linear configuration does not require GitHub credentials" do
+    settings = %{
+      tracker: %{kind: "linear"},
+      server: %{host: "127.0.0.1"},
+      webhooks: %{repos: []},
+      agent: %{kind: "codex", priority: []}
+    }
+
+    env = %{"AIUR_SECRETS_FROM_ENV" => "1", "AIUR_STATE_PERSISTENT" => "1", "LINEAR_API_KEY" => "linear-key"}
+
+    assert :ok = StartupChecks.validate_secrets(settings, env)
   end
 
   test "missing registry still rejects an invalid supervisor token without exposing it" do

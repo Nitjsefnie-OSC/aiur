@@ -222,6 +222,12 @@ Provider keys use
 `MOONSHOT_API_KEY`, `DEEPSEEK_API_KEY`,
 `OPENROUTER_API_KEY`, and (for the credits meter) `OPENROUTER_MANAGEMENT_KEY`.
 `AIUR_SECRET_KEY_BASE` (at least 64 bytes) overrides the dashboard signing key; otherwise Aiur stores a persistent mode-0600 key per instance under `~/.aiur/instances/`.
+Set `AIUR_SECRETS_FROM_ENV=1` in hosted deployments to disable both dotenv
+files; all credentials must then be injected into the daemon environment.
+Hosted credentials are preflighted at startup and by `aiur status`; errors name
+missing variables together without printing secret values.
+Set `AIUR_STATE_PERSISTENT=1` only when the state directory survives daemon
+restarts; otherwise hosted mode requires `AIUR_SECRET_KEY_BASE`.
 Dashboard Host/origin checks use the public URL and loopback; loopback listeners also accept `*.ts.net` Hosts and HTTPS origins while they remain loopback-bound. `server.allowed_hosts` adds Host names.
 Keep the global per-user file outside Git trees and never commit either dotenv
 file. `aiur init` also reads `.env` for the GitHub token during setup.
