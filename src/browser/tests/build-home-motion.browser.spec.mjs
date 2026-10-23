@@ -298,11 +298,11 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
   for (const name of Object.keys(SEQUENCES).filter(n => !['inventory', 'grain.static'].includes(n))) test(name, async ({ browser }) => {
     test.setTimeout(120_000)
     const owner = ownerFor(name), reduce = selectedCell.reducedMotion === 'reduce'
-    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('columns.') || name.startsWith('snap.') || name.startsWith('tree.') || name === 'filter.dim' ? undefined : owner.anchor, productPending: owner.pending })
+    const pair = await openParityPair(browser, selectedCell, { ...await sequenceOptions(name, selectedCell), productAnchor: name.startsWith('feature.') || name.startsWith('columns.') || name.startsWith('snap.') || name.startsWith('tree.') || name === 'filter.dim' ? undefined : owner.anchor, productPending: owner.pending })
     try {
       const absent = owner.pending || (owner.anchor && !await pair.product.locator(owner.anchor).count() && !(name.startsWith('columns.') && await pair.product.locator('#bd-content.flow').count())) || (name === 'snap.scroll-curve' && !await pair.product.locator('.bd-cal [data-span="7"]').count())
       if (absent) missingPorts.add(`${name}: ${owner.owners.join(', ')}`)
-      if (name === 'filter.dim') expect(absent, 'filter port must be present').toBeFalsy()
+      if (name === 'filter.dim' || name.startsWith('feature.')) expect(absent, 'filter/feature port must be present').toBeFalsy()
       else test.fixme(absent, `awaiting ${owner.owners.join(', ')}`)
       if (name.startsWith('columns.') || name === 'snap.scroll-curve') {
         await Promise.all([pair.design, pair.product].map(async page => {
