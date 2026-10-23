@@ -10,6 +10,7 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
   alias Aiur.Orchestrator.HumanReview
   alias Aiur.Orchestrator.PauseResume
   alias Aiur.Orchestrator.Reconciler
+  alias Aiur.Orchestrator.Reconciler.Reactivation
   alias Aiur.Orchestrator.TrackerTasks
   alias Aiur.SnapshotFenceSupport
 
@@ -70,6 +71,7 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
     assert TrackerTasks.owner?(state)
     assert Enum.all?(p1_tickets, &DispatchPolicy.dispatch_candidate?(&1, state))
     assert hd(DispatchCandidates.order([issue | p1_tickets], DispatchPolicy.terminal_state_set(), p1_tickets)).priority == 1
+    assert Reactivation.completed_replacement_deferred?(state, issue)
 
     next = Reconciler.maybe_reactivate_or_refresh(state, issue)
 
