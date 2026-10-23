@@ -439,7 +439,6 @@ The durable repository Executor state also records every daemon start and stop i
 | `dashboard_auth.session_max_age_days` | integer | 30 | Maximum dashboard browser session age in days. |
 
 ## opencode
-
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-19 -->
 | --- | --- | --- | --- |
 | `opencode.bridge_host` | string | `127.0.0.1` | Aiur↔opencode bridge host. |
