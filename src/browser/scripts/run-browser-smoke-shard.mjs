@@ -10,7 +10,7 @@ import { shardCommands } from './browser-suites.mjs';
 export const shards = {
   1: ["test:build-home-unfiled-parity:1440","test:build-home-unfiled-parity:modal"],
   2: ["test:build-home-band-parity","test:build-home-usage","test:build-home","test:build-home-span","test:build-home-offline","test:home-css-ci","test:build-home-edges-unit","test:command-history","test:build-home-layout","test:time-brush","test:cutover-nav-parity","test:build-home-chains"],
-  3: ["test:build-home-unfiled-parity:1024","test:build-home-render","test:shell-parity","test:build-order","test:build-queue","check:build-home-fixtures","test:ticket-context","test:command-answer"],
+  3: ["test:build-home-estimate","test:build-home-estimate-browser","test:build-home-unfiled-parity:1024","test:build-home-render","test:shell-parity","test:build-order","test:build-queue","check:build-home-fixtures","test:ticket-context","test:command-answer"],
   4: ["test:build-home-motion","test:design-parity","test:shell","test:smoke","test:meter-row","test:models-panel","test:build-modal-motion","test:build-home-modal-doc"],
   5: ["test:build-home-conversation-events-unit","test:build-home-band-motion","test:build-home-states-parity","test:build-home-edges-parity","test:streamdeck","test:interaction","test:performance","test:build-home-assets","test:harness","test:build-modal","test:shell-width","test:provider-meters"],
   6: ["test:build-home-cards:4","test:build-home-cards:3","test:build-home-cards:1","test:units","test:layout","test:responsive","test:streamdeck-flow","test:admission","check:elk","test:build-home-protocol","test:build-home-now-state","test:build-home-list-unit","test:build-home-now-band","test:tokens","test:quota-panel"],
