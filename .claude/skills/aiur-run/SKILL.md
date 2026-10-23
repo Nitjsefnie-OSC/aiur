@@ -473,7 +473,7 @@ Use the bounded wait as the discovery path:
 
 ```bash
 RETRO="<loaded-aiur-run-skill>/scripts/executor-retrospective.sh"
-export AIUR_EXECUTOR_RUN_ID="<stable-build-order-or-run-id>"
+export AIUR_EXECUTOR_RUN_ID="${AIUR_TMUX_SESSION:-default}"
 wait_seconds="${AIUR_EXECUTOR_WAIT_FLOOR_SECONDS:-30}"
 
 if wake_json="$("$AIUR_CMD" executor-wait --timeout "$wait_seconds" --json)"; then
@@ -707,7 +707,7 @@ durable summary:
 
 ```bash
 RETRO="<loaded-aiur-run-skill>/scripts/executor-retrospective.sh"
-export AIUR_EXECUTOR_RUN_ID="<stable-build-order-or-run-id>"
+export AIUR_EXECUTOR_RUN_ID="${AIUR_TMUX_SESSION:-default}"
 "$RETRO" arm
 "$RETRO" observe action "reviewed-green-pr"
 "$RETRO" observe no-action "ci-still-pending"
@@ -724,14 +724,16 @@ The read-only CLI probe runs alongside it with one control-RPC timeout per
 command, so a normal record may spend up to roughly 30 seconds on terminal
 evidence before the browser capture completes.
 
-The visual check's preconditions fail with distinct, non-zero codes so a
-wrapper can tell which one stopped it: 68 when `AIUR_EXECUTOR_RUN_ID` is
-missing, 67 when the dashboard URL cannot be discovered, 69 when
-`AIUR_DASHBOARD_PASSWORD` is missing. Each failure prints a one-line stderr
-naming the variable to set and writes a "did not run" verdict — a skipped
-check must never exit 0 or read as a healthy capture. `record` forwards that
-precondition line to its own stderr, so a log that redirects stdout+stderr
-still shows why the check did not run.
+The visual check defaults `AIUR_EXECUTOR_RUN_ID` to `AIUR_TMUX_SESSION`, or
+`default` when the command runs outside an Aiur session. Set it explicitly to
+use a separate retrospective identity. Preconditions fail with distinct,
+non-zero codes so a wrapper can tell which one stopped it: 67 when the
+dashboard URL cannot be discovered, 68 when an explicit run ID is invalid,
+and 69 when `AIUR_DASHBOARD_PASSWORD` is missing. Each failure prints a
+one-line stderr naming the precondition and writes a "did not run" verdict —
+a skipped check must never exit 0 or read as a healthy capture. `record`
+forwards that precondition line to its own stderr, so a log that redirects
+stdout+stderr still shows why the check did not run.
 
 Take the recorded assessment's count language from the atomic
 `summary.count_sentence` that `record` embeds (or the one `summarize` prints in

@@ -1,5 +1,6 @@
 export const PAGES = [
-  ['units', '/'],
+  ['build', '/'],
+  ['units', '/units'],
   ['commands', '/commands'],
   ['build-orders', '/build-orders'],
   ['build', '/build'],

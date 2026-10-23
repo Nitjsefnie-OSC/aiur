@@ -11,7 +11,26 @@ function buildSnapshot(overrides = {}) {
 }
 
 test('the dashboard capture inventory includes the /build home page', () => {
-  assert.deepEqual(PAGES.map(([, route]) => route), ['/', '/commands', '/build-orders', '/build', '/analytics'])
+  assert.deepEqual(PAGES, [
+    ['build', '/'],
+    ['units', '/units'],
+    ['commands', '/commands'],
+    ['build-orders', '/build-orders'],
+    ['build', '/build'],
+    ['analytics', '/analytics']
+  ])
+})
+
+test('the dashboard root is assessed with Build content requirements', () => {
+  const result = analyzeDashboardSnapshot('build', {
+    status: 200, title: 'Build', chars: 100, liveViewConnected: true, primaryContent: true,
+    tables: [], staleBanners: [], emptyStates: [], errorStates: [], capacityReadings: [],
+    hasNAInMetric: false,
+    ...buildSnapshot({ buildHydrated: true, buildTicketCount: 16, buildOpenTicketCount: 69 })
+  })
+
+  assert.equal(result.verdict, 'healthy')
+  assert.equal(result.signals.primaryContent, true)
 })
 
 test('an unavailable build timeline is an attention finding', () => {

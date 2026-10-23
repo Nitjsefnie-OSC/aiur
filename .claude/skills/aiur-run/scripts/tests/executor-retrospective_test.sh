@@ -53,13 +53,11 @@ process_start_identity() {
   printf 'ps:%s\n' "$identity"
 }
 
-if AIUR_EXECUTOR_STATE_DIR="$state_root" "$script" due >"$state_root/missing-run.out" 2> "$state_root/missing-run.err"; then
-  fail "missing run ID was accepted"
-else
-  missing_run_status=$?
-fi
-[ "$missing_run_status" -eq 68 ] || fail "missing run ID did not return its distinct precondition status (got $missing_run_status)"
-grep -q 'AIUR_EXECUTOR_RUN_ID is required' "$state_root/missing-run.err" || fail "missing run ID did not print the stderr precondition line"
+default_run_root="$state_root/default-run-id"
+env -u AIUR_EXECUTOR_RUN_ID -u AIUR_TMUX_SESSION \
+  AIUR_EXECUTOR_STATE_DIR="$default_run_root" "$script" due >/dev/null
+[ -s "$default_run_root/default/retrospective-state.json" ] ||
+  fail "missing run ID did not use the documented default"
 
 mkdir -p "$state_root/invalid-run-id"
 for invalid_run_id in . ..; do
@@ -355,7 +353,7 @@ grep -q 'Overall:.*attention' "$state_root/empty-capture-retrospective.md" ||
 
 # The missing password is the third precondition, with its own code (69), its
 # own stderr line, and a did-not-run verdict — distinct from a missing URL (67)
-# or a missing run ID (68). Without the daemon environment fallback it is a
+# or an invalid run ID (68). Without the daemon environment fallback it is a
 # hard failure: a capture that cannot authenticate must never look like one
 # that ran.
 password_missing_retro="$state_root/password-missing-retrospective.md"
@@ -449,6 +447,10 @@ case "${1:-}" in
     exit 0
     ;;
   list-panes)
+    case " $* " in
+      *" -a "*) ;;
+      *) exit 1 ;;
+    esac
     printf '%s\n' "${FAKE_TMUX_PANE_PID:-1}"
     exit 0
     ;;
