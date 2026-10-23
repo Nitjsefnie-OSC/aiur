@@ -2,7 +2,7 @@ defmodule Aiur.TestSupport.BuildHome.FixtureSource do
   @moduledoc "Frozen v1 build datasets, bounded to active history days in the socket zone."
   @behaviour AiurWeb.Build.DataSource
 
-  alias Aiur.TestSupport.BuildHome.EarlierControl
+  alias Aiur.TestSupport.BuildHome.{ControlFixture, EarlierControl}
   alias AiurWeb.Build.Read
 
   @files ~w(live dense newrepo noqueue offline odd-edges unknowns hostile chains list-edges now0 now24)
@@ -76,7 +76,22 @@ defmodule Aiur.TestSupport.BuildHome.FixtureSource do
     end
   end
 
+  @impl true
+  def unit_row(id, opts), do: ControlFixture.unit_row(id, opts)
+
   def full(opts), do: load(dataset(opts), Keyword.get(opts, :dir, @dir))
+
+  @impl true
+  def ticket_doc_identity(id, opts) do
+    with {:ok, row} <- ticket(id, opts) do
+      Aiur.TrackerIdentity.from_github(
+        %{"node_id" => "build-fixture:#{dataset(opts)}:#{id}", "number" => row["num"]},
+        {"fixture", "build-home"},
+        {"fixture", "build-home"}
+      )
+    end
+  end
+
   defp dataset(opts), do: Keyword.get(opts, :dataset, Application.get_env(:aiur, :build_fixture_dataset, "live"))
   defp load("unavailable", _dir), do: {:error, :fixture_unavailable}
 
