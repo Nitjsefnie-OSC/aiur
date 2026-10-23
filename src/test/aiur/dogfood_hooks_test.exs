@@ -55,6 +55,7 @@ defmodule Aiur.DogfoodHooksTest do
   test "checked-in hooks use the repository state node for package-manager caches" do
     hooks = File.read!(@hooks_path)
     assert hooks =~ "AIUR_REPO_STATE_PATH"
+    assert hooks =~ ~r/AIUR_BUILD_GATE_TIMEOUT_SECONDS=0 \\\n\s+HEX_HOME=/
     assert hooks =~ "meta/retros"
     assert hooks =~ "meta/findings.ndjson"
     refute hooks =~ "HEX_HOME=\"$PWD/.aiur-hex\""
