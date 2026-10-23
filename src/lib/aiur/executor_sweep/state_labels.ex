@@ -8,6 +8,16 @@ defmodule Aiur.ExecutorSweep.StateLabels do
   alias Aiur.GitHub.Config
   alias Aiur.GitHub.Labels
 
+  @spec raw_labels(map()) :: [String.t()]
+  def raw_labels(ticket) do
+    ticket
+    |> Map.get(:labels, Map.get(ticket, "labels", []))
+    |> Enum.map(fn label ->
+      if is_map(label), do: Map.get(label, :name, Map.get(label, "name", "")), else: label
+    end)
+    |> Enum.map(&to_string/1)
+  end
+
   @doc "Takes tickets with raw labels and their configured prefix; returns zero or one finding."
   @spec findings([map()]) :: [map()]
   def findings(tickets), do: findings(tickets, Config.label_prefix())
@@ -22,6 +32,7 @@ defmodule Aiur.ExecutorSweep.StateLabels do
            not excluded?(labels, prefix),
            states = matching_states(labels, state_labels, prefix),
            length(states) != 1,
+           not foreign_only?(labels, states, prefix),
            do: {ticket, states}
          ) do
       [] ->
@@ -58,6 +69,19 @@ defmodule Aiur.ExecutorSweep.StateLabels do
       suffix in ["parked", "needs-triage", "human:todo"] or String.downcase(suffix) == "epic" or String.starts_with?(String.downcase(suffix), "epic:")
     end)
   end
+
+  defp foreign_only?(labels, [], prefix) do
+    state_suffixes = Enum.map(Labels.state_labels(prefix), &String.replace_prefix(&1, prefix <> ":", ""))
+
+    Enum.any?(labels, fn label ->
+      case String.split(label, ":", parts: 2) do
+        [other_prefix, state] when other_prefix != prefix -> state in state_suffixes
+        _other -> false
+      end
+    end)
+  end
+
+  defp foreign_only?(_labels, _states, _prefix), do: false
 
   # Oldest by creation time; tickets without one sort after, by number.
   defp age_key({ticket, _states}) do
