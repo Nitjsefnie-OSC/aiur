@@ -118,8 +118,8 @@ export const recordedSeconds = {
   'test:browser-suite -- build-home-states-e2e': 15,
   // Local functional harness timing (2026-10-18): 130.4s.
   'test:build-home-filters': 131,
-  // Reserve the complete 24-cell static matrix plus selected viewport comparisons on its own shard.
-  'test:build-home-filters-parity': 700,
+  // Historical local routine-selection wall time (2026-10-18): 136.5s; refresh after current pixels pass.
+  'test:build-home-filters-parity': 136.5,
   // Scoped desktop/reduced/mobile filter motion: local harness 49.3s (2026-10-18).
   'test:build-home-filters-motion': 50,
 }

@@ -97,6 +97,7 @@
     "test:build-home-modal-doc-parity": "node scripts/run-browser-tests.mjs tests/build-home-modal-doc-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
     "test:build-home-filters": "node --test scripts/build-home-filters.test.mjs && node scripts/run-browser-tests.mjs tests/build-home-filters.browser.spec.mjs",
     "test:build-home-filters-parity": "node scripts/run-browser-tests.mjs tests/build-home-filters-parity.browser.spec.mjs --config playwright.design-parity.config.mjs",
+    "test:build-home-filters-parity:full": "AIUR_PARITY_FULL=1 npm run test:build-home-filters-parity",
     "test:build-home-filters-motion": "node scripts/run-browser-tests.mjs tests/build-home-motion.browser.spec.mjs --config playwright.design-parity.config.mjs --grep 'product interactions.*filter.dim'"
   },
   "devDependencies": {
