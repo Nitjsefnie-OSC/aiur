@@ -14,6 +14,7 @@ defmodule Aiur.GitHub.Issues do
     Labels,
     OpenIssueListing,
     ResourceStore,
+    StateLabels,
     StatePolicy,
     Transport
   }
@@ -445,36 +446,11 @@ defmodule Aiur.GitHub.Issues do
 
     healable =
       rest
-      |> Enum.reject(&foreign_state_label?(&1, prefix, active_states))
-      |> Enum.filter(&(degenerate_state_labels?(&1) or &1.state in ~w(ci-wait human-review error)))
+      |> StateLabels.filter_candidate_repair_labels(prefix, active_states)
       |> TestTicketScope.filter_issues()
 
     authorized ++ healable
   end
-
-  defp degenerate_state_labels?(%Issue{state_labels: []}), do: true
-  defp degenerate_state_labels?(%Issue{state_labels: [_, _ | _]}), do: true
-  defp degenerate_state_labels?(_issue), do: false
-
-  # An issue with another instance's state label is not a malformed ticket for
-  # this instance to repair. In particular, treating `nuc:todo` as a missing
-  # `agent:*` state made every daemon list the other daemon's backlog as idle.
-  defp foreign_state_label?(%Issue{labels: labels}, prefix, active_states) do
-    state_names =
-      MapSet.union(active_states, MapSet.new(~w(ci-wait human-review error done cancelled canceled merging)))
-
-    Enum.any?(labels, fn label ->
-      case label |> String.trim() |> String.downcase() |> String.split(":", parts: 2) do
-        [other_prefix, state] ->
-          other_prefix != String.downcase(prefix) and MapSet.member?(state_names, StatePolicy.normalize_state(state))
-
-        _other ->
-          false
-      end
-    end)
-  end
-
-  defp foreign_state_label?(_issue, _prefix, _active_states), do: false
 
   @spec fetch_issues_for_each_label(
           [String.t()],
