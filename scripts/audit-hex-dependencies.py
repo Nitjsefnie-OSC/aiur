@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 LOCK = SRC / "mix.lock"
+MIX_EXS = SRC / "mix.exs"
 ALLOWLIST = ROOT / "docs/security/hex-advisories-allowlist.json"
 FINDING = re.compile(r"^\s+(\S+)\s+(\S+)\s+-\s+(\S+)\s+\((HIGH|MEDIUM|LOW)\)$", re.M)
 ADVISORY_ROW = re.compile(r"^ {2}\S+\s+\S+\s+-\s+\S+.*$", re.M)
@@ -87,13 +88,22 @@ def run(command: list[str], *, cwd: Path, allow_advisories: bool = False) -> str
     return output
 
 
-def audit_lock(lock_bytes: bytes, label: str, runner=run) -> set[tuple[str, str, str, str]]:
-    LOCK.write_bytes(lock_bytes)
-    runner(["mise", "exec", "--", "mix", "deps.get"], cwd=SRC)
-    if LOCK.read_bytes() != lock_bytes:
-        raise RuntimeError(f"{label} dependency resolution changed the lock; refusing to audit a different snapshot")
-    output = runner(["mise", "exec", "--", "mix", "hex.audit"], cwd=SRC, allow_advisories=True)
-    return parse_audit_output(output, label)
+def audit_lock(lock_bytes: bytes, label: str, runner=run, *, mix_exs_bytes: bytes | None = None) -> set[tuple[str, str, str, str]]:
+    original_mix_exs = MIX_EXS.read_bytes() if mix_exs_bytes is not None else None
+
+    try:
+        if mix_exs_bytes is not None:
+            MIX_EXS.write_bytes(mix_exs_bytes)
+
+        LOCK.write_bytes(lock_bytes)
+        runner(["mise", "exec", "--", "mix", "deps.get"], cwd=SRC)
+        if LOCK.read_bytes() != lock_bytes:
+            raise RuntimeError(f"{label} dependency resolution changed the lock; refusing to audit a different snapshot")
+        output = runner(["mise", "exec", "--", "mix", "hex.audit"], cwd=SRC, allow_advisories=True)
+        return parse_audit_output(output, label)
+    finally:
+        if original_mix_exs is not None:
+            MIX_EXS.write_bytes(original_mix_exs)
 
 
 def parse_audit_output(output: str, label: str) -> set[tuple[str, str, str, str]]:
@@ -134,9 +144,18 @@ def main() -> int:
             stderr=subprocess.PIPE,
             check=True,
         ).stdout
+        base_mix_exs = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"{base_ref}:src/mix.exs"],
+            text=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+        ).stdout
         today = dt.date.fromisoformat(os.environ.get("AUDIT_TODAY", dt.date.today().isoformat()))
         allowlist = load_allowlist(ALLOWLIST, today)
-        errors = evaluate_locks(base_lock, original_lock, allowlist)
+        base_findings = audit_lock(base_lock, "base", mix_exs_bytes=base_mix_exs)
+        head_findings = audit_lock(original_lock, "candidate", mix_exs_bytes=MIX_EXS.read_bytes())
+        errors = evaluate(base_findings, head_findings, allowlist)
         if errors:
             print("Hex dependency audit failed:", file=sys.stderr)
             print("\n".join(f"- {error}" for error in errors), file=sys.stderr)
