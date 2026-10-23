@@ -48,6 +48,14 @@ defmodule Aiur.OrchestratorStatusCliVisibilityTest do
     end
   end
 
+  test "status sections remain visible when build metadata raises" do
+    output = capture_io(fn -> AgentControlCLI.status(build_status_fun: fn -> raise "build status failed" end) end)
+
+    assert output =~ "BUILD unavailable (build metadata could not be read)"
+    assert output =~ "FLEET SNAPSHOT"
+    assert output =~ "__AIUR_CONTROL_EXIT__:0"
+  end
+
   test "status hides closed cached issues and deactivated runtime entries", %{orchestrator: pid} do
     active = %Issue{id: "issue-active", identifier: "repo#44", state: "In Progress", title: "Active"}
 
