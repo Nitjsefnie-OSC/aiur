@@ -36,6 +36,8 @@ defmodule AiurWeb.Build.Index do
   end
 
   # Only the table reads mean a dead index; a fault in the cut itself must propagate.
+  defp find_ticket(all, id), do: all[id] || Enum.find_value(all, fn {_key, row} -> if row[:was] == id, do: row end)
+
   defp read_table(table) do
     # Generation is published after its data, so reading it first never pairs it with older data.
     [{:generation, generation}] = :ets.lookup(table, :generation)
@@ -112,7 +114,21 @@ defmodule AiurWeb.Build.Index do
     {:reply, reply, state}
   end
 
-  defp find_ticket(all, id), do: all[id] || Enum.find_value(all, fn {_key, row} -> if row[:was] == id, do: row end)
+  def handle_call({:unit_row, id}, _from, state) do
+    rows =
+      case state.parts[:now] do
+        %{source: %{state: "ok"}, unit_rows: rows} when is_map(rows) -> rows
+        _ -> %{}
+      end
+
+    reply =
+      case Map.fetch(rows, id) do
+        {:ok, row} -> {:ok, row}
+        :error -> {:error, :not_found}
+      end
+
+    {:reply, reply, state}
+  end
 
   @impl true
   def handle_info({tag, _payload}, state) when is_map_key(@signals, tag), do: {:noreply, dirty(state, @signals[tag])}
