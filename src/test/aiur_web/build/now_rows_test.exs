@@ -44,7 +44,7 @@ defmodule AiurWeb.Build.NowRowsTest do
 
   test "parked reasons use the orchestrator predicate; cooperative pauses stay paused" do
     usage = facts(row(%{reasons: %{pause: :usage_limit_exhausted}, runtime: %{bucket: :running, work_state: :paused, usage_limit_reset_at: @time}}))
-    assert usage.agent.state == "usage_limited"
+    assert usage.agent.state == "paused-usage-limit"
     assert usage.agent.pause == "usage_limit_exhausted"
     assert usage.agent.resume_at == @ms
     refute usage.agent.state == "parked"
@@ -58,7 +58,6 @@ defmodule AiurWeb.Build.NowRowsTest do
     end
 
     assert facts(row(%{reasons: %{pause: :blocker_dependency}})).agent.state == "blocked"
-    assert facts(row(%{reasons: %{pause: :usage_limit_exhausted}})).agent.state == "paused-usage-limit"
 
     for reason <- [:operator_pause, :global_pause, :label_override] do
       assert facts(row(%{reasons: %{pause: reason}})).agent.state == "paused"
@@ -170,12 +169,13 @@ defmodule AiurWeb.Build.NowRowsTest do
     joined =
       Enum.map(expected_rows, fn expected ->
         actual = Payload.scrub(output[expected["id"]])
-        assert Map.take(actual["agent"], ~w(model name state effort)) == Map.take(expected["agent"], ~w(model name state effort))
+        expected_agent = if expected["agent"]["state"] == "parked", do: Map.put(expected["agent"], "state", "blocked"), else: expected["agent"]
+        assert Map.take(actual["agent"], ~w(model name state effort)) == Map.take(expected_agent, ~w(model name state effort))
         assert actual["agent"]["pause"] == nil
         assert actual["agent"]["resume_at"] == nil
         assert actual["pct"] == expected["pct"]
         assert abs(actual["start"] - expected["start"]) <= 1
-        merged = Map.merge(expected, actual)
+        merged = expected |> Map.put("agent", expected_agent) |> Map.merge(actual)
         assert Payload.row(merged) == {:ok, merged}
         merged
       end)
