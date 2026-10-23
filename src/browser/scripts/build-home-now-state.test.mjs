@@ -24,6 +24,8 @@ test('AST matches the vendored design and stays frozen', () => {
   assert.deepEqual(AST.retrying, { label: 'Retrying', cls: 'queued' });
   for (const suffix of ['merge-queued', 'ci-red', 'body-fix', 'paused-usage-limit', 'paused-decision', 'paused-agent', 'blocked', 'handed-off'])
     assert.equal(AST[suffix].label, `agent:${suffix}`);
+  assert.deepEqual(AST.usage_limited, { label: 'Paused · usage limit', cls: 'idle' });
+  assert.deepEqual(AST.ci_wait, { label: 'Waiting for CI', cls: 'idle' });
   assert.ok(Object.isFrozen(AST));
   for (const key of Object.keys(AST)) {
     assert.equal(agentState(key), AST[key]);

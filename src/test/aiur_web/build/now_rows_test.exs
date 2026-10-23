@@ -10,7 +10,7 @@ defmodule AiurWeb.Build.NowRowsTest do
     cases = [
       {row(%{runtime: %{bucket: :running, work_state: :error}}), "error"},
       {row(%{runtime: %{bucket: :running, work_state: :paused}, open_command_count: 2}), "command"},
-      {row(%{reasons: %{pause: :ci_wait}}), "parked"},
+      {row(%{reasons: %{pause: :ci_wait}}), "ci_wait"},
       {row(%{reasons: %{pause: :usage_limit_exhausted}}), "paused-usage-limit"},
       {row(%{reasons: %{waiting: :waiting_for_dependency}}), "blocked"},
       {row(%{reasons: %{waiting: :waiting_for_human}}), "paused-decision"},
@@ -43,7 +43,17 @@ defmodule AiurWeb.Build.NowRowsTest do
   end
 
   test "parked reasons use the orchestrator predicate; cooperative pauses stay paused" do
-    for reason <- [:ci_wait, :max_agent_duration, :github_budget_hold] do
+    usage = facts(row(%{reasons: %{pause: :usage_limit_exhausted}, runtime: %{bucket: :running, work_state: :paused, usage_limit_reset_at: @time}}))
+    assert usage.agent.state == "usage_limited"
+    assert usage.agent.pause == "usage_limit_exhausted"
+    assert usage.agent.resume_at == @ms
+    refute usage.agent.state == "parked"
+
+    ci = facts(row(%{reasons: %{pause: :ci_wait}}))
+    assert ci.agent.state == "ci_wait"
+    assert ci.agent.pause == "ci_wait"
+
+    for reason <- [:max_agent_duration, :github_budget_hold] do
       assert facts(row(%{reasons: %{pause: reason}})).agent.state == "parked"
     end
 
@@ -94,7 +104,7 @@ defmodule AiurWeb.Build.NowRowsTest do
 
   test "unknown model has no fabricated label; registry families and product efforts survive" do
     assert facts(row(%{agent_family: nil, backend: nil, resolved_model: "claude-opus-5-1"})).agent ==
-             %{model: nil, name: nil, state: "active", effort: nil}
+             %{model: nil, name: nil, state: "active", pause: nil, resume_at: nil, effort: nil}
 
     assert facts(row(%{agent_family: "muse"})).agent.model == "muse"
     assert facts(row(%{agent_family: "muse"})).agent.name == "Muse"
@@ -160,7 +170,10 @@ defmodule AiurWeb.Build.NowRowsTest do
     joined =
       Enum.map(expected_rows, fn expected ->
         actual = Payload.scrub(output[expected["id"]])
-        assert Map.take(actual, ~w(agent pct)) == Map.take(expected, ~w(agent pct))
+        assert Map.take(actual["agent"], ~w(model name state effort)) == Map.take(expected["agent"], ~w(model name state effort))
+        assert actual["agent"]["pause"] == nil
+        assert actual["agent"]["resume_at"] == nil
+        assert actual["pct"] == expected["pct"]
         assert abs(actual["start"] - expected["start"]) <= 1
         merged = Map.merge(expected, actual)
         assert Payload.row(merged) == {:ok, merged}
@@ -194,7 +207,7 @@ defmodule AiurWeb.Build.NowRowsTest do
       "error" -> %{base | runtime: %{bucket: :running, work_state: :error}}
       "retries" -> %{base | runtime: %{bucket: :idle}, reasons: %{waiting: :latched_lifetime}, timestamps: %{}}
       "command" -> %{base | open_command_count: 1}
-      "parked" -> %{base | reasons: %{pause: :ci_wait}}
+      "parked" -> %{base | reasons: %{pause: :blocker_dependency}}
       "paused" -> %{base | reasons: %{pause: :operator_pause}}
       "active" -> base
     end
