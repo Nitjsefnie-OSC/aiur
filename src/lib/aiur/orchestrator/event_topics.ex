@@ -298,8 +298,7 @@ defmodule Aiur.Orchestrator.EventTopics do
   end
 
   defp clear_running_stalled_alert(state, issue_id, running_entry) do
-    updated = Map.put(running_entry, :stalled_alert_outstanding, false)
-    %{state | running: Map.put(state.running, issue_id, updated)}
+    Lifecycle.StalledAlert.clear_retry_marker(state, issue_id, running_entry)
   end
 
   defp event_issue(event), do: Map.get(event, :issue, Map.get(event, "issue"))
