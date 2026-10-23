@@ -59,7 +59,7 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
     {state, entry, worker, _item_ids} = completed_retention_fixture(issue)
     entry = Map.put(entry, :completed_provenance, true)
     state = put_in(state.running[issue.id], entry)
-    state = %{state | last_polled_issues: Map.new(p1_tickets, &{&1.id, &1})}
+    state = %{state | last_polled_issues: Map.new(p1_tickets, &{&1.id, &1}), snapshot_key: self()}
     runners_before = RunnerTasks.capture()
 
     assert Enum.all?(p1_tickets, &DispatchPolicy.dispatch_candidate?(&1, state))
