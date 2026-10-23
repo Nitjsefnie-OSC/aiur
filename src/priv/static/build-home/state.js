@@ -56,5 +56,5 @@ export const fx = {
   activeFeature: () => S.feature && ctx.D && Object.hasOwn(ctx.D.features, S.feature) ? ctx.D.features[S.feature] : null,
   visibleCols: () => [], applyCols() {}, scheduleCols() {},
   drawEdges() {}, renderBand() {}, renderList() {}, openModal() {}, onHover() {}, setHover() {},
-  lockTree() {}, fitTree() {}, openTree() {}, filtersChanged() {},
+  lockTree() {}, fitTree() {}, openTree() {},
 };
