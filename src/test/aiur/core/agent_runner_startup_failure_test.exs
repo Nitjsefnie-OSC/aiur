@@ -194,4 +194,51 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
       File.rm_rf(test_root)
     end
   end
+
+  test "before_run timeout becomes a named failure for the controlled pause path" do
+    test_root = Aiur.TestSupport.tmp_root!("aiur-elixir-agent-runner-before-run-timeout")
+
+    try do
+      template_repo = Path.join(test_root, "source")
+      workspace_root = Path.join(test_root, "workspaces")
+      File.mkdir_p!(template_repo)
+      File.write!(Path.join(template_repo, "README.md"), "# test")
+      System.cmd("git", ["-C", template_repo, "init", "-b", "main"])
+      System.cmd("git", ["-C", template_repo, "config", "user.name", "Test User"])
+      System.cmd("git", ["-C", template_repo, "config", "user.email", "test@example.com"])
+      System.cmd("git", ["-C", template_repo, "add", "README.md"])
+      System.cmd("git", ["-C", template_repo, "commit", "-m", "initial"])
+
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        hook_after_create: "cp #{Path.join(template_repo, "README.md")} README.md",
+        hook_before_run: "sleep 2",
+        hook_timeout_ms: 60_000
+      )
+
+      issue = %Issue{
+        id: "issue-before-run-timeout",
+        identifier: "MT-BEFORE-RUN-TIMEOUT-#{System.unique_integer([:positive])}",
+        title: "Pause on hook timeout",
+        description: "A hook timeout must not consume agent retries",
+        state: "In Progress"
+      }
+
+      {:ok, workspace} = Aiur.Workspace.create_for_issue(issue)
+
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        hook_after_create: "cp #{Path.join(template_repo, "README.md")} README.md",
+        hook_before_run: "sleep 2",
+        hook_timeout_ms: 50
+      )
+
+      assert {:before_run_failed, :timeout, message, {:workspace_hook_timeout, "before_run", 50}} =
+               Aiur.AgentRunner.BeforeRun.run(workspace, issue, [], nil, fn -> flunk("session must not start") end)
+
+      assert message =~ "timed out after 50 ms"
+    after
+      File.rm_rf(test_root)
+    end
+  end
 end

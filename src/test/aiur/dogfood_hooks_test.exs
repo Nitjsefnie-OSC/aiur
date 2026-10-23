@@ -35,6 +35,10 @@ defmodule Aiur.DogfoodHooksTest do
     hooks = dogfood_hooks!()
     assert hooks["after_create"] =~ ~s(base_branch="${THIS_BASE_BRANCH:?THIS_BASE_BRANCH is required}")
     assert hooks["before_run"] =~ ~s(base_branch="${THIS_BASE_BRANCH:?THIS_BASE_BRANCH is required}")
+    assert hooks["before_run"] =~ ~s(git fetch origin "$base_branch")
+    assert hooks["before_run"] =~ ~s(git ls-remote --exit-code --heads origin "$AIUR_TICKET_BRANCH")
+    assert hooks["before_run"] =~ ~s(git fetch origin "$AIUR_TICKET_BRANCH")
+    refute hooks["before_run"] =~ ~s(git fetch origin\n)
     refute File.read!(@hooks_path) =~ "find . -mindepth 1 -maxdepth 1 -exec rm -rf"
     refute File.read!(@hooks_path) =~ "logs_backup="
     refute File.read!(@hooks_path) =~ "origin/v2"

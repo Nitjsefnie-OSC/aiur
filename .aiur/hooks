@@ -101,7 +101,10 @@ before_run: |
       git checkout -B "$AIUR_TICKET_BRANCH" "origin/$base_branch"
     fi
   else
-    git fetch origin
+    git fetch origin "$base_branch"
+    if git ls-remote --exit-code --heads origin "$AIUR_TICKET_BRANCH" >/dev/null 2>&1; then
+      git fetch origin "$AIUR_TICKET_BRANCH"
+    fi
     if ! git diff --quiet -- . ':(exclude)logs' ||
        ! git diff --cached --quiet -- . ':(exclude)logs'; then
       # Tracked changes are present. Signal the refusal with exit 65.

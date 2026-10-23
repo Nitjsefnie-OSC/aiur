@@ -71,6 +71,9 @@ before_run: |
     fi
   else
     git fetch origin "$base_branch"
+    if git ls-remote --exit-code --heads origin "$AIUR_TICKET_BRANCH" >/dev/null 2>&1; then
+      git fetch origin "$AIUR_TICKET_BRANCH"
+    fi
     if ! git diff --quiet || ! git diff --cached --quiet; then
       echo "Refusing to refresh workspace from origin/$base_branch because tracked changes are present." >&2
       echo "Commit or resolve the workspace changes before resuming this agent." >&2
