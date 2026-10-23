@@ -179,6 +179,7 @@ defmodule Aiur.Env.Schema do
 
     # --- Runtime (launcher-managed) ---
     {"AIUR_BG_STATE_DIR", type: :path, group: :runtime, purpose: "Directory for cookie, state and per-instance files.", default: "~/.config/aiur"},
+    {"AIUR_CONTAINER", type: :string, validate: false, example: false, group: :runtime, purpose: "Container-mode marker set by the launcher."},
     {"AIUR_LOGS_ROOT", type: :path, group: :runtime, purpose: "Directory for daemon logs."},
     {"AIUR_TMUX_SESSION", type: :string, group: :runtime, purpose: "tmux session name the launcher uses."},
     {"AIUR_TMUX_SOCKET", type: :string, group: :runtime, purpose: "tmux socket name the launcher uses."},
