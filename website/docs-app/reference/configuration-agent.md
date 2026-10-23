@@ -42,7 +42,7 @@ Sections of the [configuration reference](/reference/configuration) covering `ag
 | `agent.max_retry_backoff_ms` | integer | 300000 | Retry backoff ceiling in milliseconds. |
 | `agent.max_turns` | integer or nil | nil | Per-issue turn cap; nil is uncapped. |
 | `agent.max_turns_by_complexity` | map | `%{}` | Per-complexity turn caps. |
-| `agent.min_free_memory_mb` | integer or nil | nil | Linux `MemAvailable` floor shared by dispatch and the Mix build gate. |
+| `agent.min_free_memory_mb` | integer or nil | nil | Host `MemAvailable` floor shared by dispatch and the Mix build gate. For containers with a usable cgroup v2 memory limit, the dispatch memory gate uses `memory.current - inactive_file` instead. |
 | `agent.mix_scheduler_cap` | integer | 4 | Caps schedulers in agent-launched Mix BEAMs. |
 | `agent.non_closing_merge_marker` | string | `needs-triage` | Marker for a merged PR that references the ticket but does not close it. |
 | `agent.pricing_policy.avoid_peak_pricing` | boolean | `true` | Routes around peak-pricing windows through `agent.priority`; `false` follows the list exactly and never changes spend reporting. When the window cannot be determined, routing never moves work (it fails toward not rerouting). Inspect the current window and next boundary with `mix aiur.pricing_window`. |
