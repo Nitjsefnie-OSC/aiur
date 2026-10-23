@@ -172,7 +172,11 @@ dashboard_auth:
   browser_basic_auth: true
 ```
 
-In Google Cloud, create an OAuth consent screen in External / Testing mode, add the operator as a test user, and request `openid email`. Create a Web application OAuth client with redirect URI `https://<host>.ts.net:4001/auth/google/callback`. Put `AIUR_GOOGLE_CLIENT_ID` and `AIUR_GOOGLE_CLIENT_SECRET` in `~/.aiur/.env`, then restart Aiur. Sign in with the allowlisted, verified account and register a passkey while that Google sign-in is fresh; enroll each device (iCloud Keychain can sync Apple devices). After confirming Google and passkey sign-in, set `dashboard_auth.browser_basic_auth: false` and restart. The API and Stream Deck token endpoint continue to use Basic Auth.
+In Google Cloud, create an OAuth consent screen in External / Testing mode, add the operator as a test user, and request `openid email`. Create a Web application OAuth client with redirect URI `https://<host>.ts.net:4001/auth/google/callback`.
+
+Put `AIUR_GOOGLE_CLIENT_ID` and `AIUR_GOOGLE_CLIENT_SECRET` in `~/.aiur/.env`, then restart Aiur. Sign in with the allowlisted, verified account and register a passkey while that Google sign-in is fresh; enroll each device (iCloud Keychain can sync Apple devices).
+
+After confirming Google and passkey sign-in, set `dashboard_auth.browser_basic_auth: false` and restart. The API and Stream Deck token endpoint continue to use Basic Auth.
 
 Put remote access behind a private network or trusted reverse proxy and use TLS there; Basic Auth does not encrypt transport.
 
