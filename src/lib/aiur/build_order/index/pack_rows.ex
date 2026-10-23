@@ -1,9 +1,10 @@
 defmodule Aiur.BuildOrder.Index.PackRows do
   @moduledoc false
+  alias Aiur.BuildOrder.Index
 
   @spec read(term(), map(), map()) :: term()
   def read(reader, all, epics) when is_function(reader, 1),
-    do: Aiur.BuildOrder.Index.safe_read(:packs, fn -> reader.(%{all: all, epics: epics}) end)
+    do: Index.safe_read(:packs, fn -> reader.(%{all: all, epics: epics}) end)
 
   def read(part, _all, _epics), do: part
 
