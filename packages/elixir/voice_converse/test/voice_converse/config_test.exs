@@ -70,4 +70,11 @@ defmodule VoiceConverse.ConfigTest do
                Config.new(@base ++ [limits: %{daily_minutes_cap: -1}])
     end
   end
+
+  describe "provider preferences" do
+    test "rejects a cascade llm without a provider prefix" do
+      assert {:error, %{field: :providers, reason: :invalid, key: :llm}} =
+               Config.new(@base ++ [providers: %{cascade: %{llm: "claude"}}])
+    end
+  end
 end
