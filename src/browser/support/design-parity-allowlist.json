@@ -400,6 +400,19 @@
     }
   },
   {
+    "id": "filter-navigation-capture-scope",
+    "kind": "property",
+    "selector": "#build-root",
+    "property": "complete build content excluding exterior navigation paint",
+    "reason": "Filter captures and filter.dim omit only exterior navigation, including its fixed mobile overlay. Build root, usage, toolbar and viewport geometry must remain identical. Navigation parity belongs to #3171; no build content is masked.",
+    "approval": {
+      "status": "approved",
+      "by": "Kevin",
+      "date": "2026-10-21",
+      "ref": "https://github.com/aiur-team/aiur/issues/3153#issuecomment-6308707429"
+    }
+  },
+  {
     "id": "filter-retrying-option",
     "spec": "build-home-filters-parity.browser.spec.mjs",
     "kind": "property",

@@ -33,19 +33,16 @@ test('F1 bar renders five groups before and after data', async ({ page }) => {
   await expect(page.locator('.bd-fg.has, .bd-pop, .bd-fclear')).toHaveCount(0)
 })
 test('loading filter bar accepts selections before a snapshot', async ({ page }) => {
-  await open(page, 'live')
-  await page.evaluate(async () => {
-    const { createBuildHomeHook } = await import('/build-home/hook.js')
-    const ids = ['bd-usage', 'bd-offline', 'bd-fh', 'bd-tools-l', 'bd-filters', 'bd-tools', 'bd-vp', 'bd-sb', 'bd-tree', 'bd-status']
-    document.body.innerHTML = '<main id="loading-root" class="bd-root">' + ids.map(id => `<div id="${id}">${id === 'bd-sb' ? '<i></i>' : ''}</div>`).join('') + '</main>'
-    window.loadingHook = createBuildHomeHook()
-    Object.assign(loadingHook, { el: document.querySelector('#loading-root'), handleEvent() {}, pushEvent: (name, params) => name === 'build-resync' ? new Promise(() => {}) : Promise.resolve() })
-    loadingHook.mounted()
-  })
+  await page.goto('/build-fixture/hold')
+  await expect(page.locator('.bd-loading')).toBeVisible()
   await expect(page.locator('.bd-fg')).toHaveText(['Epic', 'Feature', 'Model', 'Ticket', 'Agent'])
   await group(page, 'model').click(); await option(page, 'claude').click()
   await expect(option(page, 'claude')).toHaveAttribute('aria-pressed', 'true')
-  await page.evaluate(() => loadingHook.destroyed())
+  await expect(page.locator('.bd-loading')).toBeVisible()
+  expect(await page.evaluate(async () => {
+    const { S } = await import('/build-home/state.js')
+    return { loading: S.loading, models: S.f.model }
+  })).toEqual({ loading: true, models: ['claude'] })
 })
 test('F2 F3 not planned removes layout space, toggles via URL and hides incoming rows', async ({ page }) => {
   await open(page)
@@ -108,11 +105,11 @@ test('F6 F7 unknown status, cue and agent never match plausible defaults', async
     return { hist: ['closed', 'weird'].map(hist), cue: matching.tstate({ sec: 'plan', cue: null }), agents }
   })).toEqual({ hist: [null, null], cue: null, agents: [null, null, null] })
   await group(page, 'astate').click(); await option(page, 'active').click()
+  await expect(page.locator('.bd-now-st [data-ast="active"]')).toHaveClass(/\bon\b/)
   expect(await page.evaluate(() => ['9008', '9009', '9016'].map(id => matching.match(m.ctx.D.byId[id])))).toEqual([false, false, true])
   await option(page, 'active').click(); await option(page, 'none').click()
   expect(await page.evaluate(() => ['9008', '9009'].map(id => matching.match(m.ctx.D.byId[id])))).toEqual([false, false])
-  await page.evaluate(() => { m.ctx.root.insertAdjacentHTML('beforeend', '<div class="bd-now-h"><button data-ast="active">Running</button></div>'); m.S.f.astate = ['active']; m.fx.syncAst() })
-  await expect(page.locator('[data-ast="active"]')).toHaveClass('on')
+  await expect(page.locator('.bd-now-st [data-ast="active"]')).not.toHaveClass(/\bon\b/)
 })
 test('F9 unknown slugs remain clearable with no feature count', async ({ page }) => {
   await open(page, 'live', '?feature=ghost&epic=ghost-epic')
