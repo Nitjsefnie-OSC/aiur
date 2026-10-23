@@ -130,6 +130,7 @@ test.describe('keyboard', () => {
     await open(page, 'live', '?trees=1'); await board(page); await reveal(page, 'plan')
     const locked = page.locator('#bd-sec-plan .bd-card').first(), lockId = await locked.getAttribute('data-id')
     await locked.focus(); const top = await page.evaluate(() => st.ctx.vp.scrollTop)
+    await expect(page.locator('#bd-content')).toHaveClass(/hovering/) // keyboard focus shows the chain, as hover does
     await page.keyboard.press(' ')
     await expect(page.locator('.bd-lt')).toHaveClass(/locked/)
     expect(await page.evaluate(() => [st.ctx.lockId, st.ctx.vp.scrollTop])).toEqual([lockId, top])

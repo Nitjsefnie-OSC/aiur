@@ -15,6 +15,6 @@ export function restorable(el) {
 }
 export function restore(origin, id) {
   const card = [...document.querySelectorAll('.bd-card[data-id], .lr[data-id]')].find(el => el.dataset.id === id);
-  // The opener left the board: the viewport (tabindex -1) keeps focus out of <body>.
-  if (restorable(origin)) origin.focus(); else if (restorable(card)) card.focus(); else document.querySelector('#bd-vp')?.focus({ preventScroll: true });
+  // An opener that left the board returns focus to the viewport (tabindex -1), not <body>; a deep link has no opener.
+  if (restorable(origin)) origin.focus(); else if (restorable(card)) card.focus(); else if (id) document.querySelector('#bd-vp')?.focus({ preventScroll: true });
 }

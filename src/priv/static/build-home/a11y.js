@@ -125,6 +125,11 @@ export function onCardKey(e) {
   return true;
 }
 // Keyboard focus is hover for chains: the pointer path's own guards (S.trees, scrolling, lock, band) apply.
-export function onCardFocusIn(e) { if (e.target.matches?.('.bd-card')) { ctx.a11y.focusId = e.target.dataset.id; fx.onHover(e); } }
+// A tap or click also focuses the card but is not :focus-visible, so touch keeps its no-hover rule.
+export function onCardFocusIn(e) {
+  if (!e.target.matches?.('.bd-card')) return;
+  ctx.a11y.focusId = e.target.dataset.id;
+  if (e.target.matches(':focus-visible')) fx.onHover(e);
+}
 export function onCardFocusOut(e) { if (!e.relatedTarget?.closest?.('.bd-card')) fx.onLeave(); }
 
