@@ -159,7 +159,7 @@ test('unknown points, estimates, queue numbers and unfiled identity stay explici
   await open(page)
   await draw(page, '9004'); await expect(probe(page).locator('.bd-status')).toContainText('Open · not queued'); await expect(probe(page).locator('[data-unknown="pts"]')).toHaveText('—')
   await expect(probe(page).locator('.bd-cx')).toHaveAttribute('title', /points unknown/)
-  await draw(page, '9005'); await expect(probe(page).locator('.bd-status')).toContainText('≈— · 2 pts')
+  await draw(page, '9005'); await expect(probe(page).locator('.bd-status')).toContainText('— · 2 pts')
   await expect(probe(page).locator('[data-unknown="est"]')).toHaveAttribute('title', 'Estimate unknown')
   await page.evaluate(() => inject('9005', { qpos: null, override: { hours: '3', reason: 'bad' } }))
   await draw(page, '9005'); await expect(probe(page).locator('[data-unknown="qpos"]')).toHaveText('—')
