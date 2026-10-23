@@ -87,6 +87,20 @@ test('scrolling with no focused card moves the roving stop to the visible sectio
   expect(roving.stops).toBe(1)
 })
 
+test('live rendering keeps the focused card node when its detail tier changes', async ({ page }) => {
+  await open(page)
+  const result = await page.evaluate(() => {
+    const { ctx, fx } = state
+    const card = [...ctx.R.values()].find(el => el.closest('#bd-sec-plan'))
+    card.focus()
+    card.classList.remove('full', 'line', 'mini', 'bar')
+    card.classList.add('stale-detail')
+    fx.update(true)
+    return { sameNode: document.activeElement === card, stillConnected: card.isConnected }
+  })
+  expect(result).toEqual({ sameNode: true, stillConnected: true })
+})
+
 test('keyboard tree highlighting ends when card focus leaves the board', async ({ page }) => {
   await open(page)
   const planId = await page.evaluate(() => {
