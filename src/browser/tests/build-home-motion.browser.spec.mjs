@@ -322,6 +322,10 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       }
       if (name.startsWith('snap.')) { await alignBoard(pair) }
       if (name.startsWith('tree.')) await prepareTreeMotion(pair)
+      // Keep usage countdowns at the same fixture instant while dim frames are sampled.
+      if (name === 'filter.dim') await pair.product.evaluate(async now => {
+        const { setNow } = await import('/build-home/clock.js'), { fx } = await import('/build-home/state.js'); setNow(now); fx.renderUsage()
+      }, FIXTURE_META.now)
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
