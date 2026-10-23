@@ -6,7 +6,15 @@ set -euo pipefail
 # hour, and atomically advances an independent retrospective timer.
 
 mode="${1:-due}"
-run_id="${AIUR_EXECUTOR_RUN_ID:-${AIUR_TMUX_SESSION:-default}}"
+default_run_id="${AIUR_TMUX_SESSION:-default}"
+if [ -n "${AIUR_TMUX_SOCKET:-}" ] && [ -n "${AIUR_TMUX_SESSION:-}" ] && command -v tmux >/dev/null 2>&1; then
+  session_id="$(tmux -L "$AIUR_TMUX_SOCKET" display-message -p -t "$AIUR_TMUX_SESSION" '#{session_id}' 2>/dev/null || true)"
+  if [[ "$session_id" =~ ^\$([0-9]+)$ ]]; then
+    socket_key="${AIUR_TMUX_SOCKET//[^A-Za-z0-9._-]/_}"
+    default_run_id="tmux-${socket_key}-${BASH_REMATCH[1]}"
+  fi
+fi
+run_id="${AIUR_EXECUTOR_RUN_ID:-$default_run_id}"
 interval_seconds="${AIUR_EXECUTOR_RETROSPECTIVE_SECONDS:-3600}"
 
 # Adaptive quiet-audit wait bounds. Event-driven wakes stay immediate; these

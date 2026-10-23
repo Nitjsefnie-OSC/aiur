@@ -326,6 +326,7 @@ function confirmedIdleUnits(name, snapshot, expectedActiveAgents) {
 function pageLabel(name) {
   return {
     build: 'Build',
+    'build-home': 'Build home',
     units: 'Units',
     commands: 'Commands',
     'build-orders': 'Build Order',

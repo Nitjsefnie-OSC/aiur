@@ -473,7 +473,6 @@ Use the bounded wait as the discovery path:
 
 ```bash
 RETRO="<loaded-aiur-run-skill>/scripts/executor-retrospective.sh"
-export AIUR_EXECUTOR_RUN_ID="${AIUR_TMUX_SESSION:-default}"
 wait_seconds="${AIUR_EXECUTOR_WAIT_FLOOR_SECONDS:-30}"
 
 if wake_json="$("$AIUR_CMD" executor-wait --timeout "$wait_seconds" --json)"; then
@@ -707,7 +706,6 @@ durable summary:
 
 ```bash
 RETRO="<loaded-aiur-run-skill>/scripts/executor-retrospective.sh"
-export AIUR_EXECUTOR_RUN_ID="${AIUR_TMUX_SESSION:-default}"
 "$RETRO" arm
 "$RETRO" observe action "reviewed-green-pr"
 "$RETRO" observe no-action "ci-still-pending"
@@ -724,9 +722,11 @@ The read-only CLI probe runs alongside it with one control-RPC timeout per
 command, so a normal record may spend up to roughly 30 seconds on terminal
 evidence before the browser capture completes.
 
-The visual check defaults `AIUR_EXECUTOR_RUN_ID` to `AIUR_TMUX_SESSION`, or
-`default` when the command runs outside an Aiur session. Set it explicitly to
-use a separate retrospective identity. Preconditions fail with distinct,
+The retrospective helper defaults `AIUR_EXECUTOR_RUN_ID` to the live tmux
+session identity (socket plus tmux session ID), which remains stable across
+Executor handoffs and changes when the session is recreated. Outside an Aiur
+tmux session it uses `default`. Set `AIUR_EXECUTOR_RUN_ID` explicitly to use a
+separate retrospective identity. Preconditions fail with distinct,
 non-zero codes so a wrapper can tell which one stopped it: 67 when the
 dashboard URL cannot be discovered, 68 when an explicit run ID is invalid,
 and 69 when `AIUR_DASHBOARD_PASSWORD` is missing. Each failure prints a

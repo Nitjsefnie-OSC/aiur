@@ -59,6 +59,24 @@ env -u AIUR_EXECUTOR_RUN_ID -u AIUR_TMUX_SESSION \
 [ -s "$default_run_root/default/retrospective-state.json" ] ||
   fail "missing run ID did not use the documented default"
 
+tmux_stub_dir="$state_root/tmux-bin"
+mkdir -p "$tmux_stub_dir"
+cat > "$tmux_stub_dir/tmux" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$TMUX_TEST_SESSION_ID"
+EOF
+chmod +x "$tmux_stub_dir/tmux"
+session_state_root="$state_root/session-run-id"
+for session_id in '$7' '$7' '$8'; do
+  TMUX_TEST_SESSION_ID="$session_id" PATH="$tmux_stub_dir:$PATH" \
+    AIUR_EXECUTOR_STATE_DIR="$session_state_root" AIUR_TMUX_SOCKET=aiur-test \
+    AIUR_TMUX_SESSION=aiur-test-default env -u AIUR_EXECUTOR_RUN_ID "$script" due >/dev/null
+done
+[ -s "$session_state_root/tmux-aiur-test-7/retrospective-state.json" ] ||
+  fail "live tmux session ID was not used as the retrospective identity"
+[ -s "$session_state_root/tmux-aiur-test-8/retrospective-state.json" ] ||
+  fail "a recreated tmux session reused the previous retrospective identity"
+
 mkdir -p "$state_root/invalid-run-id"
 for invalid_run_id in . ..; do
   if AIUR_EXECUTOR_STATE_DIR="$state_root/invalid-run-id" \
