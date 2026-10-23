@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { PARITY_VIEWPORTS, expectDesignParity, parityContextOptions, loadAllowlist, openDesign, openProduct } from '../support/design-parity.mjs'
+import { PARITY_VIEWPORTS, expectDesignParity, parityContextOptions, loadAllowlist, applyAllowlist, openDesign, openProduct } from '../support/design-parity.mjs'
 import { readFile } from 'node:fs/promises'
 import { compareRegion } from '../support/build-home-region-parity.mjs'
 
@@ -50,67 +50,72 @@ const reference = designSource.replace('  window.AiurBuild = {', `  window.unfil
   tree: openTree,
   freeze() {S.ready=false;snapping=true;},
 };\n  window.AiurBuild = {`)
-// Mask overlays cover equal rectangles without changing the identity slot's layout.
-async function waitSlotGeometry(node,label) {
+// Body markers survive renderer replacement and never alter a row's layout.
+async function slotGeometry(node,label) {
   let geometry
   await expect.poll(async()=>{
     geometry=await node.evaluate(el=>{
-      const box=el.getBoundingClientRect(),style=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
+      const b=el.getBoundingClientRect(),s=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
       const transform=ancestor?getComputedStyle(ancestor).transform:'none',scale=transform==='none'?1:new DOMMatrix(transform).a
-      const width=parseFloat(style.width)||box.width/scale
-      return {positive:box.width>0&&box.height>0&&Number.isFinite(width)&&width>0,width,height:box.height,bounds:box.toJSON(),display:style.display,computedWidth:style.width,connected:el.isConnected}
+      const width=parseFloat(s.width)||b.width/scale
+      return {positive:b.width>0&&b.height>0&&Number.isFinite(width)&&width>0,width,box:b.toJSON(),display:s.display,connected:el.isConnected}
     })
     return JSON.stringify(geometry)
   },{message:label}).toMatch(/"positive":true/)
   return geometry
 }
-async function maskRow(pair,region,slots) {
-  if(region.includes('.bd-tn')) {
-    const entry=pair.allowlist.find(entry=>entry.id==='unfiled-tree-reference-width')
-    expect(entry).toMatchObject({kind:'property',cells:{dataset:'live'},approval:{status:'pending-sign-off'}})
-    const measurement=await waitSlotGeometry(pair.product.locator(region).locator('b'),region+' b product reference width')
-    const width=Math.round(measurement.width*64)/64
-    await pair.design.locator(region).locator('b').evaluate((el,width)=>{el.style.width=width+'px';el.style.overflow='hidden'},width)
+async function maskRow(pair,kind,num,slots) {
+  const selectors=['AIUR-'+num,'pack:build-plan/BP-'+num].map(id=>'.'+kind+'[data-id="'+id+'"]')
+  if(kind==='bd-tn') {
+    expect(pair.allowlist.find(entry=>entry.id==='unfiled-tree-reference-width')).toMatchObject({kind:'property',cells:{dataset:'live'},approval:{status:'pending-sign-off'}})
+    const measured=await slotGeometry(pair.product.locator(selectors[1]).locator('b'),selectors[1]+' b width')
+    await pair.design.evaluate(({selector,width})=>{
+      const key='unfiled-reference-'+selector.match(/AIUR-(\d+)/)[1]
+      let style=document.getElementById(key)
+      if(!style) {style=document.createElement('style');style.id=key;document.head.append(style)}
+      style.textContent=selector+' .bd-tn1 b {width:'+width+'px;overflow:hidden;}'
+    },{selector:selectors[0],width:Math.round(measured.width*64)/64})
   }
-  for (const slot of slots) {
-    const nodes = [pair.design,pair.product].map(page => page.locator(region).locator(slot))
-    const tree=region.includes('.bd-tn')
-    const boxes = tree
-      ? (await Promise.all(nodes.map((node,index)=>waitSlotGeometry(node,region+' '+slot+' '+(index?'product':'design'))))).map(geometry=>geometry.bounds)
-      : await Promise.all(nodes.map(node=>node.evaluate(el=>{const b=el.getBoundingClientRect();return {width:b.width,height:b.height}})))
-    const size = {width:Math.max(...boxes.map(b=>b.width)),height:Math.max(...boxes.map(b=>b.height))}
-    for (const [index,node] of nodes.entries()) {
-      const prepare=()=>node.evaluate((el,size) => {
-      el.querySelector('[data-unfiled-mask]')?.remove()
-      const mask=document.createElement('span');mask.dataset.unfiledMask=''
-      const style=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
-      const transform=ancestor?getComputedStyle(ancestor).transform:'none',scale=transform==='none'?1:new DOMMatrix(transform).a
-      const box=el.getBoundingClientRect(),cardIcon=el.matches('.bd-id')?el.previousElementSibling:null,title=el.matches('.bd-tn1 b')?el.nextElementSibling:null,dot=title?el.previousElementSibling:null
-      if(ancestor && (!(box.width>0&&box.height>0)||!Number.isFinite(scale)||scale<=0)) return false
-      const rasterMargin=title?Math.min(1/devicePixelRatio,Math.max(0,title.getBoundingClientRect().left-box.right)):0
-      const rasterLeft=cardIcon?1/devicePixelRatio:dot?Math.min(1/devicePixelRatio,Math.max(0,(box.left-dot.getBoundingClientRect().right)/2)):0
-      el.style.position='relative'
-      Object.assign(mask.style,{position:'absolute',left:(-parseFloat(style.borderLeftWidth||0)-rasterLeft/scale)+'px',top:-parseFloat(style.borderTopWidth||0)+'px',width:(size.width+rasterMargin+rasterLeft)/scale+'px',height:size.height/scale+'px',pointerEvents:'none'})
-      el.append(mask)
-      const measured=mask.getBoundingClientRect()
-      if(ancestor && !(measured.width>0&&measured.height>0)) {mask.remove();return false}
-      if(cardIcon && mask.getBoundingClientRect().left<=cardIcon.getBoundingClientRect().right) throw new Error('Identity mask overlaps the unmasked card icon')
-      if(title && mask.getBoundingClientRect().right>=title.getBoundingClientRect().left) throw new Error('Reference mask overlaps the unmasked title')
-      if(dot && mask.getBoundingClientRect().left<=dot.getBoundingClientRect().right) throw new Error('Reference mask overlaps the unmasked status dot')
-      return true
-      },size)
-      if(tree) await expect.poll(prepare,{message:region+' '+slot+' '+(index?'product':'design')+' mask preparation'}).toBe(true)
-      else await prepare()
-    }
+  for(const [slotIndex,slot] of slots.entries()) {
+    const nodes=[pair.design,pair.product].map((page,index)=>page.locator(selectors[index]).locator(slot))
+    const boxes=kind==='bd-tn'
+      ? (await Promise.all(nodes.map((node,index)=>slotGeometry(node,selectors[index]+' '+slot)))).map(g=>g.box)
+      : await Promise.all(nodes.map(node=>node.evaluate(el=>el.getBoundingClientRect().toJSON())))
+    const size={width:Math.max(...boxes.map(b=>b.width)),height:Math.max(...boxes.map(b=>b.height))}
+    for(const [index,node] of nodes.entries()) await node.evaluate((el,{size,kind,slotIndex,slot})=>{
+      const box=el.getBoundingClientRect(),title=el.matches('.bd-tn1 b')?el.nextElementSibling:null
+      const preceding=title?el.previousElementSibling:el.matches('.bd-id')?el.previousElementSibling:null
+      const left=preceding?Math.min(1/devicePixelRatio,Math.max(0,(box.left-preceding.getBoundingClientRect().right)/2)):0
+      const right=title?Math.min(1/devicePixelRatio,Math.max(0,title.getBoundingClientRect().left-box.right)):0
+      const mask=document.createElement('span')
+      Object.assign(mask.dataset,{unfiledMask:kind,rowId:el.closest('[data-id]').dataset.id,slot:String(slotIndex),ownedSlot:slot,parityRegion:kind==='bd-tn'?'.bd-tree-s':'#bd-vp'})
+      Object.assign(mask.style,{position:'fixed',display:'block',boxSizing:'border-box',margin:'0',padding:'0',border:'0',left:box.left-left+'px',top:box.top+'px',width:size.width+left+right+'px',height:size.height+'px',background:'transparent',pointerEvents:'none',zIndex:'2147483647'})
+      document.body.append(mask)
+      const m=mask.getBoundingClientRect()
+      if(title&&m.right>=title.getBoundingClientRect().left) throw new Error('Identity mask overlaps the unmasked title')
+      if(preceding&&m.left<=preceding.getBoundingClientRect().right) throw new Error('Identity mask overlaps the unmasked icon or dot')
+    },{size,kind,slotIndex,slot})
   }
 }
 async function maskVisible(pair,kind,slots) {
-  for (const num of ids) {
-    const region=`:is(.${kind}[data-id="AIUR-${num}"],.${kind}[data-id="pack:build-plan/BP-${num}"])`
-    const counts=await Promise.all([pair.design,pair.product].map(page=>page.locator(region).count()))
+  for(const page of [pair.design,pair.product]) await page.locator('body > [data-unfiled-mask]').evaluateAll(nodes=>nodes.forEach(node=>node.remove()))
+  await applyAllowlist(pair,pair.cell)
+  for(const num of ids) {
+    const counts=await Promise.all([pair.design,pair.product].map((page,index)=>page.locator('.'+kind+'[data-id="'+(index?'pack:build-plan/BP-':'AIUR-')+num+'"]').count()))
     expect(counts[1],`matching rendered row ${num}`).toBe(counts[0])
-    if(counts[0]) await maskRow(pair,region,slots)
+    if(counts[0]) await maskRow(pair,kind,num,slots)
   }
+}
+async function assertMaskGeometry(pair,kind) {
+  for(const page of [pair.design,pair.product]) expect(await page.locator('body > [data-unfiled-mask]').evaluateAll((markers,kind)=>markers.length>0&&markers.every(marker=>{
+    const owned=document.querySelector('.'+kind+'[data-id="'+marker.dataset.rowId+'"]')?.querySelector(marker.dataset.ownedSlot)
+    if(!owned) return false
+    const a=owned.getBoundingClientRect(),b=marker.getBoundingClientRect()
+    if(!a.width&&!a.height) return !b.width&&!b.height
+    const title=owned.matches('.bd-tn1 b')?owned.nextElementSibling:null,preceding=title?owned.previousElementSibling:owned.matches('.bd-id')?owned.previousElementSibling:null
+    return b.width>0&&b.height>0&&Math.abs(a.top-b.top)<1/64&&b.left<=a.left&&b.right>=a.right&&b.bottom>=a.bottom
+      &&(!title||b.right<title.getBoundingClientRect().left)&&(!preceding||b.left>preceding.getBoundingClientRect().right)
+  }),kind),'body identity masks match current owned slots without covering titles or icons').toBe(true)
 }
 const ids = Array.from({length:16}, (_,i) => 645+i)
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) for (const palette of ['aiur','gruvbox']) {
@@ -179,14 +184,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
           },surface.kind)))
           expect(visible[1],surface.kind+' visible identities').toEqual(visible[0])
           expect(visible[1],surface.kind+' requested row content is fully captured').toContain(num)
-          if(surface.kind==='bd-tn') for(const page of [pair.design,pair.product]) {
-            expect(await page.locator('.bd-tn').evaluateAll((rows,ids)=>rows.filter(row=>ids.some(id=>row.dataset.id==='AIUR-'+id||row.dataset.id==='pack:build-plan/BP-'+id)).every(row=>[...row.querySelectorAll('b,em')].every(owned=>{
-              const mask=owned.querySelector('[data-unfiled-mask]')
-              if(!mask) return false
-              const a=owned.getBoundingClientRect(),b=mask.getBoundingClientRect()
-              return b.width>0&&b.height>0&&Math.min(a.right,b.right)>Math.max(a.left,b.left)&&Math.min(a.bottom,b.bottom)>Math.max(a.top,b.top)
-            })),ids),'tree identity masks remain present with positive owned intersection').toBe(true)
-          }
+          await assertMaskGeometry(pair,surface.kind)
           await expectDesignParity(pair,{name:`unfiled-${viewport.viewport.width}-${theme}-${palette}-${surface.kind}-${num}`,region:surface.region,preserveAnimations:true,regionCapture:surface.kind==='bd-tn'?'contained':'visible'})
           visible[1].forEach(id=>covered.add(id))
         }

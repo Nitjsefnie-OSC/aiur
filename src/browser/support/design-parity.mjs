@@ -228,7 +228,7 @@ export async function compareParityPixels(pair, { name, region, fullPage = false
   if (region) {
     for (const [page, masks] of [[pair.design, designMask], [pair.product, productMask]]) {
       const target = page.locator(region)
-      const inside = target.or(target.locator('*'))
+      const inside = target.or(target.locator('*')).or(page.locator('[data-parity-region=' + JSON.stringify(region) + ']'))
       for (let i = 0; i < masks.length; i++) masks[i] = masks[i].and(inside)
     }
   }
