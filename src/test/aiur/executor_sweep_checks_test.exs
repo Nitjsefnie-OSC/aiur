@@ -322,7 +322,7 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
   test "queued membership is a modifier under the configured lifecycle prefix" do
     tickets =
       for state <- Labels.state_labels("sym") do
-        %{number: 2000, labels: ["sym:queued", state]}
+        %{number: 2000, created_at: nil, labels: ["sym:queued", state]}
       end
 
     assert [] = StateLabels.findings(tickets, "sym")
