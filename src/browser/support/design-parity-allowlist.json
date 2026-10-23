@@ -400,6 +400,20 @@
     }
   },
   {
+    "id": "filter-retrying-option",
+    "spec": "build-home-filters-parity.browser.spec.mjs",
+    "kind": "property",
+    "selector": "#bd-filters",
+    "property": "Agent options include Retrying with queued swatch",
+    "reason": "Add only the existing product Retrying state to the in-memory reference. Full DOM and pixel comparisons remain enforced; no option or capture is masked.",
+    "approval": {
+      "status": "approved",
+      "by": "Kevin",
+      "date": "2026-10-23",
+      "ref": "dec_d92d050693d7f45c / act_866e4ee3350221492be2"
+    }
+  },
+  {
     "id": "board-inset-well",
     "kind": "design-style",
     "selector": "html",
