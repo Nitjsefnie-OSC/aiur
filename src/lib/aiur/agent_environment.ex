@@ -5,6 +5,7 @@ defmodule Aiur.AgentEnvironment do
 
   alias Aiur.{AgentBuildGuard, AgentScratch, BuildGate, Config, Shell}
   alias Aiur.AgentEnvironment.Contributor
+  alias Aiur.AgentEnvironment.GitHubPath
   alias Aiur.Config.Paths
 
   # AIUR_RELEASE_NODE + AIUR_INSTANCE_KEY + AIUR_REPO_ROOT are the per-instance
@@ -295,7 +296,7 @@ defmodule Aiur.AgentEnvironment do
         # its cache TTL to the configured polling cadence to avoid repeated 429s.
         {~c"AIUR_CLAUDE_USAGE_TTL_MS", String.to_charlist(usage_ttl_ms())}
       ] ++
-        Aiur.AgentEnvironment.GitHubPath.port_env(workspace) ++
+        GitHubPath.port_env(workspace) ++
         scratch_env(workspace) ++
         __MODULE__.GitIdentity.port_env(opts) ++
         Enum.map(mix_scheduler_env(), fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end) ++
@@ -393,7 +394,7 @@ defmodule Aiur.AgentEnvironment do
       "AIUR_REAL_GIT=#{if real_git, do: Aiur.Shell.escape(real_git), else: ""}\nexport AIUR_REAL_GIT\n" <>
       Contributor.shell_exports(workspace, opts) <>
       "export AIUR_AGENT_WORKSPACE=#{Aiur.Shell.escape(workspace)}\n" <>
-      Aiur.AgentEnvironment.GitHubPath.shell_export(workspace) <>
+      GitHubPath.shell_export(workspace) <>
       __MODULE__.GitIdentity.export_prefix(opts) <>
       "aiur_scratch_dir=#{Aiur.Shell.escape(AgentScratch.dir(workspace))}\n" <>
       "if mkdir -p \"$aiur_scratch_dir\" 2>/dev/null; then\n" <>
