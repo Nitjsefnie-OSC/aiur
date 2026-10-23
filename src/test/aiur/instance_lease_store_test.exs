@@ -150,7 +150,7 @@ defmodule Aiur.Instance.LeaseStoreTest do
           if Process.alive?(right_pid), do: safe_stop_genserver(right_pid)
         end)
 
-        assert eventually(fn -> LeaseStore.claim(key, server: left) == :acquired end)
+        assert LeaseStore.claim(key, server: left) == :acquired
         assert LeaseStore.claim(key, server: right) == :held
         assert LeaseStore.holder(key, server: right) == {:held, left_id}
         assert LeaseStore.owned?(key, server: left, instance_id: left_id)
@@ -166,18 +166,6 @@ defmodule Aiur.Instance.LeaseStoreTest do
 
         assert Enum.count(results, &(&1 == :acquired)) == 1
         assert Enum.count(results, &(&1 == :held)) == 1
-    end
-  end
-
-  defp eventually(fun, attempts \\ 100)
-  defp eventually(_fun, 0), do: false
-
-  defp eventually(fun, attempts) do
-    if fun.() do
-      true
-    else
-      Process.sleep(25)
-      eventually(fun, attempts - 1)
     end
   end
 

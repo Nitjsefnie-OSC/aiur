@@ -203,8 +203,6 @@ defmodule Aiur.Instance.LeaseStore do
     end
   end
 
-  defp key_from_identity(_, _), do: nil
-
   defp key_from_parts(repo, number) when is_binary(repo) do
     case {String.split(String.trim(repo), "/"), parse_number(number)} do
       {[owner, repository], n} when owner != "" and repository != "" and is_integer(n) ->
