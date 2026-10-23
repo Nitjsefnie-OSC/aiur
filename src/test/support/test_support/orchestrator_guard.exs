@@ -28,6 +28,9 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   @app_env_key {__MODULE__, :app_env}
   @codeowners_key {__MODULE__, :codeowners}
   @last_finished_key {__MODULE__, :last_finished}
+  @supervisor_exit_key {__MODULE__, :supervisor_exit}
+  @supervisor_monitor_key {__MODULE__, :supervisor_monitor}
+  @supervisor_pid_key {__MODULE__, :supervisor_pid}
   @guarded_app_env_keys [:decision_state_dir, :github_budget_dir, :executor_state_dir, :runtime_state_dir]
 
   @impl true
@@ -39,6 +42,8 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     :persistent_term.put(@app_env_key, capture_app_env())
     :persistent_term.put(@codeowners_key, :unset)
     :persistent_term.put(@last_finished_key, nil)
+    :persistent_term.put(@supervisor_exit_key, nil)
+    monitor_supervisor(Process.whereis(Aiur.Supervisor))
     {:ok, nil}
   end
 
@@ -55,7 +60,44 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def handle_cast(_event, last), do: {:noreply, last}
 
   @impl true
+  def handle_info({:DOWN, monitor, :process, {Aiur.Supervisor, _node}, reason}, last) do
+    if monitor == :persistent_term.get(@supervisor_monitor_key) do
+      :persistent_term.put(@supervisor_exit_key, reason)
+      Process.send_after(self(), :refresh_supervisor_monitor, 250)
+    end
+
+    {:noreply, last}
+  end
+
+  def handle_info(:refresh_supervisor_monitor, last) do
+    case Process.whereis(Aiur.Supervisor) do
+      pid when is_pid(pid) ->
+        if pid != :persistent_term.get(@supervisor_pid_key) do
+          monitor_supervisor(pid)
+          :persistent_term.put(@supervisor_exit_key, nil)
+        end
+
+      _ ->
+        Process.send_after(self(), :refresh_supervisor_monitor, 250)
+    end
+
+    {:noreply, last}
+  end
+
+  def handle_info(_message, last), do: {:noreply, last}
+
+  @impl true
   def handle_call(:last_finished, _from, last), do: {:reply, last, last}
+
+  defp monitor_supervisor(pid) when is_pid(pid) do
+    :persistent_term.put(@supervisor_pid_key, pid)
+    :persistent_term.put(@supervisor_monitor_key, Process.monitor(pid))
+  end
+
+  defp monitor_supervisor(nil) do
+    :persistent_term.put(@supervisor_pid_key, nil)
+    :persistent_term.put(@supervisor_monitor_key, Process.monitor(Aiur.Supervisor))
+  end
 
   @doc "Fails the suite when a plain ExUnit case leaked the orchestrator. Runs after the formatters stop."
   @spec verify_suite!() :: :ok
@@ -108,8 +150,13 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
 
   defp suite_runtime_child_errors do
     case :persistent_term.get(@runtime_child_leaks_key, []) do
-      [] -> []
-      leaks -> ["plain ExUnit tests left shared runtime children down: #{Enum.join(leaks, ", ")}"]
+      [] ->
+        []
+
+      leaks ->
+        exit_reason = :persistent_term.get(@supervisor_exit_key)
+        reason_note = if is_nil(exit_reason), do: "", else: " (Aiur.Supervisor exit reason: #{inspect(exit_reason)})"
+        ["plain ExUnit tests left shared runtime children down: #{Enum.join(leaks, ", ")}#{reason_note}"]
     end
   end
 
