@@ -258,6 +258,7 @@ defmodule Aiur.Config do
   defdelegate max_concurrent_builds(), to: Aiur.Config.CapacitySettings
   defdelegate build_start_stagger_seconds(), to: Aiur.Config.CapacitySettings
   defdelegate min_free_memory_mb(), to: Aiur.Config.CapacitySettings
+  defdelegate cgroup_memory_threshold(), to: Aiur.Config.CapacitySettings
   defdelegate build_gate_max_hold_seconds(), to: Aiur.Config.CapacitySettings
   defdelegate build_gate_retain_seconds(), to: Aiur.Config.CapacitySettings
   defdelegate mix_scheduler_cap(), to: Aiur.Config.CapacitySettings

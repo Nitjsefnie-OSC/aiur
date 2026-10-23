@@ -1,7 +1,7 @@
 defmodule Aiur.Config.CapacitySettings do
   @moduledoc false
 
-  alias Aiur.Config.Schema.AgentValidation
+  alias Aiur.{Config.Schema.AgentValidation, SystemCgroup}
 
   @spec max_concurrent_agents_for_state(term()) :: pos_integer()
   def max_concurrent_agents_for_state(state_name) when is_binary(state_name) do
@@ -51,7 +51,7 @@ defmodule Aiur.Config.CapacitySettings do
   """
   @spec default_max_concurrent_agents() :: pos_integer()
   @spec default_max_concurrent_agents(pos_integer()) :: pos_integer()
-  def default_max_concurrent_agents(schedulers \\ System.schedulers_online())
+  def default_max_concurrent_agents(schedulers \\ SystemCgroup.cpu_quota() || System.schedulers_online())
 
   def default_max_concurrent_agents(schedulers)
       when is_integer(schedulers) and schedulers > 0 do
@@ -93,6 +93,10 @@ defmodule Aiur.Config.CapacitySettings do
   def min_free_memory_mb do
     Aiur.Config.settings!().agent.min_free_memory_mb
   end
+
+  @doc "Cgroup v2 memory usage fraction above which new dispatch is held."
+  @spec cgroup_memory_threshold() :: float() | nil
+  def cgroup_memory_threshold, do: Aiur.Config.settings!().agent.cgroup_memory_threshold
 
   @doc """
   Absolute wall-clock cap (seconds) on how long any one build-gate slot may be
