@@ -197,7 +197,7 @@ test("container launch refuses an existing or indeterminate distribution node", 
   ].join("\n"));
   chmodSync(fakeEpmd, 0o755);
 
-  for (const state of ["up", "unknown"]) {
+  for (const state of ["up"]) {
     const result = spawnSync(launcher, ["run", "--container"], {
       encoding: "utf8",
       env: {
@@ -209,6 +209,7 @@ test("container launch refuses an existing or indeterminate distribution node", 
         AIUR_TEST_EPMD_STATE: state,
         AIUR_BG_STATE_DIR: path.join(root, "state"),
         AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
+        AIUR_LOGS_ROOT: path.join(root, "logs"),
         AIUR_SESSION_PREFIX: "container-safety-test",
         XDG_RUNTIME_DIR: root,
         TMPDIR: root,
@@ -218,6 +219,91 @@ test("container launch refuses an existing or indeterminate distribution node", 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(`is ${state}`);
     expect(existsSync(launchMarker)).toBe(false);
+  }
+});
+
+test("container launch starts when EPMD is unreachable and no process holds the node name", () => {
+  const { launcher, releaseDir } = setupRealLauncher();
+  const node = "aiur-container-epmd-unreachable-test@127.0.0.1";
+  const launchMarker = path.join(root, "release-launched");
+  const releaseElixir = path.join(releaseDir, "releases", "0.1.1", "elixir");
+  writeFileSync(releaseElixir, `#!/usr/bin/env bash\ntouch ${launchMarker}\nsleep 0.2\n`);
+  chmodSync(releaseElixir, 0o755);
+  const controlProbeMarker = path.join(root, "control-probe-ran");
+  writeFileSync(path.join(releaseDir, "bin", "aiur"), [
+    "#!/usr/bin/env bash",
+    `if [ ! -e ${controlProbeMarker} ]; then touch ${controlProbeMarker}; echo __AIUR_CONTROL_NOT_READY__; exit 1; fi`,
+    "echo __AIUR_CONTROL_READY__",
+    "",
+  ].join("\n"));
+  chmodSync(path.join(releaseDir, "bin", "aiur"), 0o755);
+  const fakeEpmd = path.join(releaseDir, "erts-test", "bin", "epmd");
+  mkdirSync(path.dirname(fakeEpmd), { recursive: true });
+  writeFileSync(fakeEpmd, "#!/usr/bin/env bash\necho 'epmd: Cannot connect to local epmd' >&2\nexit 1\n");
+  chmodSync(fakeEpmd, 0o755);
+
+  const result = spawnSync(launcher, ["run", "--container"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      AIUR_RELEASE_DIR: releaseDir,
+      AIUR_RELEASE_NODE: node,
+      AIUR_INSTANCE_KEY: path.basename(root),
+      AIUR_ERLANG_COOKIE: "container-test-cookie-5939",
+      AIUR_BG_STATE_DIR: path.join(root, "state"),
+      AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
+      AIUR_LOGS_ROOT: path.join(root, "logs"),
+      AIUR_SESSION_PREFIX: "container-epmd-test",
+      XDG_RUNTIME_DIR: root,
+      TMPDIR: root,
+    },
+  });
+
+  expect(result.status).toBe(0);
+  expect(existsSync(launchMarker)).toBe(true);
+});
+
+test("container launch refuses an EPMD-unreachable node held by a process and leaves it alone", async () => {
+  const { launcher, releaseDir } = setupRealLauncher();
+  const node = "aiur-container-epmd-holder-test@127.0.0.1";
+  const launchMarker = path.join(root, "release-launched");
+  const releaseElixir = path.join(releaseDir, "releases", "0.1.1", "elixir");
+  writeFileSync(releaseElixir, `#!/usr/bin/env bash\ntouch ${launchMarker}\n`);
+  chmodSync(releaseElixir, 0o755);
+  const fakeEpmd = path.join(releaseDir, "erts-test", "bin", "epmd");
+  mkdirSync(path.dirname(fakeEpmd), { recursive: true });
+  writeFileSync(fakeEpmd, "#!/usr/bin/env bash\necho 'epmd: Cannot connect to local epmd' >&2\nexit 1\n");
+  chmodSync(fakeEpmd, 0o755);
+  const decoy = spawn("bash", ["-c", 'exec -a "$1" /usr/bin/sleep 60', "container-node-holder", `beam.smp -name ${node}`], { stdio: "ignore" });
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const result = spawnSync(launcher, ["run", "--container"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        AIUR_RELEASE_DIR: releaseDir,
+        AIUR_RELEASE_NODE: node,
+        AIUR_INSTANCE_KEY: path.basename(root),
+        AIUR_ERLANG_COOKIE: "container-test-cookie-5939",
+        AIUR_BG_STATE_DIR: path.join(root, "state"),
+        AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
+        AIUR_LOGS_ROOT: path.join(root, "logs"),
+        AIUR_SESSION_PREFIX: "container-holder-test",
+        XDG_RUNTIME_DIR: root,
+        TMPDIR: root,
+      },
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("is unknown");
+    expect(result.stderr).toContain("a process still holds its name");
+    expect(result.stderr).toContain("leaving it untouched");
+    expect(existsSync(launchMarker)).toBe(false);
+    expect(decoy.exitCode).toBeNull();
+    expect(decoy.signalCode).toBeNull();
+  } finally {
+    decoy.kill("SIGTERM");
   }
 });
 

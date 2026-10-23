@@ -18,16 +18,24 @@ run_session_container() {
   local control_state node_state
   control_state="$(probe_control_liveness)"
   node_state="$(probe_node_liveness)"
-  if [ "$control_state" = "up" ] || [ "$node_state" != "down" ]; then
+  if [ "$control_state" = "up" ] || [ "$node_state" = "up" ]; then
     echo "aiur container cannot start: node ${AIUR_RELEASE_NODE} is ${node_state} (control plane ${control_state}); leaving it untouched" >&2
+    release_aiur_launch_lock "$launch_lock"
+    return 1
+  fi
+  if [ "$node_state" = "unknown" ] && pgrep -f -- "-name ${AIUR_RELEASE_NODE}" >/dev/null 2>&1; then
+    echo "aiur container cannot start: node ${AIUR_RELEASE_NODE} is unknown (control plane ${control_state}; a process still holds its name); leaving it untouched" >&2
     release_aiur_launch_lock "$launch_lock"
     return 1
   fi
 
   run_session_prepare_env "$@"
   run_session_write_pane_launcher
-  # A node absent from EPMD is confirmed down. Reclaim only its orphaned BEAM.
-  kill_beams_matching "-name ${AIUR_RELEASE_NODE}"
+  # EPMD-down confirms an orphan can be reclaimed. When EPMD is unreachable,
+  # the exact-name process probe above distinguishes a fresh node from a holder.
+  if [ "$node_state" = "down" ]; then
+    kill_beams_matching "-name ${AIUR_RELEASE_NODE}"
+  fi
   sweep_stale_tmp_artifacts || true
   sweep_orphan_test_private_dirs || true
 
