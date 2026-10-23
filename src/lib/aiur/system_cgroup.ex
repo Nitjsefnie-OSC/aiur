@@ -65,7 +65,7 @@ defmodule Aiur.SystemCgroup do
     |> String.split("\n", trim: true)
     |> Enum.find_value(fn line ->
       case String.split(line, " - ", parts: 2) do
-        [before, "cgroup2 " <> after_mount] ->
+        [before, "cgroup2 " <> _after_mount] ->
           fields = String.split(before)
 
           case {Enum.at(fields, 3), Enum.at(fields, 4)} do
