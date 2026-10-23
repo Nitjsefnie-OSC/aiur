@@ -100,6 +100,22 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 1_000
   end
 
+  test "a CHANGES_REQUESTED review replaces todo with rework" do
+    write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
+
+    issue = human_review_issue()
+    issue = %{issue | state: "todo", labels: ["agent:todo"]}
+
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
+    Application.put_env(:aiur, :memory_tracker_recipient, self())
+
+    event = changes_requested_review_event(issue)
+
+    CommentWake.maybe_transition_idle_issue_to_rework(base_state(), @issue_number, :pr_review, event, 1)
+
+    assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 1_000
+  end
+
   test "an APPROVED review does not move a human-review ticket to rework" do
     write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
 

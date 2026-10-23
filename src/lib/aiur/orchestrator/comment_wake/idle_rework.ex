@@ -25,7 +25,7 @@ defmodule Aiur.Orchestrator.CommentWake.IdleRework do
   def maybe_transition_idle_issue_to_rework(state, issue_number, source, event, attempt) do
     TrackerTasks.run(state, {:comment_idle, issue_number, source, make_ref()}, fn -> idle_rework_issue(state, issue_number, event) end, fn current, result ->
       if is_nil(State.find_running_by_identifier(current.running, issue_number)) do
-        apply_idle_rework_decision(current, issue_number, source, event, attempt, idle_rework_decision_from_issue(result))
+        apply_idle_rework_decision(current, issue_number, source, event, attempt, idle_rework_decision_from_issue(result, event))
       else
         CommentWake.maybe_reactivate_on_comment(current, issue_number, source, event, attempt)
       end
@@ -85,7 +85,7 @@ defmodule Aiur.Orchestrator.CommentWake.IdleRework do
   # positive form of the same hold and is refused the same way. The poll path
   # never dispatches such tickets, so this gate is what keeps the comment path
   # from being the invisible auto-writer that reaches them.
-  defp idle_rework_decision_from_issue(result) do
+  defp idle_rework_decision_from_issue(result, event) do
     case result do
       {:ok, %Issue{} = issue} ->
         cond do
@@ -109,7 +109,7 @@ defmodule Aiur.Orchestrator.CommentWake.IdleRework do
           # This skip still seeds the event digest below, unlike the two above:
           # the ticket is about to be dispatched, so the comment is briefing
           # material the agent must read on its first turn.
-          DispatchPolicy.normalize_issue_state(issue.state) == "todo" ->
+          DispatchPolicy.normalize_issue_state(issue.state) == "todo" and not ReworkTransition.changes_requested_review?(event) ->
             {:skip, :not_yet_attempted}
 
           true ->

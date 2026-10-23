@@ -11,6 +11,7 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
   alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Orchestrator.TrackerTasks
   alias Aiur.Signal
+  alias Aiur.GitHub.Config
 
   @doc false
   @spec with_comment_transition(State.t(), String.t() | integer(), String.t() | integer(), String.t() | atom(), map(), term(), pos_integer(), function()) :: State.t()
@@ -45,9 +46,21 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
   defp comment_rework_gate(issue_key, event) do
     cond do
       not CommentWake.trusted_comment_event?(event) -> {:skip, :untrusted_author}
+      changes_requested_review?(event) and not human_merger_review?(event) -> {:skip, :untrusted_author}
       CommentWake.benign_review_pass_comment?(event) -> {:skip, :benign_review_pass_comment}
       reason = ReviewFreshness.rework_skip_reason(event) -> {:skip, reason}
       true -> ReworkGate.verify_unresolved_review_threads(issue_key, rework_threads_opts(event))
+    end
+  end
+
+  defp human_merger_review?(event) do
+    comment = Map.get(event, :comment) || Map.get(event, "comment") || %{}
+    reviewer = get_in(comment, ["user", "login"]) || get_in(comment, [:user, :login])
+    allowed? = Map.get(event, :human_merger_allowed_fun, &Config.human_merger_allowed?/1)
+
+    case reviewer do
+      login when is_binary(login) -> allowed?.(login)
+      _missing_from_legacy_event -> true
     end
   end
 
