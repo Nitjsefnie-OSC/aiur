@@ -334,6 +334,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
           issue_state: issue.state,
           error: "failed to spawn agent: #{inspect(reason)}",
           prior_work: Keyword.get(opts, :prior_work, false),
+          stalled_alert_outstanding: Keyword.get(opts, :stalled_alert_outstanding, false),
           worker_host: worker_host
         })
     end

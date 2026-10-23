@@ -9,7 +9,7 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
   import Aiur.RetryEngineFixture, only: [tracker_identity: 1]
 
   describe "handle_retry_issue_lookup/6" do
-    test "preserves the running rework head through queued retry dispatch" do
+    test "preserves the running rework head and stalled alert through queued retry dispatch" do
       parent = self()
       issue = %Issue{id: "issue-rework-retry", identifier: "MT-REWORK-RETRY", title: "Rework retry", state: "rework"}
 
@@ -34,6 +34,7 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
             identifier: issue.identifier,
             started_at: DateTime.utc_now(),
             retry_attempt: 0,
+            stalled_alert_outstanding: true,
             rework_head_sha: "head-before-run",
             control: %{status: :working}
           }
@@ -43,11 +44,13 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
       assert {:noreply, queued_state} = RetryEngine.handle_agent_down(initial_state, ref, :normal)
       retry = queued_state.retry_attempts[issue.id]
       assert retry.rework_head_sha == "head-before-run"
+      assert retry.stalled_alert_outstanding
 
       assert {:ok, attempt, metadata, popped_state} =
                RetryEngine.pop_retry_attempt_state(queued_state, issue.id, retry.retry_token)
 
       assert metadata.rework_head_sha == "head-before-run"
+      assert metadata.stalled_alert_outstanding
 
       assert {:noreply, _dispatched_state} =
                RetryEngine.handle_retry_issue_lookup(
@@ -66,7 +69,7 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
       assert_receive {:rework_retry_baseline, "head-before-run"}, 1000
     end
 
-    test "preserves the running rework head through failure retry dispatch" do
+    test "preserves the running rework head and stalled alert through failure retry dispatch" do
       parent = self()
       issue = %Issue{id: "issue-rework-failure-retry", identifier: "MT-REWORK-FAILURE-RETRY", title: "Rework retry", state: "rework"}
 
@@ -91,6 +94,7 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
             identifier: issue.identifier,
             started_at: DateTime.utc_now(),
             retry_attempt: 0,
+            stalled_alert_outstanding: true,
             rework_head_sha: "head-before-failure",
             control: %{status: :working}
           }
@@ -100,11 +104,13 @@ defmodule Aiur.Orchestrator.RetryEngine.LookupTest do
       assert {:noreply, queued_state} = RetryEngine.handle_agent_down(initial_state, ref, :killed)
       retry = queued_state.retry_attempts[issue.id]
       assert retry.rework_head_sha == "head-before-failure"
+      assert retry.stalled_alert_outstanding
 
       assert {:ok, attempt, metadata, popped_state} =
                RetryEngine.pop_retry_attempt_state(queued_state, issue.id, retry.retry_token)
 
       assert metadata.rework_head_sha == "head-before-failure"
+      assert metadata.stalled_alert_outstanding
 
       assert {:noreply, _dispatched_state} =
                RetryEngine.handle_retry_issue_lookup(
