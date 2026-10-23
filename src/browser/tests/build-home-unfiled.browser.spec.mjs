@@ -3,7 +3,7 @@ import { dashboardCredentials } from './support/layout-worker.mjs'
 test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, height: 1000 } })
 async function open(page, dataset = 'unfiled', query = '') {
   await page.goto('/build-fixture/' + dataset + query)
-  await expect(page.locator('#bd-content')).toHaveCount(1)
+  await expect(page.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
   await expect.poll(() => page.evaluate(async () => (await import('/build-home/state.js')).ctx.D?.plan.some(t => t.src?.kind === 'pack'))).toBe(dataset === 'unfiled')
 }
 const modules = async page => page.evaluate(async () => {
@@ -20,7 +20,7 @@ test('pack modal keeps its identity, source and inert document link', async ({pa
   await expect(page.locator('.bm-facts > div').first().locator('b')).toHaveText('—')
   const link = page.locator('[data-a="none"]'); await expect(link).toHaveAttribute('aria-disabled','true')
   await expect.poll(() => new URL(page.url()).searchParams.get('ticket')).toBe(t.id)
-  const url = page.url(); await link.click(); expect(page.url()).toBe(url)
+  const url = page.url(); await link.click({force:true}); expect(page.url()).toBe(url)
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async text => {window.packCopied = text}}}))
   await page.locator('[data-a="link"]').click()
   await expect.poll(() => page.evaluate(() => window.packCopied)).toBe(url)
@@ -45,6 +45,11 @@ test('missing old pack link opens the not-found state', async ({page}) => {
 })
 test('unavailable packs keep an explicit marker', async ({page}) => {
   await open(page, 'unfiled_unavailable')
+  await page.evaluate(async () => {
+    const {ctx,fx} = await import('/build-home/state.js')
+    const mark = ctx.L.secs.plan.marks.find(m => m.label === 'Planning packs unavailable')
+    fx.scrollVP(ctx.secs.plan.el.offsetTop + mark.y - 70, false); fx.update()
+  })
   const marker = page.locator('.bd-mk.empty').filter({hasText:'Planning packs unavailable'})
   await expect(marker.locator('b')).toHaveText('Planning packs unavailable')
   await expect(marker.locator('p')).toContainText('1 of 2'); await expect(marker.locator('p')).toContainText('checked')
@@ -52,9 +57,9 @@ test('unavailable packs keep an explicit marker', async ({page}) => {
 test('filing a row replaces the open modal and URL through its alias', async ({page}) => {
   await open(page); const t = await modules(page)
   await page.evaluate(async t => {
-    const {ctx} = await import('/build-home/state.js'); const filed = {...t,id:'57',num:57,qpos:3,src:null,was:t.id}
-    delete ctx.D.byId[t.id]; ctx.D.byId[filed.id] = filed
-    ;(await import('/build-home/modal/frame.js')).modalSync({remove:[t.id],upsert:[filed]})
+    const {ctx} = await import('/build-home/state.js'), {receive} = await import('/build-home/hook.js')
+    const filed = {...t,id:'57',num:57,qpos:3,src:null,was:t.id}
+    receive({v:1,kind:'diff',epoch:ctx.proto.epoch,generation:ctx.proto.generation+1,now:ctx.snap.now,remove:[t.id],upsert:[filed],set:{}})
   },t)
   await expect(page.locator('.bm-num')).toHaveText('#57')
   await expect.poll(() => new URL(page.url()).searchParams.get('ticket')).toBe('57')

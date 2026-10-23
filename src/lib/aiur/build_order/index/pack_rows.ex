@@ -6,12 +6,16 @@ defmodule Aiur.BuildOrder.Index.PackRows do
     all = Map.new(all, fn {id, row} -> {id, Map.put(row, :was, Map.get(aliases, row.num))} end)
     all = Enum.reduce(rows, all, &Map.put(&2, &1.id, %{&1 | epic: &1.epic || "unsorted"}))
 
-    Enum.reduce(rows, all, fn row, acc ->
-      Enum.reduce(row.deps, acc, fn dep, joined ->
-        if Map.has_key?(joined, dep), do: Map.update!(joined, dep, &Map.update!(&1, :children, fn children -> Enum.uniq(children ++ [row.id]) end)), else: joined
-      end)
-    end)
+    Enum.reduce(rows, all, &append_children/2)
   end
 
   def merge(all, _packs), do: all
+  defp append_children(row, all), do: Enum.reduce(row.deps, all, &append_child(&2, &1, row.id))
+
+  defp append_child(all, dependency, id) do
+    case all[dependency] do
+      nil -> all
+      row -> Map.put(all, dependency, %{row | children: Enum.uniq(row.children ++ [id])})
+    end
+  end
 end

@@ -1,6 +1,6 @@
 defmodule Aiur.BuildOrder.Index do
   @moduledoc "Shared build-home join and changes; all input reads are local projections."
-  alias Aiur.BuildOrder.{EpicOverrides, Features, History, NotQueued}
+  alias Aiur.BuildOrder.{EpicOverrides, Features, History, NotQueued, PackStatus}
   alias Aiur.BuildOrder.Index.{Catalogue, PackRows, Pages, Parts, Rows, Sources}
   @topic "build-home:index"
   @blocks ~w(epics features order counts sources history_meta repo)a
@@ -92,7 +92,7 @@ defmodule Aiur.BuildOrder.Index do
   def subscribe_sources do
     subscribers = [
       &History.subscribe/0,
-      &Aiur.BuildOrder.PackStatus.subscribe/0,
+      &PackStatus.subscribe/0,
       &Features.subscribe/0,
       &EpicOverrides.subscribe/0,
       &Aiur.BuildProgress.subscribe/0,

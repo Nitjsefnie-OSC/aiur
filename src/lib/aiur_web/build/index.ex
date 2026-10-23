@@ -103,12 +103,14 @@ defmodule AiurWeb.Build.Index do
   def handle_call({:ticket, id}, _from, state) do
     reply =
       with {:ok, index} <- state.index do
-        row = index.all[to_string(id)] || Enum.find_value(index.all, fn {_key, row} -> if row[:was] == to_string(id), do: row end)
+        row = find_ticket(index.all, to_string(id))
         if row, do: {:ok, row}, else: {:error, :not_found}
       end
 
     {:reply, reply, state}
   end
+
+  defp find_ticket(all, id), do: all[id] || Enum.find_value(all, fn {_key, row} -> if row[:was] == id, do: row end)
 
   @impl true
   def handle_info({tag, _payload}, state) when is_map_key(@signals, tag), do: {:noreply, dirty(state, @signals[tag])}
