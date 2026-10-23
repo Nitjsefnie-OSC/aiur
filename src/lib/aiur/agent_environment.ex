@@ -40,6 +40,7 @@ defmodule Aiur.AgentEnvironment do
   # (`GITHUB_APP_CLIENT_SECRET`, …) is covered the day it is introduced.
   @app_credential_env_names ~w(GITHUB_APP_ID GITHUB_APP_INSTALLATION_ID GITHUB_APP_PRIVATE_KEY GITHUB_APP_PRIVATE_KEY_PATH)
   @app_credential_env_pattern ~r/\AGITHUB_APP_/
+  @remote_instance_token_env_pattern ~r/\AAIUR_TOKEN_/
   # #2356: agents must not inherit the raw GitHub credential. A PAT in the agent
   # environment authenticates ANY process that speaks HTTP directly — curl,
   # Req, a Python script, a Node fetch — fully authenticated, unmetered and
@@ -141,7 +142,7 @@ defmodule Aiur.AgentEnvironment do
        "; ") <>
       "for aiur_env_name in $(env | sed 's/=.*//'); do " <>
       "case \"$aiur_env_name\" in " <>
-      "AIUR_NODE_NAME|AIUR_*_NODE_NAME|AIUR_COOKIE|AIUR_*_COOKIE|*_API_KEY|*_API_KEY__*|GITHUB_APP_*#{github_credential_case}) unset \"$aiur_env_name\" ;; " <>
+      "AIUR_NODE_NAME|AIUR_*_NODE_NAME|AIUR_COOKIE|AIUR_*_COOKIE|AIUR_TOKEN_*|*_API_KEY|*_API_KEY__*|GITHUB_APP_*#{github_credential_case}) unset \"$aiur_env_name\" ;; " <>
       "esac; " <>
       "done; " <>
       release_launcher_scrub_prefix() <> "\n" <> agent_bin_scrub_prefix()
@@ -212,8 +213,7 @@ defmodule Aiur.AgentEnvironment do
   @doc false
   @spec provider_credential_env_names() :: [String.t()]
   def provider_credential_env_names do
-    inherited = System.get_env() |> Map.keys() |> Enum.filter(&Regex.match?(@provider_api_key_pattern, &1))
-    Enum.uniq(@provider_credential_env_names ++ inherited)
+    Enum.uniq(@provider_credential_env_names ++ inherited_env_names_matching(@provider_api_key_pattern))
   end
 
   @doc """
@@ -224,8 +224,15 @@ defmodule Aiur.AgentEnvironment do
   """
   @spec app_credential_env_names() :: [String.t()]
   def app_credential_env_names do
-    inherited = System.get_env() |> Map.keys() |> Enum.filter(&Regex.match?(@app_credential_env_pattern, &1))
-    Enum.uniq(@app_credential_env_names ++ inherited)
+    Enum.uniq(@app_credential_env_names ++ inherited_env_names_matching(@app_credential_env_pattern))
+  end
+
+  defp remote_instance_token_env_names, do: inherited_env_names_matching(@remote_instance_token_env_pattern)
+
+  defp inherited_env_names_matching(pattern) do
+    System.get_env()
+    |> Map.keys()
+    |> Enum.filter(&Regex.match?(pattern, &1))
   end
 
   @doc """
@@ -259,6 +266,7 @@ defmodule Aiur.AgentEnvironment do
           @operator_only_env_names ++
           provider_credential_env_names() ++
           app_credential_env_names() ++
+          remote_instance_token_env_names() ++
           @github_credential_env_names ++
           ["AIUR_GITHUB_BUDGET_KEY"],
         fn name -> {String.to_charlist(name), false} end
@@ -311,7 +319,9 @@ defmodule Aiur.AgentEnvironment do
     contributions = Contributor.port_env(workspace, opts)
 
     contributed_credentials =
-      for {name, _value} <- contributions, Regex.match?(@app_credential_env_pattern, to_string(name)), do: {name, false}
+      for {name, _value} <- contributions,
+          Regex.match?(@app_credential_env_pattern, to_string(name)) or Regex.match?(@remote_instance_token_env_pattern, to_string(name)),
+          do: {name, false}
 
     (workspace_env ++ contributions ++ unset_inherited_env ++ contributed_credentials)
     |> Map.new()

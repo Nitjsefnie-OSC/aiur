@@ -41,7 +41,25 @@ release_stamp="$release_dir/AIUR_BUILD_STAMP"
 build_lock_dir="$elixir_dir/_build/.aiurdev-build.lock"
 engine="$repo_root/packaging/npm/aiur-cli/libexec/aiur-engine.sh"
 mise_bin="${AIUR_MISE_BIN:-$(command -v mise 2>/dev/null || true)}"
-[ ! -f "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" ] || bash "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" --check || true
+
+# The global remote target must be removed before this shim classifies the
+# remaining command. Remote controls need neither a local release nor a rebuild.
+unset AIUR_REMOTE_INSTANCE
+case "${1:-}" in
+  --instance)
+    [ "$#" -gt 1 ] && [ -n "${2:-}" ] || { echo "aiur: --instance requires a name" >&2; exit 64; }
+    export AIUR_REMOTE_INSTANCE="$2"
+    shift 2
+    ;;
+  --instance=*)
+    export AIUR_REMOTE_INSTANCE="${1#--instance=}"
+    [ -n "$AIUR_REMOTE_INSTANCE" ] || { echo "aiur: --instance requires a name" >&2; exit 64; }
+    shift
+    ;;
+esac
+AIUR_JS_RUNTIME="${AIUR_JS_RUNTIME:-$(command -v node 2>/dev/null || true)}"
+export AIUR_JS_RUNTIME
+[ -n "${AIUR_REMOTE_INSTANCE:-}" ] || [ ! -f "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" ] || bash "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" --check || true
 # --- checkout targeting -------------------------------------------------------
 # repo_root is derived from this script's path, which is deliberate: a globally
 # symlinked `aiurdev` (~/.local/bin/aiurdev -> <checkout>/scripts/aiurdev) has to
@@ -153,6 +171,10 @@ checkout_diverges=0
 
 guard_checkout_target() {
   local cwd_root cmd shim_name
+
+  # A remote control does not build, boot or address a release in either
+  # checkout, so checkout targeting does not apply.
+  [ -z "${AIUR_REMOTE_INSTANCE:-}" ] || return 0
 
   # An explicit AIUR_REPO_ROOT already states the intent this guard exists to
   # confirm, so it is the documented escape hatch as well as the override.
