@@ -86,10 +86,30 @@ defmodule Aiur.AgentEnvironmentTest do
     System.put_env("AIUR_BUILD_GATE_LEASE_PATH", "/parent/gate/slot-1.owner")
     System.put_env("AIUR_BUILD_GATE_LEASE_TOKEN", "parent-lease")
 
-    child_env = AgentEnvironment.workspace_env("/work/aiur/5896")
+    workspace = Aiur.TestSupport.tmp_root!("aiur-build-lease-env")
+    File.mkdir_p!(workspace)
+    on_exit(fn -> Aiur.TestCleanup.rm_rf!(workspace) end)
+
+    child_env = AgentEnvironment.workspace_env(workspace)
 
     assert {~c"AIUR_BUILD_GATE_LEASE_PATH", false} in child_env
     assert {~c"AIUR_BUILD_GATE_LEASE_TOKEN", false} in child_env
+  end
+
+  test "scrub_shell_command clears the parent's build lease" do
+    command =
+      AgentEnvironment.scrub_shell_command("env | grep -E '^(AIUR_BUILD_GATE_LEASE_PATH|AIUR_BUILD_GATE_LEASE_TOKEN|OTHER_KEEP)=' | sort")
+
+    {output, 0} =
+      System.cmd("bash", ["-lc", command],
+        env: [
+          {"AIUR_BUILD_GATE_LEASE_PATH", "/parent/gate/slot-1.owner"},
+          {"AIUR_BUILD_GATE_LEASE_TOKEN", "parent-lease"},
+          {"OTHER_KEEP", "keep"}
+        ]
+      )
+
+    assert output == "OTHER_KEEP=keep\n"
   end
 
   test "scrub_shell_command can retain an Aiur-owned build hook" do
