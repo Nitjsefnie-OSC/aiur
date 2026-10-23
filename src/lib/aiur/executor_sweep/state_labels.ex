@@ -9,6 +9,16 @@ defmodule Aiur.ExecutorSweep.StateLabels do
   # miscounted as an absent label (#5796).
   @state_labels ~w(todo in-progress ci-wait human-review rework merging error done cancelled canceled)
 
+  @spec raw_labels(map()) :: [String.t()]
+  def raw_labels(ticket) do
+    ticket
+    |> Map.get(:labels, Map.get(ticket, "labels", []))
+    |> Enum.map(fn label ->
+      if is_map(label), do: Map.get(label, :name, Map.get(label, "name", "")), else: label
+    end)
+    |> Enum.map(&to_string/1)
+  end
+
   @doc "Takes tickets with raw labels; returns zero or one finding for this instance's prefix."
   @spec findings([map()]) :: [map()]
   @spec findings([map()], String.t()) :: [map()]
