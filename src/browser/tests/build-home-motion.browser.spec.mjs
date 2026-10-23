@@ -282,12 +282,7 @@ function frameBarrier(pair, name, reduce) {
       if (name === 'snap.scroll-curve') await Promise.all([pair.design, pair.product].map(flushScrollPaint))
       if (name.startsWith('snap.')) {
         // Freeze live-card halos at one phase so snapshot frames compare deterministically.
-        await Promise.all([pair.design, pair.product].map(page => page.evaluate(() => document.querySelectorAll('.bd-glow').forEach(el => {
-          for (const animation of el.getAnimations()) if (animation.animationName === 'bdRot') {
-            animation.pause()
-            animation.currentTime = 0
-          }
-        }))))
+        await Promise.all([pair.design, pair.product].map(page => page.evaluate(() => document.querySelectorAll('.bd-glow').forEach(el => el.getAnimations().filter(animation => animation.animationName === 'bdRot').forEach(animation => { animation.pause(); animation.currentTime = 0 })))))
         await primeBoardPaint(pair)
       }
       const captureRegion = name.startsWith('tree.') ? await prepareTreeFrame(pair, region) : region
