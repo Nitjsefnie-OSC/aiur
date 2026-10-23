@@ -7,6 +7,8 @@ import { AST } from './now-state.js';
 import { modelInfo } from './agents.js';
 import { LOGOS } from './logos.js';
 import { NP, colKey, tstate } from './match.js';
+import { syncAst } from './band.js';
+export { syncAst } from './band.js';
 
 export const rowOk = (state, t) => (!state.f.epic.length || state.f.epic.includes(colKey(t))) && (tstate(t) !== NP || state.f.tstate.includes(NP));
 export const layoutKey = state => state.f.epic.join(',') + (state.f.tstate.includes(NP) ? '|np' : '');
@@ -71,8 +73,6 @@ export function renderFilters() {
   if (value != null) ($('[' + attr + '="' + CSS.escape(value) + '"]', host) || $('[data-g="' + group + '"]', host))?.focus({ preventScroll: true });
   syncAst();
 }
-// C9-T08 moves this port of J:1121 into band.js when its module lands.
-export const syncAst = () => { const k = S.f.astate.join(','); $$('.bd-now-h [data-ast]', ctx.root).forEach(b => b.classList.toggle('on', !!k && b.dataset.ast === k)); };
 function changedLayout() {
   const key = layoutKey(S);
   if (ctx.D && key.split('|')[0] !== lastKey.split('|')[0]) ctx.D._fwd = null;
