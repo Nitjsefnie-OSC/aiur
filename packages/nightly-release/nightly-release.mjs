@@ -170,7 +170,6 @@ async function main() {
   const tags = git("tag", "--list", "nightly*").split("\n").filter(Boolean);
 
   summary(`## Nightly ${date} (${config.timezone})${args.dryRun ? " — plan only" : ""}`);
-  output({ act: "false", docker: "false" });
   if (tags.includes(dayTag(date))) {
     summary(`\`${dayTag(date)}\` exists; today's nightly is done.`);
     return 0;
@@ -195,7 +194,9 @@ async function main() {
     baseVersion: (file) => readBaseVersion(git("show", `${sha}:${file}`)),
   });
   const releasing = plan.filter((e) => e.action === "release");
-  output({ act: "true", sha, docker: String(releasing.some((e) => e.pkg.kind === "docker")) });
+  plan_.act = "true";
+  plan_.sha = sha;
+  plan_.docker = String(releasing.some((e) => e.pkg.kind === "docker"));
 
   summary("\n| package | kind | version | action | detail |\n| --- | --- | --- | --- | --- |");
   let failed = 0;
@@ -234,8 +235,10 @@ async function main() {
   return 0;
 }
 
+// Written once, after main, so each key appears in $GITHUB_OUTPUT exactly once.
+const plan_ = { act: "false", docker: "false" };
 main().then(
-  (code) => process.exit(code),
+  (code) => (output(plan_), process.exit(code)),
   (error) => {
     console.error(`nightly-release: ${error.message}`);
     process.exit(1);
