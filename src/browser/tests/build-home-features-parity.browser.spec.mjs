@@ -4,7 +4,8 @@ for (const feature of ['pag', 'khala']) for (const width of [1440, 390]) test(`f
   test.setTimeout(120000)
   const pair = await openParityPair(browser, { viewport: { width, height: 900 }, theme: 'dark', palette: 'gruvbox' }, { dataset: 'live', query: `feature=${feature}`, motion: true })
   try {
-    for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: 'html { overflow-y: scroll !important }' })
+    // Reference HTML:154 reserves a shell gutter; compare the header at equal available widths.
+    for (const page of [pair.design, pair.product]) await page.addStyleTag({ content: 'html { scrollbar-gutter: stable !important; overflow-y: scroll !important }' })
     await expect(pair.product.locator('.bd-fh')).toBeVisible()
     const html = page => page.locator('#bd-fh').evaluate(el => el.innerHTML)
     expect(await html(pair.product)).toBe(await html(pair.design))

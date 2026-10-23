@@ -10,7 +10,7 @@ async function open(page, query = '?feature=pag', dataset = 'live') {
   await page.goto('/build-fixture/' + dataset + query)
   await expect(page.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
   await page.evaluate(async () => {
-    window.m = await import('/build-home/state.js'); window.f = await import('/build-home/features.js')
+    window.m = await import('/build-home/state.js')
     window.h = await import('/build-home/hook.js'); window.hist = await import('/build-home/history.js')
   })
 }
@@ -122,4 +122,33 @@ test('compact Gantt and list focus use active membership', async ({ page }) => {
     const t = ctx.D.byId[el.dataset.id]; return el.classList.contains('dim') === (t.feature === 'pag' || t.also.includes('pag'))
   }).length })
   expect(mismatch).toBe(0)
+})
+test('a feature with only also-affects members shows no invented weighted figure', async ({ page }) => {
+  await open(page, '')
+  await page.evaluate(() => {
+    const { ctx, fx } = m, t = ctx.D.plan[0]
+    const feature = { key: 'alsoonly', label: 'Also only', hue: 42, epics: [], oldest: null, from: null, to: null,
+      stats: { total: 0, done: 0, done_min: 0, pct: null, pct_min: null, reasons: ['no_weight'], orig: 0, added: 0, baseline: false, spark: [], also: 1 } }
+    h.receive({ v: 1, kind: 'diff', epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now: ctx.snap.now,
+      set: { features: { ...ctx.D.features, alsoonly: feature } }, remove: [], upsert: [{ ...t, also: [...t.also, 'alsoonly'] }] })
+    fx.flushLive(); fx.setFeature('alsoonly')
+  })
+  await expect(page.locator('.bd-kv b').nth(0)).toHaveText('0/0')
+  await expect(page.locator('.bd-kv b').nth(1)).toHaveText('—')
+  await expect(page.locator('.bd-kv b').nth(1)).toHaveAttribute('title', 'No weighted tickets')
+  await expect(page.locator('.bd-chip')).toHaveText('+1 also affect')
+  await mode(page, 'compact').click()
+  expect(await page.evaluate(() => m.ctx.L.secs.plan.items.filter(it => it.t.also.includes('alsoonly') && !it.ghost).length)).toBe(1)
+})
+test('an older feature outside the six filter options focuses directly from its URL', async ({ page }) => {
+  let calls = 0
+  page.on('websocket', ws => ws.on('framesent', e => { if (String(e.payload).includes('"load-earlier"')) calls++ }))
+  await page.request.get('/build-control/earlier?delay=2000')
+  try {
+    await open(page, '?feature=d0', 'dense')
+    await expect(page.locator('.bd-fh-name')).toHaveText(await page.evaluate(() => m.ctx.D.features.d0.label))
+    await expect.poll(() => calls).toBeGreaterThan(0)
+    await page.locator('#bd-fx').click()
+    await expect(page.locator('#bd-fh')).toBeEmpty()
+  } finally { await page.request.get('/build-control/earlier') }
 })
