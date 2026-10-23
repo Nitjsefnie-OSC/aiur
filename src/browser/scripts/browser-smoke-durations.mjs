@@ -12,6 +12,8 @@ export const preflightSeconds = 120
 export const setupSeconds = 600
 export const tailSeconds = 120
 export const recordedSeconds = {
+  // Governed local run (2026-10-23): 80 accessibility cases completed in 5.1m with four workers.
+  'test:build-home-a11y': 306,
   // CI run 39616972873 (2026-10-21), jobs 119280971812/119280971969:
   // document functional 43.8s and parity 150.5s suite wall time, rounded up.
   'test:build-home-modal-doc': 44,

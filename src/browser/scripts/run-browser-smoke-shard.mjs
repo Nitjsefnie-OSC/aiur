@@ -16,7 +16,7 @@ export const shards = {
   6: ["test:build-home-cards:4","test:build-home-cards:3","test:build-home-cards:1","test:units","test:layout","test:responsive","test:streamdeck-flow","test:admission","check:elk","test:build-home-protocol","test:build-home-now-state","test:build-home-list-unit","test:build-home-now-band","test:tokens"],
   7: ["test:build-home-cards:2","test:build-home-span-parity","test:parity","test:experiments","test:build-home-conversation","test:build-home-chains-parity"],
   9: ["test:build-home-columns","test:build-home-modal-doc-parity"],
-  8: ["test:build-home-gantt","test:shell-chrome","test:build-index-live","test:build-modal-parity","test:build-home-edges"],
+  8: ["test:build-home-gantt","test:build-home-a11y","test:shell-chrome","test:build-index-live","test:build-modal-parity","test:build-home-edges"],
 };
 
 // Inside the job's timeout-minutes after setup, so a slow shard reports its slowest suites instead of being cancelled.

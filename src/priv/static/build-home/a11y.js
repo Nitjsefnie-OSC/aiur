@@ -112,7 +112,14 @@ export function onCardKeydown(event) {
   const card = event.target.closest?.('.bd-card');
   if (!card) return;
   if (['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
-    event.preventDefault(); moveCard(event.key); return;
+    event.preventDefault();
+    moveCard(event.key);
+    const focused = document.activeElement?.closest?.('.bd-card');
+    if (S.trees && !ctx.lockId && focused && !focused.closest('.bd-now')) {
+      ctx.a11y.focusHoverId = focused.dataset.id;
+      fx.setHover(focused.dataset.id, focused);
+    }
+    return;
   }
   if (event.key === 'Enter') { event.preventDefault(); openCard(card); return; }
   if (event.key !== ' ') return;
