@@ -193,7 +193,7 @@ defmodule Aiur.ExecutorSweep.Checks do
     labels_findings =
       snapshot
       |> Map.get(:tickets, [])
-      |> Enum.map(&%{number: value(&1, :number, nil), created_at: value(&1, :created_at, nil), labels: raw_labels(&1)})
+      |> Enum.map(&%{number: value(&1, :number, nil), created_at: value(&1, :created_at, nil), labels: StateLabels.raw_labels(&1)})
       |> StateLabels.findings(label_prefix)
 
     stale_triage =
@@ -362,13 +362,6 @@ defmodule Aiur.ExecutorSweep.Checks do
     ticket
     |> StateLabels.raw_labels()
     |> Enum.map(&String.trim_leading(&1, "agent:"))
-  end
-
-  defp raw_labels(ticket) do
-    ticket
-    |> value(:labels, [])
-    |> Enum.map(fn label -> if is_map(label), do: value(label, :name, ""), else: label end)
-    |> Enum.map(&to_string/1)
   end
 
   defp value(map, key, default) do

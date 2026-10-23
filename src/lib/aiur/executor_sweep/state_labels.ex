@@ -5,8 +5,9 @@ defmodule Aiur.ExecutorSweep.StateLabels do
   dispatches them, so their missing state label is expected.
   """
 
-  alias Aiur.GitHub.Config
-  alias Aiur.GitHub.Labels
+  # Mirrors `Aiur.GitHub.Labels` state suffixes: a state missing here is
+  # miscounted as an absent label (#5796).
+  @state_labels ~w(todo in-progress ci-wait human-review rework merging error done cancelled canceled)
 
   @spec raw_labels(map()) :: [String.t()]
   def raw_labels(ticket) do
@@ -18,21 +19,18 @@ defmodule Aiur.ExecutorSweep.StateLabels do
     |> Enum.map(&to_string/1)
   end
 
-  @doc "Takes tickets with raw labels and their configured prefix; returns zero or one finding."
+  @doc "Takes tickets with raw labels; returns zero or one finding for this instance's prefix."
   @spec findings([map()]) :: [map()]
-  def findings(tickets), do: findings(tickets, Config.label_prefix())
-
   @spec findings([map()], String.t()) :: [map()]
-  def findings(tickets, prefix) when is_list(tickets) and is_binary(prefix) do
-    state_labels = Labels.state_labels(prefix)
+  def findings(tickets, prefix \\ "agent") do
+    prefix = prefix |> String.trim() |> String.downcase()
 
     case for(
            ticket <- tickets,
-           labels = ticket.labels,
-           not excluded?(labels, prefix),
-           states = matching_states(labels, state_labels, prefix),
+           not excluded?(ticket.labels, prefix),
+           states = current_states(ticket.labels, prefix),
            length(states) != 1,
-           not foreign_only?(labels, states, prefix),
+           not foreign_only?(ticket.labels, states, prefix),
            do: {ticket, states}
          ) do
       [] ->
@@ -57,31 +55,49 @@ defmodule Aiur.ExecutorSweep.StateLabels do
     end
   end
 
-  defp matching_states(labels, state_labels, prefix) do
-    labels
-    |> Enum.filter(&(&1 in state_labels))
-    |> Enum.map(&String.replace_prefix(&1, prefix <> ":", ""))
-  end
-
   defp excluded?(labels, prefix) do
     Enum.any?(labels, fn label ->
-      suffix = String.replace_prefix(label, prefix <> ":", "")
-      suffix in ["parked", "needs-triage", "human:todo"] or String.downcase(suffix) == "epic" or String.starts_with?(String.downcase(suffix), "epic:")
+      normalized = label |> String.trim() |> String.downcase()
+      suffix = prefixed_suffix(normalized, prefix)
+
+      normalized in ["parked", "needs-triage", "human:todo"] or suffix == "parked" or
+        normalized == "epic" or String.starts_with?(normalized, "epic:")
+    end)
+  end
+
+  defp current_states(labels, prefix) do
+    Enum.flat_map(labels, fn label ->
+      normalized = label |> String.trim() |> String.downcase()
+
+      state =
+        case String.split(normalized, ":", parts: 2) do
+          [^prefix, state] -> state
+          [other_prefix, _state] when other_prefix != "" -> nil
+          [_other_prefix, _state] -> nil
+          [state] -> state
+        end
+
+      if state in @state_labels, do: [state], else: []
     end)
   end
 
   defp foreign_only?(labels, [], prefix) do
-    state_suffixes = Enum.map(Labels.state_labels(prefix), &String.replace_prefix(&1, prefix <> ":", ""))
-
     Enum.any?(labels, fn label ->
-      case String.split(label, ":", parts: 2) do
-        [other_prefix, state] when other_prefix != prefix -> state in state_suffixes
+      case String.split(label |> String.trim() |> String.downcase(), ":", parts: 2) do
+        [other_prefix, state] when other_prefix != prefix -> state in @state_labels
         _other -> false
       end
     end)
   end
 
   defp foreign_only?(_labels, _states, _prefix), do: false
+
+  defp prefixed_suffix(label, prefix) do
+    case String.split(label, ":", parts: 2) do
+      [^prefix, suffix] -> suffix
+      _other -> nil
+    end
+  end
 
   # Oldest by creation time; tickets without one sort after, by number.
   defp age_key({ticket, _states}) do

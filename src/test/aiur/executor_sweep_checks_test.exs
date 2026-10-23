@@ -279,13 +279,22 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
     assert message =~ "oldest ticket #1800"
   end
 
-  test "queued membership is a modifier under the configured lifecycle prefix" do
+  # Regression guard only: #5925 already supplies this behavior on main.
+  test "regression guard: queued stays a marker under a non-default prefix" do
     tickets =
       for state <- Labels.state_labels("sym") do
         %{number: 2000, created_at: nil, labels: ["sym:queued", state]}
       end
 
     assert [] = StateLabels.findings(tickets, "sym")
+  end
+
+  test "sweep honors a non-default prefix for queued tickets" do
+    snapshot = %{tickets: [%{number: 1, labels: ["sym:queued", "sym:todo"]}]}
+
+    findings = Checks.all(snapshot, DateTime.utc_now(), label_prefix: "sym")
+
+    refute Enum.any?(findings, &(&1.kind == "invalid_state_labels"))
   end
 
   test "does not flag tickets owned by another instance label prefix" do
