@@ -55,9 +55,9 @@ Remote `status` skips this client's mise-doctor check. Tables use the daemon's d
 
 Background runs persist daemon Logger messages at `<logs-root>/log/aiur.log` without `--debug`. `--debug` additionally enables debug-level messages. The default background root is `~/.aiur/logs/<launch-id>/`; `log/boot.out.log` captures release stdout and stderr.
 
-`aiur status` shows `optimistic n/cap`, `MERGE POLICY`, watcher state (`running`, `unavailable`, `not_running`), CI SHA/age and red start date. Unavailable retains last-known CI. `CI WAIT` lists tickets, PRs, recovery state (including `draft_pr`) and failing checks, including tickets without workers. `aiur capabilities` shows `ci=<mode> local_tests=<mode>` ([merge policy](/reference/merge-policy)). Status also shows degraded CODEOWNERS trust, empty-cycle causes and ages, and prewarm holds. Its daemon-read sections run concurrently under one 1.5s bound; a slow section prints its last good output with a `STALE` age, while an absent result prints `unavailable` and exits 1. The `POLL` line reports the last dispatch poll attempt's age and freshness; a daemon that has not started one says so, and unavailable age is never rendered as zero.
+`aiur status` shows optimistic capacity, merge policy, watcher state, CI freshness and failures, capability modes, CODEOWNERS trust, empty-cycle causes, and prewarm holds. Slow sections reuse last-good output with a `STALE` age; missing results say `unavailable` and exit 1. `POLL` reports the last dispatch age and never renders an unknown age as zero.
 
-On Linux, `aiur init` probes the Codex command sandbox when Codex is selected. A failure shows the command output and offers a retry; see the [Linux setup steps](/guide/quick-start#codex-on-linux). Event counters, subscriptions, session handles and the alert ledger survive restarts in instance- and repository-scoped runtime state. Central alert and event-publication audit logs remain per launch; `--logs-root` controls those logs.
+On Linux, `aiur init` probes the Codex command sandbox and offers a retry on failure; see [Linux setup](/guide/quick-start#codex-on-linux). Event counters, subscriptions, session handles, and alerts survive restarts in instance- and repository-scoped state. Central alert and publication audit logs remain per launch under `--logs-root`.
 
 On upgrade, session handles and subscriptions start empty once, just as they previously did on every restart; state saved from that boot onward is durable. The event counter seeds above the maximum across all launches' counters, logs, the journal and the clock; the alert ledger adopts only its exact project-scoped filename and backfill marker once.
 
@@ -406,7 +406,7 @@ A stalled consumer still holds a claim and still renews its lease, so a presence
 | `expired` | Lease lapsed. A successor may take over with no operator action. |
 | `unknown` | The evidence needed to decide is missing. Never reported as `active`. |
 
-Multiple executors are a supported configuration, so a healthy peer is listed plainly and is not a fault. An agent reports what it finds and recommends; it never revokes a live peer's claim on its own. Records — the journal, wake inbox, cursor, and subscriptions — are created automatically on first use beneath the per-repository state node (`~/.aiur/repo/<owner>/<repo>/executor`), so they survive a daemon restart and a successor resumes from the durable cursor.
+Healthy peer executors are listed, not treated as faults; agents recommend but never revoke a live peer claim. The journal, wake inbox, cursor, and subscriptions are created on first use under `~/.aiur/repo/<owner>/<repo>/executor`, where they survive daemon restarts and let a successor resume from the durable cursor.
 
 Within that node, wake files are prefixed by the sanitized final segment of the tracker project identity (`Paths.repo_name/0`): `<repo>.executor.wakes.ndjson`, `<repo>.executor.wakes.cursor.json`, and `<repo>.executor.wakes.pending.json`.
 
