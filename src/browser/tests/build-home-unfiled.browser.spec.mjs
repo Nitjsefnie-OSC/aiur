@@ -50,6 +50,7 @@ test('list shares explicit unfiled labels without nulls', async ({page}) => {
   await expect(page.locator('#bm-title')).toContainText('<img src=x onerror=alert(1)>')
   await expect(page.locator('#bm-title img')).toHaveCount(0)
 })
+// Future guard for existing not-found copy; pack parser acceptance has a separate mutation check.
 test('missing old pack link opens the not-found state', async ({page}) => {
   await open(page, 'unfiled', '?ticket=pack:build-plan/BP-999')
   await expect(page.locator('#bm-title')).toContainText('Ticket not found')
