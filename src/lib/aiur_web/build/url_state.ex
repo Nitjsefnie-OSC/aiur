@@ -11,10 +11,11 @@ defmodule AiurWeb.Build.URLState do
   @model_key ~r/\A[a-z0-9][a-z0-9._-]{0,31}\z/
   @agent_presets %{active: ["active"], alert: ~w(error retries command), paused: ~w(paused parked), stuck: ~w(error retries command)}
   @ticket_presets %{active: ["in progress"], alert: ["in progress"], paused: ["in progress"], stuck: ["in progress"], queued: ~w(queued held blocked), finished: ~w(merged failed)}
-  @defaults %{view: "graph", span: 1, feature: nil, fmode: "focus", epic: [], model: [], tstate: [], astate: [], live_min: false, trees: false, ticket: nil}
+  @defaults %{view: "graph", list: "tickets", span: 1, feature: nil, fmode: "focus", epic: [], model: [], tstate: [], astate: [], live_min: false, trees: false, ticket: nil}
 
   @type t :: %{
           view: String.t(),
+          list: String.t(),
           span: pos_integer(),
           feature: String.t() | nil,
           fmode: String.t(),
@@ -36,6 +37,7 @@ defmodule AiurWeb.Build.URLState do
 
     %{
       view: if(params["view"] in @views, do: params["view"], else: "graph"),
+      list: if(params["list"] in ~w(features epics), do: params["list"], else: "tickets"),
       span: span(params["span"]),
       feature: feature,
       fmode: if(feature && params["fmode"] == "compact", do: "compact", else: "focus"),
@@ -53,6 +55,7 @@ defmodule AiurWeb.Build.URLState do
   def to_query(state) do
     [
       {"view", if(state.view != "graph", do: state.view)},
+      {"list", if(state.list != "tickets", do: state.list)},
       {"trees", if(state.trees, do: "1")},
       {"live", if(state.live_min, do: "min")},
       {"span", if(state.span != 1, do: Integer.to_string(state.span))},
