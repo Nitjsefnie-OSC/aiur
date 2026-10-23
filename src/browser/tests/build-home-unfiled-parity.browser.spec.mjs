@@ -65,6 +65,7 @@ async function maskRow(pair,region,slots) {
   }
   for (const slot of slots) {
     const nodes = [pair.design,pair.product].map(page => page.locator(region).locator(slot))
+    if(region.includes('.bd-tn')) for(const node of nodes) await expect.poll(()=>node.evaluate(el=>{const b=el.getBoundingClientRect();return b.width>0&&b.height>0})).toBe(true)
     const boxes = await Promise.all(nodes.map(node => node.evaluate(el => {const b=el.getBoundingClientRect();return {width:b.width,height:b.height}})))
     const size = {width:Math.max(...boxes.map(b=>b.width)),height:Math.max(...boxes.map(b=>b.height))}
     for (const node of nodes) await node.evaluate((el,size) => {
@@ -78,6 +79,8 @@ async function maskRow(pair,region,slots) {
       el.style.position='relative'
       Object.assign(mask.style,{position:'absolute',left:(-parseFloat(style.borderLeftWidth||0)-rasterLeft/scale)+'px',top:-parseFloat(style.borderTopWidth||0)+'px',width:(size.width+rasterMargin+rasterLeft)/scale+'px',height:size.height/scale+'px',pointerEvents:'none'})
       el.append(mask)
+      const measured=mask.getBoundingClientRect()
+      if(title && !(measured.width>0&&measured.height>0)) throw new Error('Identity mask has empty geometry')
       if(cardIcon && mask.getBoundingClientRect().left<=cardIcon.getBoundingClientRect().right) throw new Error('Identity mask overlaps the unmasked card icon')
       if(title && mask.getBoundingClientRect().right>=title.getBoundingClientRect().left) throw new Error('Reference mask overlaps the unmasked title')
       if(dot && mask.getBoundingClientRect().left<=dot.getBoundingClientRect().right) throw new Error('Reference mask overlaps the unmasked status dot')
@@ -159,6 +162,14 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
           },surface.kind)))
           expect(visible[1],surface.kind+' visible identities').toEqual(visible[0])
           expect(visible[1],surface.kind+' requested row content is fully captured').toContain(num)
+          if(surface.kind==='bd-tn') for(const page of [pair.design,pair.product]) {
+            expect(await page.locator('.bd-tn').evaluateAll((rows,ids)=>rows.filter(row=>ids.some(id=>row.dataset.id==='AIUR-'+id||row.dataset.id==='pack:build-plan/BP-'+id)).every(row=>[...row.querySelectorAll('b,em')].every(owned=>{
+              const mask=owned.querySelector('[data-unfiled-mask]')
+              if(!mask) return false
+              const a=owned.getBoundingClientRect(),b=mask.getBoundingClientRect()
+              return b.width>0&&b.height>0&&Math.min(a.right,b.right)>Math.max(a.left,b.left)&&Math.min(a.bottom,b.bottom)>Math.max(a.top,b.top)
+            })),ids),'tree identity masks remain present with positive owned intersection').toBe(true)
+          }
           await expectDesignParity(pair,{name:`unfiled-${viewport.viewport.width}-${theme}-${palette}-${surface.kind}-${num}`,region:surface.region,preserveAnimations:true,regionCapture:surface.kind==='bd-tn'?'contained':'visible'})
           visible[1].forEach(id=>covered.add(id))
         }
