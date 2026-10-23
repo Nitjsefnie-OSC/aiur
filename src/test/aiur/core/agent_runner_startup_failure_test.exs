@@ -159,7 +159,8 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
         {:codex_worker_update, "issue-before-run-retry", %{event: :session_started}} -> :ok
       after
         10_000 ->
-          flunk("session did not start after automatic retry; codex trace:\n#{File.read!(codex_trace)}")
+          codex_output = if File.exists?(codex_trace), do: File.read!(codex_trace), else: "(codex was never started)"
+          flunk("session did not start after automatic retry; codex trace:\n#{codex_output}")
       end
 
       assert System.monotonic_time(:millisecond) - started_at_ms >= 1_400,
@@ -184,6 +185,38 @@ defmodule Aiur.Core.AgentRunnerStartupFailureTest do
 
       assert length(trace_lines) == 2 and all_owned_by_test?,
              "expected one timed-out before_run and one automatic retry; got #{inspect(trace_lines)}"
+
+      timeout_identifier = "MT-BEFORE-RUN-CAP-#{System.unique_integer([:positive])}"
+
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        hook_after_create: "cp #{Path.join(template_repo, "README.md")} README.md",
+        hook_before_run: "printf '%s\\n' \"$AIUR_HOOK_TICKET_IDENTIFIER\" >> #{before_run_trace}; sleep 2",
+        hook_timeout_ms: 500,
+        codex_command: "#{codex_binary} app-server",
+        max_turns: 1
+      )
+
+      timeout_issue = %Issue{
+        id: "issue-before-run-timeout-cap",
+        identifier: timeout_identifier,
+        title: "Stop retrying persistent hook timeouts",
+        description: "persistent before_run timeouts should leave the retry loop with their cause",
+        state: "In Progress",
+        url: "https://example.org/issues/MT-BEFORE-RUN-TIMEOUT-CAP",
+        labels: []
+      }
+
+      assert catch_exit(AgentRunner.run(timeout_issue)) == {:workspace_hook_timeout, "before_run", 500}
+
+      timeout_runs =
+        before_run_trace
+        |> File.read!()
+        |> String.split("\n", trim: true)
+        |> Enum.count(&(&1 == timeout_identifier))
+
+      assert timeout_runs == 4,
+             "expected the first attempt plus three automatic retries, got #{timeout_runs} hook invocations"
     after
       File.rm_rf(test_root)
     end
