@@ -350,61 +350,9 @@ defmodule Aiur.GitHub.IssueState do
 
   defp restore_local_hold_error(response), do: response
 
-  @spec remove_state_labels(function(), String.t(), String.t(), String.t(), String.t(), map(), String.t(), keyword()) ::
-          :ok | {:error, term()}
-  def remove_state_labels(request_fun, token, owner, repo, issue_number, issue_body, prefix, opts \\ []) do
-    excluded = Keyword.get(opts, :exclude, []) |> Enum.map(&normalize_label_name/1)
+  defdelegate remove_state_labels(request_fun, token, owner, repo, issue_number, issue_body, prefix, opts \\ []), to: Aiur.GitHub.IssueState.LabelCleanup
 
-    issue_body
-    |> Map.get("labels", [])
-    |> Enum.map(&Map.get(&1, "name", ""))
-    |> Enum.filter(&String.starts_with?(&1, "#{prefix}:"))
-    |> Enum.reject(fn label ->
-      (Keyword.get(opts, :clear_terminal_state_overrides, false) and StatePolicy.terminal_state_label?(label, prefix)) or
-        (preserved_prefixed_label?(label, prefix) and not clear_terminal_state_overrides?(opts, label, prefix)) or
-        normalize_label_name(label) in excluded
-    end)
-    |> Enum.reduce_while(:ok, fn label, :ok ->
-      case delete_issue_label(request_fun, token, owner, repo, issue_number, label) do
-        :ok -> {:cont, :ok}
-        {:error, _reason} = error -> {:halt, error}
-      end
-    end)
-  end
-
-  defp clear_terminal_state_overrides?(opts, label, prefix) do
-    Keyword.get(opts, :clear_terminal_state_overrides, false) and
-      normalize_label_name(label) in ["#{prefix}:parked", "#{prefix}:paused"]
-  end
-
-  @spec remove_active_state_labels(function(), String.t(), String.t(), String.t(), String.t(), map(), String.t(), keyword()) ::
-          :ok | {:error, term()}
-  def remove_active_state_labels(
-        request_fun,
-        token,
-        owner,
-        repo,
-        issue_number,
-        issue_body,
-        prefix,
-        opts \\ []
-      ) do
-    issue_body
-    |> Map.get("labels", [])
-    |> Enum.map(&Map.get(&1, "name", ""))
-    |> Enum.filter(&String.starts_with?(&1, "#{prefix}:"))
-    |> Enum.reject(fn label ->
-      StatePolicy.terminal_state_label?(label, prefix) or
-        (preserved_prefixed_label?(label, prefix) and
-           not clear_terminal_state_overrides?(opts, label, prefix))
-    end)
-    |> Enum.reduce_while(:ok, fn label, :ok ->
-      case delete_issue_label(request_fun, token, owner, repo, issue_number, label) do
-        :ok -> {:cont, :ok}
-        {:error, _reason} = error -> {:halt, error}
-      end
-    end)
-  end
+  defdelegate remove_active_state_labels(request_fun, token, owner, repo, issue_number, issue_body, prefix, opts \\ []), to: Aiur.GitHub.IssueState.LabelCleanup
 
   @spec delete_issue_label(function(), String.t(), String.t(), String.t(), String.t(), String.t()) ::
           :ok | {:error, term()}
