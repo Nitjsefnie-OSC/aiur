@@ -18,6 +18,7 @@ R-declared	Aiur.ExecutorListener	MP-R1-C9-T14 moved CLI adapter retains the exis
 R-declared	Aiur.GitHub.Connectivity	baseline 4aba33f8aae03cdaec432d6614e70a57c9ade839
 R-declared	Aiur.GitHub.Errors	baseline 4aba33f8aae03cdaec432d6614e70a57c9ade839
 R-declared	Aiur.GitHub.LocalHold	baseline 4aba33f8aae03cdaec432d6614e70a57c9ade839
+R-optional	Aiur.GitHub.Labels	#5838 TicketTransition uses the canonical runtime reason-label vocabulary for validation and rendering
 R-declared	Aiur.GitHub.Quota	baseline 4aba33f8aae03cdaec432d6614e70a57c9ade839
 R-declared	Aiur.GitHub.ResourceFetch	#4496: use conditional resource reads to avoid repeated billable landing-watch CI requests
 R-declared	Aiur.GitHub.ResourceStore	baseline 4aba33f8aae03cdaec432d6614e70a57c9ade839
