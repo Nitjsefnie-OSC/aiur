@@ -284,13 +284,14 @@ defmodule Aiur.Application.Children do
         Aiur.Experiments.window_children(recording?) ++
         quarantine_lifter_children(primary_instance?, github_tracker?) ++
         dashboard_cache_children(dashboard?) ++
-        List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
+        dashboard_final_children(dashboard?, build_index?)
     )
-    |> append_dashboard_auth_child(dashboard?)
   end
 
-  defp append_dashboard_auth_child(children, true), do: children ++ [AiurWeb.DashboardAuth.ChallengeStore]
-  defp append_dashboard_auth_child(children, false), do: children
+  defp dashboard_final_children(dashboard?, build_index?) do
+    List.wrap(if(dashboard?, do: AiurWeb.DashboardAuth.ChallengeStore)) ++
+      List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
+  end
 
   defp dashboard_cache_children(dashboard?) do
     List.wrap(if(dashboard?, do: [Aiur.RunTelemetry.RetainedCache, {AiurWeb.OperatorControlCenter.Analytics.Prewarmer, prewarm_on_start: Application.get_env(:aiur, :analytics_prewarm?, true)}]))

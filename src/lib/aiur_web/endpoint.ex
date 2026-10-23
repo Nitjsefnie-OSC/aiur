@@ -26,6 +26,8 @@ defmodule AiurWeb.Endpoint do
   Streamdeck.mount(@session_options)
   Voice.mount(@session_options)
 
+  plug(AiurWeb.Session, @session_options)
+  plug(:fetch_session)
   plug(:authenticate_static_asset)
 
   plug(Plug.Static,
@@ -80,7 +82,6 @@ defmodule AiurWeb.Endpoint do
 
   plug(Plug.MethodOverride)
   plug(Plug.Head)
-  plug(AiurWeb.Session, @session_options)
   plug(AiurWeb.Router)
 
   @doc false
