@@ -218,6 +218,9 @@ sets any of them. The Supervisor Decision API uses `AIUR_SUPERVISOR_TOKEN`;
 generate one with `openssl rand -base64 32`. The value must be at least 32
 bearer-safe bytes with no surrounding whitespace. An absent or empty value
 disables the API, while a present non-empty unusable value aborts startup.
+Google browser sign-in uses `AIUR_GOOGLE_CLIENT_ID` and
+`AIUR_GOOGLE_CLIENT_SECRET` from `~/.aiur/.env` or the repository `.env`;
+configure both together.
 Provider keys use
 `MOONSHOT_API_KEY`, `DEEPSEEK_API_KEY`,
 `OPENROUTER_API_KEY`, and (for the credits meter) `OPENROUTER_MANAGEMENT_KEY`.

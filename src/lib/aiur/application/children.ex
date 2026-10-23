@@ -317,6 +317,7 @@ defmodule Aiur.Application.Children do
     [
       if(dashboard?, do: AiurWeb.ControlCenterCache),
       if(dashboard?, do: AiurWeb.FinancialData.Supervisor),
+      if(dashboard?, do: AiurWeb.DashboardAuth.ChallengeStore),
       if(dashboard?, do: {Aiur.HttpServer, dashboard_pages?: dashboard_pages?}),
       if(dashboard? and tailscale_funnel?, do: Aiur.TailscaleFunnel)
     ]

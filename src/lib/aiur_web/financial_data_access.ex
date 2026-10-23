@@ -48,6 +48,24 @@ defmodule AiurWeb.FinancialDataAccess do
   @doc "Authenticates a dashboard request and stages opaque session evidence."
   @spec authenticate_request(Plug.Conn.t(), keyword()) :: Plug.Conn.t()
   def authenticate_request(conn, opts) do
+    browser? = Keyword.get(opts, :browser?, false)
+
+    case context_from_session(get_session(conn, @session_key)) do
+      {:ok, _context} ->
+        conn
+
+      :error ->
+        if browser? and not browser_basic_auth?() do
+          conn
+          |> Phoenix.Controller.redirect(to: "/auth/login")
+          |> halt()
+        else
+          authenticate_without_session(conn, opts)
+        end
+    end
+  end
+
+  defp authenticate_without_session(conn, opts) do
     case Proof.configuration(opts, @version) do
       {:ok, config} ->
         authenticate_configured_request(conn, config)
@@ -62,6 +80,12 @@ defmodule AiurWeb.FinancialDataAccess do
         |> send_resp(503, @missing_credentials_message)
         |> halt()
     end
+  end
+
+  defp browser_basic_auth? do
+    AiurWeb.EndpointConfig.get(:browser_basic_auth) != false
+  rescue
+    _ -> true
   end
 
   defp authenticate_configured_request(conn, config) do
@@ -154,4 +178,13 @@ defmodule AiurWeb.FinancialDataAccess do
   @doc false
   @spec session_key() :: String.t()
   def session_key, do: @session_key
+
+  @doc false
+  @spec new_browser_session_marker() :: {:ok, map()} | {:error, term()}
+  def new_browser_session_marker do
+    case Proof.configuration([], @version) do
+      {:ok, config} -> {:ok, Proof.new_session_marker(config, @version)}
+      error -> error
+    end
+  end
 end

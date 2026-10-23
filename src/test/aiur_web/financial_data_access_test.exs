@@ -4,7 +4,9 @@ defmodule AiurWeb.FinancialDataAccessTest do
   import Plug.Conn
   import Plug.Test
 
+  alias Aiur.TestSupport.EndpointStubs
   alias AiurWeb.{Endpoint, FinancialDataAccess}
+  alias AiurWeb.Session
 
   @session_options Plug.Session.init(
                      store: :cookie,
@@ -86,6 +88,28 @@ defmodule AiurWeb.FinancialDataAccessTest do
 
     refute authenticated.halted
     assert is_map(get_session(authenticated, FinancialDataAccess.session_key()))
+  end
+
+  test "browser Basic Auth can be disabled without disabling machine Basic Auth" do
+    configure_credentials("operator", "secret")
+    configure_endpoint(dashboard_auth_required: true, browser_basic_auth: false)
+    EndpointStubs.put(browser_basic_auth: false)
+
+    browser =
+      session_conn()
+      |> put_req_header("authorization", "Basic " <> Base.encode64("operator:secret"))
+      |> FinancialDataAccess.authenticate_request(browser?: true)
+
+    assert browser.status == 302
+    assert browser.halted
+    assert get_resp_header(browser, "location") == ["/auth/login"]
+
+    machine =
+      session_conn()
+      |> put_req_header("authorization", "Basic " <> Base.encode64("operator:secret"))
+      |> FinancialDataAccess.authenticate_request([])
+
+    refute machine.halted
   end
 
   test "Plug callbacks fail closed and expose only verified socket-private context" do
@@ -318,7 +342,7 @@ defmodule AiurWeb.FinancialDataAccessTest do
     :get
     |> conn("/")
     |> Map.put(:secret_key_base, String.duplicate("s", 64))
-    |> Plug.Session.call(@session_options)
+    |> Session.call(@session_options)
     |> fetch_session()
   end
 
