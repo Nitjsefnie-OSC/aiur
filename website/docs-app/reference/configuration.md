@@ -448,6 +448,7 @@ The durable repository Executor state also records every daemon start and stop i
 | `opencode.serve_args` | array | `[]` | Extra `opencode serve` arguments. |
 
 ## experiments
+
 The daemon owns [experiment](../concepts/experiments) writes through control RPC.
 
 | Key | Type | Default | Description | <!-- generated-reference:config-configuration-20 -->
