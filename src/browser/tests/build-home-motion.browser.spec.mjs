@@ -2,6 +2,7 @@ import { alignBoard, primeBoardPaint } from '../support/build-home-band-canvas.m
 import { installScrollPaint, flushScrollPaint } from '../support/build-home-scroll-paint.mjs'
 import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
 import { prepareTreeMotion, prepareTreeFrame } from '../support/build-home-tree-motion.mjs'
+import { prepareFeatureMotion } from '../support/build-home-feature-motion.mjs'
 import { prepareFilterCapture } from '../support/build-home-filter-parity.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
 import { openVisualRoute } from '../support/visual.mjs'
@@ -323,7 +324,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       }
       if (name.startsWith('snap.')) { await alignBoard(pair) }
       if (name.startsWith('tree.')) await prepareTreeMotion(pair)
-      if (name === 'filter.dim') await prepareFilterCapture(pair)
+      if (name.startsWith('feature.')) await prepareFeatureMotion(pair); else if (name === 'filter.dim') await prepareFilterCapture(pair)
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
