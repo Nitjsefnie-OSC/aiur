@@ -2,7 +2,7 @@ defmodule Aiur.TestSupport.BuildHome.FixtureSource do
   @moduledoc "Frozen v1 build datasets, bounded to active history days in the socket zone."
   @behaviour AiurWeb.Build.DataSource
 
-  alias Aiur.TestSupport.BuildHome.{EarlierControl, Scale}
+  alias Aiur.TestSupport.BuildHome.{ControlFixture, EarlierControl, Scale}
   alias AiurWeb.Build.Read
 
   @files ~w(live dense newrepo noqueue offline odd-edges unknowns hostile chains list-edges now0 now24)
@@ -78,6 +78,9 @@ defmodule Aiur.TestSupport.BuildHome.FixtureSource do
       end
     end
   end
+
+  @impl true
+  def unit_row(id, opts), do: ControlFixture.unit_row(id, opts)
 
   def full(opts), do: load(dataset(opts), Keyword.get(opts, :dir, @dir))
 
