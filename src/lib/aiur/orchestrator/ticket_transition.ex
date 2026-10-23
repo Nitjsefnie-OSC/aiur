@@ -42,7 +42,7 @@ defmodule Aiur.Orchestrator.TicketTransition do
     true = is_atom(writer) and not is_nil(writer)
     tracker = Keyword.get(opts, :tracker, Tracker)
 
-    adapter_opts = Keyword.drop(opts, [:writer, :identifier, :tracker, :reason_modifiers, :label_prefix])
+    adapter_opts = Keyword.drop(opts, [:writer, :identifier, :tracker, :reason_modifiers, :label_prefix, :current_labels])
     result = with_writer(writer, fn -> tracker.update_issue_state(issue_id, to_state, adapter_opts) end)
 
     record(issue_id, :state, to_state, writer, opts, result)
@@ -75,8 +75,9 @@ defmodule Aiur.Orchestrator.TicketTransition do
       # Only the CI-owned reasons are swapped; blocked/paused/retrying belong to other writers.
       owned = Enum.map(@ci_reason_modifiers, &"#{prefix}:#{&1}")
       desired_labels = Enum.map(desired, &"#{prefix}:#{&1}")
+      {additions, removals} = reason_label_changes(desired_labels, owned -- desired_labels, Keyword.get(opts, :current_labels))
 
-      write_reason_modifier_labels(issue_id, desired_labels, owned -- desired_labels, tracker, writer, opts)
+      write_reason_modifier_labels(issue_id, additions, removals, tracker, writer, opts)
     end
   end
 
@@ -115,6 +116,14 @@ defmodule Aiur.Orchestrator.TicketTransition do
   end
 
   defp maybe_record_pause_writer(_issue_id, _action, _label, _writer, _result, _opts), do: :ok
+
+  # With the tracker's current labels known, write only the difference; otherwise write all.
+  defp reason_label_changes(additions, removals, current) when is_list(current) do
+    present = MapSet.new(current, &String.downcase/1)
+    {Enum.reject(additions, &MapSet.member?(present, &1)), Enum.filter(removals, &MapSet.member?(present, &1))}
+  end
+
+  defp reason_label_changes(additions, removals, _current), do: {additions, removals}
 
   defp write_reason_modifier_labels(issue_id, additions, removals, tracker, writer, opts) do
     marker_opts = Keyword.put(opts, :writer, writer) |> Keyword.put(:tracker, tracker)

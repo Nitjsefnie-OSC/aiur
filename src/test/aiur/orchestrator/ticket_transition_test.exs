@@ -89,6 +89,24 @@ defmodule Aiur.Orchestrator.TicketTransitionTest do
     assert labels == ["agent:paused", "agent:blocked"]
   end
 
+  test "write_state with the current labels writes only the CI reason labels that change" do
+    assert :ok =
+             TicketTransition.write_state("7", "ci-wait",
+               writer: :ci_lifecycle,
+               tracker: Client,
+               reason_modifiers: ["merge-queued"],
+               current_labels: ["agent:merge-queued", "agent:human-review"]
+             )
+
+    assert_received {:adapter_state, "7", "ci-wait", []}
+    refute_received {:adapter_marker, _action, "7", _label}
+
+    assert :ok = TicketTransition.write_state("7", "rework", writer: :ci_lifecycle, tracker: Client, reason_modifiers: ["ci-red"], current_labels: ["agent:merge-queued"])
+    assert_received {:adapter_marker, :add, "7", "agent:ci-red"}
+    assert_received {:adapter_marker, :remove, "7", "agent:merge-queued"}
+    refute_received {:adapter_marker, _action, "7", _label}
+  end
+
   test "every canonical reason modifier can be added and cleared without changing the workflow state" do
     modifiers = Labels.reason_modifier_suffixes()
 

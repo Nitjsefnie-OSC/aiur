@@ -175,7 +175,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Transition do
   end
 
   defp write_ci_ticket_state({issue, issue_key, next_state, reason_modifiers}) do
-    opts = Keyword.merge(expected_state_opts(issue), writer: :ci_lifecycle, reason_modifiers: reason_modifiers)
+    opts = Keyword.merge(expected_state_opts(issue), writer: :ci_lifecycle, reason_modifiers: reason_modifiers, current_labels: List.wrap(issue.labels))
     TicketTransition.write_state(to_string(issue_key), next_state, opts)
   end
 

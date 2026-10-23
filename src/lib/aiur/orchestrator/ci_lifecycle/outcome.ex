@@ -440,7 +440,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
       TicketTransition.write_state(
         to_string(issue.id || issue.identifier),
         "rework",
-        Keyword.merge(Transition.expected_state_opts(issue), writer: :ci_lifecycle, reason_modifiers: ["ci-red"])
+        Keyword.merge(Transition.expected_state_opts(issue), writer: :ci_lifecycle, reason_modifiers: ["ci-red"], current_labels: List.wrap(issue.labels))
       )
 
     if response == :ok and result[:ci_recovery_checked], do: GithubCIPoller.record_failure(issue, result, result[:ci_recovery_opts])
