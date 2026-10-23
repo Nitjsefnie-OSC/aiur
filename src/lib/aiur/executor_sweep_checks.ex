@@ -2,6 +2,7 @@ defmodule Aiur.ExecutorSweep.Checks do
   @moduledoc "Builds prioritized Executor sweep findings from observed daemon and GitHub snapshot data."
 
   alias Aiur.ExecutorSweep.{ApprovedPrs, CacheFreshness, ConflictingWaitingPrs, StaleCiWait, StateLabels, TriageBacklog}
+  alias Aiur.GitHub.Config
   alias Aiur.Instance.SweepFilter
 
   @type finding :: %{kind: String.t(), priority: pos_integer(), action: String.t(), message: String.t()}
@@ -193,7 +194,7 @@ defmodule Aiur.ExecutorSweep.Checks do
       snapshot
       |> Map.get(:tickets, [])
       |> Enum.map(&%{number: value(&1, :number, nil), created_at: value(&1, :created_at, nil), labels: raw_labels(&1)})
-      |> StateLabels.findings(Aiur.GitHub.Config.label_prefix())
+      |> StateLabels.findings(Config.label_prefix())
 
     stale_triage =
       stale_triage_finding(Map.get(snapshot, :open_tickets), now)
