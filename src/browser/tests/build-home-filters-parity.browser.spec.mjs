@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
 import { test, expect } from '@playwright/test'
-import { openParityPair, expectDesignParity, PARITY_VIEWPORTS, FIXTURE_META, DESIGN_ROOT } from '../support/design-parity.mjs'
+import { openParityPair, expectDesignParity, PARITY_VIEWPORTS, DESIGN_ROOT } from '../support/design-parity.mjs'
 import { estimatePatch } from '../scripts/build-home-now-patch.mjs'
+import { prepareFilterCapture, attachFilterRasterDiagnostics } from '../support/build-home-filter-parity.mjs'
 
 const allCells = ['live', 'dense'].flatMap(dataset => PARITY_VIEWPORTS.flatMap(size => ['dark', 'light'].flatMap(theme => ['gruvbox', 'aiur'].map(palette => ({ dataset, ...size, theme, palette })))))
 // Routine CI covers every breakpoint and palette; manual sign-off runs the full matrix.
@@ -32,11 +33,7 @@ async function openFiltersPair(browser, cell, options) {
     return context
   } }
   const pair = await openParityPair(source, cell, { ...options, motion: true })
-  // Both pages render the exact fixture instant, including the monotonic client clock.
-  await pair.product.evaluate(async now => {
-    const { setNow } = await import('/build-home/clock.js'), { fx } = await import('/build-home/state.js')
-    setNow(now); fx.renderUsage()
-  }, FIXTURE_META.now)
+  await prepareFilterCapture(pair)
   return pair
 }
 async function normalize(page) {
@@ -80,5 +77,8 @@ for (const cell of (full ? allCells.filter(c => c.dataset === 'live') : cells.fi
     expect(await normalize(pair.product)).toBe(await normalize(pair.design))
     expect(await pair.product.locator('#bd-usage .ax-rs').allTextContents()).toEqual(await pair.design.locator('#bd-usage .ax-rs').allTextContents())
     await expectDesignParity(pair, { name: `viewport-${cell.viewport.width}-${cell.theme}-${cell.palette}-${query.split('=')[0]}`, region: '#build-root', preserveAnimations: true })
+  } catch (error) {
+    await attachFilterRasterDiagnostics(pair, test.info())
+    throw error
   } finally { await pair.close() }
 })

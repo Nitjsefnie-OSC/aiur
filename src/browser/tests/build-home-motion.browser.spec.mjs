@@ -2,6 +2,7 @@ import { alignBoard, primeBoardPaint } from '../support/build-home-band-canvas.m
 import { installScrollPaint, flushScrollPaint } from '../support/build-home-scroll-paint.mjs'
 import { normalizeColumnCapture } from '../support/build-home-columns-motion.mjs'
 import { prepareTreeMotion, prepareTreeFrame } from '../support/build-home-tree-motion.mjs'
+import { prepareFilterCapture } from '../support/build-home-filter-parity.mjs'
 // One spec keeps the required mutations, sequence contracts, and sign-off gate collected together.
 import { openVisualRoute } from '../support/visual.mjs'
 import { test, expect } from '@playwright/test'
@@ -322,10 +323,7 @@ for (const selectedCell of interactionCells) test.describe(`product interactions
       }
       if (name.startsWith('snap.')) { await alignBoard(pair) }
       if (name.startsWith('tree.')) await prepareTreeMotion(pair)
-      // Keep usage countdowns at the same fixture instant while dim frames are sampled.
-      if (name === 'filter.dim') await pair.product.evaluate(async now => {
-        const { setNow } = await import('/build-home/clock.js'), { fx } = await import('/build-home/state.js'); setNow(now); fx.renderUsage()
-      }, FIXTURE_META.now)
+      if (name === 'filter.dim') await prepareFilterCapture(pair)
       const entries = scopedEntries(pair.allowlist, selectedCell), barrier = frameBarrier(pair, name, reduce)
       const [design, product] = await Promise.all([runOn(pair.design, name, { reduce, onFrame: barrier.frame }).finally(barrier.abort), runOn(pair.product, name, { reduce, onFrame: barrier.frame, ids: FIXTURE_META.ids }).finally(barrier.abort)])
       if (name.startsWith('columns.') && (!design.samples.length || !product.samples.length))
