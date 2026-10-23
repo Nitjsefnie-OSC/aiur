@@ -16,8 +16,11 @@ name: nightly-release
 #                                   no second cron. Live.
 #   workflow_dispatch (manual)      dry_run defaults to true.
 #
-# "Green" is the newest ci.yml run at the exact sha, not the `ci gate` check:
-# on main pushes that check does not require the other jobs.
+# "Green" is the newest push-event ci.yml run at the exact sha, not the
+# `ci gate` check: on main pushes that check does not require the other jobs.
+#
+# `plan` is read-only. `publish` holds the write scopes and the GHCR login, and
+# runs only on a live run whose plan is green with today not yet cut.
 on:
   schedule:
     - cron: "7,37 7-16 * * *"
@@ -40,9 +43,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  nightly:
+  plan:
+    if: ${{ github.repository == 'aiur-team/aiur' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      act: ${{ steps.plan.outputs.act }}
+      docker: ${{ steps.plan.outputs.docker }}
+      sha: ${{ steps.plan.outputs.sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Plan
+        id: plan
+        uses: ./.github/actions/nightly-release
+        with:
+          sha: ${{ inputs.sha }}
+          dry-run: "true"
+
+  publish:
+    needs: plan
+    # The schedule has no inputs and runs live; a dispatch passes its own.
+    if: ${{ github.repository == 'aiur-team/aiur' && needs.plan.outputs.act == 'true' && (github.event_name != 'workflow_dispatch' || !inputs.dry_run) }}
+    runs-on: ubuntu-24.04
+    # Waits for each dispatched publish (release-npm takes ~30 min).
+    timeout-minutes: 240
     permissions:
       contents: write # tags and prereleases
       actions: write # dispatch release-npm.yml and streamdeck-package.yml
@@ -53,17 +84,15 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
       - name: Log in to GHCR
+        if: ${{ needs.plan.outputs.docker == 'true' }}
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Nightly release
         uses: ./.github/actions/nightly-release
         with:
-          sha: ${{ inputs.sha }}
-          # The schedule has no inputs and runs live; a dispatch passes its own.
-          dry-run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          sha: ${{ needs.plan.outputs.sha }}
+          dry-run: "false"

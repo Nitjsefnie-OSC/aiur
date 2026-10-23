@@ -49,14 +49,15 @@ export function lastPackageTag(tags, name, date) {
   );
 }
 
-// Main is green for `sha` when the newest run of every required workflow at that
-// sha concluded `success`. A newer red run outranks an older green one.
+// Main is green for `sha` when the newest `push` run of every required workflow
+// at that sha concluded `success`. A newer red push run outranks an older green
+// one. Scheduled and manual runs neither block nor decide the nightly.
 // `runsByWorkflow` maps workflow file -> runs as returned by the Actions API.
 export function greenState(runsByWorkflow) {
   let pending = false;
   for (const [workflow, runs] of Object.entries(runsByWorkflow)) {
-    const newest = [...runs].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
-    if (!newest) return { state: "none", reason: `${workflow}: no run for this sha` };
+    const newest = runs.filter((r) => r.event === "push").sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+    if (!newest) return { state: "none", reason: `${workflow}: no push run for this sha` };
     if (newest.status !== "completed") {
       pending = true;
       continue;
@@ -119,4 +120,55 @@ export function releasesToPrune(releaseTags, name, retain) {
   const prefix = `nightly/${name}/`;
   const mine = releaseTags.filter((t) => t.startsWith(prefix)).sort().reverse();
   return mine.slice(retain);
+}
+
+// The run a `gh workflow run --ref <tag>` created: a workflow_dispatch run on
+// that tag (GitHub reports the tag name as head_branch) at `sha`, created at or
+// after `since`, an ISO time taken just before dispatching less a clock-skew
+// allowance. Oldest match wins.
+export function pickDispatchedRun(runs, tag, sha, since) {
+  return (
+    runs
+      .filter((r) => r.event === "workflow_dispatch" && r.head_branch === tag && r.head_sha === sha && r.created_at >= since)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))[0] ?? null
+  );
+}
+
+// Release one package. Order: tag, prerelease, then the kind action. Every
+// failure rolls the prerelease and tag back so the next trigger retries, except
+// when a dispatched run is still in progress: it may still be checking the tag
+// out, so the tag stays and the package is reported failed for a human.
+//   ops: createTag, createPrerelease, deleteRelease, deleteTag, docker,
+//        dispatch, findRun(entry, sha, since), waitRun(run), since(), warn
+export async function releasePackage(entry, sha, ops) {
+  const withRelease = entry.pkg.prerelease !== false;
+  await ops.createTag(entry.tag, sha);
+  try {
+    if (withRelease) await ops.createPrerelease(entry, sha);
+    if (entry.pkg.kind === "docker") return await ops.docker(entry, sha);
+    if (entry.pkg.kind !== "dispatch") return "tag only";
+    const since = ops.since();
+    await ops.dispatch(entry);
+    const started = await ops.findRun(entry, sha, since);
+    if (!started) throw new Error(`no ${entry.pkg.workflow} run appeared for ${entry.tag}`);
+    const run = await ops.waitRun(started);
+    if (run.status !== "completed") {
+      const error = new Error(`${entry.pkg.workflow} still running after the wait limit: ${run.html_url}`);
+      error.keepTag = true;
+      throw error;
+    }
+    if (run.conclusion !== "success") throw new Error(`${entry.pkg.workflow} ${run.conclusion}: ${run.html_url}`);
+    return `${entry.pkg.workflow} succeeded: ${run.html_url}`;
+  } catch (error) {
+    if (!error.keepTag) {
+      for (const undo of withRelease ? [ops.deleteRelease, ops.deleteTag] : [ops.deleteTag]) {
+        try {
+          await undo(entry.tag);
+        } catch {
+          ops.warn(`could not roll back ${entry.tag}; delete it by hand so the next trigger retries`);
+        }
+      }
+    }
+    throw error;
+  }
 }

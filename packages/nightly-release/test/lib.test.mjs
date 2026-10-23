@@ -5,8 +5,10 @@ import {
   greenState,
   lastPackageTag,
   localDate,
+  pickDispatchedRun,
   planPackages,
   readBaseVersion,
+  releasePackage,
   releasesToPrune,
   renderVersion,
   validateConfig,
@@ -20,6 +22,22 @@ test("localDate follows Los Angeles DST, not UTC", () => {
   // 2026-12-02 07:30Z is 23:30 PST on the 1st: still the previous local day.
   assert.equal(localDate(new Date("2026-12-02T07:30:00Z"), LA), "20261201");
   assert.equal(localDate(new Date("2026-12-02T08:30:00Z"), LA), "20261202");
+});
+
+test("localDate across the 2026-11-01 fall-back and 2027-03-14 spring-forward", () => {
+  const cases = [
+    // Fall back: PDT (UTC-7) until 2026-11-01 02:00, then PST (UTC-8).
+    ["2026-11-01T06:59:00Z", "20261031"], // 23:59 PDT
+    ["2026-11-01T07:00:00Z", "20261101"], // 00:00 PDT
+    ["2026-11-02T07:59:00Z", "20261101"], // 23:59 PST
+    ["2026-11-02T08:00:00Z", "20261102"], // 00:00 PST
+    // Spring forward: PST until 2027-03-14 02:00, then PDT.
+    ["2027-03-14T07:59:00Z", "20270313"], // 23:59 PST
+    ["2027-03-14T08:00:00Z", "20270314"], // 00:00 PST
+    ["2027-03-15T06:59:00Z", "20270314"], // 23:59 PDT
+    ["2027-03-15T07:00:00Z", "20270315"], // 00:00 PDT
+  ];
+  for (const [utc, want] of cases) assert.equal(localDate(new Date(utc), LA), want, utc);
 });
 
 test("readBaseVersion reads mix.exs and package.json", () => {
@@ -41,13 +59,18 @@ test("lastPackageTag picks the newest earlier tag of that package only", () => {
 });
 
 test("greenState: newest run per workflow decides", () => {
-  const run = (created_at, status, conclusion) => ({ created_at, status, conclusion, html_url: "u" });
+  const run = (created_at, status, conclusion, event = "push") => ({ created_at, status, conclusion, event, html_url: "u" });
   assert.equal(greenState({ "ci.yml": [run("2026-10-24T01:00:00Z", "completed", "success")] }).state, "green");
   assert.equal(greenState({ "ci.yml": [] }).state, "none");
   assert.equal(greenState({ "ci.yml": [run("2026-10-24T01:00:00Z", "in_progress", null)] }).state, "pending");
   // A newer red run outranks an older green one at the same sha.
   const mixed = [run("2026-10-24T01:00:00Z", "completed", "success"), run("2026-10-24T02:00:00Z", "completed", "failure")];
   assert.equal(greenState({ "ci.yml": mixed }).state, "red");
+  // Only push runs decide: a newer scheduled or manual run neither blocks nor greens.
+  const green = run("2026-10-24T01:00:00Z", "completed", "success");
+  assert.equal(greenState({ "ci.yml": [green, run("2026-10-24T02:00:00Z", "completed", "failure", "schedule")] }).state, "green");
+  assert.equal(greenState({ "ci.yml": [green, run("2026-10-24T02:00:00Z", "in_progress", null, "workflow_dispatch")] }).state, "green");
+  assert.equal(greenState({ "ci.yml": [run("2026-10-24T02:00:00Z", "completed", "success", "schedule")] }).state, "none");
   // Red in any required workflow is red even if another is still running.
   assert.equal(
     greenState({ "a.yml": [run("2026-10-24T01:00:00Z", "in_progress", null)], "b.yml": [run("2026-10-24T01:00:00Z", "completed", "cancelled")] }).state,
@@ -112,4 +135,83 @@ test("releasesToPrune keeps the newest N of one package", () => {
   const tags = ["nightly/a/20261022", "nightly/a/20261020", "nightly/a/20261021", "nightly/b/20261001", "v0.0.8"];
   assert.deepEqual(releasesToPrune(tags, "a", 2), ["nightly/a/20261020"]);
   assert.deepEqual(releasesToPrune(tags, "b", 2), []);
+});
+
+test("pickDispatchedRun finds the dispatch on this tag and sha, after since", () => {
+  const sha = "0123456789abcdef0123456789abcdef01234567";
+  const other = "f".repeat(40);
+  const tag = "nightly/aiur/20261024";
+  const r = (id, created_at, over = {}) => ({ id, event: "workflow_dispatch", head_branch: tag, head_sha: sha, created_at, ...over });
+  const runs = [
+    r(1, "2026-10-24T07:59:00Z"), // before the dispatch
+    r(2, "2026-10-24T08:00:05Z", { head_branch: "main" }),
+    r(3, "2026-10-24T08:00:06Z", { head_sha: other }),
+    r(4, "2026-10-24T08:00:07Z", { event: "push" }),
+    r(6, "2026-10-24T08:00:30Z"),
+    r(5, "2026-10-24T08:00:10Z"),
+  ];
+  assert.equal(pickDispatchedRun(runs, tag, sha, "2026-10-24T08:00:00Z").id, 5);
+  assert.equal(pickDispatchedRun(runs.slice(0, 4), tag, sha, "2026-10-24T08:00:00Z"), null);
+});
+
+function fakeOps(over = {}) {
+  const calls = [];
+  const rec = (name, value) => (...args) => (calls.push([name, ...args.map((a) => a?.tag ?? a)]), value);
+  const ops = {
+    createTag: rec("createTag"),
+    createPrerelease: rec("createPrerelease"),
+    deleteRelease: rec("deleteRelease"),
+    deleteTag: rec("deleteTag"),
+    docker: rec("docker", "tagged"),
+    dispatch: rec("dispatch"),
+    since: () => "2026-10-24T08:00:00Z",
+    findRun: async () => ({ id: 9, html_url: "run" }),
+    waitRun: async () => ({ status: "completed", conclusion: "success", html_url: "run" }),
+    warn: rec("warn"),
+    ...over,
+  };
+  return { ops, calls };
+}
+
+const SHA = "0123456789abcdef0123456789abcdef01234567";
+const dispatchEntry = { tag: "nightly/aiur/20261024", pkg: { name: "aiur", kind: "dispatch", workflow: "release-npm.yml" } };
+
+test("releasePackage: prerelease exists before dispatch; success keeps the tag", async () => {
+  const { ops, calls } = fakeOps();
+  assert.match(await releasePackage(dispatchEntry, SHA, ops), /succeeded/);
+  assert.deepEqual(calls.map((c) => c[0]), ["createTag", "createPrerelease", "dispatch"]);
+});
+
+test("releasePackage: a failed dispatched run rolls the release and tag back", async () => {
+  const { ops, calls } = fakeOps({ waitRun: async () => ({ status: "completed", conclusion: "failure", html_url: "run" }) });
+  await assert.rejects(releasePackage(dispatchEntry, SHA, ops), /failure/);
+  assert.deepEqual(calls.map((c) => c[0]), ["createTag", "createPrerelease", "dispatch", "deleteRelease", "deleteTag"]);
+});
+
+test("releasePackage: no run appearing rolls back", async () => {
+  const { ops, calls } = fakeOps({ findRun: async () => null });
+  await assert.rejects(releasePackage(dispatchEntry, SHA, ops), /no release-npm.yml run/);
+  assert.deepEqual(calls.slice(-2).map((c) => c[0]), ["deleteRelease", "deleteTag"]);
+});
+
+test("releasePackage: a run still in progress keeps its tag", async () => {
+  const { ops, calls } = fakeOps({ waitRun: async () => ({ status: "in_progress", html_url: "run" }) });
+  await assert.rejects(releasePackage(dispatchEntry, SHA, ops), /still running/);
+  assert.ok(!calls.some((c) => c[0].startsWith("delete")), "never deletes a tag a running publish may check out");
+});
+
+test("releasePackage: docker failure rolls back; prerelease:false skips the release", async () => {
+  const entry = { tag: "nightly/img/20261024", pkg: { name: "img", kind: "docker", image: "x", prerelease: false } };
+  const { ops, calls } = fakeOps({ docker: () => { throw new Error("no such image"); } });
+  await assert.rejects(releasePackage(entry, SHA, ops), /no such image/);
+  assert.deepEqual(calls.map((c) => c[0]), ["createTag", "deleteTag"]);
+});
+
+test("releasePackage: a rollback error warns instead of masking the cause", async () => {
+  const { ops, calls } = fakeOps({
+    findRun: async () => null,
+    deleteTag: () => { throw new Error("403"); },
+  });
+  await assert.rejects(releasePackage(dispatchEntry, SHA, ops), /no release-npm.yml run/);
+  assert.ok(calls.some((c) => c[0] === "warn"));
 });

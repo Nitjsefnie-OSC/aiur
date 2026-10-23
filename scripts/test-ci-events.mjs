@@ -20,7 +20,7 @@ function selected(event, full, dialyzer = false, payload = { pull_request: {} })
   const condition = (body) => body.match(/^    if: \$\{\{ (.+) \}\}$/m)?.[1];
   // `needs.*.result` is GitHub's object filter; JS spells it Object.values().
   const run = (expression, changes) => !expression || runInNewContext(expression.replaceAll('needs.*.result', 'Object.values(needs).map((n) => n.result)'), {
-    github: { event_name: event, event: payload, ref: event === 'push' ? 'refs/heads/main' : '' }, cancelled: () => false, always: () => true,
+    github: { event_name: event, event: payload, ref: event === 'push' ? 'refs/heads/main' : '', repository: 'aiur-team/aiur' }, cancelled: () => false, always: () => true,
     contains: (haystack, needle) => haystack.includes(needle),
     needs: { changes, 'pre-handoff': { result: changes.result } },
   });
@@ -60,14 +60,15 @@ assert.ok(!selected('pull_request', true).includes('nightly-trigger'), 'a PR nev
 {
   // Scheduled CI also runs on refs/heads/main, which selected() does not model.
   const nightly = jobs.get('nightly-trigger').match(/^    if: \$\{\{ (.+) \}\}$/m)[1].replaceAll('needs.*.result', 'Object.values(needs).map((n) => n.result)');
-  const fires = (event_name, result) => runInNewContext(nightly, {
-    github: { event_name, ref: 'refs/heads/main' }, cancelled: () => false, contains: (h, n) => h.includes(n),
+  const fires = (event_name, result, repository = 'aiur-team/aiur') => runInNewContext(nightly, {
+    github: { event_name, ref: 'refs/heads/main', repository }, cancelled: () => false, contains: (h, n) => h.includes(n),
     needs: { 'ci-gate': { result: 'success' }, test: { result } },
   });
   assert.equal(fires('push', 'success'), true, 'a green main push dispatches the nightly');
   assert.equal(fires('push', 'skipped'), true, 'a skipped job does not block the nightly');
   assert.equal(fires('push', 'failure'), false, 'a failed job blocks the nightly');
   assert.equal(fires('schedule', 'success'), false, 'scheduled CI leaves the nightly to its own cron');
+  assert.equal(fires('push', 'success', 'someone/aiur-fork'), false, 'a fork never dispatches the nightly');
 }
 assert.ok(selected('schedule', false).includes('quarantine'), 'schedule selects quarantine');
 assert.ok(!selected('pull_request', false).includes('quarantine'), 'pull request skips quarantine');

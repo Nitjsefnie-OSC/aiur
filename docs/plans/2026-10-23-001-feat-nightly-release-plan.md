@@ -22,13 +22,14 @@ process; it is not an Aiur feature.
 | Reusable form | Composite action `.github/actions/nightly-release` + `packages/nightly-release` script | A remote composite action ships its own repo files, so the script comes with the pinned SHA. A reusable workflow would need a second checkout of a second ref. |
 | Trigger | `nightly trigger` job at the end of the main `ci` run dispatches `nightly-release.yml`, plus a 30-minute cron over 07:00-16:30 UTC, plus manual dispatch | `workflow_run` is forbidden by `scripts/verify-workflow-security.sh`. The CI tail is the "first green build after midnight". The cron covers a night with no merges and the delays of GitHub's cron. |
 | DST | Date computed in code with the IANA zone; the cron spans both offsets | One cron line, no seasonal edits. |
-| Green | Newest `ci.yml` run on main at the exact sha concluded `success` | On main pushes the `ci gate` check does not require the other jobs, so that check alone is green even when tests fail. |
+| Green | Newest push-event `ci.yml` run on main at the exact sha concluded `success`; scheduled and manual runs are ignored | On main pushes the `ci gate` check does not require the other jobs, so that check alone is green even when tests fail. |
 | Once per day | Day tag `nightly-YYYYMMDD`; per-package tags `nightly/<name>/YYYYMMDD` | Tags are visible, need no state store, and make reruns idempotent. |
 | Change detection | `git diff` of each package's paths against its own last nightly tag | Each package has its own cadence. |
-| npm | Dispatch `release-npm.yml` with `channel=nightly` on the tag | npm trusted publishing binds to that file name; no other workflow can publish. |
+| npm | Dispatch `release-npm.yml` with `channel=nightly` on the tag and wait for that run; a failed run rolls the tag back for a retry | npm trusted publishing binds to that file name; no other workflow can publish. A retry is safe because release-npm skips a published version. |
 | Docker | Re-tag the `:<sha>` image `publish-image.yml` already pushed | No second build. |
 | Secrets | None new; `GITHUB_TOKEN` + existing npm OIDC | Fewer secrets to rotate. |
 | Old crons | Removed from `release-npm.yml` and `streamdeck-package.yml` | Only the green-gated path cuts nightlies. |
+| Job split | Read-only `plan` job; `publish` job with write scopes and GHCR login runs only on a live, green, uncut day | Least privilege. Both jobs and the CI trigger only run in `aiur-team/aiur`. |
 
 ## Packages covered
 
@@ -54,8 +55,10 @@ one config entry.
 
 ## Test plan
 
-- `node --test packages/nightly-release/test/lib.test.mjs`: date, version,
-  last-tag, green, config, plan and prune rules. Each was mutation-checked.
+- `node --test packages/nightly-release/test/lib.test.mjs`: date (incl. both
+  2026-27 DST boundaries), version, last-tag, push-only green, config, plan,
+  dispatched-run matching, release/rollback order and prune rules. Each was
+  mutation-checked.
 - `node scripts/test-ci-events.mjs`: the trigger fires on a green main push,
   not on a PR, a scheduled run, or a failed job.
 - `bash scripts/verify-workflow-security.sh` and its self-test.

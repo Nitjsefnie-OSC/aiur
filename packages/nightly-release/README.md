@@ -11,21 +11,32 @@ Any repo can use it as a GitHub Action.
    the day tag `nightly-YYYYMMDD` exists, today is done and the run stops.
 2. **Candidate.** The `--sha` input, or the head of `branch`. It must be on
    `branch`.
-3. **Green.** For each workflow in `required_workflows`, the newest run at that
-   exact sha on `branch` must have `conclusion: success`. A run still in
-   progress is polled for up to 10 minutes. Not green: stop, nothing written.
+3. **Green.** For each workflow in `required_workflows`, the newest `push` run
+   at that exact sha on `branch` must have `conclusion: success`. Scheduled and
+   manual runs neither block nor decide. A run still in progress is polled for
+   up to 10 minutes. Not green: stop, nothing written.
 4. **Per package.** Skip if `nightly/<name>/<date>` exists (already done today)
    or if `git diff <last nightly/<name>/* tag> <sha> -- <paths>` is empty.
    Otherwise release it.
-5. **Release.** Create the tag `nightly/<name>/<date>` at the sha, run the kind
-   action, then create a prerelease (never `latest`) whose notes list the
-   commits under `paths` since the last nightly. Prune that package's nightly
-   prereleases beyond `retain` (default 14); the tags stay as change baselines.
-6. **Finish.** If no package failed, create `nightly-YYYYMMDD`. If one failed,
-   its tag is rolled back, the other packages still ship, the job is red, and
-   the day tag is withheld so the next trigger retries only the failed package.
+5. **Release.** Create the tag `nightly/<name>/<date>` at the sha, then a
+   prerelease (never `latest`) whose notes list the commits under `paths` since
+   the last nightly, then the kind action. A `dispatch` package starts its
+   workflow on the tag, finds that run (a `workflow_dispatch` run on the tag at
+   the sha, created after the dispatch) and waits up to 120 minutes for it; a
+   run that does not succeed is a package failure. Then prune that package's
+   nightly prereleases beyond `retain` (default 14); the tags stay as change
+   baselines, and a prune error is only a warning.
+6. **Finish.** If no package failed, create `nightly-YYYYMMDD`. A failed
+   package has its prerelease and tag rolled back, the other packages still
+   ship, the job is red, and the day tag is withheld so the next trigger
+   retries only the failed package. The one exception: a dispatched run still
+   in progress at the wait limit keeps its tag (the run may be checking it
+   out), so delete that tag by hand to retry.
 
-`--dry-run` stops after the plan and writes nothing.
+`--dry-run` stops after the plan and writes nothing. It still writes `act`,
+`docker` and `sha` to `$GITHUB_OUTPUT` (also action outputs), so a read-only
+plan job can gate a publishing job that holds the write scopes; see
+`.github/workflows/nightly-release.yml`.
 
 ## Config
 

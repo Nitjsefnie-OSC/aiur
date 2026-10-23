@@ -17,10 +17,21 @@ inputs:
   token:
     description: Token for the GitHub API (contents, actions and packages write for a live run).
     default: ${{ github.token }}
+outputs:
+  act:
+    description: "true when the candidate is green and today's nightly is not cut yet."
+    value: ${{ steps.run.outputs.act }}
+  docker:
+    description: "true when a docker package would release (the publish job needs a registry login)."
+    value: ${{ steps.run.outputs.docker }}
+  sha:
+    description: The green candidate commit; pass it to the publishing run.
+    value: ${{ steps.run.outputs.sha }}
 runs:
   using: composite
   steps:
     - name: Run nightly release
+      id: run
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.token }}
