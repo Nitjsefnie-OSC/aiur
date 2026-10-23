@@ -1,6 +1,6 @@
 defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
   # Log capture is global; preserve the original module's serial execution.
-  use ExUnit.Case, async: false
+  use Aiur.TestSupport
 
   import ExUnit.CaptureLog
 
