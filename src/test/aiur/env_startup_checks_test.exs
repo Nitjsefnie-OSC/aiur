@@ -1,8 +1,8 @@
 defmodule Aiur.EnvStartupChecksTest do
   use ExUnit.Case, async: false
 
-  alias Aiur.Env
   alias Aiur.Application.StartupChecks
+  alias Aiur.Env
 
   defmodule FirstCheck do
     @behaviour Aiur.Env.StartupCheck
