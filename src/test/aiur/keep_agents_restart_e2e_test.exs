@@ -10,9 +10,27 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
   setup_all do
     # An interrupted prior run may leave test-owned tmux servers behind.
     # Sweep only the exact namespace this module creates.
-    cleanup_tmux_sockets("keep-agents-test-")
+    sweep_stale_tmux_sockets("keep-agents-test-")
 
     :ok
+  end
+
+  test "startup sweep removes stale sockets without stopping live servers" do
+    prefix = "keep-agents-test-#{Base.encode16(:crypto.strong_rand_bytes(6), case: :lower)}"
+    live_socket = prefix <> "-live"
+    stale_socket = prefix <> "-stale"
+    stale_path = Path.join(tmux_socket_dir(), stale_socket)
+    File.mkdir_p!(Path.dirname(stale_path))
+    File.write!(stale_path, "stale socket path fixture")
+
+    on_exit(fn -> cleanup_tmux_sockets(prefix) end)
+
+    assert {_, 0} = System.cmd("tmux", ["-L", live_socket, "new-session", "-d", "-s", "keep-agents", "sleep 120"])
+
+    sweep_stale_tmux_sockets(prefix)
+
+    assert {_, 0} = System.cmd("tmux", ["-L", live_socket, "has-session"])
+    refute File.exists?(stale_path)
   end
 
   test "four mid-turn providers survive the real engine restart and polling admits a fifth" do
@@ -198,6 +216,22 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
         remove_tmux_socket!(Path.join(socket_dir, socket))
       end)
     end
+  end
+
+  defp sweep_stale_tmux_sockets(prefix) do
+    socket_dir = tmux_socket_dir()
+
+    if File.dir?(socket_dir) do
+      socket_dir
+      |> File.ls!()
+      |> Enum.filter(&String.starts_with?(&1, prefix))
+      |> Enum.each(&remove_if_stale_tmux_socket(socket_dir, &1))
+    end
+  end
+
+  defp remove_if_stale_tmux_socket(socket_dir, socket) do
+    {_, status} = System.cmd("tmux", ["-L", socket, "has-session"], stderr_to_stdout: true)
+    if status != 0, do: remove_tmux_socket!(Path.join(socket_dir, socket))
   end
 
   defp remove_tmux_socket!(path) do
