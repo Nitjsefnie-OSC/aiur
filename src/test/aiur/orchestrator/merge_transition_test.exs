@@ -1,8 +1,36 @@
+defmodule Aiur.Orchestrator.MergeTransitionTest.ParkedTracker do
+  alias Aiur.GitHub.IssueState
+
+  def setup(labels, request_fun), do: :persistent_term.put({__MODULE__, :test_state}, {labels, request_fun})
+  def cleanup, do: :persistent_term.erase({__MODULE__, :test_state})
+
+  def update_issue_state("3778", state_name, opts) do
+    {labels, request_fun} = :persistent_term.get({__MODULE__, :test_state})
+
+    IssueState.apply_issue_state_update(
+      %{
+        request_fun: request_fun,
+        token: "test-token",
+        owner: "owner",
+        repo: "repo",
+        issue_number: "3778",
+        issue_url: "https://api.github.com/repos/owner/repo/issues/3778",
+        prefix: "agent",
+        opts: Keyword.put(opts, :request_fun, request_fun)
+      },
+      %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})},
+      state_name,
+      "agent:#{state_name}"
+    )
+  end
+end
+
 defmodule Aiur.Orchestrator.MergeTransitionTest do
   use Aiur.TestSupport
 
   alias Aiur.GitHub.IssueState
   alias Aiur.Orchestrator.{CommentWake, MergeStateWriter, MergeTransition, State}
+  alias Aiur.Orchestrator.MergeTransitionTest.ParkedTracker
 
   setup do
     write_workflow_file!(Workflow.workflow_file_path(),
@@ -83,23 +111,13 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
       end
     end
 
-    context = %{
-      request_fun: request_fun,
-      token: "test-token",
-      owner: "owner",
-      repo: "repo",
-      issue_number: "3778",
-      issue_url: "https://api.github.com/repos/owner/repo/issues/3778",
-      prefix: "agent",
-      opts: [request_fun: request_fun, clear_terminal_state_overrides: true]
-    }
+    ParkedTracker.setup(labels, request_fun)
+    on_exit(&ParkedTracker.cleanup/0)
 
-    updater = fn "3778", "done" ->
-      IssueState.apply_issue_state_update(
-        context,
-        %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})},
-        "done",
-        "agent:done"
+    updater = fn identifier, target ->
+      MergeStateWriter.write_if_current(identifier, target,
+        fetch_issue_states_fun: fn ["3778"] -> {:ok, [%Aiur.Issue{state: "closed"}]} end,
+        tracker: ParkedTracker
       )
     end
 
