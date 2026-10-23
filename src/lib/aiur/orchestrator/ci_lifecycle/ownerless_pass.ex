@@ -1,6 +1,7 @@
 defmodule Aiur.Orchestrator.CiLifecycle.OwnerlessPass do
   @moduledoc false
 
+  alias Aiur.Events.GithubCIPoller
   alias Aiur.Issue
   alias Aiur.Orchestrator.CiLifecycle
   alias Aiur.Orchestrator.CiLifecycle.Poll
@@ -42,6 +43,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.OwnerlessPass do
       fn current, response ->
         case response do
           :ok ->
+            GithubCIPoller.record_pass(issue, result, result[:ci_recovery_opts] || [])
             review_issue = %{issue | state: @human_review_state}
 
             current
