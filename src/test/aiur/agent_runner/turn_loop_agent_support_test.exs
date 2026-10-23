@@ -8,6 +8,7 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
 
   alias Aiur.AgentEnvironment
   alias Aiur.AgentGitHubGuard
+  alias Aiur.AgentRunner.Handoff
   alias Aiur.AgentRunner.TurnLoop
   alias Aiur.Workspace.Provisioner
 
@@ -83,6 +84,13 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
       assert {resolved, 0} = System.cmd("sh", ["-c", "command -v gh"], env: Enum.map(env, fn {name, value} -> {List.to_string(name), if(value == false, do: nil, else: List.to_string(value))} end))
       assert String.trim(resolved) == Path.join(AgentGitHubGuard.bin_dir(ctx.workspace), "gh")
     end
+
+    test "an adopted handoff repairs support before the provider resumes", ctx do
+      put_active_handoff_resume()
+
+      assert {:completed, _issue} = run_first_turn(ctx, report_missing_run_turn(ctx.workspace))
+      assert_receive {:provider_called, 1, []}, 1000
+    end
   end
 
   describe "a gh config dir replaced by a symlink" do
@@ -106,12 +114,16 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
       refute_received {:queue_item_failed, ^identifier, _reason}
     end
 
-    test "the turn after a resume is refused without a provider call", ctx do
+    test "an adopted handoff is refused without a provider call", ctx do
+      put_active_handoff_resume()
+
       assert {:error, {:agent_support_repair_failed, _workspace, missing, _reason}} =
-               continue_after_resume(ctx, refusing_run_turn())
+               run_first_turn(ctx, refusing_run_turn())
 
       assert ".aiur-runtime/gh" in missing
       refute_received {:provider_called, _turn, _missing}
+      assert_receive {:queue_item_restored, identifier}, 1000
+      assert identifier == ctx.issue.identifier
     end
   end
 
@@ -216,5 +228,12 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
       send(parent, {:provider_called, 0, :must_not_run})
       {:ok, %{session_id: "must-not-run"}}
     end
+  end
+
+  defp put_active_handoff_resume do
+    Process.put(:handoff_resume, %{
+      "turn_state" => Handoff.encode(%{current_turn_id: "turn-1"}),
+      "turn_context" => Handoff.encode(%{prompt: "adopted provider turn"})
+    })
   end
 end

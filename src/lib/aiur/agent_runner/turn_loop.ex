@@ -69,8 +69,9 @@ defmodule Aiur.AgentRunner.TurnLoop do
     end
   end
 
-  # The turn never started, so any delivered queue item goes back to pending
-  # through the confirmed restore boundary instead of being failed.
+  # This runner has not called the provider. For failed handoff adoption,
+  # Handoff.Adopter closes the adopted transport and schedules one replacement;
+  # restore the delivered item for that replacement instead of failing it.
   defp refuse_unsupported_turn(%{orchestrator: orchestrator, issue: issue, opts: opts}, error),
     do: confirm_restore_for_replacement(orchestrator, issue, opts, error)
 
