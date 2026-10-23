@@ -1,6 +1,17 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { dashboardCredentials } from './support/layout-worker.mjs'
 test.use({ httpCredentials: dashboardCredentials, viewport: { width: 1440, height: 1000 } })
+// Mutation checks can route only the production assets from an isolated worktree.
+test.beforeEach(async ({page}, info) => {
+  const root = info.project.metadata.agentAssets
+  if (!root) return
+  for (const name of ['unfiled','list','layout','cards','chains','trees','hook','modal/frame','modal/header','modal/doc']) {
+    await page.route('**/build-home/' + name + '.js', async route => route.fulfill({
+      body: await readFile(root + '/' + name + '.js','utf8'), contentType:'text/javascript',
+    }))
+  }
+})
 async function open(page, dataset = 'unfiled', query = '') {
   await page.goto('/build-fixture/' + dataset + query)
   await expect(page.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
@@ -126,4 +137,17 @@ test('resync reads an old pack alias when its filed row is outside the loaded wi
   await expect.poll(() => page.evaluate(() => window.aliasRead)).toBe(t.id)
   await expect(page.locator('.bm-num')).toHaveText('#57')
   await expect.poll(() => new URL(page.url()).searchParams.get('ticket')).toBe('57')
+})
+
+test('a missing pack modal remains safe through a replacement snapshot', async ({page}) => {
+  page.on('pageerror', error => {throw error})
+  await open(page,'unfiled','?ticket=pack:build-plan/BP-999')
+  await expect(page.locator('#bm-title')).toContainText('Ticket not found')
+  await page.evaluate(async () => {
+    const {ctx} = await import('/build-home/state.js'), {receive} = await import('/build-home/hook.js')
+    const snapshot = structuredClone(ctx.snap); snapshot.generation++
+    receive(snapshot)
+  })
+  await expect(page.locator('#bm-title')).toContainText('Ticket not found')
+  await expect(page.locator('#tk-backdrop')).toHaveClass(/show/)
 })

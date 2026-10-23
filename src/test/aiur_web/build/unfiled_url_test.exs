@@ -8,7 +8,7 @@ defmodule AiurWeb.Build.UnfiledURLTest do
     assert URI.decode_query(URLState.to_query(state))["ticket"] == "pack:demo/T-1"
   end
 
-  test "invalid pack links are rejected" do
+  test "future regression guard: invalid pack links are rejected" do
     for id <- ["pack:../x", "pack:demo", "pack:demo/", "pack:demo/A/B"] do
       assert URLState.parse(%{"ticket" => id}).ticket == nil
     end

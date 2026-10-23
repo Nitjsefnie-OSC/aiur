@@ -19,7 +19,7 @@ defmodule AiurWeb.Build.UnfiledScanTest do
            end) == []
   end
 
-  test "scanner catches concatenated and interpolated identities" do
+  test "future regression guard: scanner catches concatenated and interpolated identities" do
     assert offenders(~s("#" + t.num)) != []
     assert offenders(~S(`Q${t.qpos}`)) != []
   end

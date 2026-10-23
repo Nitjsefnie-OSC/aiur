@@ -6,7 +6,7 @@ import { treeStatus } from '../../priv/static/build-home/chains.js';
 import { headerHTML } from '../../priv/static/build-home/modal/header.js';
 const pack = { id: 'pack:demo/A', sec: 'plan', num: null, qpos: null, src: { kind: 'pack', path: 'docs/build-plan.md', wave: null }, title: '<img src=x>', wave: 1 };
 test('unfiled identities and unknown queue positions are explicit', () => {
-  assert.equal(isUnfiled(pack), true); assert.equal(refText(pack), '—'); assert.equal(refTitle(pack), 'Not filed yet');
+  assert.equal(isUnfiled(null), false); assert.equal(isUnfiled(undefined), false); assert.equal(isUnfiled(pack), true); assert.equal(refText(pack), '—'); assert.equal(refTitle(pack), 'Not filed yet');
   assert.equal(refText({num: 57}), '#57'); assert.equal(queueText(pack), 'Not filed');
   assert.equal(queueText({num: 9, qpos: null}), 'Q?'); assert.equal(queueText({num: 9, qpos: 3}), 'Q3');
   assert.equal(stClass(pack), 'open'); assert.equal(stText(pack), 'Not filed'); assert.equal(treeStatus(pack), 'Not filed · W1');

@@ -51,7 +51,7 @@ function dependencies(ids, D) {
     const e = t && D.epics?.[t.epic || 'unsorted'];
     return '<button type="button" class="bm-dep" data-goto="' + esc(id) + '">' +
       (Number.isFinite(e?.hue) ? '<span style="--h:' + e.hue + '"></span>' : '') +
-      esc(t ? refText(t) : id) + '<em>' + esc(t?.title ?? 'not loaded') + '</em></button>';
+      esc(t ? refText(t) : /^[0-9]+$/.test(id) ? '#' + id : '—') + '<em>' + esc(t?.title ?? 'not loaded') + '</em></button>';
   }).join('');
 }
 function addHTML(t, D) {
