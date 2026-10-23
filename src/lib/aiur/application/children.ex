@@ -281,7 +281,7 @@ defmodule Aiur.Application.Children do
         Aiur.Experiments.window_children(recording?) ++
         quarantine_lifter_children() ++
         List.wrap(if(dashboard?, do: [Aiur.RunTelemetry.RetainedCache, {AiurWeb.OperatorControlCenter.Analytics.Prewarmer, prewarm_on_start: Application.get_env(:aiur, :analytics_prewarm?, true)}])) ++
-        List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor)) ++ BuildOrders.child_specs(:estimates, opts)
+        BuildOrders.child_specs(:estimates, opts) ++ List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
     )
   end
 
