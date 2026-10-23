@@ -14,7 +14,17 @@ defmodule Aiur.Orchestrator.DispatchCandidates do
 
     ordering = QueueSetSlots.ordering()
 
-    Enum.sort_by(Map.get(groups, :ready, []), &{if(MergePolicy.fixer_ticket?(&1), do: 0, else: 1), QueueSetSlots.sort_key(&1.id, ordering)}) ++
+    Enum.sort_by(
+      Map.get(groups, :ready, []),
+      &{
+        if(MergePolicy.fixer_ticket?(&1), do: 0, else: 1),
+        QueueSetSlots.sort_key(&1.id, ordering),
+        DispatchPolicy.priority_rank(&1.priority),
+        Hints.sort_key(&1.id),
+        issue_created_at_sort_key(&1),
+        &1.identifier || &1.id || ""
+      }
+    ) ++
       Enum.sort_by(optimistic, fn issue ->
         {member, rank, _position} = QueueSetSlots.sort_key(issue.id, ordering)
         {member, rank}
@@ -98,4 +108,7 @@ defmodule Aiur.Orchestrator.DispatchCandidates do
       tier -> if Hints.held?(issue.id), do: :held, else: tier
     end
   end
+
+  defp issue_created_at_sort_key(%Issue{created_at: %DateTime{} = created_at}), do: DateTime.to_unix(created_at, :microsecond)
+  defp issue_created_at_sort_key(_issue), do: 9_223_372_036_854_775_807
 end
