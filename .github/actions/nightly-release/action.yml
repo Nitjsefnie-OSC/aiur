@@ -1,0 +1,34 @@
+name: Nightly release
+description: >-
+  Cut one nightly per local date from a green commit: tag, prerelease and
+  publish every configured package whose paths changed since its last nightly.
+  Other repos call it as aiur-team/aiur/.github/actions/nightly-release@<sha>;
+  see packages/nightly-release/README.md.
+inputs:
+  config:
+    description: Path to the nightly config JSON in the calling repo.
+    default: .github/nightly-release.json
+  sha:
+    description: Commit to release. Empty means the head of the configured branch.
+    default: ""
+  dry-run:
+    description: "true plans and reports only; nothing is tagged, released or published."
+    default: "true"
+  token:
+    description: Token for the GitHub API (contents, actions and packages write for a live run).
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - name: Run nightly release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        NIGHTLY_CONFIG: ${{ inputs.config }}
+        NIGHTLY_SHA: ${{ inputs.sha }}
+        NIGHTLY_DRY_RUN: ${{ inputs.dry-run }}
+      run: |
+        args=(--config "$NIGHTLY_CONFIG")
+        if [ -n "$NIGHTLY_SHA" ]; then args+=(--sha "$NIGHTLY_SHA"); fi
+        if [ "$NIGHTLY_DRY_RUN" != "false" ]; then args+=(--dry-run); fi
+        node "$GITHUB_ACTION_PATH/../../../packages/nightly-release/nightly-release.mjs" "${args[@]}"

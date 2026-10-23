@@ -6,7 +6,8 @@ name: Stream Deck package
 #   pull_request   build + clean-install smoke only; nothing is published.
 #   push to main   remove legacy per-commit releases after this workflow change
 #                  merges; do not build or publish.
-#   nightly        the schedule, or workflow_dispatch with publish=true. There
+#   nightly        workflow_dispatch with publish=true; nightly-release.yml
+#                  dispatches it once main is green after midnight. There
 #                  is exactly ONE rolling pre-release, `streamdeck-nightly`,
 #                  updated in place: the tag moves to the built commit and the
 #                  two fixed-name assets are replaced with --clobber. The gate
@@ -28,10 +29,6 @@ on:
     paths:
       - "packages/streamdeck/**"
       - ".github/workflows/streamdeck-package.yml"
-  schedule:
-    # Same slot as the npm nightly in release-npm.yml (07:00 UTC). The gate keys
-    # off the last published commit, not the calendar, so DST drift is inert.
-    - cron: "0 7 * * *"
   workflow_dispatch:
     inputs:
       publish:
