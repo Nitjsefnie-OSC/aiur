@@ -16,7 +16,7 @@ defmodule Aiur.AgentRunnerTest do
              )
            ) == :shared_ticket_lease_not_owned
 
-    assert_receive {:lease_watch_ticket, ^issue}
+    assert_receive {:lease_watch_ticket, ^issue}, 1_000
   end
 
   # Regression: open_aiur_turn_streams posted the `__aiur_turn__:<id>`

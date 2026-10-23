@@ -6,7 +6,6 @@ defmodule Aiur.Instance.LeaseStore do
 
   alias Aiur.GitHub.Config, as: GitHubConfig
   alias Aiur.Instance.Identity
-  alias Aiur.Issue
   alias Aiur.TrackerIdentity
 
   @name __MODULE__
@@ -150,19 +149,12 @@ defmodule Aiur.Instance.LeaseStore do
 
   @doc "Canonical repository-qualified ticket key shared by dispatch, workers and observers."
   @spec ticket_key(term()) :: {:ok, String.t()} | {:error, :invalid_ticket_key}
-  def ticket_key(%Issue{tracker_identity: %TrackerIdentity{} = identity, identifier: identifier}) do
-    key_from_identity(identity, identifier) || {:error, :invalid_ticket_key}
-  end
-
-  def ticket_key(%Issue{identifier: identifier}) do
-    ticket_key(identifier)
-  end
-
   def ticket_key(%TrackerIdentity{} = identity) do
     key_from_identity(identity, identity.identifier) || {:error, :invalid_ticket_key}
   end
 
-  def ticket_key(%{tracker_identity: %TrackerIdentity{} = identity, identifier: identifier}) do
+  def ticket_key(%{tracker_identity: %TrackerIdentity{} = identity} = ticket) do
+    identifier = Map.get(ticket, :identifier) || Map.get(ticket, :number) || identity.identifier
     key_from_identity(identity, identifier) || {:error, :invalid_ticket_key}
   end
 
