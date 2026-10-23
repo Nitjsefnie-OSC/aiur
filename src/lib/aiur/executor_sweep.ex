@@ -18,7 +18,11 @@ defmodule Aiur.ExecutorSweep do
     snapshot = Keyword.get_lazy(opts, :snapshot, &SnapshotCache.read/0)
     now = Keyword.get(opts, :now, DateTime.utc_now())
     threshold = Keyword.get(opts, :unreviewed_pr_minutes, configured_threshold())
-    Checks.all(snapshot, now, unreviewed_pr_minutes: threshold)
+
+    Checks.all(snapshot, now,
+      unreviewed_pr_minutes: threshold,
+      label_prefix: configured_label_prefix()
+    )
   end
 
   @spec run(keyword()) :: :ok
@@ -150,6 +154,13 @@ defmodule Aiur.ExecutorSweep do
     case Aiur.Config.settings() do
       {:ok, settings} -> settings.executor.sweep.unreviewed_pr_minutes
       _ -> 10
+    end
+  end
+
+  defp configured_label_prefix do
+    case Aiur.Config.settings() do
+      {:ok, %{tracker: %{github: %{label_prefix: prefix}}}} when is_binary(prefix) and prefix != "" -> prefix
+      _ -> "agent"
     end
   end
 end

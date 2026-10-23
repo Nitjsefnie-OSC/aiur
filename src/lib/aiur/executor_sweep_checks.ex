@@ -2,7 +2,6 @@ defmodule Aiur.ExecutorSweep.Checks do
   @moduledoc "Builds prioritized Executor sweep findings from observed daemon and GitHub snapshot data."
 
   alias Aiur.ExecutorSweep.{CacheFreshness, FailureCause, StaleCiWait, StateLabels, TriageBacklog}
-  alias Aiur.Instance.SweepFilter
 
   @type finding :: %{kind: String.t(), priority: pos_integer(), action: String.t(), message: String.t()}
 
@@ -12,8 +11,7 @@ defmodule Aiur.ExecutorSweep.Checks do
     unreviewed_minutes = Keyword.get(opts, :unreviewed_pr_minutes, 10)
     stale_minutes = Keyword.get(opts, :merge_group_stale_minutes, 15)
     github_freshness_ms = Keyword.get(opts, :github_freshness_ms, 5 * 60_000)
-    snapshot = SweepFilter.own(snapshot)
-
+    label_prefix = Keyword.get(opts, :label_prefix, "agent")
     [
       {"unreviewed_prs", [:pull_requests, :tickets], fn -> unreviewed_prs(snapshot, now, unreviewed_minutes) end},
       {"old_decisions", [:decisions], fn -> old_decisions(snapshot, now) end},
@@ -25,7 +23,7 @@ defmodule Aiur.ExecutorSweep.Checks do
       {"stale_merge_groups", [:merge_groups], fn -> CacheFreshness.stale_merge_groups(snapshot, now, stale_minutes, github_freshness_ms) end},
       {"queue_sets", [:queue_sets, :idle_slots], fn -> queue_sets(snapshot) end},
       {"queue_order", [:queue_order, :feature_order], fn -> queue_order(snapshot) end},
-      {"ticket_hygiene", [:tickets, :pull_requests], fn -> ticket_hygiene(snapshot, now) end},
+      {"ticket_hygiene", [:tickets, :pull_requests], fn -> ticket_hygiene(snapshot, now, label_prefix) end},
       {"rework_hygiene", [:tickets], fn -> rework_hygiene(snapshot) end},
       {"service_health", [:services], fn -> service_health(snapshot) end}
     ]
@@ -289,12 +287,12 @@ defmodule Aiur.ExecutorSweep.Checks do
     end
   end
 
-  defp ticket_hygiene(snapshot, now) do
+  defp ticket_hygiene(snapshot, now, label_prefix) do
     labels_findings =
       snapshot
       |> Map.get(:tickets, [])
-      |> Enum.map(&%{number: value(&1, :number, nil), created_at: value(&1, :created_at, nil), labels: labels(&1)})
-      |> StateLabels.findings()
+      |> Enum.map(&%{number: value(&1, :number, nil), created_at: value(&1, :created_at, nil), labels: raw_labels(&1)})
+      |> StateLabels.findings(label_prefix)
 
     stale_triage =
       stale_triage_finding(Map.get(snapshot, :open_tickets), now)
@@ -460,12 +458,17 @@ defmodule Aiur.ExecutorSweep.Checks do
 
   defp labels(ticket) do
     ticket
+    |> raw_labels()
+    |> Enum.map(&String.trim_leading(&1, "agent:"))
+  end
+
+  defp raw_labels(ticket) do
+    ticket
     |> value(:labels, [])
     |> Enum.map(fn label ->
       if is_map(label), do: value(label, :name, ""), else: label
     end)
     |> Enum.map(&to_string/1)
-    |> Enum.map(&String.trim_leading(&1, "agent:"))
   end
 
   defp value(map, key, default) do
