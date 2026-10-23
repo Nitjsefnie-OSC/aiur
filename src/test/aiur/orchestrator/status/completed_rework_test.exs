@@ -10,6 +10,7 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
   alias Aiur.Orchestrator.HumanReview
   alias Aiur.Orchestrator.PauseResume
   alias Aiur.Orchestrator.Reconciler
+  alias Aiur.Orchestrator.TrackerTasks
   alias Aiur.SnapshotFenceSupport
 
   setup do
@@ -40,6 +41,10 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
   end
 
   test "reconciliation defers a completed p3 retry when ready p1 tickets are polled" do
+    snapshot_owner = Module.concat(__MODULE__, :CompletedReplacementSnapshotOwner)
+    Process.register(self(), snapshot_owner)
+    on_exit(fn -> Process.unregister(snapshot_owner) end)
+
     issue = %{completed_rework_issue("priority-retry") | state: "todo", priority: 3}
 
     p1_tickets =
@@ -59,9 +64,10 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
     {state, entry, worker, _item_ids} = completed_retention_fixture(issue)
     entry = Map.put(entry, :completed_provenance, true)
     state = put_in(state.running[issue.id], entry)
-    state = %{state | last_polled_issues: Map.new(p1_tickets, &{&1.id, &1}), snapshot_key: self()}
+    state = %{state | last_polled_issues: Map.new(p1_tickets, &{&1.id, &1}), snapshot_key: snapshot_owner}
     runners_before = RunnerTasks.capture()
 
+    assert TrackerTasks.owner?(state)
     assert Enum.all?(p1_tickets, &DispatchPolicy.dispatch_candidate?(&1, state))
     assert hd(DispatchCandidates.order([issue | p1_tickets], DispatchPolicy.terminal_state_set(), p1_tickets)).priority == 1
 
