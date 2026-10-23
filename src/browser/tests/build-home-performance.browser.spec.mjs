@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { dashboardCredentials } from './support/layout-worker.mjs'
+import { allowedEvents, runTarget } from '../scripts/build-home-perf-target.mjs'
 
 // Enforced build-home performance budgets (MP-E8-C12-T06). CI runners are shared and noisy,
 // so this spec gates only bytes, counts and ratios; absolute timings get loose ceilings with
@@ -243,5 +244,20 @@ test('guard: B7 span 30 fills with one load-earlier request', async ({ browser }
     expect(requests.length).toBeGreaterThanOrEqual(1)
     expect(requests.length).toBeLessThanOrEqual(BUDGETS.spanRequests)
     expect(requests[0].days).toBe(29)
+  } finally { await context.close() }
+})
+
+test('B6 target run is read-only against the production route', async ({ browser, baseURL }) => {
+  test.setTimeout(60_000)
+  const context = await browser.newContext({ httpCredentials: dashboardCredentials })
+  const page = await context.newPage(), requests = [], rows = []
+  page.on('request', request => requests.push(new URL(request.url()).pathname))
+  try {
+    const result = await runTarget({ page, baseURL, record: (id, measurement) => rows.push({ id, measurement }) })
+    expect(requests).not.toContain('/build-fixture/scale10k')
+    expect(requests).not.toContain('/auth/read_only')
+    const unexpected = result.events.filter(event => event && !allowedEvents.has(event))
+    expect(unexpected, `target emitted unexpected events: ${unexpected.join(', ')}`).toEqual([])
+    expect(rows.map(row => row.id)).toEqual(expect.arrayContaining(['C1', 'C2', 'C7', 'C12', 'W1']))
   } finally { await context.close() }
 })
