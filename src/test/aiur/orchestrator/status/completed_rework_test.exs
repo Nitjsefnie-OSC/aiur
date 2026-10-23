@@ -73,7 +73,13 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
     assert hd(DispatchCandidates.order([issue | p1_tickets], DispatchPolicy.terminal_state_set(), p1_tickets)).priority == 1
     assert Reactivation.completed_replacement_deferred?(state, issue)
 
-    next = Reconciler.maybe_reactivate_or_refresh(state, issue)
+    next =
+      Reconciler.reconcile_running_issue_states(
+        [issue],
+        state,
+        MapSet.new(["todo", "in-progress", "rework"]),
+        DispatchPolicy.terminal_state_set()
+      )
 
     assert next.running[issue.id] == entry
     refute Enum.any?(next.tracker_tasks, fn {_ref, task} -> task.key == {:completed_revalidation, issue.id} end)
