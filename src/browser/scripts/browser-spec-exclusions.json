@@ -3,5 +3,10 @@
     "spec": "tests/design-parity-matrix.browser.spec.mjs",
     "reason": "Manual home parity sign-off only; home-parity-signoff.yml is workflow_dispatch-only and does not gate merges.",
     "ticket": 5124
+  },
+  {
+    "spec": "tests/build-home-perf-matrix.browser.spec.mjs",
+    "reason": "Report-mode timing matrix (npm run perf:build-home); host-dependent timings never gate merges. The enforced guards are build-home-performance.",
+    "ticket": 3176
   }
 ]
