@@ -430,7 +430,6 @@ The durable repository Executor state also records every daemon start and stop i
 
 ## dashboard_auth
 
-
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-19 -->
 | --- | --- | --- | --- |
 | `dashboard_auth.browser_basic_auth` | boolean | true | Allows Basic Auth fallback on browser pages; API and Stream Deck machine clients keep Basic Auth. |
