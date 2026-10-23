@@ -41,7 +41,7 @@ is marked as still settling; an unhealthy refresh is marked as degraded.
 
 ### Build timeline filters
 
-The `/build` toolbar filters by Epic, Feature, Model, Ticket and Agent. Options in one group combine with OR; groups combine with AND. Filters are saved in the URL.
+The Build toolbar filters by Epic, Feature, Model, Ticket and Agent. Options in one group combine with OR; groups combine with AND. Filters are saved in the URL.
 
 Epic hides other tickets and lays out the board again; other groups dim nonmatching cards. In List view, Feature focus dims unrelated rows; the other filters remove nonmatching rows.
 
