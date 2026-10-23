@@ -40,12 +40,12 @@ defmodule Aiur.Orchestrator.DispatchPolicy.CandidatesTest do
       assert DispatchPolicy.sort_issues_for_dispatch(issues) == expected
     end
 
-    test "a queue item with downstream 3 precedes a priority:1 non-queue item" do
+    test "priority precedes downstream rank for ready non-fixer work" do
       :ets.new(Hints.table_name(), [:named_table, :set])
       :ets.insert(Hints.table_name(), {"7", {-3, 0}, false})
-      issues = [issue("1", priority: 1), issue("7", priority: 4)]
+      issues = [issue("7", priority: 4), issue("unprioritized", priority: nil), issue("1", priority: 1)]
 
-      assert Enum.map(DispatchPolicy.sort_issues_for_dispatch(issues), & &1.id) == ["7", "1"]
+      assert Enum.map(DispatchPolicy.sort_issues_for_dispatch(issues), & &1.id) == ["1", "7", "unprioritized"]
     end
 
     test "list position orders equal-priority queue items before age but after priority" do
