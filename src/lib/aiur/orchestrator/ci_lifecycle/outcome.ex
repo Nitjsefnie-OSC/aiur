@@ -153,19 +153,38 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
   defp stale_approved_head?(_issue, _result), do: false
 
   defp transition_ci_pass(state, issue, result) do
-    if LifecycleFence.handoff_blocked?(state, issue) do
-      Transition.log_fenced_ci_handoff(issue, @active_handoff_state)
-      state
-    else
-      Poll.run_ci_effect(
-        state,
-        issue,
-        "transition_ci_pass",
-        fn -> write_ci_pass_state({issue, result}) end,
-        fn arg1, arg2 ->
-          apply_ci_pass_transition(arg1, arg2, {issue, result})
-        end
-      )
+    cond do
+      LifecycleFence.handoff_blocked?(state, issue) ->
+        Transition.log_fenced_ci_handoff(issue, @active_handoff_state)
+        state
+
+      not owned_ci_wait_runtime?(state, issue) ->
+        # A passing CI observation is not evidence that an agent turn resumed.
+        # In particular, do not claim an ownerless ci-wait ticket: the startup
+        # reconciler would immediately release that claim back to ci-wait.
+        state
+
+      true ->
+        Poll.run_ci_effect(
+          state,
+          issue,
+          "transition_ci_pass",
+          fn -> write_ci_pass_state({issue, result}) end,
+          fn arg1, arg2 ->
+            apply_ci_pass_transition(arg1, arg2, {issue, result})
+          end
+        )
+    end
+  end
+
+  defp owned_ci_wait_runtime?(state, issue) do
+    case Map.get(state.running, issue.id) do
+      %{identifier: identifier, control: %{status: status}, paused_reason: :ci_wait}
+      when identifier == issue.identifier and status in [:paused, :deactivated] ->
+        true
+
+      _ ->
+        false
     end
   end
 

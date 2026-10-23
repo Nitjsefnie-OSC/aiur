@@ -182,6 +182,23 @@ defmodule Aiur.Orchestrator.Deactivate.CiFeedbackPollerTest do
       assert state.ci_lifecycle.approved_heads == %{"822" => "new-head"}
     end
 
+    test "passing CI leaves an ownerless ci-wait ticket for orphan reconciliation" do
+      identifier = "ci-ownerless-pass"
+      issue = %Issue{id: identifier, identifier: identifier, state: "ci-wait", title: "Ownerless CI gate"}
+
+      state =
+        CiLifecycle.poll_github_ci(empty_orchestrator_state(),
+          ci_issue_fetcher: fn ["ci-wait", "human-review"] -> {:ok, [issue]} end,
+          ci_poller: fn [^identifier], _opts ->
+            {:ok, %{results: [%{target: identifier, decision: :passed, head_sha: "passed-head", pr_number: 5902}], errors: []}}
+          end
+        )
+
+      refute_received {:ci_watcher_update, ^identifier, "in-progress"}
+      assert state.running == %{}
+      assert state.ci_lifecycle.approved_heads == %{}
+    end
+
     test "CI result cannot overwrite a newer rework state" do
       identifier = "ci-result-race"
       issue = %Issue{id: identifier, identifier: identifier, state: "ci-wait", title: "CI race"}
