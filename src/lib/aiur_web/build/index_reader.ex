@@ -29,7 +29,7 @@ defmodule AiurWeb.Build.IndexReader do
 
     nq = read_part(:not_queued, dirty, parts, fn -> context.not_queued end)
     parts = parts |> Map.put(:planned, planned) |> Map.put(:not_queued, nq)
-    Map.put(parts, :packs, Index.safe_read(:packs, fn -> PackRead.read(parts, opts) end))
+    Map.put(parts, :packs, fn index -> PackRead.read(index, opts) end)
   end
 
   defp read_part(key, dirty, previous, fun) do

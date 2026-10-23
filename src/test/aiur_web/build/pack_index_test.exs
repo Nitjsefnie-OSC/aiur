@@ -74,6 +74,38 @@ defmodule AiurWeb.Build.PackIndexTest do
     assert {:ok, %{id: "1234"}} = IndexSource.ticket("pack:demo/A", server: server)
   end
 
+  test "failed and missing packs parts remain unavailable rather than healthy or disabled" do
+    for failure <- [{:error, :read_failed}, nil, fn _index -> raise "pack read failed" end] do
+      assert {:ok, index} = parts([row(9)]) |> Map.put(:packs, failure) |> assemble()
+      assert index.sources.packs == %{state: "unavailable", observed_at: now(), reason: "planning packs could not be read"}
+      assert Map.keys(index.all) == ["9"]
+    end
+  end
+
+  test "pack loader failure is unavailable through the index reader" do
+    for loader <- [fn -> {:error, :unreadable} end, fn -> raise "bad pack" end] do
+      read = IndexReader.read(MapSet.new(), parts([row(9)]), packs_opts: [loader: loader], clock: &now/0)
+      assert {:ok, index} = assemble(read)
+      assert index.sources.packs == %{state: "unavailable", observed_at: now(), reason: "planning packs could not be read"}
+      assert Map.keys(index.all) == ["9"]
+    end
+  end
+
+  test "pack reader consumes the already assembled filed rows once" do
+    parent = self()
+
+    reader = fn context ->
+      send(parent, {:assembled_rows, Map.keys(context.all), Map.keys(context.epics)})
+      %{rows: [], aliases: %{}, source: %{state: "disabled", observed_at: now(), reason: "no_pack_configured"}}
+    end
+
+    assert {:ok, index} = parts([row(9)]) |> Map.put(:packs, reader) |> assemble()
+    receive_barrier({:assembled_rows, ["9"], epics})
+    assert Enum.sort(epics) == Enum.sort(Map.keys(index.epics))
+    refute_received {:assembled_rows, _, _}
+    assert index.sources.packs.state == "disabled"
+  end
+
   defp read_packs(parts, result), do: IndexReader.read(MapSet.new(), parts, packs_opts: [loader: fn -> result end], clock: &now/0)
 
   defp pack(number) do

@@ -24,7 +24,6 @@ defmodule Aiur.BuildOrder.Index.Sources do
   def health(_), do: %ProviderHealth{failure: :unknown}
 
   defp pack_source(%{source: source}, _now), do: source
-  defp pack_source(nil, now), do: %{state: "disabled", observed_at: now, reason: "no_pack_configured"}
   defp pack_source(_, now), do: %{state: "unavailable", observed_at: now, reason: "planning packs could not be read"}
 
   defp history(parts) do

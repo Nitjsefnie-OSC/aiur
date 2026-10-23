@@ -1,6 +1,12 @@
 defmodule Aiur.BuildOrder.Index.PackRows do
   @moduledoc false
 
+  @spec read(term(), map(), map()) :: term()
+  def read(reader, all, epics) when is_function(reader, 1),
+    do: Aiur.BuildOrder.Index.safe_read(:packs, fn -> reader.(%{all: all, epics: epics}) end)
+
+  def read(part, _all, _epics), do: part
+
   @spec merge(map(), term()) :: map()
   def merge(all, %{rows: rows, aliases: aliases}) do
     all = Map.new(all, fn {id, row} -> {id, Map.put(row, :was, Map.get(aliases, row.num))} end)

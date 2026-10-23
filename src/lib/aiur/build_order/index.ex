@@ -12,7 +12,9 @@ defmodule Aiur.BuildOrder.Index do
       now = Keyword.get(opts, :now, System.system_time(:millisecond))
       {all, undated} = Rows.build(parts, general)
       catalogue = Catalogue.build(parts, general, all, now)
-      all = PackRows.merge(all, parts[:packs])
+      packs = PackRows.read(parts[:packs], all, catalogue.epics)
+      parts = Map.put(parts, :packs, packs)
+      all = PackRows.merge(all, packs)
       sources = Sources.build(parts, now)
       complete? = sources.history.state not in ["unavailable", "incomplete"]
       counts = if complete?, do: counts(all, catalogue.order)
