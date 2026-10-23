@@ -2,9 +2,9 @@ defmodule AiurWeb.PlanningDocumentControllerTest do
   use Aiur.TestSupport
   import Plug.Conn
   import Plug.Test
+  alias Aiur.Config.SessionOptions
   alias AiurWeb.BuildOrder.PlanningSource
   alias AiurWeb.{FinancialDataAccess, Router}
-  alias Aiur.Config.SessionOptions
 
   setup do
     FinancialDataAccess.Generation.invalidate()

@@ -5,7 +5,7 @@ defmodule Aiur.Config.Schema.DashboardAuth.Google do
 
   @primary_key false
   embedded_schema do
-    # @config-reference config-dashboard-auth dashboard_auth.google.allowed_emails
+    # @config-reference config-configuration-22 dashboard_auth.google.allowed_emails
     # @config-detail dashboard_auth.google.allowed_emails | array | `[]` | Exact email allowlist for Google OpenID Connect; an empty list disables Google sign-in. |
     field(:allowed_emails, {:array, :string}, default: [])
   end
@@ -31,13 +31,13 @@ defmodule Aiur.Config.Schema.DashboardAuth do
 
   @primary_key false
   embedded_schema do
-    # @config-reference config-dashboard-auth dashboard_auth.passkeys
+    # @config-reference config-configuration-22 dashboard_auth.passkeys
     # @config-detail dashboard_auth.passkeys | boolean | false | Enables passkey login and enrollment after a fresh Google sign-in. |
     field(:passkeys, :boolean, default: false)
-    # @config-reference config-dashboard-auth dashboard_auth.session_max_age_days
+    # @config-reference config-configuration-22 dashboard_auth.session_max_age_days
     # @config-detail dashboard_auth.session_max_age_days | integer | 30 | Maximum dashboard browser session age in days. |
     field(:session_max_age_days, :integer, default: 30)
-    # @config-reference config-dashboard-auth dashboard_auth.browser_basic_auth
+    # @config-reference config-configuration-22 dashboard_auth.browser_basic_auth
     # @config-detail dashboard_auth.browser_basic_auth | boolean | true | Allows Basic Auth fallback on browser pages; API and Stream Deck machine clients keep Basic Auth. |
     field(:browser_basic_auth, :boolean, default: true)
     embeds_one(:google, Google, on_replace: :update, defaults_to_struct: true)
