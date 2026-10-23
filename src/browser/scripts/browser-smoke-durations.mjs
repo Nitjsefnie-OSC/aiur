@@ -6,6 +6,10 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
+  // Governed local full commands (2026-10-23), including startup and build-gate waits:
+  // unfiled 10 cases: 57.170s; unfiled modal parity 12 cells: 676.729s. Round up.
+  'test:build-home-unfiled': 58,
+  'test:build-home-unfiled-parity': 677,
   // CI run 39616972873 (2026-10-21), jobs 119280971812/119280971969:
   // document functional 43.8s and parity 150.5s suite wall time, rounded up.
   'test:build-home-modal-doc': 44,
