@@ -10,15 +10,7 @@ defmodule Aiur.GitHub.HumanReviewEvidence do
       when is_binary(head) and is_binary(body) do
     case LocalTestEvidence.parse(body) do
       {:ok, evidence} ->
-        case LocalTestEvidence.validate(evidence, "none", head) do
-          :ok ->
-            :ok
-
-          {:error, reason} ->
-            if identical_contribution_after_merge_only_advance?(context, pr, evidence.tested_head, head),
-              do: :ok,
-              else: stale(pr, head, evidence.tested_head, reason)
-        end
+        verify_tested_head(context, pr, evidence, head)
 
       :missing ->
         stale(pr, head, nil, "Local tests section is missing")
@@ -30,6 +22,18 @@ defmodule Aiur.GitHub.HumanReviewEvidence do
 
   def verify(_context, %{"number" => number}),
     do: {:error, {:stale_pr_body_evidence, %{pr_number: number, reason: "PR head or body is missing"}}}
+
+  defp verify_tested_head(context, pr, evidence, head) do
+    case LocalTestEvidence.validate(evidence, "none", head) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        if identical_contribution_after_merge_only_advance?(context, pr, evidence.tested_head, head),
+          do: :ok,
+          else: stale(pr, head, evidence.tested_head, reason)
+    end
+  end
 
   defp identical_contribution_after_merge_only_advance?(context, %{"number" => number}, tested_head, head)
        when is_integer(number) do
