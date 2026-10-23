@@ -51,40 +51,57 @@ const reference = designSource.replace('  window.AiurBuild = {', `  window.unfil
   freeze() {S.ready=false;snapping=true;},
 };\n  window.AiurBuild = {`)
 // Mask overlays cover equal rectangles without changing the identity slot's layout.
+async function waitSlotGeometry(node,label) {
+  let geometry
+  await expect.poll(async()=>{
+    geometry=await node.evaluate(el=>{
+      const box=el.getBoundingClientRect(),style=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
+      const transform=ancestor?getComputedStyle(ancestor).transform:'none',scale=transform==='none'?1:new DOMMatrix(transform).a
+      const width=parseFloat(style.width)||box.width/scale
+      return {positive:box.width>0&&box.height>0&&Number.isFinite(width)&&width>0,width,height:box.height,bounds:box.toJSON(),display:style.display,computedWidth:style.width,connected:el.isConnected}
+    })
+    return JSON.stringify(geometry)
+  },{message:label}).toMatch(/"positive":true/)
+  return geometry
+}
 async function maskRow(pair,region,slots) {
   if(region.includes('.bd-tn')) {
     const entry=pair.allowlist.find(entry=>entry.id==='unfiled-tree-reference-width')
     expect(entry).toMatchObject({kind:'property',cells:{dataset:'live'},approval:{status:'pending-sign-off'}})
-    await expect.poll(()=>pair.product.locator(region).locator('b').evaluate(el=>parseFloat(getComputedStyle(el).width))).toBeGreaterThan(0)
-    const width=await pair.product.locator(region).locator('b').evaluate(el=>{
-      const transform=getComputedStyle(el.closest('.bd-tree-in')).transform
-      const scale=transform==='none'?1:new DOMMatrix(transform).a
-      return Math.round((parseFloat(getComputedStyle(el).width)||el.getBoundingClientRect().width/scale)*64)/64
-    })
+    const measurement=await waitSlotGeometry(pair.product.locator(region).locator('b'),region+' b product reference width')
+    const width=Math.round(measurement.width*64)/64
     await pair.design.locator(region).locator('b').evaluate((el,width)=>{el.style.width=width+'px';el.style.overflow='hidden'},width)
   }
   for (const slot of slots) {
     const nodes = [pair.design,pair.product].map(page => page.locator(region).locator(slot))
-    if(region.includes('.bd-tn')) for(const node of nodes) await expect.poll(()=>node.evaluate(el=>{const b=el.getBoundingClientRect();return b.width>0&&b.height>0})).toBe(true)
-    const boxes = await Promise.all(nodes.map(node => node.evaluate(el => {const b=el.getBoundingClientRect();return {width:b.width,height:b.height}})))
+    const tree=region.includes('.bd-tn')
+    const boxes = tree
+      ? (await Promise.all(nodes.map((node,index)=>waitSlotGeometry(node,region+' '+slot+' '+(index?'product':'design'))))).map(geometry=>geometry.bounds)
+      : await Promise.all(nodes.map(node=>node.evaluate(el=>{const b=el.getBoundingClientRect();return {width:b.width,height:b.height}})))
     const size = {width:Math.max(...boxes.map(b=>b.width)),height:Math.max(...boxes.map(b=>b.height))}
-    for (const node of nodes) await node.evaluate((el,size) => {
+    for (const [index,node] of nodes.entries()) {
+      const prepare=()=>node.evaluate((el,size) => {
       el.querySelector('[data-unfiled-mask]')?.remove()
       const mask=document.createElement('span');mask.dataset.unfiledMask=''
       const style=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
       const transform=ancestor?getComputedStyle(ancestor).transform:'none',scale=transform==='none'?1:new DOMMatrix(transform).a
       const box=el.getBoundingClientRect(),cardIcon=el.matches('.bd-id')?el.previousElementSibling:null,title=el.matches('.bd-tn1 b')?el.nextElementSibling:null,dot=title?el.previousElementSibling:null
+      if(ancestor && (!(box.width>0&&box.height>0)||!Number.isFinite(scale)||scale<=0)) return false
       const rasterMargin=title?Math.min(1/devicePixelRatio,Math.max(0,title.getBoundingClientRect().left-box.right)):0
       const rasterLeft=cardIcon?1/devicePixelRatio:dot?Math.min(1/devicePixelRatio,Math.max(0,(box.left-dot.getBoundingClientRect().right)/2)):0
       el.style.position='relative'
       Object.assign(mask.style,{position:'absolute',left:(-parseFloat(style.borderLeftWidth||0)-rasterLeft/scale)+'px',top:-parseFloat(style.borderTopWidth||0)+'px',width:(size.width+rasterMargin+rasterLeft)/scale+'px',height:size.height/scale+'px',pointerEvents:'none'})
       el.append(mask)
       const measured=mask.getBoundingClientRect()
-      if(title && !(measured.width>0&&measured.height>0)) throw new Error('Identity mask has empty geometry')
+      if(ancestor && !(measured.width>0&&measured.height>0)) {mask.remove();return false}
       if(cardIcon && mask.getBoundingClientRect().left<=cardIcon.getBoundingClientRect().right) throw new Error('Identity mask overlaps the unmasked card icon')
       if(title && mask.getBoundingClientRect().right>=title.getBoundingClientRect().left) throw new Error('Reference mask overlaps the unmasked title')
       if(dot && mask.getBoundingClientRect().left<=dot.getBoundingClientRect().right) throw new Error('Reference mask overlaps the unmasked status dot')
-    },size)
+      return true
+      },size)
+      if(tree) await expect.poll(prepare,{message:region+' '+slot+' '+(index?'product':'design')+' mask preparation'}).toBe(true)
+      else await prepare()
+    }
   }
 }
 async function maskVisible(pair,kind,slots) {
