@@ -17,7 +17,7 @@ defmodule Aiur.AgentRunner.BeforeRun do
 
       {:error, {:workspace_hook_timeout, "before_run", timeout_ms} = reason} ->
         WorkspaceGuard.record_setup_end(issue, opts, :failed, reason)
-        {:before_run_failed, :timeout, "before_run hook timed out after #{timeout_ms} ms", reason}
+        {:before_run_retry, reason, timeout_ms}
 
       # The dirty workspace could not be saved, so it was not recreated (#2743).
       # Hold the ticket on the existing before_run pause instead of letting a

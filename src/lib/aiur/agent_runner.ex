@@ -156,14 +156,34 @@ defmodule Aiur.AgentRunner do
   end
 
   defp run_worker_attempt(ownership, workspace, issue, codex_update_recipient, opts, worker_host) do
+    run_worker_attempt(ownership, workspace, issue, codex_update_recipient, opts, worker_host, 0)
+  end
+
+  defp run_worker_attempt(ownership, workspace, issue, codex_update_recipient, opts, worker_host, timeout_retries) do
     case run_worker_attempt_once(ownership, workspace, issue, codex_update_recipient, opts, worker_host) do
+      {:before_run_retry, {:workspace_hook_timeout, "before_run", timeout_ms}, _reported_timeout_ms} ->
+        delay_ms = before_run_timeout_retry_delay(timeout_retries)
+
+        Logger.warning(
+          "Retrying before_run hook after timeout for #{issue_context(issue)} timeout_ms=#{timeout_ms} " <>
+            "retry=#{timeout_retries + 1} delay_ms=#{delay_ms}"
+        )
+
+        Process.sleep(delay_ms)
+        run_worker_attempt(ownership, workspace, issue, codex_update_recipient, opts, worker_host, timeout_retries + 1)
+
       :resume_after_before_run_pause ->
         opts = begin_workspace_setup_retry(issue, opts)
-        run_worker_attempt(ownership, workspace, issue, codex_update_recipient, opts, worker_host)
+        run_worker_attempt(ownership, workspace, issue, codex_update_recipient, opts, worker_host, 0)
 
       result ->
         result
     end
+  end
+
+  defp before_run_timeout_retry_delay(retries) do
+    delay = 1_000 * 2 ** min(retries, 10)
+    min(delay, Config.settings!().agent.max_retry_backoff_ms)
   end
 
   defp run_worker_attempt_once(ownership, workspace, issue, codex_update_recipient, opts, worker_host) do
