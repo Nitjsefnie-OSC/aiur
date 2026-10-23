@@ -122,7 +122,7 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
 
       assert ".aiur-runtime/gh" in missing
       refute_received {:provider_called, _turn, _missing}
-      assert_receive {:queue_item_failed, identifier, {:error, {:agent_support_repair_failed, _, _, _}}}, 1000
+      assert_receive {:queue_item_failed, identifier, {:agent_support_repair_failed, _, _, _}}, 1000
       assert identifier == ctx.issue.identifier
       refute_received {:queue_item_restored, ^identifier}
     end

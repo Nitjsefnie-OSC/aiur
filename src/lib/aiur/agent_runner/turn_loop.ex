@@ -70,12 +70,16 @@ defmodule Aiur.AgentRunner.TurnLoop do
   end
 
   # A regular turn has not started its provider yet, so the delivered item can
-  # be restored for a replacement. An adopted active turn has already started
-  # its provider and must retain the normal failure settlement.
+  # be restored for a replacement. An adopted active turn is already running;
+  # returning this refusal stops its adopted session in Handoff.adopt/4's after
+  # block, and the delivered item is failed rather than replayed against a new
+  # provider turn.
   defp refuse_unsupported_turn(%{orchestrator: orchestrator, issue: issue, opts: opts}, error) do
     if Handoff.active_resume?() do
+      {:error, reason} = error
+
       best_effort_queue_bookkeeping(
-        Aiur.Orchestrator.fail_delivered_queue_items(orchestrator, issue.identifier, error),
+        Aiur.Orchestrator.fail_delivered_queue_items(orchestrator, issue.identifier, reason),
         :fail,
         issue
       )
