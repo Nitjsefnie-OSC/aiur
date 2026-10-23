@@ -21,6 +21,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
 
   alias Aiur.GitHub.CodeOwners
   alias Aiur.TestSupport.OrchestratorChild
+  alias Aiur.TestSupport.SupervisorExit
 
   alias Aiur.TestSupport.RuntimeChildren
 
@@ -42,7 +43,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
     :persistent_term.put(@app_env_key, capture_app_env())
     :persistent_term.put(@codeowners_key, :unset)
     :persistent_term.put(@last_finished_key, nil)
-    Aiur.TestSupport.SupervisorExit.start_monitoring()
+    SupervisorExit.start_monitoring()
     {:ok, nil}
   end
 
@@ -59,11 +60,11 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
   def handle_cast(_event, last), do: {:noreply, last}
 
   @impl true
-  def handle_info(message, last), do: Aiur.TestSupport.SupervisorExit.handle_info(message, last)
+  def handle_info(message, last), do: SupervisorExit.handle_info(message, last)
 
   @impl true
   def handle_call({:monitor_supervisor, name, notify_pid}, _from, last) do
-    Aiur.TestSupport.SupervisorExit.start_monitoring(name, notify_pid)
+    SupervisorExit.start_monitoring(name, notify_pid)
     {:reply, :ok, last}
   end
 
@@ -128,7 +129,7 @@ defmodule Aiur.TestSupport.OrchestratorGuard do
         []
 
       leaks ->
-        exit_reason = Aiur.TestSupport.SupervisorExit.exit_reason()
+        exit_reason = SupervisorExit.exit_reason()
         reason_note = if is_nil(exit_reason), do: "", else: " (Aiur.Supervisor exit reason: #{inspect(exit_reason)})"
         ["plain ExUnit tests left shared runtime children down: #{Enum.join(leaks, ", ")}#{reason_note}"]
     end
