@@ -284,10 +284,13 @@ prepare_distribution() {
   aiur_resolve_identity
 
   local cookie
-  if [ "${AIUR_CONTAINER:-0}" = "1" ]; then
-    if [ -n "${AIUR_ERLANG_COOKIE:-}" ]; then
-      cookie="$AIUR_ERLANG_COOKIE"
-    elif [ -f "$AIUR_COOKIE_FILE" ] && [ -r "$AIUR_COOKIE_FILE" ]; then
+  if [ -n "${AIUR_ERLANG_COOKIE:-}" ]; then
+    cookie="$AIUR_ERLANG_COOKIE"
+    if ! [[ "$cookie" =~ ^[A-Za-z0-9_-]{16,}$ ]]; then
+      die "AIUR_ERLANG_COOKIE must be at least 16 letters, digits, underscores, or hyphens"
+    fi
+  elif [ "${AIUR_CONTAINER:-0}" = "1" ]; then
+    if [ -f "$AIUR_COOKIE_FILE" ] && [ -r "$AIUR_COOKIE_FILE" ]; then
       cookie="$(cat "$AIUR_COOKIE_FILE")"
     else
       die "container mode requires AIUR_ERLANG_COOKIE or a readable AIUR_COOKIE_FILE volume"

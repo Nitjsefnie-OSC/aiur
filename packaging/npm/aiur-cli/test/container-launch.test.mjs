@@ -75,12 +75,12 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
     AIUR_BG_STATE_DIR: path.join(root, "state"),
     AIUR_COOKIE_FILE: path.join(root, "state", "cookie"),
     AIUR_LOGS_ROOT: logsRoot,
-    AIUR_SESSION_PREFIX: "container-test",
     AIUR_NODE_GRACE_TICKS: "100",
     XDG_RUNTIME_DIR: root,
     TMPDIR: root,
     PATH: pathWithoutTmux,
   };
+  delete launchEnv.AIUR_SESSION_PREFIX;
   const child = spawn(process.execPath, [shim, "run", "--container"], {
     stdio: ["ignore", "pipe", "pipe"],
     env: launchEnv,
@@ -246,4 +246,37 @@ test("container launch requires its own cookie instead of using the release cook
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("requires AIUR_ERLANG_COOKIE or a readable AIUR_COOKIE_FILE volume");
   expect(existsSync(launchMarker)).toBe(false);
+});
+
+test("control commands reuse the environment cookie without creating a state cookie", () => {
+  const { launcher, releaseDir } = setupRealLauncher();
+  const receivedCookie = path.join(root, "received-cookie");
+  const cookieFile = path.join(root, "state", "cookie");
+  writeFileSync(path.join(releaseDir, "bin", "aiur"), [
+    "#!/usr/bin/env bash",
+    'printf "%s" "$RELEASE_COOKIE" >"$AIUR_TEST_RECEIVED_COOKIE"',
+    'echo __AIUR_CONTROL_EXIT__:0',
+    "",
+  ].join("\n"));
+  chmodSync(path.join(releaseDir, "bin", "aiur"), 0o755);
+
+  const result = spawnSync(launcher, ["status"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      AIUR_RELEASE_DIR: releaseDir,
+      AIUR_INSTANCE_KEY: path.basename(root),
+      AIUR_RELEASE_NODE: "aiur-container-control-test@127.0.0.1",
+      AIUR_ERLANG_COOKIE: "control-env-cookie-5939",
+      AIUR_TEST_RECEIVED_COOKIE: receivedCookie,
+      AIUR_BG_STATE_DIR: path.join(root, "state"),
+      AIUR_COOKIE_FILE: cookieFile,
+      XDG_RUNTIME_DIR: root,
+      TMPDIR: root,
+    },
+  });
+
+  expect(result.status).toBe(0);
+  expect(readFileSync(receivedCookie, "utf8")).toBe("control-env-cookie-5939");
+  expect(existsSync(cookieFile)).toBe(false);
 });

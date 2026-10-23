@@ -2,14 +2,15 @@
 
 run_session_container() {
   local mode=container no_dashboard=0 surface_mode=headless
-  local session="${AIUR_SESSION_PREFIX}-${USER:-user}${AIUR_INSTANCE_KEY:+-$AIUR_INSTANCE_KEY}-container"
-  local socket="${AIUR_SESSION_PREFIX}-${USER:-user}${AIUR_INSTANCE_KEY:+-$AIUR_INSTANCE_KEY}"
+  local session socket
   local conf="" launch_lock startup_capture="" supervisor_file="" crash_dump_baseline_file=""
   local launcher="" inner_cmd="" launch_tempfiles=() status=0 child=""
 
   validate_container_options "$@"
   export AIUR_CONTAINER=1
   aiur_resolve_identity
+  session="${AIUR_SESSION_PREFIX}-${USER:-user}${AIUR_INSTANCE_KEY:+-$AIUR_INSTANCE_KEY}-container"
+  socket="${AIUR_SESSION_PREFIX}-${USER:-user}${AIUR_INSTANCE_KEY:+-$AIUR_INSTANCE_KEY}"
   prepare_distribution
   launch_lock="$(aiur_launch_lock_path)"
   acquire_aiur_launch_lock "$launch_lock" || return 1
