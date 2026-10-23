@@ -2,7 +2,6 @@ defmodule Aiur.ExecutorSweep.CacheFreshnessTest do
   use ExUnit.Case, async: true
 
   alias Aiur.ExecutorSweep.{CacheFreshness, SnapshotCache}
-  alias Aiur.GitHub.ResourceStore
   alias Aiur.LandingWatch.MergeGroupRunFetcher
 
   @now ~U[2026-10-15 18:20:00Z]
@@ -13,13 +12,6 @@ defmodule Aiur.ExecutorSweep.CacheFreshnessTest do
   defp stale_groups(groups, evidence) do
     snapshot = %{merge_groups: groups, github_cache_ages: %{merge_group_runs: Map.new(groups, &{&1.id, 60_000}), merge_group_evidence: evidence}}
     CacheFreshness.stale_merge_groups(snapshot, @now, 15, @max_age_ms)
-  end
-
-  defp put_page(repo, id, data, age_ms) do
-    key = ResourceStore.key(:landing_merge_group_runs, "aiur-team", repo, id)
-    :ok = ResourceStore.put_resource(key, data, source: :fetch)
-    [{^key, entry}] = :ets.lookup(Aiur.GitHub.ResourceStore.Table, key)
-    :ets.insert(Aiur.GitHub.ResourceStore.Table, {key, Map.put(entry, :fetched_at_ms, System.system_time(:millisecond) - age_ms)})
   end
 
   test "fetcher-written status pages settle completed and absent runs but preserve live runs" do

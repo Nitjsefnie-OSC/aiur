@@ -33,15 +33,17 @@ defmodule Aiur.ExecutorSweep.CacheAges do
       page_entries
       |> Enum.reduce(%{}, fn {base, status, page, age, runs}, acc ->
         key = {base, status, page}
-
-        Map.update(acc, key, {base, status, page, age, runs}, fn {_base, _status, _page, previous_age, _runs} = previous ->
-          if age < previous_age, do: {base, status, page, age, runs}, else: previous
-        end)
+        Map.update(acc, key, {base, status, page, age, runs}, &keep_fresher_page(&1, {base, status, page, age, runs}))
       end)
       |> Map.values()
 
     %{runs: Enum.reduce(pages, %{}, &index_runs/2), active_listing_age_ms: active_listing_age(pages), refs: refs(entries, now_ms)}
   end
+
+  defp keep_fresher_page({_base, _status, _page, previous_age, _runs}, {base, status, page, age, runs}) when age < previous_age,
+    do: {base, status, page, age, runs}
+
+  defp keep_fresher_page(previous, _candidate), do: previous
 
   defp page_runs(id, data) do
     case id |> to_string() |> String.split(":") |> Enum.reverse() do
