@@ -1,6 +1,5 @@
 # Module, full ExUnit test name (describe prefix included, as failures print it), owner fix ticket, and YYYY-MM-DD expiry. Tabs delimit four fields.
 Aiur.AgentGitHubGuard.GraphqlAndPagination2Test	a broker failure refuses the real gh command	#5511	2026-12-31
-Aiur.AgentRunner.ToolExecutor.PublicationFailuresTest	*	#5674	2026-12-31
 Aiur.Core.AgentRunnerCheckpointQueueTest	*	#5516	2026-12-31
 Aiur.GitHub.MonotonicDepositTest	*	#5605	2026-12-31
 Aiur.LandingWatch.MainRecoveryRerunTest	*	#5605	2026-12-31
