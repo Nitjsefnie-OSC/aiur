@@ -1,15 +1,31 @@
 import { test, expect } from '@playwright/test'
-import { PARITY_VIEWPORTS, selectProductDataset } from '../support/design-parity.mjs'
-import { openModalPair } from '../support/build-home-modal-pair.mjs'
+import { PARITY_VIEWPORTS, expectDesignParity, parityContextOptions, loadAllowlist, openDesign, openProduct } from '../support/design-parity.mjs'
+import { readFile } from 'node:fs/promises'
 import { compareRegion } from '../support/build-home-region-parity.mjs'
+
+// Keep the design on live while every product context selects unfiled from the start.
+// The fixture dataset is process-global, so parallel cells must never select live.
+async function openUnfiledPair(browser,cell) {
+  const options=parityContextOptions(cell)
+  const contexts=[await browser.newContext(options),await browser.newContext({...options,baseURL:test.info().project.use.baseURL})]
+  const pair={design:await contexts[0].newPage(),product:await contexts[1].newPage(),cell,close:()=>Promise.all(contexts.map(context=>context.close()))}
+  try {
+    pair.allowlist=await loadAllowlist()
+    const root=test.info().project.metadata.agentAssets
+    if(root) for(const name of ['modal/frame.js','modal/header.js','modal/focus.js','modal/doc.js','modal/conversation.js','modal/conversation-events.js','modal/conversation-items.js','modal/conversation-footer.js','hook.js','home.css','home/19-modal-doc.css']) {
+      await pair.product.route('**/build-home/'+name,async route=>route.fulfill({body:await readFile(root+'/'+name,'utf8'),contentType:name.endsWith('.css')?'text/css':'text/javascript'}))
+    }
+    await openDesign(pair.design,cell)
+    await openProduct(pair.product,cell,{dataset:'unfiled',productPending:true})
+    return pair
+  } catch(error) {await pair.close();throw error}
+}
 
 test.setTimeout(180_000)
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) {
   test(`unfiled modal elements ${viewport.viewport.width} ${theme} ${palette}`, async ({ browser }) => {
-    const pair = await openModalPair(browser, { ...viewport, theme, palette, dataset: 'live' }, { productPending: true })
+    const pair = await openUnfiledPair(browser, { ...viewport, theme, palette, dataset: 'live' })
     try {
-      await selectProductDataset(pair.product, 'unfiled')
-      await pair.product.reload()
       await expect(pair.product.locator('#build-root')).toHaveAttribute('data-build-generation', /\d+/)
       const row = await pair.product.evaluate(async () => (await import('/build-home/state.js')).ctx.D.plan.find(t => t.src?.kind === 'pack'))
       expect(row.id).toBe('pack:build-plan/BP-645')
@@ -30,40 +46,115 @@ const designSource = await (await import('node:fs/promises')).readFile(new URL('
 const reference = designSource.replace('  window.AiurBuild = {', `  window.unfiledParity = {
   scroll(id) { const it = L.secs.plan.items.find(it => it.t.id === id); scrollVP(secs.plan.el.offsetTop + it.y - 160, false); update(true); },
   tree: openTree,
+  freeze() {S.ready=false;snapping=true;},
 };\n  window.AiurBuild = {`)
+// Mask overlays cover equal rectangles without changing the identity slot's layout.
+async function maskRow(pair,region,slots) {
+  if(region.includes('.bd-tn')) {
+    const entry=pair.allowlist.find(entry=>entry.id==='unfiled-tree-reference-width')
+    expect(entry).toMatchObject({kind:'property',cells:{dataset:'live'},approval:{status:'pending-sign-off'}})
+    await expect.poll(()=>pair.product.locator(region).locator('b').evaluate(el=>parseFloat(getComputedStyle(el).width))).toBeGreaterThan(0)
+    const width=await pair.product.locator(region).locator('b').evaluate(el=>{
+      const transform=getComputedStyle(el.closest('.bd-tree-in')).transform
+      const scale=transform==='none'?1:new DOMMatrix(transform).a
+      return Math.round((parseFloat(getComputedStyle(el).width)||el.getBoundingClientRect().width/scale)*64)/64
+    })
+    await pair.design.locator(region).locator('b').evaluate((el,width)=>{el.style.width=width+'px';el.style.overflow='hidden'},width)
+  }
+  for (const slot of slots) {
+    const nodes = [pair.design,pair.product].map(page => page.locator(region).locator(slot))
+    const boxes = await Promise.all(nodes.map(node => node.evaluate(el => {const b=el.getBoundingClientRect();return {width:b.width,height:b.height}})))
+    const size = {width:Math.max(...boxes.map(b=>b.width)),height:Math.max(...boxes.map(b=>b.height))}
+    for (const node of nodes) await node.evaluate((el,size) => {
+      el.querySelector('[data-unfiled-mask]')?.remove()
+      const mask=document.createElement('span');mask.dataset.unfiledMask=''
+      const style=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
+      const transform=ancestor?getComputedStyle(ancestor).transform:'none',scale=transform==='none'?1:new DOMMatrix(transform).a
+      const box=el.getBoundingClientRect(),title=el.matches('.bd-tn1 b')?el.nextElementSibling:null,dot=title?el.previousElementSibling:null
+      const rasterMargin=title?Math.min(1/devicePixelRatio,Math.max(0,title.getBoundingClientRect().left-box.right)):0
+      const rasterLeft=dot?Math.min(1/devicePixelRatio,Math.max(0,(box.left-dot.getBoundingClientRect().right)/2)):0
+      el.style.position='relative'
+      Object.assign(mask.style,{position:'absolute',left:(-parseFloat(style.borderLeftWidth||0)-rasterLeft/scale)+'px',top:-parseFloat(style.borderTopWidth||0)+'px',width:(size.width+rasterMargin+rasterLeft)/scale+'px',height:size.height/scale+'px',pointerEvents:'none'})
+      el.append(mask)
+      if(title && mask.getBoundingClientRect().right>=title.getBoundingClientRect().left) throw new Error('Reference mask overlaps the unmasked title')
+      if(dot && mask.getBoundingClientRect().left<=dot.getBoundingClientRect().right) throw new Error('Reference mask overlaps the unmasked status dot')
+    },size)
+  }
+}
+async function maskVisible(pair,kind,slots) {
+  for (const num of ids) {
+    const region=`:is(.${kind}[data-id="AIUR-${num}"],.${kind}[data-id="pack:build-plan/BP-${num}"])`
+    const counts=await Promise.all([pair.design,pair.product].map(page=>page.locator(region).count()))
+    expect(counts[1],`matching rendered row ${num}`).toBe(counts[0])
+    if(counts[0]) await maskRow(pair,region,slots)
+  }
+}
 const ids = Array.from({length:16}, (_,i) => 645+i)
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) for (const palette of ['aiur','gruvbox']) {
   test(`unfiled row cells ${viewport.viewport.width} ${theme} ${palette}`, async ({browser}) => {
     test.setTimeout(600_000)
-    const pair = await openModalPair(browser,{...viewport,theme,palette,dataset:'live'},{productPending:true})
+    const pair = await openUnfiledPair(browser,{...viewport,theme,palette,dataset:'live'})
     try {
       await pair.design.route('**/assets/build.js*',route => route.fulfill({body:reference,contentType:'text/javascript'}))
       await pair.design.reload()
       await expect.poll(() => pair.design.evaluate(() => !!window.unfiledParity && !!document.querySelector('.bd-card'))).toBe(true)
-      await selectProductDataset(pair.product,'unfiled'); await pair.product.reload()
       await expect(pair.product.locator('#build-root')).toHaveAttribute('data-build-generation',/\d+/)
-      for (const num of ids) {
-        await pair.design.evaluate(num => window.unfiledParity.scroll('AIUR-'+num),num)
-        await pair.product.evaluate(async num => {
-          const {ctx,fx} = await import('/build-home/state.js')
-          const it = ctx.L.secs.plan.items.find(it => it.t.id === 'pack:build-plan/BP-'+num)
-          fx.scrollVP(ctx.secs.plan.el.offsetTop+it.y-160,false); fx.update()
-        },num)
-        const region = `:is(.bd-card[data-id="AIUR-${num}"],.bd-card[data-id="pack:build-plan/BP-${num}"])`
-        await expect(pair.product.locator(region).locator('.bd-status > span:first-child')).toHaveText('Not filed')
-        await compareRegion(pair,{name:`unfiled-board-${num}`,region})
-      }
-      for (const page of [pair.design,pair.product]) await page.locator('[data-v="list"]').click()
-      for (const num of ids) {
-        const region = `:is(.lr[data-id="AIUR-${num}"],.lr[data-id="pack:build-plan/BP-${num}"])`
-        await compareRegion(pair,{name:`unfiled-list-${num}`,region})
-      }
-      for (const page of [pair.design,pair.product]) await page.locator('[data-v="graph"]').click()
-      for (const num of ids) {
-        await pair.design.evaluate(num => window.unfiledParity.tree('AIUR-'+num),num)
-        await pair.product.evaluate(async num => (await import('/build-home/trees.js')).openTree('pack:build-plan/BP-'+num),num)
-        const region = `:is(.bd-tn[data-id="AIUR-${num}"],.bd-tn[data-id="pack:build-plan/BP-${num}"])`
-        await compareRegion(pair,{name:`unfiled-tree-${num}`,region})
+      for (const page of [pair.design,pair.product]) await expect(page.locator('.bd-content')).not.toHaveClass(/\bscrolling\b/)
+      await pair.design.evaluate(() => window.unfiledParity.freeze())
+      await pair.product.evaluate(async () => {const {S,ctx}=await import('/build-home/state.js');S.ready=false;ctx.snapping=true})
+      // The sticky live band is unrelated to isolated planned-card pixels.
+      for (const page of [pair.design,pair.product]) await page.locator('#bd-now').evaluate(el => {el.style.visibility='hidden'})
+      const surfaces = [
+        {kind:'bd-card',view:'graph',region:'#bd-vp',slots:['.bd-id','.bd-status > span:first-child']},
+        {kind:'lr',view:'list',region:'#bd-vp',slots:['.c-id','.c-pg .lr-mu','.c-st .lst']},
+        {kind:'bd-tn',view:'graph',region:'.bd-tree-s',slots:['b','em']},
+      ]
+      for (const surface of surfaces) {
+        for (const page of [pair.design,pair.product]) await page.locator('[data-v="'+surface.view+'"]').click()
+        if(viewport.viewport.width===390 && surface.kind!=='bd-tn') for(const page of [pair.design,pair.product]) await page.locator('#bd-vp').evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-64,behavior:'instant'}))
+        if(surface.kind==='bd-tn') await pair.product.evaluate(async()=>{
+          const {H,loadEarlier}=await import('/build-home/history.js')
+          for(let page=0;H.more&&page<100;page++) if(!await loadEarlier(31)) throw new Error('History parity intake failed')
+          if(H.more) throw new Error('History parity intake remained incomplete')
+        })
+        if(surface.kind==='bd-card') for(const page of [pair.design,pair.product]) await page.locator('#bd-now').evaluate(el=>{el.style.visibility='hidden'})
+        const covered = new Set()
+        for (const num of ids) {
+          if (covered.has(num)) continue
+          if (surface.kind === 'bd-card') {
+            await pair.design.evaluate(num => window.unfiledParity.scroll('AIUR-'+num),num)
+            await pair.product.evaluate(async num => {
+              const {ctx,fx}=await import('/build-home/state.js')
+              const it=ctx.L.secs.plan.items.find(it=>it.t.id==='pack:build-plan/BP-'+num)
+              fx.scrollVP(ctx.secs.plan.el.offsetTop+it.y-160,false);fx.update()
+            },num)
+          } else if (surface.kind === 'lr') {
+            for (const [index,page] of [pair.design,pair.product].entries()) await page.locator('.lr[data-id="'+(index?'pack:build-plan/BP-':'AIUR-')+num+'"]').evaluate(el=>{const vp=document.querySelector('#bd-vp');vp.scrollTop+=el.getBoundingClientRect().top-vp.getBoundingClientRect().top-70})
+          } else {
+            await pair.design.evaluate(num=>window.unfiledParity.tree('AIUR-'+num),num)
+            await pair.product.evaluate(async num=>(await import('/build-home/trees.js')).openTree('pack:build-plan/BP-'+num),num)
+            for(const page of [pair.design,pair.product]) {
+              await page.locator('.bd-tree-s').evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-64,behavior:'instant'}))
+              // History intake schedules a trailing relayout which rebuilds tree nodes.
+              await page.waitForTimeout(350)
+            }
+          }
+          await maskVisible(pair,surface.kind,surface.slots)
+          const visible = await Promise.all([pair.design,pair.product].map(page=>page.locator(surface.region).evaluate((root,kind)=>{
+            const box=root.getBoundingClientRect()
+            const viewport={top:Math.max(0,box.top),left:Math.max(0,box.left),bottom:Math.min(innerHeight,box.bottom),right:Math.min(innerWidth,box.right)}
+            return [...root.querySelectorAll('.'+kind+'[data-id]')].filter(el=>{
+              const b=el.getBoundingClientRect()
+              return b.top>=viewport.top+(kind==='bd-card'?46:0)-1 && b.bottom<=viewport.bottom+1 && b.left>=viewport.left-1 && b.right<=viewport.right+1
+            }).map(el=>Number(el.dataset.id.replace(/^(AIUR-|pack:build-plan\/BP-)/,''))).filter(n=>n>=645&&n<=660).sort((a,b)=>a-b)
+          },surface.kind)))
+          expect(visible[1],surface.kind+' visible identities').toEqual(visible[0])
+          expect(visible[1],surface.kind+' requested row is fully captured').toContain(num)
+          await expectDesignParity(pair,{name:'unfiled-'+surface.kind+'-'+num,region:surface.region,preserveAnimations:true,containedRegion:true})
+          visible[1].forEach(id=>covered.add(id))
+        }
+        expect([...covered].sort((a,b)=>a-b),surface.kind+' captures cover every unfiled row').toEqual(ids)
+        if(surface.kind==='bd-tn') for(const page of [pair.design,pair.product]) {await page.locator('#bd-tree-x').evaluate(el=>el.click());await page.evaluate(()=>window.scrollTo(0,0))}
       }
     } finally {await pair.close()}
   })

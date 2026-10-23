@@ -209,14 +209,14 @@ export async function capturePairEvidence(pair) {
   }
 }
 
-export async function expectDesignParity(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false }) {
+export async function expectDesignParity(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false, containedRegion = false }) {
   const time = preserveAnimations ? await pair.design.evaluate(() => Date.now()) : FIXTURE_META.now
   await assertCellState(pair.design, pair.cell, time)
   await assertCellState(pair.product, pair.cell, time)
-  await compareParityPixels(pair, { name, region, fullPage, preserveAnimations, clipToViewport, viewportClip })
+  await compareParityPixels(pair, { name, region, fullPage, preserveAnimations, clipToViewport, viewportClip, containedRegion })
 }
 
-export async function compareParityPixels(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false }) {
+export async function compareParityPixels(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false, containedRegion = false }) {
   const { designMask, productMask } = await applyAllowlist(pair, pair.cell)
   // #5614: the imported design predates the live-top toggle (band-scroll.js syncNowBtn); apply the same rule to both
   // sides, so the JS-less transplant and the design page match the product. Drop this when the design is re-imported.
@@ -239,7 +239,7 @@ export async function compareParityPixels(pair, { name, region, fullPage = false
     window.parityHeld = document.getAnimations().filter(a => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity)
     window.parityHeld.forEach(a => { a.pause(); a.currentTime = 0 })
   })
-  try { await captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip }) }
+  try { await captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip, containedRegion }) }
   finally { if (preserveAnimations) for (const page of [pair.design, pair.product]) if (!page.isClosed()) await page.evaluate(() => window.parityHeld?.forEach(a => a.play())) }
 }
 
@@ -253,14 +253,20 @@ async function visibleRegionBox(page, target) {
   return { x, y, width, height }
 }
 
-async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip }) {
+async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip, containedRegion }) {
   const design = region ? await one(pair.design, region, 'design') : pair.design
   const product = region ? await one(pair.product, region, 'product') : pair.product
-  if (clipToViewport && !region) throw new Error('clipToViewport requires a region')
-  const clips = clipToViewport
+  if ((clipToViewport || containedRegion) && !region) throw new Error('clipToViewport requires a region')
+  const clips = (clipToViewport || containedRegion)
     ? await Promise.all([[pair.design, design], [pair.product, product]].map(([page, target]) => visibleRegionBox(page, target)))
     : null
-  if (clips) expect(clips[1], 'visible region geometry must match').toEqual(clips[0])
+  if (containedRegion) {
+    for (const [index, target] of [design, product].entries()) {
+      expect(clips[index], 'whole region must fit inside the viewport').toEqual(await target.boundingBox())
+    }
+    expect({width: clips[1].width, height: clips[1].height}, 'contained region sizes must match')
+      .toEqual({width: clips[0].width, height: clips[0].height})
+  } else if (clips) expect(clips[1], 'visible region geometry must match').toEqual(clips[0])
   const opts = { animations: preserveAnimations ? 'allow' : 'disabled', caret: 'hide', scale: 'device', maskColor: '#ff00ff', ...(region ? {} : { fullPage }) }
   await pair.design.bringToFront()
   if (region) await settleRegionImages(pair.design, region)
