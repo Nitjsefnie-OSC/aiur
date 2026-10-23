@@ -186,7 +186,6 @@ defmodule Aiur.AgentRunner.TurnLoopNoopWaitTest do
     assert_receive {:alert, first_topic, first_message}, 2000
     send(task.pid, {:resume_agent, 1})
     send(task.pid, {:resume_agent, 1})
-    Process.sleep(100)
     assert {:ok, {:completed, _}} = Task.yield(task, 2000)
     assert first_topic == "ticket.#{issue.identifier}.agent.rework_findings_open"
     assert first_message =~ "agent:in-progress"
