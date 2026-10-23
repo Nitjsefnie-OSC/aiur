@@ -10,7 +10,7 @@ Environment variables are declared once in the env schema (`Aiur.Env.Schema`), w
 - **All-or-nothing credential groups.** A partially configured group (one dashboard credential without the other, or some but not all GitHub App credentials) fails at startup naming the missing members; a fully absent group is a supported setup.
 - **Type validation.** Values that fail their declared type (for example `AIUR_OPENCODE_BRIDGE_PORT=banana`) abort the boot naming the variable and what was expected, instead of failing at first use hours later.
 - **Secrets never leak.** Secrets render as an empty placeholder in `.env.example` and are excluded from error text and startup warnings. No real value from any `.env` file reaches the generated example, logs, or error output.
-- **Dashboard credentials/key.** Set `AIUR_DASHBOARD_USERNAME` / `AIUR_DASHBOARD_PASSWORD` for machine Basic Auth and optional browser fallback. Google browser sign-in uses `AIUR_GOOGLE_CLIENT_ID` / `AIUR_GOOGLE_CLIENT_SECRET` together with `dashboard_auth.google.allowed_emails` and HTTPS `server.public_url` ([GUI](/guide/gui)). `AIUR_SECRET_KEY_BASE` (at least 64 bytes, e.g. `openssl rand -base64 48`) overrides the cookie key; otherwise Aiur persists a mode-0600 key per instance under `~/.aiur/instances/`.
+- **Dashboard credentials/key.** Set `AIUR_DASHBOARD_USERNAME` / `AIUR_DASHBOARD_PASSWORD` for machine Basic Auth and optional browser fallback. Google browser sign-in uses `AIUR_GOOGLE_CLIENT_ID` / `AIUR_GOOGLE_CLIENT_SECRET` with `dashboard_auth.google.allowed_emails` and HTTPS `server.public_url` ([GUI](/guide/gui)). `AIUR_SECRET_KEY_BASE` (at least 64 bytes, e.g. `openssl rand -base64 48`) overrides the cookie key; otherwise Aiur persists a mode-0600 key per instance under `~/.aiur/instances/`.
 
 The generated `.env.example` groups variables under `## Required`, `## Optional - ...` (one section per integration), `## Runtime - launcher-managed`, and `## Development and debugging` headers, with a one-line purpose above each key and a terse right-hand "how to fetch" note aligned to a common column.
 
@@ -127,16 +127,6 @@ Freshness thresholds follow this cadence. You do not set them separately.
   | `planning` | Build Order catalog, pack status, ad-hoc listings | The most expensive reads and the least urgent. Recommended value `0` (on-demand): the catalog's only consumers are web pages and it is demand-gated, so it needs no timer. |
   | `firehose` | repo events | Already self-regulating via GitHub's `X-Poll-Interval`; the class exists so status can show its configured cadence, not to change its loop. The firehose loop is **not gated** on a class cadence — it rides the dispatch tick — so no value is recommended: leave it unset to inherit `interval_seconds`. An entry would be a dead knob. |
 
-- The dashboard, the Units catalog and Build Order ticket history all judge staleness against the effective interval of the class they mean: the orchestrator snapshot readers derive from `dispatch`, Build Order catalog and ticket history from `planning`.
-- Build Order's remaining `graph_catalog_refresh_ms` — the failure-backoff base for the catalog scope, the window after which the catalog snapshot is shown as ageing, and the floor the labelled-read cadence rides on — is derived from the effective `planning` interval, so an idle fleet widens the Build Order backoff exactly as it widens the tracker poll.
-- The catalog itself is event-sourced (#2313): the page renders the store
-  projection, there is no recurring sweep, and the only GitHub reads are the
-  rare reconciliation (daemon boot and degraded webhook delivery). It is not
-  demand-gated by who is looking — the reconciliation is the daemon-owned
-  writer that re-converges the store — and it needs no timer. A selected root's
-  staleness window and failure backoff are therefore re-based on delivery
-  latency (`webhooks.silence_threshold_seconds`), the gap after which
-  degradation triggers the reconciliation, rather than on a poll cadence.
 - The dashboard and Build Order ticket history judge staleness against class
   intervals: orchestrator snapshots use `dispatch`; Build Order uses `planning`.
 - Build Order's `graph_catalog_refresh_ms` (failure-backoff base, snapshot-age
@@ -437,15 +427,13 @@ The target probe is a bounded liveness check, not proof of daemon identity or ro
 A fixed `server.port` that is already bound — for example a second `aiur` instance on the same host — does not crash the daemon. The second instance logs an explicit startup message naming the port and the conflict, disables only its own dashboard, and keeps running agents.
 
 The durable repository Executor state also records every daemon start and stop in `<repo>.control-lifecycle.json`, with the invoking process's OS pid, parent pid, and hostname. All runs for that repository share the journal, so a second instance or a crash is identifiable after the fact even when each run has a different log directory.
-
 ## dashboard_auth
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-19 -->
 | --- | --- | --- | --- |
 | `dashboard_auth.browser_basic_auth` | boolean | true | Allows Basic Auth fallback on browser pages; API and Stream Deck machine clients keep Basic Auth. |
-| `dashboard_auth.google.allowed_emails` | array | `[]` | Exact email allowlist for Google OpenID Connect; an empty list disables Google sign-in. |
+| `dashboard_auth.google.allowed_emails` | array | `[]` | Exact Google email allowlist; empty disables Google sign-in, which requires HTTPS `server.public_url`. |
 | `dashboard_auth.passkeys` | boolean | false | Enables passkey login and enrollment after a fresh Google sign-in. |
 | `dashboard_auth.session_max_age_days` | integer | 30 | Maximum dashboard browser session age in days. |
-Google and passkeys require a valid HTTPS `server.public_url`. Keep browser Basic Auth enabled until Google sign-in and passkey enrollment are verified. The Google client credentials are optional as a pair; a partial pair fails startup validation.
 
 ## opencode
 

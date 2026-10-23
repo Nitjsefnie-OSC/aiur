@@ -64,6 +64,39 @@ defmodule AiurWeb.DashboardAuthControllerTest do
     assert get_session(conn, :passkey_registration_challenge) == nil
   end
 
+  test "passkey enrollment finish refuses a challenge after Google authentication expires" do
+    challenge = Wax.new_registration_challenge(origin: "https://aiur.example.test:4001", rp_id: "aiur.example.test", user_verification: "required")
+    assert {:ok, challenge_id} = Passkeys.put_challenge(challenge, {127, 0, 0, 1})
+
+    conn =
+      session_conn()
+      |> put_session(:google_authenticated_at, System.system_time(:second) - 301)
+      |> put_session(:google_email, "operator@example.test")
+      |> put_session(:passkey_registration_challenge, challenge_id)
+
+    response =
+      DashboardAuthController.registration_finish(conn, %{
+        "credential" => %{"response" => %{"attestationObject" => "AA", "clientDataJSON" => "AA"}}
+      })
+
+    assert response.status == 422
+    assert {:ok, ^challenge} = Passkeys.take_challenge(challenge_id)
+  end
+
+  test "unauthenticated logout leaves the shared session generation unchanged" do
+    configure_credentials_for_logout_test()
+    assert {:ok, marker} = FinancialDataAccess.new_browser_session_marker()
+    authenticated = put_session(session_conn(), FinancialDataAccess.session_key(), marker)
+    assert {:ok, context} = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => marker})
+    assert {:ok, generation_before} = FinancialDataAccess.identity(context)
+
+    response = DashboardAuthController.logout(session_conn(), %{})
+
+    assert response.status == 302
+    assert {:ok, ^generation_before} = FinancialDataAccess.identity(context)
+    assert get_session(authenticated, FinancialDataAccess.session_key()) == marker
+  end
+
   test "verified email outside the configured allowlist is refused without a marker" do
     user = %{"email" => "intruder@example.test", "email_verified" => true}
     conn = DashboardAuthController.complete_google_sign_in(session_conn(), user)
@@ -104,5 +137,12 @@ defmodule AiurWeb.DashboardAuthControllerTest do
     |> Map.put(:secret_key_base, String.duplicate("s", 64))
     |> Plug.Session.call(@session_options)
     |> fetch_session()
+  end
+
+  defp configure_credentials_for_logout_test do
+    System.put_env("AIUR_DASHBOARD_USERNAME", "operator")
+    System.put_env("AIUR_DASHBOARD_PASSWORD", "secret")
+    endpoint = Application.get_env(:aiur, AiurWeb.Endpoint, [])
+    Application.put_env(:aiur, AiurWeb.Endpoint, Keyword.put(endpoint, :dashboard_auth_required, true))
   end
 end

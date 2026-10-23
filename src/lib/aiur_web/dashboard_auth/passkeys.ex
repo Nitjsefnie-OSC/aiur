@@ -49,8 +49,8 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
     end
   end
 
-  @spec put_challenge(Wax.Challenge.t()) :: {:ok, String.t()}
-  def put_challenge(challenge), do: ChallengeStore.put(challenge)
+  @spec put_challenge(Wax.Challenge.t(), term()) :: {:ok, String.t()} | {:error, :capacity_exceeded}
+  def put_challenge(challenge, owner), do: ChallengeStore.put(challenge, ChallengeStore, owner)
   @spec take_challenge(term()) :: {:ok, Wax.Challenge.t()} | {:error, atom()}
   def take_challenge(id) when is_binary(id), do: ChallengeStore.take(id)
   def take_challenge(_), do: {:error, :challenge_missing_or_replayed}

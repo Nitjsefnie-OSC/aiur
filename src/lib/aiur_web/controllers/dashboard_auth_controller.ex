@@ -77,7 +77,9 @@ defmodule AiurWeb.DashboardAuthController do
 
   @spec logout(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def logout(conn, _params) do
-    :ok = FinancialDataAccess.Generation.invalidate()
+    if match?({:ok, _context}, FinancialDataAccess.context_from_session(get_session(conn))) do
+      :ok = FinancialDataAccess.Generation.invalidate()
+    end
 
     conn
     |> clear_session()
@@ -88,7 +90,7 @@ defmodule AiurWeb.DashboardAuthController do
   @spec authentication_challenge(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def authentication_challenge(conn, _params) do
     with {:ok, challenge, credentials} <- Passkeys.authentication_challenge(),
-         {:ok, challenge_id} <- Passkeys.put_challenge(challenge) do
+         {:ok, challenge_id} <- Passkeys.put_challenge(challenge, conn.remote_ip) do
       conn
       |> put_session(:passkey_authentication_challenge, challenge_id)
       |> json(%{challenge: b64(challenge.bytes), rp_id: challenge.rp_id, allow_credentials: Enum.map(credentials, &%{id: &1.id, type: "public-key"})})
@@ -125,7 +127,7 @@ defmodule AiurWeb.DashboardAuthController do
 
     with true <- Passkeys.enabled?() and fresh_google_session?(session),
          {:ok, challenge} <- Passkeys.registration_challenge(),
-         {:ok, challenge_id} <- Passkeys.put_challenge(challenge) do
+         {:ok, challenge_id} <- Passkeys.put_challenge(challenge, conn.remote_ip) do
       conn
       |> put_session(:passkey_registration_challenge, challenge_id)
       |> json(%{

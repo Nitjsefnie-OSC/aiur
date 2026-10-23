@@ -93,6 +93,23 @@ defmodule AiurWeb.FinancialDataAccessTest do
     assert :error = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => old_marker})
   end
 
+  test "identity refuses an expired context retained by an existing LiveView" do
+    configure_credentials("operator", "financial-auth-secret")
+    configure_endpoint(dashboard_auth_required: true, dashboard_writable: false)
+    {:ok, config} = Proof.configuration([], 1)
+    max_age = Aiur.Config.settings!().dashboard_auth.session_max_age_days * 86_400
+    marker = Proof.new_session_marker(config, 1, System.system_time(:second) - max_age - 1)
+
+    context = %FinancialDataAccess.Context{
+      configuration_generation: marker["configuration_generation"],
+      connection_generation: marker["connection_generation"],
+      issued_at: marker["issued_at"],
+      proof: marker["proof"]
+    }
+
+    assert {:error, :authentication_required} = FinancialDataAccess.identity(context)
+  end
+
   test "logging out revokes copied markers on the server" do
     configure_credentials("operator", "financial-auth-secret")
     configure_endpoint(dashboard_auth_required: true, dashboard_writable: false)
@@ -100,7 +117,8 @@ defmodule AiurWeb.FinancialDataAccessTest do
     marker = get_session(authenticated, FinancialDataAccess.session_key())
     assert {:ok, _context} = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => marker})
 
-    DashboardAuthController.logout(session_conn(), %{})
+    logout_conn = put_session(session_conn(), FinancialDataAccess.session_key(), marker)
+    DashboardAuthController.logout(logout_conn, %{})
 
     assert :error = FinancialDataAccess.context_from_session(%{FinancialDataAccess.session_key() => marker})
   end

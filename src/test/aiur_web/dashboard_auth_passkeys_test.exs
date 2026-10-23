@@ -32,6 +32,18 @@ defmodule AiurWeb.DashboardAuthPasskeysTest do
     assert {:ok, _replacement_id} = ChallengeStore.put(challenge, store)
   end
 
+  test "one remote owner cannot consume every pending challenge slot" do
+    name = Module.concat(__MODULE__, PerOwnerChallengeStore)
+    store = start_supervised!({ChallengeStore, name: name, max_entries: 3, max_entries_per_owner: 1})
+    challenge = Wax.new_authentication_challenge(origin: "https://aiur.example.test", rp_id: "aiur.example.test")
+
+    assert {:ok, first_id} = ChallengeStore.put(challenge, store, {10, 0, 0, 1})
+    assert {:error, :capacity_exceeded} = ChallengeStore.put(challenge, store, {10, 0, 0, 1})
+    assert {:ok, _second_id} = ChallengeStore.put(challenge, store, {10, 0, 0, 2})
+    assert {:ok, ^challenge} = ChallengeStore.take(first_id, store)
+    assert {:ok, _replacement_id} = ChallengeStore.put(challenge, store, {10, 0, 0, 1})
+  end
+
   test "authenticator counters allow unsupported 0-to-0 and reject a decrease" do
     assert Passkeys.sign_count_valid?(0, 0)
     assert Passkeys.sign_count_valid?(8, 9)
