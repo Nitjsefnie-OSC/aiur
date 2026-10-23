@@ -21,6 +21,9 @@ The generated `.env.example` groups variables under `## Required`, `## Optional 
 | `executor_takeover_continuous_alert_hours` | integer | 1 | Repeated takeover advisory cadence in hours after the first; `0` disables repeats. |
 | `executor_takeover_first_alert_hours` | integer | 8 | First Executor takeover advisory threshold in hours; `0` disables. |
 | `hooks_file` | file pointer | none | Sibling YAML file merged as the `hooks:` block. |
+| `instance.ignore.label_prefixes` | array of strings | `[]` | Label prefixes marking tickets another instance owns. A prefix such as `nuc` matches `nuc:*` state labels. If label data is unavailable, ticket-scoped observers skip conservatively. This daemon does not transition, land, withdraw, alert on, count, or wake its Executor for them; dispatch is unaffected. Hot-reloadable. |
+| `instance.ignore.labels` | array of strings | `[]` | Exact labels marking tickets another instance owns. If label data is unavailable, ticket-scoped observers skip conservatively. This daemon does not transition, land, withdraw, alert on, count, or wake its Executor for them; dispatch is unaffected. Hot-reloadable. |
+| `instance.ignore.tickets` | array of integers | `[]` | Ticket numbers another instance owns. This daemon does not transition, land, withdraw, alert on, count, or wake its Executor for them; dispatch is unaffected. Hot-reloadable. |
 | `instance.role` | string | `primary` | `secondary` disables repository-wide landing, quarantine, merge-queue and main-branch watchers while retaining ticket dispatch and per-ticket CI handling. Read once at daemon start; change it with a restart. |
 | `max_log_history_mb` | integer | 1000 | Caps persistent log history in MB. |
 | `max_vertical_panes` | integer | 3 | Caps visible agent chat panes. |
@@ -134,6 +137,15 @@ Freshness thresholds follow this cadence. You do not set them separately.
   staleness window and failure backoff are therefore re-based on delivery
   latency (`webhooks.silence_threshold_seconds`), the gap after which
   degradation triggers the reconciliation, rather than on a poll cadence.
+- The dashboard and Build Order ticket history judge staleness against class
+  intervals: orchestrator snapshots use `dispatch`; Build Order uses `planning`.
+- Build Order's `graph_catalog_refresh_ms` (failure-backoff base, snapshot-age
+  window and labelled-read cadence floor) derives from `planning`, so idle fleets
+  widen its backoff as they widen the tracker poll.
+- The event-sourced catalog (#2313) renders its store projection without a
+  recurring sweep; GitHub reads only reconcile at boot or after degraded webhook
+  delivery. That daemon-owned writer needs no timer. Root staleness and backoff
+  derive from `webhooks.silence_threshold_seconds`, not a poll cadence.
 - So a change to an interval needs no matching threshold edit.
 - `aiur status` prints the effective value and the live interval per class, for
   example:
