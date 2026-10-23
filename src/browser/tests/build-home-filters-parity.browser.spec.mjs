@@ -24,7 +24,12 @@ async function openFiltersPair(browser, cell, options) {
           const reference = estimatePatch(await readFile(DESIGN_ROOT + '/assets/build.js', 'utf8'))
           const anchor = '    command: { label: "Awaiting command", cls: "stuck" }, paused:'
           assert.equal(reference.split(anchor).length, 2)
-          await route.fulfill({ contentType: 'text/javascript', body: reference.replace(anchor, '    retrying: { label: "Retrying", cls: "queued" },\n' + anchor) })
+          const withRetry = reference.replace(anchor, '    retrying: { label: "Retrying", cls: "queued" },\n' + anchor)
+          // Main's #5856 preserves usage-limit and CI-wait causes in the shared AST.
+          const parked = 'parked: { label: "Parked", cls: "idle" },'
+          assert.equal(withRetry.split(parked).length, 2)
+          const causes = ' usage_limited: { label: "Paused · usage limit", cls: "idle" }, ci_wait: { label: "Waiting for CI", cls: "idle" },'
+          await route.fulfill({ contentType: 'text/javascript', body: withRetry.replace(parked, parked + causes) })
         })
         return goto(...args)
       }

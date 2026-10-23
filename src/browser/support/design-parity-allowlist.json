@@ -427,6 +427,20 @@
     }
   },
   {
+    "id": "filter-integrated-agent-causes",
+    "spec": "build-home-filters-parity.browser.spec.mjs",
+    "kind": "property",
+    "selector": "#bd-filters",
+    "property": "Agent options preserve usage-limit pauses and CI waits from the shared AST",
+    "reason": "Main shipped these two idle-swatch states in #5856. The in-memory reference includes their exact labels; full DOM and pixel comparisons remain enforced without masks.",
+    "approval": {
+      "status": "pending-sign-off",
+      "by": null,
+      "date": null,
+      "ref": "https://github.com/aiur-team/aiur/pull/5856"
+    }
+  },
+  {
     "id": "board-inset-well",
     "kind": "design-style",
     "selector": "html",
