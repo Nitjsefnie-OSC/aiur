@@ -9,12 +9,14 @@ test('harness self-check: live ticket shimmer keeps its phase across a live diff
   await expect(card).toBeVisible()
   const id = await card.getAttribute('data-id')
   await expect(card.locator('.bd-glow')).toHaveCount(1)
+  await card.locator('.bd-glow').evaluate(el => { el.getAnimations()[0].currentTime = 4000 })
   await expect.poll(() => card.locator('.bd-glow').evaluate(el => Number.parseFloat(getComputedStyle(el).getPropertyValue('--bd-a')))).toBeGreaterThan(140)
   const before = await card.locator('.bd-glow').evaluate(el => ({
     angle: Number.parseFloat(getComputedStyle(el).getPropertyValue('--bd-a')),
     at: performance.now(),
   }))
   expect(before.angle).toBeGreaterThan(140)
+  expect(before.angle).toBeLessThan(180)
   await page.evaluate(async id => {
     const { ctx } = await import('/build-home/state.js')
     const { refreshTicket } = await import('/build-home/cards.js')
@@ -31,8 +33,8 @@ test('harness self-check: live ticket shimmer keeps its phase across a live diff
     at: performance.now(),
   }))
   const expected = (before.angle + (after.at - before.at) * 360 / 9000) % 360
-  expect(after.angle).toBeGreaterThan(140)
-  expect(Math.abs(after.angle - expected)).toBeLessThan(30)
+  const delta = ((after.angle - expected + 540) % 360) - 180
+  expect(Math.abs(delta)).toBeLessThan(8)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(page.locator('#build-root')).toHaveClass(/\brm\b/)
   expect(await replacement.locator('.bd-glow').evaluate(el => getComputedStyle(el).animationName)).toBe('none')
