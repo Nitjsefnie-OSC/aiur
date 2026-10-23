@@ -159,8 +159,8 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
       assert Agent.get(counter, & &1) == 2
     end
 
-    # #2467: the same hold, one step later — on the `done` terminal write
-    # itself. Waited out, the write retries and the ticket still closes.
+    # #2467: a short local hold on the `done` write must be retried at the
+    # terminal boundary after LocalHold exhausts its own bounded wait.
     test "waits out a short local hold on the merged-PR terminal write and closes the ticket" do
       issue = %Issue{
         id: "issue-hold-write",
