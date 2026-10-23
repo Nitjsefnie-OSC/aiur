@@ -5,6 +5,12 @@
 // The shard runner runs `fixture:preflight` (mix compile) before its suites, inside the same deadline;
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
+// Job time outside the runner's deadline: check-browser-smoke-shards.mjs requires the browser job's
+// timeout-minutes to cover setupSeconds + budgetMs + tailSeconds. Run 39738103754, under runner saturation,
+// spent 576s in setup before shard 3/8's runner started (apt-get 163s, layout assets 301s); shard 5/8's
+// post-suite visual regression took 60s.
+export const setupSeconds = 600
+export const tailSeconds = 120
 export const recordedSeconds = {
   // Governed local full commands (2026-10-23), including startup and build-gate waits:
   // unfiled 10 cases: 57.170s; unfiled modal parity 12 cells: 676.729s. Round up.
