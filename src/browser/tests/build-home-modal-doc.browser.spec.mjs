@@ -162,7 +162,7 @@ test('conversation opens skip body reads; doc close unsubscribes and pack ids ne
   await page.evaluate(async () => {
     window.docCalls = []
     const { ctx } = await import('/build-home/state.js')
-    ;(await import('/build-home/modal/frame.js')).openModal({ ...ctx.D.plan[0], id: 'pack:future/item', num: null, agent: null })
+    ;(await import('/build-home/modal/frame.js')).openModal({ ...ctx.D.plan[0], id: 'pack:future/item', num: null, agent: null, src: {kind:'pack',path:'docs/plan.md',wave:1} })
   })
   await expect(page.locator('.bm-doc')).toBeVisible()
   expect(await page.evaluate(() => window.docCalls.filter(c => c.event === 'ticket-doc'))).toEqual([])

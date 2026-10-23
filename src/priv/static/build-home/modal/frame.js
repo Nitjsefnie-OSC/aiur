@@ -1,3 +1,4 @@
+import { findWas } from '../unfiled.js';
 import { S, ctx, fx, onReset } from '../state.js';
 import { writeURL } from '../url.js';
 import { $, $$ } from '../dom.js';
@@ -24,7 +25,7 @@ function begin(nextId, origin) {
   return ++MS.req;
 }
 function remember(nextId) {
-  const ticket = /^[0-9]{1,10}$/.test(nextId) && Number(nextId) > 0 ? String(Number(nextId)) : '';
+  const ticket = nextId;
   if (S.ticket !== (ticket || null)) writeURL({ ticket });
 }
 function show({ focusTitle = true } = {}) {
@@ -65,7 +66,7 @@ export function openModal(t, opts = {}) {
   notice('open-ticket', { id: t.id, loaded: true });
 }
 export async function openById(nextId, opts = {}) {
-  const row = ctx.D?.byId[nextId];
+  const row = ctx.D?.byId[nextId] || findWas(Object.values(ctx.D?.byId || {}), nextId);
   if (row) return openModal(row, opts);
   const req = begin(nextId, opts.origin), life = ctx.life;
   if (ctx.socket !== 'up') { error(nextId, 'unavailable', 'disconnected'); return; }
@@ -77,7 +78,7 @@ export async function openById(nextId, opts = {}) {
   } catch { reply = { kind: 'error', reason: 'disconnected' }; }
   if (req !== MS.req || life !== ctx.life || life.disposed) return;
   clearTimeout(pendingTimer); pendingTimer = null;
-  const t = ctx.D?.byId[nextId] || (reply?.kind === 'ticket' && reply.row?.id === nextId ? reply.row : null);
+  const t = ctx.D?.byId[nextId] || (reply?.kind === 'ticket' && (reply.row?.id === nextId || reply.row?.was === nextId) ? reply.row : null);
   if (t) renderRow(t, opts);
   else error(nextId, reply?.reason === 'not_found' ? 'not_found' : 'unavailable', reply?.reason);
 }
@@ -97,12 +98,16 @@ export function modalSync(msg) {
   if (!shown() || !id) return;
   if (msg.upsert?.some(t => t.id === id)) {
     MS.t = ctx.D.byId[id]; MS.state = 'row'; renderHead(MS.t);
-  } else if (msg.remove?.includes(id)) { cleanup(); error(id, 'not_found'); }
+  } else if (msg.remove?.includes(id)) {
+    const replacement = findWas(Object.values(ctx.D.byId), id);
+    if (replacement) { begin(replacement.id); renderRow(replacement, {}); }
+    else { cleanup(); error(id, 'not_found'); }
+  }
   else if (MS.t && ['repo', 'epics', 'features'].some(key => Object.hasOwn(msg.set || {}, key))) renderHead(MS.t);
 }
 async function copyLink(button) {
   const req = MS.req, url = new URL(location.href);
-  if (Number.isFinite(MS.t?.num)) url.searchParams.set('ticket', String(MS.t.num)); else url.searchParams.delete('ticket');
+  if (MS.t?.id) url.searchParams.set('ticket', MS.t.id); else url.searchParams.delete('ticket');
   let copied = false;
   try { await navigator.clipboard.writeText(url.href); copied = true; } catch { /* Plain HTTP uses the selection fallback. */ }
   if (req !== MS.req || !shown()) return;
@@ -119,6 +124,7 @@ async function copyLink(button) {
 export function initModal() {
   const back = $('#tk-backdrop');
   ctx.life.on(back, 'click', event => {
+    if (event.target.closest('[data-a="none"]')) { event.preventDefault(); return; }
     if (event.target === back || event.target.closest('#bd-tk-close')) closeModal();
     else if (event.target.closest('[data-goto]')) { event.preventDefault(); openById(event.target.closest('[data-goto]').dataset.goto); }
     else if (event.target.closest('[data-a="link"]')) copyLink(event.target.closest('[data-a="link"]'));

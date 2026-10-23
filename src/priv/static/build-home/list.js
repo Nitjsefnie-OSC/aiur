@@ -1,3 +1,4 @@
+import { isUnfiled, refText, refTitle, queueText } from './unfiled.js';
 // Port of design build.js:1152–1181, with explicit unknowns and delegated input.
 import { S, ctx, fx } from './state.js';
 import { esc } from './dom.js';
@@ -14,10 +15,12 @@ const HIST = { failed: ['failed', 'Failed'], done: ['merged', 'Merged'], not_pla
 export function stClass(t) {
   if (t.sec === 'hist') return Object.hasOwn(HIST, t.status) ? HIST[t.status][0] : 'unknown';
   if (t.sec === 'now') return agentState(t.agent?.state).cls ?? 'unknown';
+  if (isUnfiled(t)) return 'open';
   if (t.sec === 'plan') return t.cue?.held ? 'held' : t.cue?.failed || t.cue?.blockedChain ? 'blocked' : 'queued';
   return 'open';
 }
 export function stText(t) {
+  if (isUnfiled(t)) return 'Not filed';
   if (t.sec === 'hist') return Object.hasOwn(HIST, t.status) ? HIST[t.status][1] : 'State unknown';
   if (t.sec === 'now') return agentState(t.agent?.state).label;
   if (t.sec === 'plan') return t.cue?.held ? 'Held' : t.cue?.failed || t.cue?.blockedChain ? 'Blocked' : t.cue?.wait ? 'Waiting on #' + t.cue.wait : 'Queued';
@@ -35,7 +38,7 @@ function progCell(t) {
     (Number.isFinite(t.start) && Number.isFinite(t.end) && t.end >= t.start ? fmtH((t.end - t.start) / 36e5) : '—'));
   if (t.sec === 'plan') {
     const hours = Number.isFinite(t.override?.hours) ? t.override.hours : t.est;
-    return muted('Q' + number(t.qpos) + ' · W' + (Number.isFinite(t.wave) ? t.wave : '?') + ' · ' + (Number.isFinite(hours) ? '≈' + hours + 'h' : '—'));
+    return muted(queueText(t) + ' · W' + (Number.isFinite(t.wave) ? t.wave : '?') + ' · ' + (Number.isFinite(hours) ? '≈' + hours + 'h' : '—'));
   }
   return muted(number(t.pts) + ' pts');
 }
@@ -52,8 +55,8 @@ function rowHTML(t, D, state) {
   const ups = t.deps.length, dn = (D.children[t.id] || []).length, deps = ups + ' dependencies · unblocks ' + dn;
   const cell = (cls, html, attrs = '') => '<span class="' + cls + '" role="cell"' + attrs + '>' + html + '</span>';
   return '<div class="lr ' + esc(t.sec) + (dim ? ' dim' : '') + '" role="row" tabindex="0" data-id="' + esc(t.id) + '"' + hue('--h', e.hue) +
-    ' aria-label="' + esc('#' + t.num + ' ' + t.title + ', ' + stText(t)) + '">' +
-    cell('c-id', '<span class="lr-ep' + (e.unsorted ? ' un' : '') + '" aria-hidden="true">' + (Object.hasOwn(I, e.icon) ? I[e.icon] : '') + '</span>#' + esc(t.num)) +
+    ' aria-label="' + esc(refText(t) + ' ' + t.title + ', ' + stText(t)) + '">' +
+    cell('c-id', '<span class="lr-ep' + (e.unsorted ? ' un' : '') + '" aria-hidden="true">' + (Object.hasOwn(I, e.icon) ? I[e.icon] : '') + '</span><span title="' + esc(refTitle(t)) + '">' + esc(refText(t)) + '</span>') +
     cell('c-tt', esc(t.title) + (f ? '<i class="lr-f"' + hue('--ft', f.hue) + ' title="' + esc(f.label) + '" role="img" aria-label="' + esc('Feature: ' + f.label) + '"></i>' : '')) +
     cell('c-ep', esc(e.label)) + cell('c-st', '<span class="lst st-' + stClass(t) + '"><u aria-hidden="true"></u>' + esc(stText(t)) + '</span>') +
     cell('c-ag', agentCell(t)) + cell('c-pg', progCell(t)) + cell('c-dp', (ups ? '↑' + ups : '') + (dn ? ' ↓' + dn : ''), ' title="' + esc(deps) + '" aria-label="' + esc(deps) + '"') + '</div>';

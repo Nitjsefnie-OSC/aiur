@@ -162,14 +162,14 @@ test('unknown points, estimates, queue numbers and unfiled identity stay explici
   await draw(page, '9005'); await expect(probe(page).locator('.bd-status')).toContainText('≈— · 2 pts')
   await expect(probe(page).locator('[data-unknown="est"]')).toHaveAttribute('title', 'Estimate unknown')
   await page.evaluate(() => inject('9005', { qpos: null, override: { hours: '3', reason: 'bad' } }))
-  await draw(page, '9005'); await expect(probe(page).locator('[data-unknown="qpos"]')).toHaveText('—')
+  await draw(page, '9005'); await expect(probe(page).locator('.bd-status > span').first()).toContainText('Q?')
   await expect(probe(page).locator('[data-unknown="est"]')).toHaveCount(1)
   await page.evaluate(() => inject('9005', { override: { hours: 3, reason: 'approved' } }))
   await draw(page, '9005'); await expect(probe(page).locator('.bd-status')).toContainText('≈3h · 2 pts')
-  await draw(page, 'pack:alpha'); await expect(probe(page).locator('.bd-id')).toHaveText('—')
+  await draw(page, 'pack:unknowns/alpha'); await expect(probe(page).locator('.bd-id')).toHaveText('—')
   await expect(probe(page).locator('.bd-id [title="Not filed yet"]')).toHaveCount(1)
   await expect(probe(page).locator('.bd-id [data-unknown]')).toHaveCount(0)
-  await expect(probe(page).locator('.bd-status')).toContainText('Planned · not filed')
+  await expect(probe(page).locator('.bd-status')).toContainText('Not filed')
 })
 
 test('history distinguishes outcomes and guards unknown dates and state', async ({ page }) => {
