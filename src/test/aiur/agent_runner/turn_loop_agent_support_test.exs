@@ -1,3 +1,4 @@
+# These cases cover GitHub support repair and PATH selection across turns.
 defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
   # #2697: a live session starts later turns without re-running before_run:
   # continuation turns, and the turn after a pause is resumed. Each turn must
