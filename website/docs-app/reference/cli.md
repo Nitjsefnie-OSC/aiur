@@ -432,9 +432,7 @@ Answering a Command also dismisses every other unanswered Command — open or de
 
 Dismissing a Command closes it and moves it to history. If the Command's agent is still live, it is told to use its judgement and proceed; an agent that is gone is not notified.
 
-## Operational facts that change an incident response
-
-Erlang distribution is loopback-only; remote control uses HTTPS.
+## Operational facts that change an incident response: Erlang distribution is loopback-only; remote control uses HTTPS
 
 | Fact | Response |
 | --- | --- |
