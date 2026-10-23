@@ -6,6 +6,7 @@ defmodule Aiur.ExecutorSweep do
   alias Aiur.Executor.StatePaths
   alias Aiur.ExecutorSweep.{Checks, SnapshotCache}
   alias Aiur.ExecutorSweep.Wake
+  alias Aiur.Instance.SweepFilter
   alias Aiur.JsonStore
 
   @interval_ms 5 * 60 * 1_000
@@ -16,6 +17,7 @@ defmodule Aiur.ExecutorSweep do
   @spec findings(keyword()) :: [map()]
   def findings(opts \\ []) do
     snapshot = Keyword.get_lazy(opts, :snapshot, &SnapshotCache.read/0)
+    snapshot = SweepFilter.own(snapshot)
     now = Keyword.get(opts, :now, DateTime.utc_now())
     threshold = Keyword.get(opts, :unreviewed_pr_minutes, configured_threshold())
 
