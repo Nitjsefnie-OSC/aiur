@@ -31,7 +31,7 @@ export function FOPTS() {
   const recent = features.filter(f => f.stats?.total > 0 || !f.stats).slice(-6);
   const current = Object.hasOwn(D.features, S.feature) ? D.features[S.feature] : null;
   if (current && !recent.includes(current)) recent.push(current);
-  const epics = D.order.filter(k => D.counts[k] && Object.hasOwn(D.epics, k));
+  const epics = D.order.filter(k => (D.counts == null || D.counts[k] > 0) && Object.hasOwn(D.epics, k));
   for (const k of S.f.epic) if (!epics.includes(k)) epics.push(k);
   const tickets = [...ticketOptions];
   if (D.hist.some(t => t.status === 'not_planned') || S.f.tstate.includes(NP)) tickets.push([NP, 'Not planned', 'np']);

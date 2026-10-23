@@ -32,6 +32,15 @@ test('F1 bar renders five groups before and after data', async ({ page }) => {
   await expect(page.locator('#bd-filters > svg')).toHaveCount(1)
   await expect(page.locator('.bd-fg.has, .bd-pop, .bd-fclear')).toHaveCount(0)
 })
+test('unknown live counts preserve epic options without page errors', async ({ page }) => {
+  expect(await page.request.get('/build-control/stream?key=w' + test.info().workerIndex).then(r => r.status())).toBe(200)
+  await open(page, 'live')
+  expect(await page.request.get('/build-control/diff?name=counts-unknown').then(r => r.status())).toBe(200)
+  await expect.poll(() => page.evaluate(() => m.ctx.D.counts)).toBeNull()
+  await group(page, 'epic').click()
+  expect(await page.locator('#bd-pop [data-o]').evaluateAll(nodes => nodes.map(node => node.dataset.o))).toEqual(['bugs', 'design', 'infra', 'docs', 'f-khala-srv', 'f-khala-ui', 'f-pag-api', 'f-pag-ui', 'unsorted'])
+  expect(errors).toEqual([])
+})
 test('loading filter bar accepts selections before a snapshot', async ({ page }) => {
   await page.goto('/build-fixture/hold')
   await expect(page.locator('.bd-loading')).toBeVisible()

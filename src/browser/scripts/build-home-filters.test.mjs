@@ -47,3 +47,14 @@ test('feature options sort independently of map order and preserve unknown progr
   assert.equal(opts.find(o => o[0] === 'd9')[6], 'at least 40% weighted · unknown: progress');
   assert.equal(opts.find(o => o[0] === 'd8')[1].endsWith('  —'), true);
 });
+
+test('unknown epic counts keep defined options; known zero counts stay excluded', () => {
+  init('live'); const D = ctx.D;
+  D.order = ['bugs', 'infra', 'docs', 'absent'];
+  for (const counts of [null, undefined]) {
+    D.counts = counts;
+    assert.deepEqual(FOPTS().epic.opts.map(o => o[0]), ['bugs', 'infra', 'docs']);
+  }
+  D.counts = { bugs: 0, infra: 3, docs: 0, absent: 5 };
+  assert.deepEqual(FOPTS().epic.opts.map(o => o[0]), ['infra']);
+});
