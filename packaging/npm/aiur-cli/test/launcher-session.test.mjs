@@ -265,6 +265,7 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
   });
 
   let output = "";
+  let stubbornProcess = null;
   child.stdout.on("data", (chunk) => { output += chunk.toString(); });
   child.stderr.on("data", (chunk) => { output += chunk.toString(); });
   const exited = new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
@@ -288,29 +289,39 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
 
     writeFileSync(elixir, [
       "#!/usr/bin/env bash",
+      'echo "$$" >"$AIUR_STUBBORN_PID_FILE"',
       'echo "stubborn-container-release-output"',
       "trap '' TERM",
       "while sleep 0.05; do :; done",
       "",
     ].join("\n"));
-    const stubborn = spawn(process.execPath, [shim, "run", "--container"], {
+    stubbornProcess = spawn(process.execPath, [shim, "run", "--container"], {
       stdio: ["ignore", "pipe", "pipe"],
-      env: { ...launchEnv, AIUR_CONTAINER_STOP_GRACE_TICKS: "2" },
+      env: {
+        ...launchEnv,
+        AIUR_CONTAINER_STOP_GRACE_TICKS: "2",
+        AIUR_STUBBORN_PID_FILE: path.join(root, "stubborn-release.pid"),
+      },
     });
     let stubbornOutput = "";
-    stubborn.stdout.on("data", (chunk) => { stubbornOutput += chunk.toString(); });
-    stubborn.stderr.on("data", (chunk) => { stubbornOutput += chunk.toString(); });
-    const stubbornExited = new Promise((resolve) => stubborn.once("exit", (code, signal) => resolve({ code, signal })));
+    stubbornProcess.stdout.on("data", (chunk) => { stubbornOutput += chunk.toString(); });
+    stubbornProcess.stderr.on("data", (chunk) => { stubbornOutput += chunk.toString(); });
+    const stubbornExited = new Promise((resolve) => stubbornProcess.once("exit", (code, signal) => resolve({ code, signal })));
     const stubbornStartDeadline = Date.now() + 5000;
     while (!stubbornOutput.includes("stubborn-container-release-output") && Date.now() < stubbornStartDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(stubbornOutput).toContain("stubborn-container-release-output");
-    stubborn.kill("SIGTERM");
+    stubbornProcess.kill("SIGTERM");
     const stubbornResult = await Promise.race([
       stubbornExited,
       new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
     ]);
+    if (stubbornResult === null) {
+      const stubbornReleasePid = Number(readFileSync(path.join(root, "stubborn-release.pid"), "utf8"));
+      process.kill(stubbornReleasePid, "SIGKILL");
+      await stubbornExited;
+    }
     expect(stubbornResult).not.toBeNull();
     expect(stubbornOutput).toContain("sending SIGKILL");
 
@@ -323,6 +334,14 @@ test("container launch runs without tmux and exits cleanly on SIGTERM", async ()
     expect(crashResult).toEqual({ code: 7, signal: null });
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (stubbornProcess && stubbornProcess.exitCode === null && stubbornProcess.signalCode === null) {
+      const stubbornPidFile = path.join(root, "stubborn-release.pid");
+      if (existsSync(stubbornPidFile)) {
+        const stubbornReleasePid = Number(readFileSync(stubbornPidFile, "utf8"));
+        process.kill(stubbornReleasePid, "SIGKILL");
+      }
+      stubbornProcess.kill("SIGTERM");
+    }
     await exited;
   }
 });
