@@ -40,6 +40,18 @@ defmodule AiurEngineOneshotTest do
     assert out == "unset|unset"
   end
 
+  test "status sends hosted preflight names through caller-visible RPC output" do
+    {out, 0} =
+      run_sourced_engine(
+        ~s|run_control_rpc() { printf 'RPC:%s\\n' "$1"; }; cmd_status|,
+        []
+      )
+
+    assert out =~ "RPC:case Aiur.Application.StartupChecks.validate_hosted_secrets()"
+    assert out =~ "IO.puts(Enum.join(messages"
+    refute out =~ "IO.puts(:stderr"
+  end
+
   # #2638: `./.env` is the more specific scope, so it loads before
   # `~/.aiur/.env`, and GitHub credentials resolve as one group from the first
   # file that declares any member. A global GITHUB_APP_* triple must never

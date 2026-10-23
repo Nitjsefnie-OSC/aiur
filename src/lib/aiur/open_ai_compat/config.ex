@@ -4,6 +4,7 @@ defmodule Aiur.OpenAICompat.Config do
   alias Aiur.CodingAgent
   alias Aiur.Config, as: AiurConfig
   alias Aiur.Init.Dotenv
+  alias Aiur.Env
 
   @required ~w(base_url api_key_env transport)a
 
@@ -91,7 +92,8 @@ defmodule Aiur.OpenAICompat.Config do
   defp fetch_api_key(env_name, account_name, opts) do
     fetcher =
       Keyword.get(opts, :api_key_fetcher, fn key ->
-        account_api_key(env_name, opts) || account_api_key_from_file(env_name, account_name) || System.get_env(key)
+        account_api_key(env_name, opts) ||
+          unless(Env.secrets_from_env?(), do: account_api_key_from_file(env_name, account_name)) || System.get_env(key)
       end)
 
     case fetcher.(env_name) do

@@ -1,6 +1,7 @@
 defmodule Aiur.Accounts do
   @moduledoc "Machine-local harness accounts and pure account selection."
 
+  alias Aiur.Env
   alias Aiur.Init.Dotenv
 
   @registry "machine"
@@ -694,14 +695,18 @@ defmodule Aiur.Accounts do
   end
 
   defp local_env_value(name) do
-    path = Path.join(System.get_env("HOME") || Path.expand("~"), ".aiur/.env")
+    if Env.secrets_from_env?() do
+      System.get_env(name)
+    else
+      path = Path.join(System.get_env("HOME") || Path.expand("~"), ".aiur/.env")
 
-    case File.read(path) do
-      {:ok, contents} ->
-        find_env_value(Dotenv.parse(contents), name)
+      case File.read(path) do
+        {:ok, contents} ->
+          find_env_value(Dotenv.parse(contents), name)
 
-      _ ->
-        nil
+        _ ->
+          nil
+      end
     end
   end
 

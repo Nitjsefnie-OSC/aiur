@@ -55,6 +55,17 @@ defmodule Aiur.Env do
   @spec secret_names() :: [String.t()]
   def secret_names, do: Schema.secret_names()
 
+  @doc "Returns whether hosted environment-only credential loading is enabled."
+  @spec secrets_from_env?() :: boolean()
+  def secrets_from_env?, do: secrets_from_env?(System.get_env())
+
+  @spec secrets_from_env?(map()) :: boolean()
+  def secrets_from_env?(env) when is_map(env), do: truthy?(env["AIUR_SECRETS_FROM_ENV"])
+
+  @doc false
+  @spec truthy?(term()) :: boolean()
+  def truthy?(value), do: value in ["1", "true", "TRUE", "yes", "YES"]
+
   @doc """
   Validates `env` (defaults to the process environment) for type errors,
   unusable configured credentials, and partial credential groups.
@@ -227,10 +238,20 @@ defmodule Aiur.Env do
   """
   @spec warn_precedence_conflicts() :: :ok
   def warn_precedence_conflicts do
-    home = Path.join(System.user_home!(), ".aiur/.env")
-    repo = Path.join(File.cwd!(), ".env")
+    warn_precedence_conflicts(
+      System.get_env(),
+      Path.join(System.user_home!(), ".aiur/.env"),
+      Path.join(File.cwd!(), ".env")
+    )
+  end
 
-    Enum.each(precedence_warnings(precedence_conflicts(home, repo)), &Logger.warning/1)
+  @doc false
+  @spec warn_precedence_conflicts(map(), Path.t(), Path.t()) :: :ok
+  def warn_precedence_conflicts(env, home, repo) do
+    unless secrets_from_env?(env) do
+      Enum.each(precedence_warnings(precedence_conflicts(home, repo)), &Logger.warning/1)
+    end
+
     :ok
   end
 
