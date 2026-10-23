@@ -4,10 +4,10 @@ defmodule Aiur.Instance.DispatchClaim do
   alias Aiur.Instance.LeaseStore
 
   @doc false
-  @spec call(String.t(), (-> term()), keyword()) ::
+  @spec call(term(), (-> term()), keyword()) ::
           {:ok, :disabled | :acquired, term()} | {:error, term()}
   def call(ticket_key, dispatch_fun, opts \\ [])
-      when is_binary(ticket_key) and is_function(dispatch_fun, 0) do
+      when is_function(dispatch_fun, 0) do
     claim_fun = Keyword.get(opts, :claim_fun, &LeaseStore.claim/1)
 
     case claim_fun.(ticket_key) do

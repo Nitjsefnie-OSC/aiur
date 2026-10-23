@@ -4,10 +4,18 @@ defmodule Aiur.Instance.LeaseStore do
 
   require Logger
 
+  alias Aiur.GitHub.Config, as: GitHubConfig
   alias Aiur.Instance.Identity
+  alias Aiur.Issue
+  alias Aiur.TrackerIdentity
 
   @name __MODULE__
   @default_ttl_ms 30_000
+  @default_renew_interval_ms div(@default_ttl_ms, 3)
+  @default_renew_margin_ms 5_000
+  @claim_grace_ms 20_000
+  @reconnect_initial_ms 1_000
+  @reconnect_max_ms 30_000
 
   @spec child_spec(keyword()) :: Supervisor.child_spec()
   def child_spec(opts) do
@@ -32,14 +40,16 @@ defmodule Aiur.Instance.LeaseStore do
   end
 
   @doc "Atomically acquires an expired or unheld ticket lease."
-  @spec claim(String.t(), keyword()) :: :acquired | :held | :disabled | {:error, term()}
-  def claim(ticket_key, opts \\ []) when is_binary(ticket_key) do
+  @spec claim(term(), keyword()) :: :acquired | :held | :disabled | {:error, term()}
+  def claim(ticket, opts \\ []) do
     if configured?() do
-      GenServer.call(
-        Keyword.get(opts, :server, @name),
-        {:claim, ticket_key, Keyword.get(opts, :ttl_ms, @default_ttl_ms)},
-        10_000
-      )
+      with {:ok, ticket_key} <- ticket_key(ticket) do
+        GenServer.call(
+          Keyword.get(opts, :server, @name),
+          {:claim, ticket_key, Keyword.get(opts, :ttl_ms, @default_ttl_ms), Keyword.get(opts, :grace_ms, @claim_grace_ms)},
+          10_000
+        )
+      end
     else
       :disabled
     end
@@ -48,9 +58,15 @@ defmodule Aiur.Instance.LeaseStore do
   end
 
   @doc "Starts a renewal process that follows the current caller's lifetime."
-  @spec watch(String.t(), keyword()) :: :ok | :not_owned | :disabled | {:error, term()}
-  def watch(ticket_key, opts \\ []) when is_binary(ticket_key),
-    do: watch_configured(ticket_key, Keyword.get(opts, :server, @name), opts)
+  @spec watch(term(), keyword()) :: :ok | :not_owned | :disabled | {:error, term()}
+  def watch(ticket, opts \\ []) do
+    if configured?() do
+      with {:ok, ticket_key} <- ticket_key(ticket),
+           do: watch_configured(ticket_key, Keyword.get(opts, :server, @name), opts)
+    else
+      :disabled
+    end
+  end
 
   defp watch_configured(ticket_key, server, opts) do
     if configured?(), do: watch_owned(ticket_key, server, opts), else: :disabled
@@ -62,8 +78,15 @@ defmodule Aiur.Instance.LeaseStore do
     case GenServer.call(server, {:watch, ticket_key}) do
       :ok ->
         parent = self()
-        interval = Keyword.get(opts, :renew_interval_ms, div(@default_ttl_ms, 3))
-        {:ok, _pid} = Task.start(fn -> renew_while_alive(parent, ticket_key, interval, server) end)
+        interval = Keyword.get(opts, :renew_interval_ms, @default_renew_interval_ms)
+        ttl_ms = Keyword.get(opts, :ttl_ms, @default_ttl_ms)
+        margin_ms = Keyword.get(opts, :renew_margin_ms, @default_renew_margin_ms)
+
+        {:ok, _pid} =
+          Task.start(fn ->
+            renew_while_alive(parent, ticket_key, interval, ttl_ms, margin_ms, server, opts)
+          end)
+
         :ok
 
       :not_owned ->
@@ -75,26 +98,154 @@ defmodule Aiur.Instance.LeaseStore do
   end
 
   @doc "Renews a ticket lease only while this instance still owns it."
-  @spec renew(String.t(), keyword()) :: :ok | {:error, term()}
-  def renew(ticket_key, opts \\ []) do
-    request(opts, {:renew, ticket_key, Keyword.get(opts, :ttl_ms, @default_ttl_ms)})
+  @spec renew(term(), keyword()) :: :ok | {:error, term()}
+  def renew(ticket, opts \\ []) do
+    with {:ok, ticket_key} <- ticket_key(ticket) do
+      request(opts, {:renew, ticket_key, Keyword.get(opts, :ttl_ms, @default_ttl_ms)})
+    end
   end
 
   @doc "Releases a ticket lease only while this instance still owns it."
-  @spec release(String.t(), keyword()) :: :ok | {:error, term()}
-  def release(ticket_key, opts \\ []), do: request(opts, {:release, ticket_key})
+  @spec release(term(), keyword()) :: :ok | {:error, term()}
+  def release(ticket, opts \\ []) do
+    with {:ok, ticket_key} <- ticket_key(ticket), do: request(opts, {:release, ticket_key})
+  end
 
   @doc "Returns whether the current instance has a non-expired lease; store uncertainty fails closed."
-  @spec owned?(String.t(), keyword()) :: boolean() | :disabled | :unknown
-  def owned?(ticket_key, opts \\ []) when is_binary(ticket_key) do
+  @spec owned?(term(), keyword()) :: boolean() | :disabled | :unknown
+  def owned?(ticket, opts \\ []) do
     if configured?() do
-      case request(opts, {:owned, ticket_key}) do
-        {:ok, true} -> true
-        {:ok, false} -> false
-        {:error, _reason} -> :unknown
+      case holder(ticket, opts) do
+        {:held, holder_id} -> holder_id == instance_id(opts)
+        :unheld -> false
+        :disabled -> :disabled
+        :unknown -> :unknown
       end
     else
       :disabled
+    end
+  end
+
+  @doc "Returns the active holder for a ticket; an expired row is unheld."
+  @spec holder(term(), keyword()) :: {:held, String.t()} | :unheld | :disabled | :unknown
+  def holder(ticket, opts \\ []) do
+    if configured?(), do: lookup_holder(ticket, opts), else: :disabled
+  rescue
+    _ -> :unknown
+  end
+
+  defp lookup_holder(ticket, opts) do
+    case ticket_key(ticket) do
+      {:ok, key} ->
+        case request(opts, {:holder, key}) do
+          {:ok, nil} -> :unheld
+          {:ok, id} when is_binary(id) -> {:held, id}
+          _error -> :unknown
+        end
+
+      _error ->
+        :unknown
+    end
+  end
+
+  @doc "Canonical repository-qualified ticket key shared by dispatch, workers and observers."
+  @spec ticket_key(term()) :: {:ok, String.t()} | {:error, :invalid_ticket_key}
+  def ticket_key(%Issue{tracker_identity: %TrackerIdentity{} = identity, identifier: identifier}) do
+    key_from_identity(identity, identifier) || {:error, :invalid_ticket_key}
+  end
+
+  def ticket_key(%Issue{identifier: identifier}) do
+    ticket_key(identifier)
+  end
+
+  def ticket_key(%TrackerIdentity{} = identity) do
+    key_from_identity(identity, identity.identifier) || {:error, :invalid_ticket_key}
+  end
+
+  def ticket_key(%{tracker_identity: %TrackerIdentity{} = identity, identifier: identifier}) do
+    key_from_identity(identity, identifier) || {:error, :invalid_ticket_key}
+  end
+
+  def ticket_key(%{"tracker_identity" => %TrackerIdentity{} = identity} = ticket) do
+    key_from_identity(identity, Map.get(ticket, "identifier") || Map.get(ticket, "number")) ||
+      {:error, :invalid_ticket_key}
+  end
+
+  def ticket_key(%{tracker_identity: %TrackerIdentity{} = identity, number: number}),
+    do: key_from_identity(identity, number) || {:error, :invalid_ticket_key}
+
+  def ticket_key(%{"tracker_identity" => %TrackerIdentity{} = identity, "number" => number}),
+    do: key_from_identity(identity, number) || {:error, :invalid_ticket_key}
+
+  def ticket_key(%{number: number} = ticket), do: key_from_parts(repo_from_map(ticket), number)
+
+  def ticket_key(%{"number" => number} = ticket),
+    do: key_from_parts(repo_from_map(ticket), number)
+
+  def ticket_key(%{identifier: identifier}), do: ticket_key(identifier)
+  def ticket_key(%{"identifier" => identifier}), do: ticket_key(identifier)
+
+  def ticket_key(number) when is_integer(number) and number > 0,
+    do: key_from_parts(GitHubConfig.repo(), number)
+
+  def ticket_key(value) when is_binary(value) do
+    value = String.trim(value)
+
+    case Regex.run(~r{^([^/#]+)/([^/#]+)#(\d+)$}, value) do
+      [_, owner, repository, number] ->
+        key_from_parts("#{owner}/#{repository}", number)
+
+      _ ->
+        case Regex.run(~r/^#?(\d+)$/, value) do
+          [_, number] -> key_from_parts(GitHubConfig.repo(), number)
+          _ -> {:error, :invalid_ticket_key}
+        end
+    end
+  end
+
+  def ticket_key(_ticket), do: {:error, :invalid_ticket_key}
+
+  defp key_from_identity(%TrackerIdentity{} = identity, identifier) do
+    if TrackerIdentity.joinable?(identity) and parse_number(identifier) == parse_number(identity.identifier) do
+      key_from_parts("#{identity.owner}/#{identity.repository}", identifier)
+    end
+  end
+
+  defp key_from_identity(_, _), do: nil
+
+  defp key_from_parts(repo, number) when is_binary(repo) do
+    case {String.split(String.trim(repo), "/"), parse_number(number)} do
+      {[owner, repository], n} when owner != "" and repository != "" and is_integer(n) ->
+        {:ok, "#{String.downcase(owner)}/#{String.downcase(repository)}##{n}"}
+
+      _ ->
+        {:error, :invalid_ticket_key}
+    end
+  end
+
+  defp key_from_parts(_, _), do: {:error, :invalid_ticket_key}
+
+  defp parse_number(number) when is_integer(number) and number > 0, do: number
+
+  defp parse_number(number) when is_binary(number) do
+    case Integer.parse(number) do
+      {n, ""} when n > 0 -> n
+      _ -> nil
+    end
+  end
+
+  defp parse_number(_), do: nil
+
+  defp repo_from_map(ticket) do
+    repository =
+      Map.get(ticket, :repository) || Map.get(ticket, "repository") ||
+        Map.get(ticket, :repo) || Map.get(ticket, "repo")
+
+    case repository do
+      value when is_binary(value) -> value
+      %{full_name: name} when is_binary(name) -> name
+      %{"full_name" => name} when is_binary(name) -> name
+      _ -> GitHubConfig.repo()
     end
   end
 
@@ -114,33 +265,26 @@ defmodule Aiur.Instance.LeaseStore do
 
   @impl true
   def init(opts) do
-    url = Keyword.get(opts, :url, database_url())
+    Process.flag(:trap_exit, true)
 
-    case Postgrex.start_link(
-           connection_opts(url) ++
-             [name: Keyword.get(opts, :connection_name, __MODULE__.Connection), timeout: 5_000]
-         ) do
-      {:ok, conn} ->
-        case create_tables(conn) do
-          :ok ->
-            {:ok,
-             %{
-               conn: conn,
-               instance_id: Keyword.get(opts, :instance_id, &Identity.current/0),
-               leases: MapSet.new()
-             }}
+    state = %{
+      conn: nil,
+      url: Keyword.get(opts, :url, database_url()),
+      instance_id: Keyword.get(opts, :instance_id, &Identity.current/0),
+      leases: Keyword.get(opts, :leases, MapSet.new()),
+      opts: opts,
+      reconnect_ms: Keyword.get(opts, :reconnect_initial_ms, @reconnect_initial_ms),
+      reconnect_max_ms: Keyword.get(opts, :reconnect_max_ms, @reconnect_max_ms),
+      outage?: false,
+      retry_timer: nil
+    }
 
-          {:error, reason} ->
-            {:stop, {:coordination_store_unavailable, reason}}
-        end
-
-      {:error, reason} ->
-        {:stop, {:coordination_store_unavailable, reason}}
-    end
+    send(self(), :connect)
+    {:ok, state}
   end
 
   @impl true
-  def handle_call({:claim, key, ttl_ms}, _from, state) do
+  def handle_call({:claim, key, ttl_ms, grace_ms}, _from, state) do
     instance_id = instance_id(state)
 
     result =
@@ -151,18 +295,33 @@ defmodule Aiur.Instance.LeaseStore do
         VALUES ($1, $2, clock_timestamp(), clock_timestamp() + make_interval(secs => $3))
         ON CONFLICT (ticket_key) DO UPDATE
         SET instance_id = EXCLUDED.instance_id, heartbeat_at = EXCLUDED.heartbeat_at, expires_at = EXCLUDED.expires_at
-        WHERE aiur_ticket_leases.expires_at <= clock_timestamp()
+        WHERE aiur_ticket_leases.expires_at <= clock_timestamp() - make_interval(secs => $4)
            OR aiur_ticket_leases.instance_id = EXCLUDED.instance_id
         RETURNING ticket_key
         """,
-        [key, instance_id, ttl_ms / 1_000],
+        [key, instance_id, ttl_ms / 1_000, grace_ms / 1_000],
         fn %{num_rows: rows} -> if(rows == 1, do: :acquired, else: :held) end
       )
 
     state =
       if result == :acquired, do: %{state | leases: MapSet.put(state.leases, key)}, else: state
 
-    {:reply, result, state}
+    reply_with_reconnect(result, state)
+  end
+
+  def handle_call({:holder, key}, _from, state) do
+    result =
+      query(
+        state,
+        "SELECT instance_id FROM aiur_ticket_leases WHERE ticket_key = $1 AND expires_at > clock_timestamp()",
+        [key],
+        fn
+          %{rows: [[id]]} -> {:ok, id}
+          %{rows: []} -> {:ok, nil}
+        end
+      )
+
+    reply_with_reconnect(result, state)
   end
 
   def handle_call({:watch, key}, _from, state),
@@ -182,7 +341,7 @@ defmodule Aiur.Instance.LeaseStore do
         fn %{num_rows: rows} -> if(rows == 1, do: :ok, else: {:error, :lease_lost}) end
       )
 
-    {:reply, result, state}
+    reply_with_reconnect(result, state)
   end
 
   def handle_call({:release, key}, _from, state) do
@@ -195,22 +354,7 @@ defmodule Aiur.Instance.LeaseStore do
       )
 
     state = if result == :ok, do: %{state | leases: MapSet.delete(state.leases, key)}, else: state
-    {:reply, result, state}
-  end
-
-  def handle_call({:owned, key}, _from, state) do
-    result =
-      query(
-        state,
-        """
-        SELECT ticket_key FROM aiur_ticket_leases
-        WHERE ticket_key = $1 AND instance_id = $2 AND expires_at > clock_timestamp()
-        """,
-        [key, instance_id(state)],
-        fn %{num_rows: rows} -> {:ok, rows == 1} end
-      )
-
-    {:reply, result, state}
+    reply_with_reconnect(result, state)
   end
 
   def handle_call({:heartbeat, build_version, metadata, ttl_ms}, _from, state) do
@@ -230,7 +374,7 @@ defmodule Aiur.Instance.LeaseStore do
         &decode_instances/1
       )
 
-    {:reply, result, state}
+    reply_with_reconnect(result, state)
   end
 
   def handle_call(:list_live, _from, state) do
@@ -245,8 +389,34 @@ defmodule Aiur.Instance.LeaseStore do
         &decode_instances/1
       )
 
-    {:reply, result, state}
+    reply_with_reconnect(result, state)
   end
+
+  @impl true
+  def handle_info(:connect, state) do
+    connect_fun = Keyword.get(state.opts, :connect_fun, &connect/1)
+
+    case connect_fun.(state) do
+      :disabled ->
+        {:noreply, state}
+
+      {:ok, conn} ->
+        state = %{state | conn: conn, reconnect_ms: @reconnect_initial_ms, retry_timer: nil}
+        state = if state.outage?, do: report_recovered(state), else: state
+        {:noreply, state}
+
+      {:error, reason} ->
+        state = report_unavailable(state, reason)
+        {:noreply, schedule_reconnect(state)}
+    end
+  end
+
+  def handle_info({:EXIT, conn, reason}, %{conn: conn} = state) when is_pid(conn) do
+    state = report_unavailable(%{state | conn: nil}, reason)
+    {:noreply, schedule_reconnect(state)}
+  end
+
+  def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   defp request(opts, message) do
     if configured?(),
@@ -257,13 +427,26 @@ defmodule Aiur.Instance.LeaseStore do
   end
 
   defp query(state, sql, params, map_fun) do
-    case Postgrex.query(state.conn, sql, params, timeout: 5_000) do
+    case state.conn && Postgrex.query(state.conn, sql, params, timeout: 5_000) do
       {:ok, result} -> map_fun.(result)
       {:error, reason} -> {:error, {:store_unavailable, reason}}
+      nil -> {:error, {:store_unavailable, :not_connected}}
     end
   rescue
     error -> {:error, {:store_unavailable, error}}
   end
+
+  defp reply_with_reconnect(
+         {:error, {:store_unavailable, reason}} = result,
+         %{conn: conn} = state
+       )
+       when is_pid(conn) do
+    Process.exit(conn, :shutdown)
+    state = report_unavailable(%{state | conn: nil}, reason) |> schedule_reconnect()
+    {:reply, result, state}
+  end
+
+  defp reply_with_reconnect(result, state), do: {:reply, result, state}
 
   defp create_tables(conn) do
     with {:ok, _} <-
@@ -330,28 +513,135 @@ defmodule Aiur.Instance.LeaseStore do
     end
   end
 
-  defp renew_while_alive(parent, key, interval, server) do
+  defp renew_while_alive(parent, key, interval, ttl_ms, margin_ms, server, opts) do
     monitor = Process.monitor(parent)
-    renew_loop(parent, monitor, key, interval, server)
+    now_fun = Keyword.get(opts, :monotonic_now, fn -> System.monotonic_time(:millisecond) end)
+
+    renew_fun =
+      Keyword.get(opts, :renew_fun, fn current_key, current_server, ttl ->
+        renew(current_key, server: current_server, ttl_ms: ttl)
+      end)
+
+    renew_loop(%{
+      parent: parent,
+      monitor: monitor,
+      key: key,
+      interval: interval,
+      ttl_ms: ttl_ms,
+      margin_ms: margin_ms,
+      server: server,
+      renew_fun: renew_fun,
+      now_fun: now_fun,
+      last_good_ms: now_fun.()
+    })
   end
 
-  defp renew_loop(parent, monitor, key, interval, server) do
+  defp renew_loop(%{parent: parent, monitor: monitor, interval: interval} = renewal) do
     receive do
       {:DOWN, ^monitor, :process, ^parent, _reason} -> :ok
     after
-      interval ->
-        case renew(key, server: server) do
-          :ok ->
-            renew_loop(parent, monitor, key, interval, server)
+      interval -> renew_once(renewal)
+    end
+  end
 
-          {:error, :lease_lost} ->
-            Process.exit(parent, {:shared_ticket_lease_lost, key})
+  defp renew_once(%{key: key, server: server, ttl_ms: ttl, renew_fun: renew_fun} = renewal) do
+    case renew_fun.(key, server, ttl) do
+      :ok ->
+        renew_loop(%{renewal | last_good_ms: renewal.now_fun.()})
+
+      {:error, :lease_lost} ->
+        Process.exit(renewal.parent, {:shared_ticket_lease_lost, key})
+
+      {:error, reason} ->
+        retry_or_fence(renewal, reason)
+    end
+  end
+
+  defp retry_or_fence(renewal, reason) do
+    deadline = renewal.last_good_ms + renewal.ttl_ms - renewal.margin_ms
+    remaining_ms = deadline - renewal.now_fun.()
+
+    if remaining_ms <= 0 do
+      Logger.error("ticket lease renewal deadline missed key=#{renewal.key}: #{inspect(reason)}; stopping worker")
+      Process.exit(renewal.parent, {:shared_ticket_lease_lost, renewal.key})
+    else
+      Logger.warning("ticket lease renewal unavailable key=#{renewal.key}: #{inspect(reason)}; worker stops in #{remaining_ms}ms unless renewed")
+      Process.sleep(min(renewal.interval, remaining_ms))
+      renew_loop(renewal)
+    end
+  end
+
+  defp connect(%{url: url, opts: opts}) when is_binary(url) and url != "" do
+    case Postgrex.start_link(connection_opts(url) ++ Keyword.take(opts, [:timeout, :types])) do
+      {:ok, conn} ->
+        case create_tables(conn) do
+          :ok ->
+            {:ok, conn}
 
           {:error, reason} ->
-            Logger.warning("ticket lease renewal unavailable key=#{key}: #{inspect(reason)}")
-            renew_loop(parent, monitor, key, interval, server)
+            Process.exit(conn, :shutdown)
+            {:error, reason}
         end
+
+      {:error, reason} ->
+        {:error, reason}
     end
+  end
+
+  defp connect(%{url: nil}), do: :disabled
+  defp connect(_state), do: {:error, :store_not_configured}
+
+  defp schedule_reconnect(%{retry_timer: nil} = state) do
+    timer = Process.send_after(self(), :connect, state.reconnect_ms)
+
+    %{
+      state
+      | retry_timer: timer,
+        reconnect_ms: min(state.reconnect_ms * 2, state.reconnect_max_ms)
+    }
+  end
+
+  defp schedule_reconnect(state), do: state
+
+  defp report_unavailable(%{outage?: true} = state, reason) do
+    Logger.warning("shared ticket lease store remains unavailable: #{inspect(reason)}")
+    state
+  end
+
+  defp report_unavailable(state, reason) do
+    Logger.error("shared ticket lease store unavailable: #{inspect(reason)}")
+
+    emit_store_alert(
+      state,
+      "system.instance.ownership_unknown",
+      true,
+      "Shared ownership cannot be checked; dispatch is held and observers fail closed."
+    )
+
+    %{state | outage?: true}
+  end
+
+  defp report_recovered(state) do
+    emit_store_alert(
+      state,
+      "system.instance.ownership_unknown.resolved",
+      false,
+      "Shared ticket ownership store is reachable again."
+    )
+
+    %{state | outage?: false}
+  end
+
+  defp emit_store_alert(state, topic, needs_attention, message) do
+    case Keyword.get(state.opts, :alert_fun, &Aiur.Alerts.emit_system/2) do
+      fun when is_function(fun, 2) ->
+        fun.(topic, message: message, needs_attention: needs_attention, severity: "warning")
+
+      _ ->
+        :ok
+    end
+  rescue
+    _ -> :ok
   end
 
   defp database_url do

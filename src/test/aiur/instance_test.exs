@@ -59,6 +59,13 @@ defmodule Aiur.InstanceTest do
     assert Instance.foreign?("owner/repo#4127", [])
   end
 
+  test "shared lease observer filtering ignores unheld tickets and skips another live holder" do
+    refute Instance.foreign_by_shared_lease?("owner/repo#4127", fn _ -> :unheld end)
+    refute Instance.foreign_by_shared_lease?("owner/repo#4127", fn _ -> {:held, Identity.current()} end)
+    assert Instance.foreign_by_shared_lease?("owner/repo#4127", fn _ -> {:held, "other-instance"} end)
+    assert Instance.foreign_by_shared_lease?("owner/repo#4127", fn _ -> :unknown end)
+  end
+
   test "a ticket is foreign by id, by exact label, or by state-label prefix" do
     rules = %Ignore{tickets: [4121], labels: ["lane:nuc"], label_prefixes: ["nuc"]}
 

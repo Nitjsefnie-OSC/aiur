@@ -2,8 +2,8 @@ defmodule Aiur.Instance do
   @moduledoc """
   Ticket ownership filter for multi-instance runs (`instance.ignore`).
 
-  A ticket is *foreign* when another daemon owns it: a shared lease belongs to
-  another instance (or cannot be read), or its number is listed in
+  A ticket is *foreign* when another live daemon owns it (or shared ownership
+  cannot be read), or its number is listed in
   `instance.ignore.tickets`, it carries a label in `instance.ignore.labels`, or
   it carries a `<prefix>:*` label for a prefix in `instance.ignore.label_prefixes`.
   Per-ticket observers and the Executor wake projection skip foreign tickets.
@@ -14,6 +14,7 @@ defmodule Aiur.Instance do
   require Logger
 
   alias Aiur.Config.Schema.Instance.Ignore
+  alias Aiur.Instance.Identity
   alias Aiur.Instance.LeaseStore
 
   @counter_key {__MODULE__, :ignored}
@@ -145,18 +146,20 @@ defmodule Aiur.Instance do
   defp empty?(_rules), do: false
 
   defp foreign_by_shared_lease?(ticket) do
-    case LeaseStore.owned?(ticket_key(ticket)) do
-      value when value in [:disabled, true] -> false
-      false -> true
-      :unknown -> true
-    end
+    foreign_by_shared_lease?(ticket, &LeaseStore.holder/1)
   end
 
-  defp ticket_key(%{identifier: identifier}) when is_binary(identifier), do: identifier
-  defp ticket_key(%{"identifier" => identifier}) when is_binary(identifier), do: identifier
-  defp ticket_key(ticket) when is_binary(ticket), do: ticket
-  defp ticket_key(ticket) when is_integer(ticket), do: "#{Aiur.GitHub.Config.repo()}##{ticket}"
-  defp ticket_key(ticket), do: inspect(ticket)
+  @doc false
+  @spec foreign_by_shared_lease?(term(), (term() -> term())) :: boolean()
+  def foreign_by_shared_lease?(ticket, holder_fun) when is_function(holder_fun, 1) do
+    case holder_fun.(ticket) do
+      {:held, holder_id} -> holder_id != Identity.current()
+      value when value in [:unheld, :disabled] -> false
+      _unknown_or_error -> true
+    end
+  rescue
+    _ -> true
+  end
 
   defp label_matches?(label, rules) do
     label = label |> label_name() |> String.downcase()

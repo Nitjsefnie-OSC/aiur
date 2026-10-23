@@ -10,7 +10,9 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   alias Aiur.BuildOrder.History
   alias Aiur.CodingAgent
   alias Aiur.Commands
+  alias Aiur.Handoff
   alias Aiur.Instance.DispatchClaim
+  alias Aiur.Instance.LeaseStore
   alias Aiur.Issue
   alias Aiur.Orchestrator
   alias Aiur.Orchestrator.Dispatcher.Budgets
@@ -40,6 +42,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
         else
           Logger.warning("Releasing orphaned dispatch claim: #{State.issue_context(issue)}")
           recovered = %{state | claimed: MapSet.delete(state.claimed, issue.id)}
+
           {recovered, DispatchPolicy.dispatch_decision(issue, recovered, active_states, terminal_states)}
         end
 
@@ -68,7 +71,10 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
         MapSet.member?(next_state.model_fallback_waiting, issue.id) ->
           {:error, :all_model_backends_limited}
 
-        match?(%{tripped: :window}, get_in(next_state.dispatch_recovery, [:codex_thrash_budget, issue.id])) ->
+        match?(
+          %{tripped: :window},
+          get_in(next_state.dispatch_recovery, [:codex_thrash_budget, issue.id])
+        ) ->
           {:error, :thrash_circuit_open}
 
         true ->
@@ -85,44 +91,98 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
 
   @doc false
   @spec do_dispatch_issue(State.t(), term(), term(), term(), keyword()) :: State.t()
-  def do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, opts) when is_list(opts) do
-    dispatch = fn -> dispatch_issue_with_lease(state, issue, attempt, preferred_worker_host, opts) end
-
-    if is_binary(issue.pr_head_ref) do
-      dispatch.()
-    else
-      key = issue.identifier || to_string(issue.id)
-
-      case DispatchClaim.call(key, dispatch) do
-        {:ok, _lease, next_state} ->
-          next_state
-
-        {:error, :shared_lease_held} ->
-          Candidates.emit_dispatch_attempt_decline(state, issue, :shared_lease_held, false)
-
-        {:error, {:shared_lease_unavailable, reason}} ->
-          Logger.warning("Shared ticket lease unavailable for #{State.issue_context(issue)}: #{inspect(reason)}; holding dispatch")
-          Candidates.emit_dispatch_attempt_decline(state, issue, :shared_lease_unavailable, true)
-      end
-    end
+  def do_dispatch_issue(%State{} = state, issue, attempt, preferred_worker_host, opts)
+      when is_list(opts) do
+    dispatch_issue_with_lease(state, issue, attempt, preferred_worker_host, opts)
   end
 
   defp dispatch_issue_with_lease(state, issue, attempt, preferred_worker_host, opts) do
-    with false <- Aiur.Handoff.dispatch_held?(),
+    case prepare_for_dispatch(state, issue, opts) do
+      {:ready, prepared_state, selected_issue} ->
+        dispatch_ready_issue(
+          state,
+          issue,
+          prepared_state,
+          selected_issue,
+          attempt,
+          preferred_worker_host,
+          opts
+        )
+
+      {:hold, held_state} ->
+        held_state
+
+      {:declined, declined_state} ->
+        declined_state
+    end
+  end
+
+  defp dispatch_ready_issue(state, issue, prepared_state, selected_issue, attempt, worker_host, opts) do
+    dispatch = fn ->
+      dispatch_after_workspace_wait_or_thrash_check(
+        prepared_state,
+        selected_issue,
+        attempt,
+        worker_host,
+        opts
+      )
+    end
+
+    if is_binary(issue.pr_head_ref),
+      do: dispatch.(),
+      else: dispatch_with_shared_lease(state, issue, selected_issue, dispatch, opts)
+  end
+
+  defp dispatch_with_shared_lease(state, issue, selected_issue, dispatch, opts) do
+    claim_fun = Keyword.get(opts, :lease_claim_fun, &LeaseStore.claim/1)
+
+    case DispatchClaim.call(selected_issue, dispatch, claim_fun: claim_fun) do
+      {:ok, :disabled, next_state} ->
+        next_state
+
+      {:ok, :acquired, next_state} ->
+        release_if_unstarted(next_state, selected_issue, opts)
+
+      {:error, :shared_lease_held} ->
+        Candidates.emit_dispatch_attempt_decline(state, issue, :shared_lease_held, false)
+
+      {:error, {:shared_lease_unavailable, reason}} ->
+        Logger.warning("Shared ticket lease unavailable for #{State.issue_context(issue)}: #{inspect(reason)}; holding dispatch")
+
+        Candidates.emit_dispatch_attempt_decline(state, issue, :shared_lease_unavailable, true)
+    end
+  end
+
+  defp release_if_unstarted(state, issue, opts) do
+    if MapSet.member?(state.claimed, issue.id) do
+      state
+    else
+      release_fun = Keyword.get(opts, :lease_release_fun, &LeaseStore.release/1)
+      _ = release_fun.(issue)
+      state
+    end
+  end
+
+  defp prepare_for_dispatch(state, issue, opts) do
+    with false <- Handoff.dispatch_held?(),
          {:ok, prepared} <- OptimisticDispatch.prepare_for_dispatch(issue, opts),
          {:ok, selected_issue} <- CodingAgent.select_for_dispatch(prepared) do
-      state = %{state | model_fallback_waiting: MapSet.delete(state.model_fallback_waiting, selected_issue.id)}
-      dispatch_after_workspace_wait_or_thrash_check(state, selected_issue, attempt, preferred_worker_host, opts)
+      state = %{
+        state
+        | model_fallback_waiting: MapSet.delete(state.model_fallback_waiting, selected_issue.id)
+      }
+
+      {:ready, state, selected_issue}
     else
       true ->
-        state
+        {:hold, state}
 
       {:error, reason} ->
-        Candidates.emit_dispatch_attempt_decline(state, issue, reason, false)
+        {:declined, Candidates.emit_dispatch_attempt_decline(state, issue, reason, false)}
 
       {:all_limited, candidates} ->
         if MapSet.member?(state.model_fallback_waiting, issue.id) do
-          state
+          {:hold, state}
         else
           Alerts.emit_system("ticket.#{issue.identifier}.agent.model_fallback_waiting",
             issue: issue.identifier,
@@ -131,17 +191,27 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
             severity: "warning"
           )
 
-          %{state | model_fallback_waiting: MapSet.put(state.model_fallback_waiting, issue.id)}
+          {:hold, %{state | model_fallback_waiting: MapSet.put(state.model_fallback_waiting, issue.id)}}
         end
     end
   end
 
-  defp dispatch_after_workspace_wait_or_thrash_check(state, selected_issue, attempt, preferred_worker_host, opts) do
+  defp dispatch_after_workspace_wait_or_thrash_check(
+         state,
+         selected_issue,
+         attempt,
+         preferred_worker_host,
+         opts
+       ) do
     workspace_ownership = state.dispatch_recovery.workspace_ownership
 
     case Map.pop(workspace_ownership.ready, selected_issue.id) do
       {nil, _ready} ->
-        case Budgets.check_thrash_budget(state, selected_issue.id, System.monotonic_time(:millisecond)) do
+        case Budgets.check_thrash_budget(
+               state,
+               selected_issue.id,
+               System.monotonic_time(:millisecond)
+             ) do
           {:trip, tripped_state} ->
             BudgetTrip.trip_thrash_breaker(tripped_state, selected_issue)
 
@@ -163,7 +233,9 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
 
         state = put_in(state.dispatch_recovery.workspace_ownership, workspace_ownership)
         envelope_attempt = Map.get(envelope, :retry_attempt, attempt) || attempt
-        envelope_host = Map.get(envelope, :worker_host, preferred_worker_host) || preferred_worker_host
+
+        envelope_host =
+          Map.get(envelope, :worker_host, preferred_worker_host) || preferred_worker_host
 
         envelope_opts =
           Keyword.put(
@@ -208,7 +280,8 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
     end
   end
 
-  def revalidate_issue_for_dispatch(issue, _issue_fetcher, _terminal_states, _opts), do: {:ok, issue}
+  def revalidate_issue_for_dispatch(issue, _issue_fetcher, _terminal_states, _opts),
+    do: {:ok, issue}
 
   @spec retry_dispatch_ready?(Issue.t(), State.t(), String.t() | nil) :: boolean()
   def retry_dispatch_ready?(%Issue{} = issue, %State{} = state, worker_host) do
@@ -254,15 +327,29 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   defp dispatch_input(state, id) do
     entry = Map.get(state.running, id)
 
-    {if(is_map(entry), do: Map.take(entry, [:pid, :ref, :session_id, :telemetry_attempt_id, :control, :lifecycle_fence]), else: entry), MapSet.member?(state.claimed, id),
-     Map.get(state.auto_resume, id), Map.get(state.retry_attempts, id)}
+    {if(is_map(entry),
+       do:
+         Map.take(entry, [
+           :pid,
+           :ref,
+           :session_id,
+           :telemetry_attempt_id,
+           :control,
+           :lifecycle_fence
+         ]),
+       else: entry
+     ), MapSet.member?(state.claimed, id), Map.get(state.auto_resume, id), Map.get(state.retry_attempts, id)}
   end
 
   defp spawn_issue_on_worker_host(%State{} = state, issue, attempt, recipient, worker_host, opts) do
     runner = Keyword.get(opts, :runner, &AgentRunner.run/3)
     worker_generation = System.unique_integer([:positive, :monotonic])
     lifecycle_attempt_id = Signal.new_attempt_id(dispatch_attempt_ticket(issue))
-    optimistic_blockers = if issue.optimistic_start, do: Enum.map(issue.optimistic_start.blockers, & &1.identifier), else: []
+
+    optimistic_blockers =
+      if issue.optimistic_start,
+        do: Enum.map(issue.optimistic_start.blockers, & &1.identifier),
+        else: []
 
     if TelemetryLifecycle.enabled?() do
       TelemetryCohort.record_dispatch(issue, lifecycle_attempt_id, %{
@@ -289,11 +376,15 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
       rework_head_sha: rework_head_sha
     }
 
-    case start_runner_task(issue, runner, recipient, runner_context, opts) do
+    start_runner = Keyword.get(opts, :start_runner_task_fun, &start_runner_task/5)
+
+    case start_runner.(issue, runner, recipient, runner_context, opts) do
       {:ok, pid} ->
         History.note_start(issue.identifier, :dispatch, DateTime.utc_now())
         ref = Process.monitor(pid)
+
         Logger.info("Dispatching issue to agent: #{State.issue_context(issue)} pid=#{inspect(pid)} attempt=#{inspect(attempt)} worker_host=#{worker_host || "local"}")
+
         record_rework_resume(issue, lifecycle_attempt_id)
 
         running_entry =
@@ -347,6 +438,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
 
       {:error, reason} ->
         Logger.error("Unable to spawn agent for #{State.issue_context(issue)}: #{inspect(reason)}")
+
         next_attempt = if is_integer(attempt), do: attempt + 1, else: nil
 
         RetryEngine.schedule_issue_retry(state, issue.id, next_attempt, %{
@@ -379,10 +471,12 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
     end)
   end
 
-  defp capture_rework_head(_issue, initial_head, _opts) when initial_head != :pending, do: initial_head
+  defp capture_rework_head(_issue, initial_head, _opts) when initial_head != :pending,
+    do: initial_head
 
   defp capture_rework_head(issue, :pending, opts) do
-    fetcher = Keyword.get(opts, :rework_head_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1)
+    fetcher =
+      Keyword.get(opts, :rework_head_fetcher, &Aiur.CodeHost.fetch_open_pull_request_for_branch/1)
 
     case fetcher.(issue.identifier) do
       {:ok, %{} = pr} -> ReworkGate.head_sha(pr) || :lookup_failed
@@ -406,7 +500,11 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   # slow poll. The request is therefore posted to this process and sent to the
   # store only after the handler returns (`handle_pending_answer_delivery/1`).
   defp deliver_pending_answers(%Issue{identifier: identifier}, opts) when is_binary(identifier) do
-    send(self(), {:deliver_pending_answers, identifier, Keyword.get(opts, :decision_store, Commands.default_store())})
+    send(
+      self(),
+      {:deliver_pending_answers, identifier, Keyword.get(opts, :decision_store, Commands.default_store())}
+    )
+
     :ok
   end
 
@@ -418,9 +516,11 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   has returned, so the store's dispatch task finds the Orchestrator free and
   the new running entry in its state (#2713).
   """
-  @spec handle_pending_answer_delivery({:deliver_pending_answers, String.t(), GenServer.server()}) :: :ok
-  def handle_pending_answer_delivery({:deliver_pending_answers, identifier, store}) when is_binary(identifier),
-    do: Commands.deliver_pending_answers(identifier, store)
+  @spec handle_pending_answer_delivery({:deliver_pending_answers, String.t(), GenServer.server()}) ::
+          :ok
+  def handle_pending_answer_delivery({:deliver_pending_answers, identifier, store})
+      when is_binary(identifier),
+      do: Commands.deliver_pending_answers(identifier, store)
 
   defp dispatch_attempt_ticket(%Issue{} = issue) do
     case dispatch_attempt_identity(issue) do
@@ -435,21 +535,27 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
   # Backend replacement leaves a parked entry in place until a new Task is
   # admitted. Transfer only the deliberately staged safety context; ordinary
   # dispatches never carry arbitrary state from an older worker.
-  defp inherit_redispatch_safety(entry, %{redispatch_safety: safety} = previous) when is_map(safety) do
+  defp inherit_redispatch_safety(entry, %{redispatch_safety: safety} = previous)
+       when is_map(safety) do
     entry
     |> Map.put(:redispatch_safety, safety)
-    |> Map.put(:rate_limit_fallback_replacement, Map.get(previous, :rate_limit_fallback_replacement) == true)
+    |> Map.put(
+      :rate_limit_fallback_replacement,
+      Map.get(previous, :rate_limit_fallback_replacement) == true
+    )
     |> maybe_put_redispatch_fence(Map.get(previous, :lifecycle_fence))
     |> maybe_put_redispatch_workspace(Map.get(safety, :workspace_path))
   end
 
   defp inherit_redispatch_safety(entry, _previous), do: entry
 
-  defp maybe_put_redispatch_fence(entry, fence) when is_map(fence), do: Map.put(entry, :lifecycle_fence, fence)
+  defp maybe_put_redispatch_fence(entry, fence) when is_map(fence),
+    do: Map.put(entry, :lifecycle_fence, fence)
 
   defp maybe_put_redispatch_fence(entry, _fence), do: entry
 
-  defp maybe_put_redispatch_workspace(entry, path) when is_binary(path), do: Map.put(entry, :workspace_path, path)
+  defp maybe_put_redispatch_workspace(entry, path) when is_binary(path),
+    do: Map.put(entry, :workspace_path, path)
 
   defp maybe_put_redispatch_workspace(entry, _path), do: entry
 
@@ -473,7 +579,8 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
     end
   end
 
-  defp default_running_control(%Issue{} = issue, worker_generation) when is_integer(worker_generation) do
+  defp default_running_control(%Issue{} = issue, worker_generation)
+       when is_integer(worker_generation) do
     backend = CodingAgent.backend_for(issue)
 
     %{
