@@ -1,3 +1,5 @@
+# Cohesion: the reviewer identity/freshness gates, bounded attempt check, and
+# asynchronous rework write form one guarded transition.
 defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
   @moduledoc "Asynchronous review gates and bounded rework state writes."
 
