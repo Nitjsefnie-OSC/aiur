@@ -3,9 +3,9 @@ defmodule Aiur.Orchestrator.StatusCLI.StatusTable do
   alias Aiur.Config
   alias Aiur.ControlCLI.DispatchAccount
   alias Aiur.GitHub.Config, as: GitHubConfig
-  alias Aiur.GitHub.Labels
   alias Aiur.Orchestrator.StatusObservation
   alias Aiur.Orchestrator.StatusReason
+  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Orchestrator.WaitingReason
   import Aiur.Orchestrator.ControlCLI.Output, only: [display_identifier: 1]
 
@@ -55,7 +55,7 @@ defmodule Aiur.Orchestrator.StatusCLI.StatusTable do
 
   defp status_state_label(status) do
     prefix = GitHubConfig.label_prefix()
-    labels = Labels.runtime_labels(Map.get(status, :labels), [Map.get(status, :pause_reason), Map.get(status, :waiting_reason)], prefix)
+    labels = TicketTransition.runtime_labels(Map.get(status, :labels), [Map.get(status, :pause_reason), Map.get(status, :waiting_reason)], prefix)
 
     cond do
       labels != [] -> Enum.join(labels, ",")

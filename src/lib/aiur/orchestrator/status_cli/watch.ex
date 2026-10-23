@@ -3,8 +3,8 @@ defmodule Aiur.Orchestrator.StatusCLI.Watch do
   alias Aiur.AlertFeed
   alias Aiur.Commands
   alias Aiur.GitHub.Config, as: GitHubConfig
-  alias Aiur.GitHub.Labels
   alias Aiur.Orchestrator.StatusReason
+  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Orchestrator.WaitingReason
   import Aiur.Orchestrator.ControlCLI.Output, only: [display_identifier: 1]
   import Aiur.ControlCLI.Protocol, only: [exit_marker: 1]
@@ -64,7 +64,7 @@ defmodule Aiur.Orchestrator.StatusCLI.Watch do
 
   defp watch_state(status) do
     prefix = GitHubConfig.label_prefix()
-    labels = Labels.runtime_labels(Map.get(status, :labels), [Map.get(status, :pause_reason), Map.get(status, :waiting_reason)], prefix)
+    labels = TicketTransition.runtime_labels(Map.get(status, :labels), [Map.get(status, :pause_reason), Map.get(status, :waiting_reason)], prefix)
 
     cond do
       labels != [] -> Enum.join(labels, ",")
