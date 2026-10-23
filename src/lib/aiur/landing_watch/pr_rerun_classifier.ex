@@ -101,7 +101,8 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
     end
   end
 
-  # Base CI was red for every failing job when the run started and is green for each now.
+  # A later passing base check proves the PR's older merge ref can be replaced,
+  # even when base CI itself stayed green before the external failure appeared.
   @doc false
   @spec stale_merge_ref?(map(), keyword()) :: boolean()
   def stale_merge_ref?(run, opts) do
@@ -112,11 +113,10 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
 
   defp stale_merge_ref?(jobs, started, opts) do
     history = Keyword.get(opts, :main_history_fun, &main_history/0).() |> Enum.filter(&is_integer(&1.completed_at)) |> Enum.sort_by(& &1.completed_at)
-    before = history |> Enum.filter(&(&1.completed_at <= started)) |> List.last()
     latest = List.last(history)
 
-    is_map(before) and latest.completed_at > started and
-      Enum.all?(jobs, &(conclusion(before, &1["name"]) in @failed and conclusion(latest, &1["name"]) in @passing))
+    is_map(latest) and latest.completed_at > started and
+      Enum.all?(jobs, &(conclusion(latest, &1["name"]) in @passing))
   end
 
   defp conclusion(entry, name), do: Enum.find_value(entry.checks, &(&1.name == name and &1.conclusion))
