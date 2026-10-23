@@ -115,7 +115,7 @@ defmodule Aiur.Instance.LeaseStore do
   def owned?(ticket, opts \\ []) do
     if configured?() do
       case holder(ticket, opts) do
-        {:held, holder_id} -> holder_id == instance_id(opts)
+        {:held, holder_id} -> holder_id == current_instance_id(opts)
         :unheld -> false
         :disabled -> :disabled
         :unknown -> :unknown
@@ -498,6 +498,13 @@ defmodule Aiur.Instance.LeaseStore do
 
   defp instance_id(state) do
     case state.instance_id do
+      fun when is_function(fun, 0) -> fun.()
+      id -> id
+    end
+  end
+
+  defp current_instance_id(opts) do
+    case Keyword.get(opts, :instance_id, &Identity.current/0) do
       fun when is_function(fun, 0) -> fun.()
       id -> id
     end
