@@ -5,6 +5,7 @@ defmodule Aiur.AgentEnvironment do
 
   alias Aiur.{AgentBuildGuard, AgentScratch, BuildGate, Config, Shell}
   alias Aiur.AgentEnvironment.Contributor
+  alias Aiur.AgentGitHubGuard
   alias Aiur.Config.Paths
 
   # AIUR_RELEASE_NODE + AIUR_INSTANCE_KEY + AIUR_REPO_ROOT are the per-instance
@@ -274,6 +275,11 @@ defmodule Aiur.AgentEnvironment do
 
     workspace_env =
       [
+        # Keep governed GitHub commands first even when Codex resumes an
+        # already-running app-server thread whose process environment predates
+        # workspace provisioning. The per-turn support check guarantees gh is
+        # installed here before a provider turn begins.
+        {~c"PATH", String.to_charlist(agent_path(workspace))},
         {~c"HEX_HOME", String.to_charlist(hex)},
         {~c"MIX_HOME", String.to_charlist(mix)},
         {~c"npm_config_cache", String.to_charlist(npm_cache)},
@@ -399,6 +405,7 @@ defmodule Aiur.AgentEnvironment do
       "AIUR_REAL_GIT=#{if real_git, do: Aiur.Shell.escape(real_git), else: ""}\nexport AIUR_REAL_GIT\n" <>
       Contributor.shell_exports(workspace, opts) <>
       "export AIUR_AGENT_WORKSPACE=#{Aiur.Shell.escape(workspace)}\n" <>
+      "PATH=#{Aiur.Shell.escape(AgentGitHubGuard.bin_dir(workspace))}:\"${PATH:-}\"; export PATH\n" <>
       __MODULE__.GitIdentity.export_prefix(opts) <>
       "aiur_scratch_dir=#{Aiur.Shell.escape(AgentScratch.dir(workspace))}\n" <>
       "if mkdir -p \"$aiur_scratch_dir\" 2>/dev/null; then\n" <>
@@ -528,5 +535,11 @@ defmodule Aiur.AgentEnvironment do
     |> String.split()
     |> Kernel.++(["+S", "#{cap}:#{cap}"])
     |> Enum.join(" ")
+  end
+
+  defp agent_path(workspace) do
+    bin_dir = AgentGitHubGuard.bin_dir(workspace)
+    inherited = System.get_env("PATH", "")
+    Enum.join([bin_dir, inherited] |> Enum.reject(&(&1 == "")), ":")
   end
 end

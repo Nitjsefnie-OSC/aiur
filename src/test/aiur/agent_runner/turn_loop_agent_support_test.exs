@@ -5,6 +5,7 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
   # or refuse the turn without calling the provider at all.
   use Aiur.TestSupport
 
+  alias Aiur.AgentEnvironment
   alias Aiur.AgentGitHubGuard
   alias Aiur.AgentRunner.TurnLoop
   alias Aiur.Workspace.Provisioner
@@ -70,6 +71,16 @@ defmodule Aiur.AgentRunner.TurnLoopAgentSupportTest do
       assert {:completed, _issue} = continue_after_resume(ctx, report_missing_run_turn(ctx.workspace))
 
       assert_receive {:provider_called, 2, []}, 1000
+    end
+
+    test "a resumed turn resolves gh from the workspace wrapper first", ctx do
+      assert {:completed, _issue} = continue_after_resume(ctx, report_missing_run_turn(ctx.workspace))
+      env = AgentEnvironment.workspace_env(ctx.workspace)
+      assert {~c"PATH", path} = List.keyfind(env, ~c"PATH", 0)
+      assert List.first(String.split(List.to_string(path), ":")) == AgentGitHubGuard.bin_dir(ctx.workspace)
+
+      assert {resolved, 0} = System.cmd("sh", ["-c", "command -v gh"], env: Enum.map(env, fn {name, value} -> {List.to_string(name), if(value == false, do: nil, else: List.to_string(value))} end))
+      assert String.trim(resolved) == Path.join(AgentGitHubGuard.bin_dir(ctx.workspace), "gh")
     end
   end
 

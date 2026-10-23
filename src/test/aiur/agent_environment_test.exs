@@ -548,6 +548,9 @@ defmodule Aiur.AgentEnvironmentTest do
     test "trusts the workspace root via MISE_TRUSTED_CONFIG_PATHS, not a sub-path" do
       env = AgentEnvironment.workspace_env("/work/aiur/440")
 
+      assert {~c"PATH", path} = List.keyfind(env, ~c"PATH", 0)
+      assert List.first(String.split(List.to_string(path), ":")) == "/work/aiur/440/.aiur-runtime/bin"
+
       assert {~c"MISE_TRUSTED_CONFIG_PATHS", trusted} =
                List.keyfind(env, ~c"MISE_TRUSTED_CONFIG_PATHS", 0)
 
@@ -763,6 +766,7 @@ defmodule Aiur.AgentEnvironmentTest do
       assert prefix =~ "GH_CONFIG_DIR='/work/aiur/440/.aiur-runtime/gh'"
       assert prefix =~ "AIUR_AGENT_QUOTA_STATE_PATH='/work/aiur/440/.aiur-runtime/github-quota'"
       assert prefix =~ "AIUR_AGENT_WORKSPACE='/work/aiur/440'"
+      assert prefix =~ "PATH='/work/aiur/440/.aiur-runtime/bin':\"${PATH:-}\"; export PATH"
       assert prefix =~ "unset AIUR_GITHUB_BUDGET_KEY"
       assert prefix =~ "export AIUR_GITHUB_BUDGET_IDENTITY_KEY='#{Budget.identity_key("machine_user:primary:aiur-bot")}'"
       refute prefix =~ "AIUR_BUILD_GATE_BIN='"
