@@ -9,6 +9,7 @@ import { computeLayout, measureFlow, crowded, laneMax, fwdLanes, histDays, makeM
 import { H, syncHistory, loadEarlier, ensureDays, ensureFrom } from './history.js';
 import { takeAnchor, restoreAnchor } from './render-anchor.js';
 import { renderHeads } from './render-heads.js';
+import { syncRoving } from './a11y.js';
 export { takeAnchor, restoreAnchor } from './render-anchor.js';
 export { headHTML } from './render-heads.js';
 
@@ -36,10 +37,6 @@ export function viewport() {
     ctx.lt.innerHTML = '<button type="button" data-lt="lock" title="Lock this dependency tree">' + I.lock + '</button><button type="button" data-lt="fit" title="Zoom out to fit this tree">' + I.fit + '</button><button type="button" data-lt="tree" title="View the whole tree">' + I.eye + "</button>";
     ctx.lt.querySelector('[data-lt="lock"]').setAttribute('aria-pressed', 'false');
     ctx.content.appendChild(ctx.lt);
-    ctx.life.on(ctx.content, 'keydown', e => {
-      if (!['Enter', ' '].includes(e.key) || !e.target.matches('.bd-card')) return;
-      e.preventDefault(); e.target.click();
-    });
     ctx.life.on(ctx.content, "click", (e) => {
       const eh = e.target.closest(".bd-eh");
       if (eh) { e.stopPropagation(); fx.lockTree(eh.dataset.e); return; }
@@ -167,6 +164,7 @@ export function update(force) {
     if (!keepL.has(uid.endsWith('d') ? uid.slice(0, -1) : uid)) { el.remove(); ctx.RL.delete(uid); }
   });
   fx.syncNowBtn?.();
+  syncRoving();
   if (changed && (ctx.hoverId || ctx.treeId)) fx.reapply();
   fx.drawEdges(false);
   if (ctx.vp.scrollTop >= 260) H.retryArmed = true;

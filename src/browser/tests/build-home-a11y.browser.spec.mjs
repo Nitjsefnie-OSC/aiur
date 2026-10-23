@@ -1,0 +1,143 @@
+import { test, expect } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { dashboardCredentials } from './support/layout-worker.mjs'
+import { expectAuditClean, openFixture, settleAnimations } from './support/browser-helpers.mjs'
+
+test.use({ httpCredentials: dashboardCredentials, timezoneId: 'America/Los_Angeles', viewport: { width: 1440, height: 900 } })
+
+async function open(page, dataset = 'live', view = 'graph', mode = 'read_only') {
+  await openFixture(page, mode)
+  const query = view === 'graph' ? '' : '?view=' + view
+  await page.goto('/build-fixture/' + dataset + query)
+  await expect(page.locator('#bd-content')).toHaveCount(1)
+  await page.evaluate(async () => {
+    window.a11y = await import('/build-home/a11y.js')
+    window.hook = await import('/build-home/hook.js')
+    window.state = await import('/build-home/state.js')
+  })
+}
+
+test('cards expose complete names and a single roving button stop', async ({ page }) => {
+  await open(page)
+  const result = await page.evaluate(() => {
+    const { ctx } = state
+    const cards = [...document.querySelectorAll('.bd-card')]
+    const current = cards.find(card => card.tabIndex === 0)
+    const live = cards.find(card => card.dataset.id === ctx.D.now[0].id)
+    const row = structuredClone(ctx.D.now[0])
+    row.pct = null; row.cx = null; row.agent = { ...row.agent, state: null }
+    const pack = { ...row, id: 'pack:accessibility', num: null, title: 'Accessibility pass', deps: null }
+    return {
+      region: [ctx.vp.getAttribute('role'), ctx.vp.getAttribute('aria-label'), ctx.vp.tabIndex],
+      stops: cards.filter(card => card.tabIndex === 0).length,
+      label: live?.getAttribute('aria-label'),
+      unknown: a11y.cardLabel(row, { ...ctx.D, children: {} }, current),
+      pack: a11y.cardLabel(pack, { ...ctx.D, children: {} }, current)
+    }
+  })
+  expect(result.region).toEqual(['region', 'Build timeline', -1])
+  expect(result.stops).toBe(1)
+  expect(result.label).toMatch(/^#\d+ .+\. Agent .+: .+\./)
+  expect(result.unknown).toContain('progress unknown')
+  expect(result.unknown).toContain('complexity unknown')
+  expect(result.unknown).toContain('state unknown')
+  expect(result.unknown).toContain('dependency count unknown')
+  expect(result.unknown).toContain('unblock count unknown')
+  expect(result.pack).toMatch(/^Not filed yet\. Accessibility pass\./)
+})
+
+test('arrow keys move focus and space uses the board button behavior', async ({ page }) => {
+  await open(page)
+  const first = page.locator('.bd-card[tabindex="0"]')
+  await first.focus()
+  const initial = await first.getAttribute('data-id')
+  await page.keyboard.press('ArrowDown')
+  const moved = await page.evaluate(() => document.activeElement.dataset.id)
+  expect(moved).not.toBe(initial)
+  await page.evaluate(() => { window.opened = []; state.fx.openModal = (ticket, options) => opened.push([ticket.id, options.origin.dataset.id]) })
+  await page.keyboard.press(' ')
+  expect(await page.evaluate(() => opened)).toEqual([[moved, moved]])
+  await page.evaluate(() => {
+    state.S.trees = true
+    window.locks = []
+    state.fx.lockTree = id => locks.push(['lock', id])
+    state.fx.unlock = () => locks.push(['unlock'])
+  })
+  await page.keyboard.press(' ')
+  await page.evaluate(id => { state.ctx.lockId = id }, moved)
+  await page.keyboard.press(' ')
+  expect(await page.evaluate(() => locks)).toEqual([['lock', moved], ['unlock']])
+})
+
+test('scrolling with no focused card moves the roving stop to the visible section', async ({ page }) => {
+  await open(page)
+  const roving = await page.evaluate(() => {
+    const { ctx, fx } = state
+    document.querySelector('#bd-nowbtn').focus()
+    ctx.vp.scrollTop = ctx.secs.plan.el.offsetTop
+    fx.update()
+    const expected = a11y.readingOrder().find(item => {
+      const host = item.section === 'now' ? ctx.bandEl : ctx.secs[item.section].el
+      return host.offsetTop + item.y >= ctx.vp.scrollTop
+    })?.t.id
+    return { expected, roving: ctx.a11y.roving, stops: [...document.querySelectorAll('.bd-card[tabindex="0"]')].length }
+  })
+  expect(roving.roving).toBe(roving.expected)
+  expect(roving.stops).toBe(1)
+})
+
+test('view switches retain the focused ticket when it is still visible', async ({ page }) => {
+  await open(page)
+  const card = page.locator('.bd-card[tabindex="0"]')
+  await card.focus()
+  const id = await card.getAttribute('data-id')
+  await page.evaluate(() => state.fx.setView('list'))
+  await expect(page.locator('.lr[data-id="' + id + '"]')).toBeFocused()
+  await page.evaluate(() => state.fx.setView('graph'))
+  await expect(page.locator('.bd-card[data-id="' + id + '"]')).toBeFocused()
+})
+
+test('applied agent-state diffs announce only the changed state', async ({ page }) => {
+  await open(page)
+  const changed = await page.evaluate(() => {
+    const { ctx } = state
+    const row = structuredClone(ctx.D.now[0])
+    row.agent.state = 'error'
+    hook.receive({ kind: 'diff', v: 1, epoch: ctx.proto.epoch, generation: ctx.proto.generation + 1, now: ctx.snap.now, upsert: [row], remove: [], set: {} })
+    return '#' + row.num + ': Error'
+  })
+  await expect(page.locator('#bd-state-live')).toHaveText(changed, { timeout: 500 })
+})
+
+test('forced colours preserve visible state', async ({ page }) => {
+  await open(page)
+  await page.emulateMedia({ forcedColors: 'active' })
+  const card = page.locator('.bd-card').first()
+  await card.evaluate(element => element.classList.add('dim', 'ag-active'))
+  await card.focus()
+  await expect(card).toHaveCSS('opacity', '1')
+  await expect(card.locator('.bd-in')).toHaveCSS('border-style', 'solid')
+  await expect(card.locator('.bd-in')).toHaveCSS('border-width', '2px')
+})
+
+test('reduced motion keeps the board operable without a moving transition', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await open(page)
+  await expect(page.locator('.bd-card').first()).toHaveCSS('transition-duration', '0.01s')
+  await page.locator('.bd-card[tabindex="0"]').focus()
+  await page.keyboard.press('End')
+  await expect(page.locator('.bd-card[tabindex="0"]')).toBeFocused()
+})
+
+for (const dataset of ['live', 'dense', 'newrepo', 'noqueue', 'offline', 'unknowns']) {
+  for (const view of ['graph', 'gantt', 'list']) {
+    for (const theme of ['dark', 'light']) {
+      for (const mode of ['read_only', 'writable']) test(`axe: ${dataset}, ${view}, ${theme}, ${mode}`, async ({ page }) => {
+        await open(page, dataset, view, mode)
+        await page.locator('html').evaluate((html, selected) => { html.dataset.theme = selected }, theme)
+        await settleAnimations(page, '#build-root')
+        expectAuditClean(await new AxeBuilder({ page }).include('#bd-vp').analyze())
+      })
+    }
+  }
+}

@@ -23,6 +23,7 @@ import './modal/frame.js';
 import './modal/conversation.js';
 import { applyDoc, applyQueueAdd, reconnectDoc } from './modal/doc.js';
 import './modal/composer.js';
+import { announceState, noteDiff } from './a11y.js';
 
 export function writeOwnData() {
   if (ctx.bdTrees != null) ctx.root.dataset.bdTrees = ctx.bdTrees;
@@ -58,6 +59,7 @@ export function receive(msg) {
     case 'apply': {
       if (msg.kind !== 'snapshot' && msg.kind !== 'diff') return;
       const first = !ctx.snap;
+      const previous = msg.kind === 'diff' ? ctx.D : null;
       const result = msg.kind === 'snapshot' ? acceptSnapshot(msg) : applyDiff(msg);
       if (result.error) {
         if (msg.kind === 'diff') resync(); else fx.renderUnavailable('invalid');
@@ -68,7 +70,7 @@ export function receive(msg) {
         if (first) firstPaint();
         else { repaint(); fx.modalSync({ upsert: ctx.D.all }); }
       }
-      else { fx.dataChanged(msg); fx.modalSync(msg); fx.drawEdgesSoon(30); }
+      else { announceState(noteDiff(previous, ctx.D, msg)); fx.dataChanged(msg); fx.modalSync(msg); fx.drawEdgesSoon(30); }
       writeOwnData();
       break;
     }

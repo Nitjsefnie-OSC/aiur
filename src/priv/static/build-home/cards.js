@@ -9,6 +9,7 @@ import { rowState, agentClasses, glowHTML, logoHTML, lineLogoHTML, srHTML } from
 import { colKey, match } from './match.js';
 import { place } from './render.js';
 import { estOf } from './gantt.js';
+import { labelCard } from './a11y.js';
 
 const CX = ['❶', '❷', '❸', '❹', '❺'], CXH = [145, 110, 80, 50, 25];
 export const finite = (x, lo = 0, hi = Number.MAX_SAFE_INTEGER) => Number.isFinite(x) && x >= lo && x <= hi ? x : null;
@@ -119,7 +120,7 @@ export function makeCard(it) {
     else status = '<div class="bd-status"><span>Open · not queued</span><span>' + points + ' pts</span></div>';
     el.innerHTML = glow + '<div class="bd-in"' + (startUnknown || estUnknown ? ' title="' + esc(tip) + '"' : '') + '>' + sr + top + '<div class="bd-title">' + esc(t.title) + '</div>' + body + status + '</div>' + logoHTML(t, det);
   }
-  decorate(el); return el;
+  el.setAttribute('role', 'button'); decorate(el); return el;
 }
 export function decorate(el) {
   const t = ctx.D.byId[el.dataset.id], F = S.feature;
@@ -129,6 +130,7 @@ export function decorate(el) {
   el.classList.toggle('also', !!also); el.classList.toggle('feat-on', !!inFeat);
   const hue = F && Object.hasOwn(ctx.D.features, F) ? finite(ctx.D.features[F].hue, 0, 360) : null;
   if (hue !== null) el.style.setProperty('--fh', hue); else el.style.removeProperty('--fh');
+  labelCard(el);
 }
 export function decorateAll() { rendered().forEach(decorate); fx.drawEdgesSoon(10); }
 export function refreshTicket(id) {
