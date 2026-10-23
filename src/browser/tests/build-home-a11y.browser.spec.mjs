@@ -86,6 +86,20 @@ test('scrolling with no focused card moves the roving stop to the visible sectio
   expect(roving.stops).toBe(1)
 })
 
+test('keyboard tree highlighting ends when card focus leaves the board', async ({ page }) => {
+  await open(page)
+  await page.evaluate(() => {
+    state.S.trees = true
+    state.ctx.vp.scrollTop = state.ctx.secs.plan.el.offsetTop
+    state.fx.update()
+  })
+  await page.locator('.bd-card[tabindex="0"]').focus()
+  await page.keyboard.press('ArrowDown')
+  await expect(page.locator('.bd-content')).toHaveClass(/hovering/)
+  await page.locator('#bd-nowbtn').focus()
+  await expect(page.locator('.bd-content')).not.toHaveClass(/hovering/)
+})
+
 test('view switches retain the focused ticket when it is still visible', async ({ page }) => {
   await open(page)
   const card = page.locator('.bd-card[tabindex="0"]')

@@ -125,14 +125,21 @@ export function onCardFocusIn(event) {
   const card = event.target.closest?.('.bd-card');
   if (!card) return;
   ctx.a11y.focusId = ctx.a11y.roving = card.dataset.id;
-  syncRoving(); fx.onHover(event);
+  syncRoving();
+  if (S.trees && !ctx.lockId && card.matches(':focus-visible') && !card.closest('.bd-now')) {
+    ctx.a11y.focusHoverId = card.dataset.id;
+    fx.setHover(card.dataset.id, card);
+  }
 }
 
 export function onCardFocusOut(event) {
   const card = event.target.closest?.('.bd-card');
   if (!card || event.relatedTarget?.closest?.('.bd-card')) return;
   ctx.a11y.focusId = null;
-  fx.onLeave();
+  if (ctx.a11y.focusHoverId === card.dataset.id) {
+    ctx.a11y.focusHoverId = null;
+    if (!ctx.lockId) fx.setHover(null);
+  }
 }
 
 function displayAnnouncements() {
