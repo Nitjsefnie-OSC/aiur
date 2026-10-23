@@ -390,24 +390,13 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
         |> Enum.reject(&is_nil/1)
         |> MapSet.new()
 
-      Enum.any?(labels, &foreign_state_label?(&1, prefix, active_states))
+      StateLabels.foreign_candidate_state_label?(labels, prefix, active_states)
     else
       false
     end
   end
 
   defp foreign_tracker_state_label?(_issue), do: false
-
-  defp foreign_state_label?(label, prefix, active_states) do
-    case label |> String.trim() |> String.downcase() |> String.split(":", parts: 2) do
-      [other_prefix, state] ->
-        other_prefix != prefix and
-          StateLabels.foreign_candidate_state_label?(["#{other_prefix}:#{state}"], prefix, active_states)
-
-      _other ->
-        false
-    end
-  end
 
   defp issue_state_decision(%Issue{} = issue, active_states, terminal_states) do
     cond do
