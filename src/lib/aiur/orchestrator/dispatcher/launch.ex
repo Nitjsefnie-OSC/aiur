@@ -148,6 +148,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
             :prior_work,
             Map.get(envelope, :prior_work, Keyword.get(opts, :prior_work, false))
           )
+          |> Keyword.put(:stalled_alert_outstanding, Map.get(envelope, :stalled_alert_outstanding, Keyword.get(opts, :stalled_alert_outstanding, false)))
 
         dispatch_to_worker(state, selected_issue, envelope_attempt, envelope_host, envelope_opts)
     end
@@ -305,6 +306,7 @@ defmodule Aiur.Orchestrator.Dispatcher.Launch do
             control: default_running_control(issue, worker_generation),
             telemetry_attempt_id: lifecycle_attempt_id,
             retry_attempt: RetryEngine.normalize_retry_attempt(attempt),
+            stalled_alert_outstanding: Keyword.get(opts, :stalled_alert_outstanding, false),
             prior_work: Keyword.get(opts, :prior_work, false),
             rework_head_sha: rework_head_sha,
             started_at: DateTime.utc_now()

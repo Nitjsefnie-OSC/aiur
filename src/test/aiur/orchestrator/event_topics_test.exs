@@ -60,6 +60,8 @@ defmodule Aiur.Orchestrator.EventTopicsTest do
 
   test "retry progress resolves an outstanding stalled alert once" do
     identifier = "stall-progress-#{System.unique_integer([:positive])}"
+    topic = "ticket.#{identifier}.agent.stalled.resolved"
+    stalled_topic = "ticket.#{identifier}.agent.stalled"
     test_pid = self()
 
     emitter = fn topic, opts ->
@@ -67,16 +69,23 @@ defmodule Aiur.Orchestrator.EventTopicsTest do
       :ok
     end
 
-    state = %State{retry_attempts: %{"issue-1" => %{identifier: identifier, stalled_alert_outstanding: true}}}
+    state = %State{running: %{"issue-1" => %{identifier: identifier, stalled_alert_outstanding: true}}}
 
     next =
-      EventTopics.route(state, %{topic: "ticket.#{identifier}.agent.progress", issue: "issue"}, alert_emitter: emitter)
+      EventTopics.route(state, %{topic: "ticket.#{identifier}.agent.progress", issue: "issue"},
+        alert_emitter: emitter,
+        stalled_alert_state: fn ^stalled_topic -> :firing end
+      )
 
-    assert_received {:resolved, "ticket.#{identifier}.agent.stalled.resolved", opts}
+    assert_received {:resolved, ^topic, opts}
     assert opts[:needs_attention] == false
-    refute next.retry_attempts["issue-1"].stalled_alert_outstanding
+    refute next.running["issue-1"].stalled_alert_outstanding
 
-    EventTopics.route(next, %{topic: "ticket.#{identifier}.agent.progress.checkin"}, alert_emitter: emitter)
+    EventTopics.route(next, %{topic: "ticket.#{identifier}.agent.progress.checkin"},
+      alert_emitter: emitter,
+      stalled_alert_state: fn _ -> :firing end
+    )
+
     refute_received {:resolved, _, _}
   end
 
@@ -92,8 +101,51 @@ defmodule Aiur.Orchestrator.EventTopicsTest do
     next =
       EventTopics.route(%State{}, %{topic: "ticket.#{identifier}.agent.progress.phase"}, alert_emitter: emitter)
 
-    assert next.retry_attempts == %{}
+    assert next.running == %{}
     refute_received {:resolved, _}
+  end
+
+  test "progress retires its retry marker when pause resume already resolved the alert" do
+    identifier = "paused-stall-#{System.unique_integer([:positive])}"
+    topic = "ticket.#{identifier}.agent.stalled.resolved"
+    test_pid = self()
+
+    emitter = fn event_topic, _opts ->
+      send(test_pid, {:resolved, event_topic})
+      :ok
+    end
+
+    state = %State{running: %{"issue-1" => %{identifier: identifier, stalled_alert_outstanding: true}}}
+
+    next =
+      EventTopics.route(state, %{topic: "ticket.#{identifier}.agent.progress"},
+        alert_emitter: emitter,
+        stalled_alert_state: fn _ -> :resolved end
+      )
+
+    refute_received {:resolved, ^topic}
+    refute next.running["issue-1"].stalled_alert_outstanding
+  end
+
+  test "progress leaves the marker set when alert state is unknown" do
+    identifier = "unknown-stall-#{System.unique_integer([:positive])}"
+    test_pid = self()
+
+    emitter = fn topic, _opts ->
+      send(test_pid, {:resolved, topic})
+      :ok
+    end
+
+    state = %State{running: %{"issue-1" => %{identifier: identifier, stalled_alert_outstanding: true}}}
+
+    next =
+      EventTopics.route(state, %{topic: "ticket.#{identifier}.agent.progress"},
+        alert_emitter: emitter,
+        stalled_alert_state: fn _ -> :unknown end
+      )
+
+    refute_received {:resolved, _}
+    assert next.running["issue-1"].stalled_alert_outstanding
   end
 
   test "a branch push does not alert when the PR body already names its head" do

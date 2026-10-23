@@ -19,6 +19,7 @@ defmodule Aiur.Orchestrator.EventTopics do
     State
   }
 
+  alias Aiur.AlertFeed
   alias Aiur.Alerts
   alias Aiur.Commands
 
@@ -259,33 +260,46 @@ defmodule Aiur.Orchestrator.EventTopics do
       nil ->
         state
 
-      retry ->
-        emitter = Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2)
-
-        case emitter.("ticket.#{identifier}.agent.stalled.resolved",
-               message: "Agent reported progress after the stalled worker was retried.",
-               issue: event_issue(event),
-               reason: "The retried agent reported progress.",
-               needs_attention: false,
-               severity: "info",
-               durable: true
-             ) do
-          :ok ->
-            updated = Map.put(state.retry_attempts[retry.issue_id], :stalled_alert_outstanding, false)
-            %{state | retry_attempts: Map.put(state.retry_attempts, retry.issue_id, updated)}
-
-          _error ->
-            state
-        end
+      {issue_id, running_entry} ->
+        resolve_stalled_alert_for_running_entry(state, identifier, issue_id, running_entry, event, opts)
     end
   end
 
+  defp resolve_stalled_alert_for_running_entry(state, identifier, issue_id, running_entry, event, opts) do
+    alert_state = Keyword.get(opts, :stalled_alert_state, &AlertFeed.condition_state/1).("ticket.#{identifier}.agent.stalled")
+
+    case alert_state do
+      :firing -> emit_stalled_resolution(state, identifier, issue_id, running_entry, event, opts)
+      :resolved -> clear_running_stalled_alert(state, issue_id, running_entry)
+      :unknown -> state
+    end
+  end
+
+  defp emit_stalled_resolution(state, identifier, issue_id, running_entry, event, opts) do
+    emitter = Keyword.get(opts, :alert_emitter, &Alerts.emit_system/2)
+
+    result =
+      emitter.("ticket.#{identifier}.agent.stalled.resolved",
+        message: "Agent reported progress after the stalled worker was retried.",
+        issue: event_issue(event) || Map.get(running_entry, :issue),
+        reason: "The retried agent reported progress.",
+        needs_attention: false,
+        severity: "info",
+        durable: true
+      )
+
+    if result == :ok, do: clear_running_stalled_alert(state, issue_id, running_entry), else: state
+  end
+
   defp retry_with_stalled_alert(state, identifier) do
-    Enum.find_value(state.retry_attempts, fn {issue_id, retry} ->
-      if Map.get(retry, :identifier) == identifier and Map.get(retry, :stalled_alert_outstanding) do
-        %{issue_id: issue_id}
-      end
+    Enum.find(state.running, fn {_issue_id, entry} ->
+      Map.get(entry, :identifier) == identifier and Map.get(entry, :stalled_alert_outstanding) == true
     end)
+  end
+
+  defp clear_running_stalled_alert(state, issue_id, running_entry) do
+    updated = Map.put(running_entry, :stalled_alert_outstanding, false)
+    %{state | running: Map.put(state.running, issue_id, updated)}
   end
 
   defp event_issue(event), do: Map.get(event, :issue, Map.get(event, "issue"))

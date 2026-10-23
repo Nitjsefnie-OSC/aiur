@@ -213,7 +213,7 @@ defmodule Aiur.Orchestrator.RuntimeWatchdogTest do
 
   test "stall retry records the outstanding alert by ticket identifier" do
     now = DateTime.utc_now()
-    entry = %{running_entry(now) | last_codex_timestamp: DateTime.add(now, -2, :second)}
+    entry = Map.put(running_entry(now), :last_codex_timestamp, DateTime.add(now, -2, :second))
     next = RuntimeWatchdog.restart_stalled_issue(%State{running: %{"issue-1" => entry}}, "issue-1", entry, now, 1_000)
 
     assert next.retry_attempts["issue-1"].stalled_alert_outstanding
