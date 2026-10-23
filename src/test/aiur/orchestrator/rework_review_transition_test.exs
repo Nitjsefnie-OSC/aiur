@@ -18,6 +18,7 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
   """
 
   use Aiur.TestSupport
+  import ExUnit.CaptureLog
 
   alias Aiur.{AgentQueueStore, Issue}
   alias Aiur.Orchestrator.{CommentWake, State}
@@ -65,8 +66,7 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
   end
 
   # The shape the poll/webhook pipes publish: a live CHANGES_REQUESTED review
-  # against the current head (not stale, not an APPROVED pull request), by a
-  # CODEOWNERS-trusted author.
+  # against the current head (not stale, not an APPROVED pull request).
   defp changes_requested_review_event(issue) do
     submitted_at = DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.to_iso8601()
     head_committed_at = DateTime.utc_now() |> DateTime.add(-120, :second) |> DateTime.to_iso8601()
@@ -90,18 +90,17 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
   end
 
   test "a CHANGES_REQUESTED review moves a human-review ticket to rework" do
+    issue = human_review_issue()
     write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
-
-    Application.put_env(:aiur, :memory_tracker_issues, [human_review_issue()])
+    Application.put_env(:aiur, :memory_tracker_issues, [issue])
     Application.put_env(:aiur, :memory_tracker_recipient, self())
 
-    state = base_state()
-    issue = human_review_issue()
-    event = changes_requested_review_event(issue)
+    event = changes_requested_review_event(issue) |> Map.put(:author_trusted?, false)
 
-    CommentWake.maybe_transition_idle_issue_to_rework(state, @issue_number, :pr_review, event, 1)
+    CommentWake.maybe_transition_idle_issue_to_rework(base_state(), @issue_number, :pr_review, event, 1)
 
-    # The rework write is a real tracker mutation, not just a routed event.
+    # The configured human merger is not in `trusted_accounts`; this verifies
+    # the review still reaches the normal state writer and replaces human-review.
     assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 1_000
   end
 

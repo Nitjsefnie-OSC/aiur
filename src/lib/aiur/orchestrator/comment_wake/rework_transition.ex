@@ -76,7 +76,7 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
 
   defp comment_rework_gate(issue_key, event) do
     cond do
-      not CommentWake.trusted_comment_event?(event) ->
+      not CommentWake.trusted_comment_event?(event) and not configured_human_review?(event) ->
         {:skip, :untrusted_author}
 
       changes_requested_review?(event) and not human_merger_review?(event) ->
@@ -91,6 +91,10 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
       true ->
         ReworkGate.verify_unresolved_review_threads(issue_key, rework_threads_opts(event))
     end
+  end
+
+  defp configured_human_review?(event) do
+    changes_requested_review?(event) and human_merger_review?(event)
   end
 
   defp human_merger_review?(event) do
