@@ -23,8 +23,10 @@ function bindOnce(host, right) {
   ctx.life.on(host, 'click', e => {
     const button = e.target.closest('[data-v]');
     if (button) setView(button.dataset.v);
-    const list = e.target.closest('[data-list]');
-    if (list) setList(list.dataset.list);
+    else {
+      const list = e.target.closest('[data-list]');
+      if (list) setList(list.dataset.list);
+    }
   });
   ctx.life.on(host, 'keydown', e => {
     const button = e.target.closest('[data-v], [data-list]');
