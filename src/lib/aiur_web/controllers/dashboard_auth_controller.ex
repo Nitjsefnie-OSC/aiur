@@ -83,7 +83,7 @@ defmodule AiurWeb.DashboardAuthController do
   end
 
   @spec authentication_finish(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def authentication_finish(conn, %{"assertion" => assertion}) do
+  def authentication_finish(conn, %{"assertion" => assertion}) when is_map(assertion) do
     challenge_id = get_session(conn, :passkey_authentication_challenge)
 
     with {:ok, challenge} <- Passkeys.take_challenge(challenge_id),
@@ -123,10 +123,10 @@ defmodule AiurWeb.DashboardAuthController do
   end
 
   @spec registration_finish(Plug.Conn.t(), map()) :: Plug.Conn.t()
-  def registration_finish(conn, %{"credential" => credential} = params) do
+  def registration_finish(conn, %{"credential" => credential} = params) when is_map(credential) do
     session = Plug.Conn.get_session(conn)
     challenge_id = get_session(conn, :passkey_registration_challenge)
-    response = credential["response"] || %{}
+    response = if is_map(credential["response"]), do: credential["response"], else: %{}
     label = params["label"] || "Passkey"
 
     with true <- fresh_google_session?(session),

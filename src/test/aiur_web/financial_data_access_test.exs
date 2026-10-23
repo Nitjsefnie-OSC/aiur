@@ -63,6 +63,24 @@ defmodule AiurWeb.FinancialDataAccessTest do
     assert mounted.private.aiur_financial_data_access == context
   end
 
+  test "a valid dashboard session marker authenticates the next browser request" do
+    configure_credentials("operator", "financial-auth-secret")
+    configure_endpoint(dashboard_auth_required: true, dashboard_writable: false)
+
+    authenticated = authenticated_conn("operator", "financial-auth-secret")
+    marker = get_session(authenticated, FinancialDataAccess.session_key())
+
+    browser_request =
+      session_conn()
+      |> put_session(FinancialDataAccess.session_key(), marker)
+      |> FinancialDataAccess.authenticate_request(browser?: true)
+      |> FinancialDataAccess.persist_session([])
+
+    refute browser_request.halted
+    assert browser_request.status == nil
+    assert get_session(browser_request, FinancialDataAccess.session_key()) == marker
+  end
+
   test "unconfigured dashboard authentication refuses the request with its cause" do
     conn = FinancialDataAccess.call(session_conn(), [])
 

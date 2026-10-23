@@ -50,9 +50,9 @@ defmodule AiurWeb.FinancialDataAccess do
   def authenticate_request(conn, opts) do
     browser? = Keyword.get(opts, :browser?, false)
 
-    case context_from_session(get_session(conn, @session_key)) do
+    case context_from_session(get_session(conn)) do
       {:ok, _context} ->
-        conn
+        put_private(conn, @conn_private_key, get_session(conn, @session_key))
 
       :error ->
         if browser? and not browser_basic_auth?() do

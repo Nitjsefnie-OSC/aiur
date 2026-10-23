@@ -57,6 +57,10 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
 
   @spec register(Wax.Challenge.t(), binary(), binary(), term(), String.t()) :: :ok | {:error, atom()}
   def register(challenge, attestation, client_data_json, label, owner_email) do
+    with_credential_lock(fn -> do_register(challenge, attestation, client_data_json, label, owner_email) end)
+  end
+
+  defp do_register(challenge, attestation, client_data_json, label, owner_email) do
     with %Wax.Challenge{} <- challenge,
          {:ok, attestation} <- decode64(attestation),
          {:ok, client_data_json} <- decode64(client_data_json),
@@ -74,14 +78,17 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
   end
 
   @spec authenticate(Wax.Challenge.t(), map()) :: {:ok, map()} | {:error, atom()}
-  def authenticate(challenge, assertion) do
+  def authenticate(challenge, assertion) when is_map(assertion) do
     with %Wax.Challenge{} <- challenge,
          {:ok, id_raw} <- decode64(assertion["rawId"] || assertion["id"]),
          id <- Base.url_encode64(id_raw, padding: false),
-         credential when not is_nil(credential) <- Enum.find(credentials!(), &(&1.id == id)),
+         {:ok, credentials} <- credentials(),
+         credential when not is_nil(credential) <- Enum.find(credentials, &(&1.id == id)),
          response when is_map(response) <- assertion["response"],
          {:ok, client_data_json} <- decode64(response["clientDataJSON"]),
-         {:ok, auth_data} <- Wax.authenticate(id, decode64!(response["authenticatorData"]), decode64!(response["signature"]), client_data_json, challenge),
+         {:ok, auth_data_bin} <- decode64(response["authenticatorData"]),
+         {:ok, signature} <- decode64(response["signature"]),
+         {:ok, auth_data} <- Wax.authenticate(id, auth_data_bin, signature, client_data_json, challenge),
          true <- sign_count_valid?(credential.sign_count, auth_data.sign_count),
          :ok <- update_sign_count(credential, auth_data.sign_count) do
       {:ok, credential}
@@ -89,6 +96,8 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
       _ -> {:error, :invalid_assertion}
     end
   end
+
+  def authenticate(_challenge, _assertion), do: {:error, :invalid_assertion}
 
   @spec allowed_user?(map()) :: boolean()
   def allowed_user?(%{email: email}) do
@@ -99,19 +108,39 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
   @doc false
   @spec sign_count_valid?(non_neg_integer(), non_neg_integer()) :: boolean()
   def sign_count_valid?(0, 0), do: true
-  def sign_count_valid?(previous, current), do: current >= previous
+  def sign_count_valid?(previous, current), do: current > previous
 
   defp update_sign_count(old, count) do
-    updated = Enum.map(credentials!(), fn credential -> if credential.id == old.id, do: %{credential | sign_count: count}, else: credential end)
-    store_credentials(updated)
+    with_credential_lock(fn -> update_sign_count_locked(old, count) end)
   end
+
+  defp update_sign_count_locked(old, count) do
+    case credentials() do
+      {:ok, current} -> persist_sign_count(current, old.id, count)
+      {:error, _reason} -> {:error, :credential_store_unavailable}
+    end
+  end
+
+  defp persist_sign_count(current, id, count) do
+    case Enum.find(current, &(&1.id == id)) do
+      %{sign_count: previous} when (previous == 0 and count == 0) or count > previous ->
+        updated = Enum.map(current, &set_sign_count(&1, id, count))
+        store_credentials(updated)
+
+      _ ->
+        {:error, :credential_store_unavailable}
+    end
+  end
+
+  defp set_sign_count(%{id: id} = credential, id, count), do: %{credential | sign_count: count}
+  defp set_sign_count(credential, _id, _count), do: credential
 
   defp credentials, do: with({:ok, path} <- file_path(), do: read_credentials(path))
 
-  defp credentials! do
-    case credentials() do
-      {:ok, values} -> values
-      _ -> []
+  defp with_credential_lock(fun) do
+    case :global.trans({{__MODULE__, :credential_file}, self()}, fun) do
+      {:aborted, _reason} -> {:error, :credential_store_unavailable}
+      result -> result
     end
   end
 
@@ -134,23 +163,8 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
     with {:ok, path} <- file_path(),
          :ok <- File.mkdir_p(Path.dirname(path)),
          :ok <- File.chmod(Path.dirname(path), 0o700),
-         :ok <- atomic_write(path, Jason.encode!(Enum.map(records, &encode_record/1))),
+         :ok <- Aiur.Fs.atomic_write(path, Jason.encode!(Enum.map(records, &encode_record/1)), mode: 0o600, fsync: true),
          do: File.chmod(path, 0o600)
-  end
-
-  defp atomic_write(path, data) do
-    temp = path <> ".tmp-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
-
-    with {:ok, file} <- File.open(temp, [:write, :binary, :exclusive], 0o600),
-         :ok <- IO.binwrite(file, data),
-         :ok <- File.close(file),
-         :ok <- File.rename(temp, path) do
-      :ok
-    else
-      error ->
-        _ = File.rm(temp)
-        error
-    end
   end
 
   defp file_path do
@@ -180,7 +194,6 @@ defmodule AiurWeb.DashboardAuth.Passkeys do
   defp decode_key_value(%{"binary" => value}), do: Base.decode64!(value)
   defp decode_key_value(value), do: value
 
-  defp decode64!(value), do: Base.url_decode64!(value, padding: false)
   defp decode64(value) when is_binary(value), do: Base.url_decode64(value, padding: false)
   defp decode64(_), do: :error
   defp safe_label(label) when is_binary(label), do: label |> String.trim() |> String.slice(0, 80)

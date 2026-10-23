@@ -22,6 +22,14 @@ defmodule AiurWeb.DashboardAuthPasskeysTest do
   test "authenticator counters allow unsupported 0-to-0 and reject a decrease" do
     assert Passkeys.sign_count_valid?(0, 0)
     assert Passkeys.sign_count_valid?(8, 9)
+    refute Passkeys.sign_count_valid?(8, 8)
     refute Passkeys.sign_count_valid?(9, 8)
+  end
+
+  test "malformed assertions return an error instead of raising" do
+    challenge = Wax.new_authentication_challenge(origin: "https://aiur.example.test", rp_id: "aiur.example.test")
+
+    assert {:error, :invalid_assertion} = Passkeys.authenticate(challenge, "not a map")
+    assert {:error, :invalid_assertion} = Passkeys.authenticate(challenge, %{"rawId" => "!"})
   end
 end
