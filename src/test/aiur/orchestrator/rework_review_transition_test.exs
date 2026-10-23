@@ -131,6 +131,7 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
 
     event = changes_requested_review_event(issue)
     event = update_in(event, [:comment], &Map.delete(&1, "user"))
+    event = Map.put(event, :author_trusted?, false)
 
     CommentWake.maybe_transition_idle_issue_to_rework(
       base_state(),
@@ -143,19 +144,23 @@ defmodule Aiur.Orchestrator.ReworkReviewTransitionTest do
     refute_receive {:memory_tracker_state_update, @issue_number, "rework"}, 100
   end
 
-  test "a CHANGES_REQUESTED review from a non-merger is ignored" do
+  test "a trusted non-merger CHANGES_REQUESTED review moves the ticket to rework" do
     write_workflow_file!(Aiur.Workflow.workflow_file_path(), tracker_kind: "memory")
 
     issue = human_review_issue()
     Application.put_env(:aiur, :memory_tracker_issues, [issue])
     Application.put_env(:aiur, :memory_tracker_recipient, self())
 
-    event = changes_requested_review_event(issue)
+    event =
+      changes_requested_review_event(issue)
+      |> put_in([:comment, "user", "login"], "trusted-reviewer")
+      |> Map.put(:author_trusted?, true)
+
     event = Map.put(event, :human_merger_allowed_fun, fn _login -> false end)
 
     CommentWake.maybe_transition_idle_issue_to_rework(base_state(), @issue_number, :pr_review, event, 1)
 
-    refute_receive {:memory_tracker_state_update, @issue_number, "rework"}, 100
+    assert_receive {:memory_tracker_state_update, @issue_number, "rework"}, 1_000
   end
 
   test "an APPROVED review does not move a human-review ticket to rework" do

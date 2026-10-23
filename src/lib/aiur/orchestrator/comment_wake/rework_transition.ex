@@ -79,9 +79,6 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
       not CommentWake.trusted_comment_event?(event) and not configured_human_review?(event) ->
         {:skip, :untrusted_author}
 
-      changes_requested_review?(event) and not human_merger_review?(event) ->
-        {:skip, :untrusted_author}
-
       CommentWake.benign_review_pass_comment?(event) ->
         {:skip, :benign_review_pass_comment}
 
