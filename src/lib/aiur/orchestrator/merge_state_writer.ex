@@ -17,7 +17,7 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
         TicketTransition.write_state(identifier, target,
           writer: :comment_wake,
           expected_state: state,
-          refuse_labels: operator_hold_labels(),
+          refuse_labels: [],
           tracker: tracker
         )
 

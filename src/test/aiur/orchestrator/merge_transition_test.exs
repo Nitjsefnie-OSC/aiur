@@ -47,6 +47,59 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     assert MergeStateWriter.operator_hold_labels() == ["needs-triage", "human:todo", "sym:paused", "sym:parked"]
   end
 
+  test "merged parked ticket transitions to done and clears parked and paused labels" do
+    labels = start_supervised!({Agent, fn -> ["agent:parked", "agent:paused", "agent:in-progress"] end}, id: :labels)
+
+    request_fun = fn request ->
+      case request.method do
+        :get ->
+          {:ok, %{status: 200, body: %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}}
+
+        :post ->
+          Agent.update(labels, &Enum.uniq(&1 ++ request.body["labels"]))
+          {:ok, %{status: 200, body: Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}
+
+        :delete ->
+          removed = URI.decode(request.url |> String.split("/") |> List.last())
+          Agent.update(labels, &Enum.reject(&1, fn label -> label == removed end))
+          {:ok, %{status: 200, body: Enum.map(Agent.get(labels, & &1), &%{"name" => &1})}}
+
+        :patch ->
+          {:ok, %{status: 200, body: %{}}}
+      end
+    end
+
+    context = %{
+      request_fun: request_fun,
+      token: "test-token",
+      owner: "owner",
+      repo: "repo",
+      issue_number: "3778",
+      issue_url: "https://api.github.com/repos/owner/repo/issues/3778",
+      prefix: "agent",
+      opts: [request_fun: request_fun]
+    }
+
+    updater = fn "3778", "done" ->
+      IssueState.apply_issue_state_update(
+        context,
+        %{"state" => "closed", "labels" => Enum.map(Agent.get(labels, & &1), &%{"name" => &1})},
+        "done",
+        "agent:done"
+      )
+    end
+
+    merge(
+      %{"state" => "closed", "labels" => [%{"name" => "agent:parked"}, %{"name" => "agent:paused"}]},
+      fn state, _identifier -> state end,
+      target_state: "done",
+      update_issue_state_fun: updater
+    )
+
+    assert_received :terminated
+    assert Agent.get(labels, & &1) == ["agent:done"]
+  end
+
   test "a closed ticket with an active label is repaired to done" do
     issue = %{
       "state" => "closed",

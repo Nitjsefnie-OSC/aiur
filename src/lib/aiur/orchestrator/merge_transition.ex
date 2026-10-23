@@ -50,14 +50,14 @@ defmodule Aiur.Orchestrator.MergeTransition do
           keyword()
         ) :: term()
   def write_terminal_target("done", identifier, update_issue_state_fun, opts) do
-    LocalHold.run(
+    retry_terminal_write(
       fn ->
-        retry_terminal_write(
+        LocalHold.run(
           fn -> update_issue_state_fun.(to_string(identifier), "done") end,
-          opts
+          LocalHold.caller_opts(Keyword.put(opts, :local_hold_max_wait_ms, 3_600_000))
         )
       end,
-      LocalHold.caller_opts(Keyword.put(opts, :local_hold_max_wait_ms, 3_600_000))
+      opts
     )
   end
 
