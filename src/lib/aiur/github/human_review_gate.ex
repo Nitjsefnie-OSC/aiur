@@ -3,13 +3,15 @@ defmodule Aiur.GitHub.HumanReviewGate do
   Human-review readiness checks for GitHub issues.
 
   This module blocks a transition to human review while the canonical open
-  pull request has unaddressed review-thread comments or conflicts with its
-  base. Mergeable PRs may wait through base movement; the merge queue tests
-  them against the current base. It composes pull request discovery, bot identity resolution,
+  pull request has stale Local tests evidence, unaddressed review-thread
+  comments, or conflicts with its base. Mergeable PRs may wait through base
+  movement; the merge queue tests them against the current base. It composes pull request discovery, bot identity resolution,
   review-thread classification and mergeability without mutating GitHub state.
   """
 
   alias Aiur.Config
+  alias Aiur.Events.GithubCIPoller.ApprovalCarry
+  alias Aiur.LocalTestEvidence
 
   alias Aiur.GitHub.{
     BotIdentity,
@@ -147,7 +149,8 @@ defmodule Aiur.GitHub.HumanReviewGate do
   defp verify_issue_ready(context, check_base?) do
     case open_pull_request(context) do
       {:ok, %{"number" => pr_number} = pr} when is_integer(pr_number) ->
-        with {:ok, agent_login} <-
+        with :ok <- verify_pr_body_evidence(context, pr),
+             {:ok, agent_login} <-
                BotIdentity.bot_account(context.opts, context.request_fun, context.token),
              :ok <- verify_pr_review_threads_clear(context, pr_number, agent_login) do
           verify_base_ancestry(context, pr, check_base?)
@@ -162,6 +165,70 @@ defmodule Aiur.GitHub.HumanReviewGate do
       {:error, _reason} = error ->
         error
     end
+  end
+
+  defp verify_pr_body_evidence(context, %{"head" => %{"sha" => head}, "body" => body} = pr)
+       when is_binary(head) and is_binary(body) do
+    case LocalTestEvidence.parse(body) do
+      {:ok, evidence} ->
+        case LocalTestEvidence.validate(evidence, "none", head) do
+          :ok ->
+            :ok
+
+          {:error, reason} ->
+            if identical_contribution_after_merge_only_advance?(context, pr, evidence.tested_head, head),
+              do: :ok,
+              else: stale_pr_body_evidence(pr, head, evidence.tested_head, reason)
+        end
+
+      :missing ->
+        stale_pr_body_evidence(pr, head, nil, "Local tests section is missing")
+
+      {:error, reason} ->
+        stale_pr_body_evidence(pr, head, nil, reason)
+    end
+  end
+
+  defp verify_pr_body_evidence(_context, %{"number" => number}),
+    do: {:error, {:stale_pr_body_evidence, %{pr_number: number, reason: "PR head or body is missing"}}}
+
+  defp identical_contribution_after_merge_only_advance?(context, %{"number" => number}, tested_head, head)
+       when is_integer(number) do
+    case compare_commits(context, tested_head, head) do
+      {:ok, %{"status" => "ahead", "total_commits" => count, "commits" => commits}}
+      when is_integer(count) and count > 0 and length(commits) == count ->
+        merge_only_commits?(commits) and identical_pr_contribution?(context, tested_head, head, number)
+
+      _ ->
+        false
+    end
+  end
+
+  defp identical_contribution_after_merge_only_advance?(_context, _pr, _tested_head, _head), do: false
+
+  defp merge_only_commits?(commits) do
+    Enum.all?(commits, fn commit ->
+      case Map.get(commit, "parents") do
+        parents when is_list(parents) -> length(parents) > 1
+        _missing_or_invalid -> false
+      end
+    end)
+  end
+
+  defp identical_pr_contribution?(context, tested_head, head, number) do
+    opts = Keyword.merge(context.opts, request_fun: context.request_fun, token: context.token)
+    ApprovalCarry.classify_contribution(tested_head, head, number, opts) == :identical
+  end
+
+  defp compare_commits(context, ancestor, head) do
+    with {:ok, {owner, repo}} <- Transport.parse_repo() do
+      url = "#{Transport.base_url()}/repos/#{owner}/#{repo}/compare/#{ancestor}...#{head}?per_page=100"
+      Transport.fetch_json_map(context.request_fun, context.token, url, caller: "human_review_evidence_advance")
+    end
+  end
+
+  defp stale_pr_body_evidence(pr, head, tested_head, reason) do
+    {:error, {:stale_pr_body_evidence, %{pr_number: pr["number"], head_sha: head, tested_head: tested_head, body_update_line: "Tested head: #{head}", reason: reason}}}
   end
 
   defp verify_base_ancestry(_context, _pr, false), do: :ok
