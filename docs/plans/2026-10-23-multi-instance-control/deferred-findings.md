@@ -11,3 +11,5 @@ Discovered during research. Not in the active feature boundary. P0/P1 acceptance
 | DF-5 | `aiur listen` streaming over HTTP | `packaging/npm/aiur-cli/libexec/engine/control.sh:445-464` | P3 | Revisit with #5695 (outbound event stream) |
 | DF-6 | Local control calls are not audited; only remote calls are | design scope | P3 | Revisit if operators need one audit trail |
 | DF-7 | Compare-and-set for concurrent `aiur set` writers | design scope | P3 | Add `--expect-revision` if two operators collide |
+| DF-8 | No idempotency key on control calls: a 504 on a write leaves the outcome unknown, and a manual retry can send a second `message` or `queue add` | KTD1, KTD4 (round-2 review) | P3 | Add an optional `request_id` with a short server-side dedup window if retries cause duplicates; v1 clients never retry writes |
+| DF-9 | An agent on the Executor machine that can read the Executor's process environment still sees `token_env` write tokens | round-2 review; MIC-003 scrubs only inherited agent environments | P3 | Run the fleet Executor outside agent workspaces; revisit with OS keychain storage if needed |

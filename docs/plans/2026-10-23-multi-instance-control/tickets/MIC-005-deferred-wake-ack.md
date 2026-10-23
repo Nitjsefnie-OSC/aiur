@@ -30,7 +30,9 @@ A consumer can receive a wake batch without the daemon acknowledging it, and ack
 - Engine flags `--ack-through <id>` and `--defer-ack` on `executor-wait` (`packaging/npm/aiur-cli/libexec/engine/executor_commands.sh:218-236`).
 - Defaults unchanged: no option means print-then-acknowledge.
 
-- One live wait per consumer per instance: a new `executor_wait` from the same consumer id ends the previous wait (it returns `status: "superseded"`), so abandoned remote waits do not pile up for 600 s each.
+- One live deferred wait per consumer: a new `executor_wait(defer_ack: true)` from the same consumer id ends that consumer's previous deferred wait, which returns `status: "superseded"`, acknowledges nothing, and exits 0. Waits without `defer_ack` are unchanged. This needs consumer-keyed waiters: `Aiur.ExecutorWakeInbox.wait` takes the consumer id and keys waiters by it (today they are keyed by `from`, `src/lib/aiur/executor_wake_inbox.ex`).
+- `ack_through` at or below the current cursor is a successful no-op, checked before the journal-presence check that `fast_forward_as` does (a resent id may have been trimmed). `ack_through` above the newest id in the journal returns `{:error, :journal_reset}` (journal trimmed or replaced); the cursor does not move.
+- Allowlist: add `ack_through: non_neg_integer` and `defer_ack: boolean` to the `executor_wait` entry in `src/lib/aiur/control_call/allowlist.ex` if MIC-001 has merged; otherwise MIC-001 adds them when it lands second. Never add them to a build that does not implement them.
 
 ## Non-goals
 
@@ -46,7 +48,7 @@ At least once: a record is never acknowledged before a later call names an id at
 
 ## Refreshable implementation notes
 
-- Edit: `src/lib/aiur/executor_attention/cli.ex`, `packaging/npm/aiur-cli/libexec/engine/executor_commands.sh`.
+- Edit: `src/lib/aiur/executor_attention/cli.ex`, `src/lib/aiur/executor_wake_inbox.ex` (consumer-keyed waiters; cursor no-op before the presence check), `packaging/npm/aiur-cli/libexec/engine/executor_commands.sh`, `src/lib/aiur/control_call/allowlist.ex` (if present).
 - Tests: `src/test/aiur/executor_attention/cli_test.exs` (or the existing executor-wait test file — find with `rg -l executor_wait src/test`).
 
 ## Acceptance and verification
@@ -56,9 +58,11 @@ At least once: a record is never acknowledged before a later call names an id at
 1. `executor_wait(defer_ack: true)` returns records 41-44 and the cursor stays at 40.
 2. A second `executor_wait(defer_ack: true)` without `ack_through` returns 41-44 again (AE7).
 3. `executor_wait(ack_through: 44, defer_ack: true)` advances the cursor to 44 before waiting and then returns only newer records.
-4. `ack_through` above the highest delivered id is refused with a named error and the cursor does not move.
-5. Without either option, behaviour and output are unchanged (existing tests pass untouched).
-6. A second wait from the same consumer while the first is open ends the first with `status: "superseded"`.
+4. `ack_through` above the newest id in the journal returns `journal_reset` and the cursor does not move.
+5. Without either option, behaviour and output are unchanged (existing tests pass untouched); two default waits from one consumer both behave as today.
+6. A second `defer_ack` wait from the same consumer while the first is open ends the first with `status: "superseded"`, nothing acknowledged.
+7. With the cursor at 44 and record 44 trimmed from the journal, `executor_wait(ack_through: 44, defer_ack: true)` succeeds (no `wake_not_found`).
+8. If MIC-001 has merged: `Aiur.ControlCall.parse/1` accepts the exact expression the engine emits for `executor-wait --defer-ack --ack-through 44`.
 
 ### Test that fails without the change
 
@@ -74,7 +78,7 @@ None; MIC-010.
 
 ## Files it touches
 
-`executor_attention/cli.ex`, `engine/executor_commands.sh`, a test file, `reference/cli.md`.
+`executor_attention/cli.ex`, `executor_wake_inbox.ex`, `engine/executor_commands.sh`, `control_call/allowlist.ex` (if MIC-001 merged first), a test file, `reference/cli.md`.
 
 ## Dependencies and conflicts
 

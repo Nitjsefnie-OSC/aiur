@@ -25,8 +25,8 @@ The operator writes `instance.owns: [{label: "build-lane:voice"}]` on the NUC (i
 ## Scope
 
 - Schema: `instance.owns` — list of `%{label: String.t()} | %{ticket: pos_integer()}`; `instance.pool` — boolean, default true. One entry each in `website/docs-app/reference/configuration.md`.
-- Heartbeat payload (#5947's record) carries the instance's `owns` list and `pool` flag.
-- `Aiur.Instance.eligible?(ticket, self, live_instances)` per KTD11; the dispatcher consults it before trying the claim lease. Unknown store state: tickets matching no local rule are not dispatched (fail closed, as #5947 AC6).
+- Populate #5947's instance-level heartbeat metadata map (amendment A3: #5947 owns the record and its opaque, versioned `metadata` map; this ticket only fills it) with `owns`, `pool`, and `dispatching` (false while the instance is globally paused or its workflow is paused). Rules of a live instance bind only while its `dispatching` is true.
+- `Aiur.Instance.eligible?(ticket, self, live_instances)` per KTD11, where `live_instances` comes from #5947's list-live-instances read; the dispatcher consults it before trying the claim lease. Unknown store state: no new dispatch at all, owned tickets included (fail closed, as #5947 AC6); one `instance.ownership_unknown` attention is raised and resolves when the store returns.
 - Add `instance.owns` and `instance.pool` to MIC-007's settable keys.
 - `aiur status`: one line listing this instance's rules and, when the store is reachable, other live instances' rules.
 
@@ -55,9 +55,10 @@ KTD11 verbatim. A ticket is never dispatched by an instance that is not eligible
 2. A ticket matching no rule: either instance may take it (the lease picks one).
 3. `nuc`'s heartbeat expires: the next poll on `pc` treats the voice ticket as pool and takes it (F4).
 4. `instance.pool: false` on `nuc`: `nuc` takes only its owned tickets.
-5. Store unreachable: no instance dispatches a ticket owned by a rule it cannot read; owned-locally tickets still dispatch; one `instance.ownership_unknown` attention is raised and resolves when the store returns.
-7. An install with no lease store configured and no `instance.owns` behaves exactly as today (static `label_prefix` / `instance.ignore` split).
-6. `aiur set instance.owns '[{"label":"build-lane:voice"}]'` validates and applies.
+5. Store unreachable on one instance: it starts no new workspace, owned tickets included; one `instance.ownership_unknown` attention is raised and resolves when the store returns. Partition test: the owner loses the store, its heartbeat expires, the peer takes the lease, and the owner never starts a workspace for that ticket.
+6. An install with no lease store configured and no `instance.owns` behaves exactly as today (static `label_prefix` / `instance.ignore` split).
+7. `aiur set instance.owns '[{"label":"build-lane:voice"}]'` validates and applies.
+8. `nuc` owns `build-lane:voice` and is globally paused (heartbeat live, `dispatching: false`): `pc` takes the voice ticket.
 
 ### Test that fails without the change
 
@@ -78,7 +79,7 @@ Listed above.
 
 ## Dependencies and conflicts
 
-- depends_on: #5947 (heartbeat record and dispatcher filter), MIC-007 (settable-key allowlist module it edits).
+- depends_on: #5947 (instance heartbeat with metadata map, list-live-instances read, dispatcher filter; amendment A3), MIC-007 (settable-key allowlist module it edits).
 - serializes_with: #5948 and #5949 on the #5947 store record shape (merge-time).
 
 ## First slice Kevin can try

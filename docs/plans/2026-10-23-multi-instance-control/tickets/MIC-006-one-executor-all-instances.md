@@ -26,7 +26,10 @@ The operator runs one Executor on one machine. Its loop `aiur --instance all exe
 ## Scope
 
 - `executor-wait` with `--instance all` (and with a single `--instance <name>`): for each registered instance, start a remote wait with `--defer-ack --ack-through <stored id>` (MIC-005); return when the first instance answers with records or when all time out; cancel the rest (safe: nothing they would return is acknowledged).
-- Client cursor file per instance: `~/.aiur/remote-state/<name>.wake-ack` holding the highest delivered `wake_id`, written after the batch is printed.
+- Client cursor file per instance: `~/.aiur/remote-state/<name>.wake-ack` holding the result's `instance_id` and the highest delivered `wake_id`, written after the batch is printed. If the `instance_id` changes, or the server answers `journal_reset` (MIC-005), reset the cursor to 0 and print a warning naming the instance.
+- `--instance all executor-wait` is the one write command allowed under `all` (R4); it needs a write token on every instance and sends `max_scope: "write"`. Every other fan-out keeps `max_scope: "read"`.
+- Remote `--timeout` is capped at 600 s (refuse higher with exit 64); `timeout_ms` sent equals it.
+- An instance that answers `unknown_on_build` or `option_not_allowed` for `defer_ack`/`ack_through` is reported as unsupported and skipped; the client never waits on it without `defer_ack`.
 - Output: JSON mode prints `{"instance":"nuc","status":"woken","role":"owner","records":[...]}` per instance with records; text mode prefixes each record line with `[nuc]`.
 - `--instance all executor-roster` works through MIC-004 (read) — verify and document.
 - Refuse `--as` absent with `--instance` (the consumer id must be explicit for remote ownership).
@@ -59,6 +62,9 @@ At least once per instance. A batch is acknowledged on an instance only by the n
 3. Both idle until timeout: exit 0 with `status: "timeout"` per instance.
 4. One instance unreachable: the others still deliver; the unreachable one is reported, not dropped.
 5. Missing `--as` with `--instance` exits 64.
+6. A fake answering `journal_reset` makes the next call to it send `ack_through: 0` and a warning is printed; a changed `instance_id` does the same.
+7. A fake answering 422 `unknown_on_build` is reported as unsupported; no later request to it omits `defer_ack`.
+8. The request body sent for each instance has no `env:` and parses with `Aiur.ControlCall.parse(expr, remote: true)` (shared fixture).
 
 ### Test that fails without the change
 

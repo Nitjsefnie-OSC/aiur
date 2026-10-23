@@ -68,7 +68,7 @@ None beyond tests; MIC-010 records `aiur doctor` on a container instance.
 
 ## Docs to update
 
-AGENTS.md "Auth" paragraph is not affected; add one line to the Railway guide (#5954) and to `website/docs-app/reference/cli.md` "Operational facts" stating distribution is loopback-only and remote control uses HTTPS.
+AGENTS.md "Auth" paragraph is not affected. Add one line to `website/docs-app/reference/cli.md` "Operational facts" stating distribution is loopback-only and remote control uses HTTPS. Add the same line to the Railway guide only if #5954 has merged; otherwise #5954 carries it (amendment A5).
 
 ## Files it touches
 
@@ -77,7 +77,7 @@ AGENTS.md "Auth" paragraph is not affected; add one line to the Railway guide (#
 ## Dependencies and conflicts
 
 - depends_on: none.
-- suggested_after: none. Coordinate with #5939 (its container entrypoint must export the same flags; this check makes a miss fail loudly).
+- suggested_after: #5939, #5940. If this ticket merges first, the container entrypoint must already export the engine's loopback flags and a non-default cookie (amendment A4), or a container boot fails. Whichever PR merges second carries the entrypoint flags and proves a container boot in its PR body.
 
 ## First slice Kevin can try
 

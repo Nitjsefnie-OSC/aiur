@@ -27,13 +27,13 @@ An operator changes caps, routing, or backend priority on any instance with `aiu
 
 ## Scope
 
-- `Aiur.Config.Overrides`: file `~/.aiur/instances/$AIUR_INSTANCE_KEY/config-overrides.json` (under `AIUR_STATE_DIR` when set, #5940). The path comes from the environment only, never from config: `Aiur.Config.Paths.decision_state_dir` resolves through `Config.settings!()` (`src/lib/aiur/config/paths.ex:42-60`, `src/lib/aiur/tracker.ex:282-283`) and would loop. Shape: `{"version":1,"revision":7,"entries":{"agent.max_concurrent_builds":{"value":2,"revision":7,"set_by":"token:pc-executor","set_at":"2026-10-23T18:04:11Z","build":"0.x.y+abc1234"}}}`.
-- Merge entries into the workflow config map inside `Reload.load_state` (KTD8), so the reload validation (`src/lib/aiur/workflow_store/reload_rejection.ex:29-35`), the last-good guard, and boot all validate YAML plus overrides together. Add the file to the reload stamp in `src/lib/aiur/workflow_store/reload.ex:167-181`.
+- `Aiur.Config.Overrides`: file `<dashboard secret root>/<instance key>/config-overrides.json`, key from `Aiur.Identity.instance_key/0`, root from the same resolution the dashboard secret uses (`src/lib/aiur/http_server.ex:352-361`), so #5940's state volume moves both. With no instance key, `set` is refused with a named error and boot uses no overrides layer. The path comes from the environment only, never from config: `Aiur.Config.Paths.decision_state_dir` resolves through `Config.settings!()` (`src/lib/aiur/config/paths.ex:42-60`, `src/lib/aiur/tracker.ex:282-283`) and would loop. Shape: `{"version":1,"revision":7,"entries":{"agent.max_concurrent_builds":{"value":2,"revision":7,"set_by":"token:pc-executor","set_at":"2026-10-23T18:04:11Z","build":"0.x.y+abc1234"}}}`.
+- One merge function, `Overrides.apply/1`, called from `Reload.load_state` and from every store-less load path (`Workflow.load/1`, boot settings at `src/lib/aiur.ex:38`, the stale-cache and absent-store fallbacks, `reload_without_store`) (KTD8), so the reload validation (`src/lib/aiur/workflow_store/reload_rejection.ex:29-35`), the last-good guard, and boot all validate YAML plus overrides together. Add the file to the reload stamp in `src/lib/aiur/workflow_store/reload.ex:167-181`.
 - Per key, state whether it applies live or at restart; `set` prints which. Verify each key's consumer re-reads `settings()` (for example the build gate for `agent.max_concurrent_builds`) and mark the others `restart`.
-- `set(key, json_value, actor)`: refuse keys outside the allowlist (KTD9) with `unknown setting on this build (<version>)`; build the candidate (YAML + entries + new value) and run `Schema.parse`; refuse with the changeset message on error; otherwise write atomically.
+- `set(key, json_value)`: refuse keys outside the allowlist (KTD9) with `unknown setting on this build (<version>)`; build the candidate (YAML + entries + new value) and run the one validator `ReloadRejection.validate/1` (the same check reloads use); refuse with its message on error; otherwise write atomically. The actor comes from `Aiur.ControlCall.actor/0` (MIC-001; `local:$USER` when unset); a caller cannot supply it.
 - `unset(key, actor)`, `list()`.
-- Boot (`WorkflowStore.init`, `src/lib/aiur/workflow_store.ex:218-229`): if YAML + overrides fails to parse but YAML alone parses, move the overrides file to `config-overrides.rejected-<ts>.json`, boot on YAML, and emit `config.override_rejected` (AE5).
-- Engine: `aiur set <dotted.key> <json>`, `aiur set --list [--json]`, `aiur set --unset <key>`; `max-agents` keeps its current path. Actor: the token name for remote calls (MIC-002 passes it as an argument through `ControlCall.run/3`), `local:$USER` otherwise.
+- Boot (`WorkflowStore.init`, `src/lib/aiur/workflow_store.ex:218-229`, which does not validate today; add the `ReloadRejection.validate/1` call): validate entry by entry. An entry whose key this build does not know (rollback) or whose value fails together with YAML and the earlier accepted entries is moved to `config-overrides.rejected-<ts>.json`; the others stay live. Boot proceeds, and one `config.override_rejected` attention names every rejected key (AE5).
+- Engine: `aiur set <dotted.key> <json>`, `aiur set --list [--json]`, `aiur set --unset <key>`; `max-agents` keeps its current path. Facade functions: `Aiur.AgentControlCLI.set_setting/2`, `list_settings/1`, `unset_setting/1`. Actor: `token:<name>` for remote calls (set by `ControlCall.run/3`), `local:$USER` otherwise.
 
 ## Non-goals
 
@@ -49,8 +49,8 @@ Precedence: session `max-agents` > overrides > YAML > defaults. An override that
 
 ## Refreshable implementation notes
 
-- New: `src/lib/aiur/config/overrides.ex`, `src/lib/aiur/control_cli/settings.ex` (CLI entry, add to `Aiur.AgentControlCLI` and to MIC-001's allowlist as `:write` / `:read` for `--list` — if MIC-001 has not merged, add the allowlist entries in whichever lands second).
-- Edit: `src/lib/aiur/workflow_store/reload.ex` (merge and stamp), `src/lib/aiur/workflow_store.ex` (boot fallback), `packaging/npm/aiur-cli/libexec/engine/commands.sh`.
+- New: `src/lib/aiur/config/overrides.ex`, `src/lib/aiur/control_cli/settings.ex` (CLI entry, add to `Aiur.AgentControlCLI` and to MIC-001's allowlist: `set_setting`/`unset_setting` `:write`, `list_settings` `:read` — if MIC-001 has not merged, MIC-001 adds them when it lands second).
+- Edit: `src/lib/aiur/workflow_store/reload.ex` (merge and stamp), `src/lib/aiur/workflow_store.ex` (boot validation and fallback), `src/lib/aiur/workflow.ex` and `src/lib/aiur/config.ex` (store-less paths call `Overrides.apply/1`), `packaging/npm/aiur-cli/libexec/engine/commands.sh`.
 - Tests: `src/test/aiur/config/overrides_test.exs`; launcher test for argument passing.
 
 ## Acceptance and verification
@@ -63,7 +63,9 @@ Precedence: session `max-agents` > overrides > YAML > defaults. An override that
 4. `aiur set --list` shows key, value, source `override`, revision, actor; `--json` emits the same fields.
 5. `aiur set --unset agent.max_concurrent_builds` restores the YAML value.
 6. Overrides survive a restart.
-7. Boot with an override the build rejects starts on YAML, renames the file, and raises `config.override_rejected` (AE5).
+7. Boot with one entry the build rejects and one it accepts: the daemon starts, the accepted entry is live, the rejected one is in `config-overrides.rejected-<ts>.json`, and `config.override_rejected` names it (AE5). An entry with a key this build does not know is treated the same way.
+8. `Aiur.Config.settings_uncached()` reflects a stored override (store-less path).
+9. With no instance key, `set` exits nonzero with a named error and boot succeeds.
 
 ### Test that fails without the change
 

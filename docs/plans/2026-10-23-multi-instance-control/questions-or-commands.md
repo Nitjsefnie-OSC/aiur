@@ -17,7 +17,7 @@ Every item has a recommended default. None blocks the plan; the Executor proceed
 |---|---|---|---|---|
 | D5 | Wire format for remote calls | Forward the engine's call expression under a literal-only allowlist (KTD1-KTD2) | Zero per-command code; output parity by construction | MIC-001-003 |
 | D6 | Registry file name | `~/.aiur/remote-instances.yaml` | `~/.aiur/instances/` already holds per-instance dashboard secrets | MIC-003 |
-| D7 | `--instance all` for write commands | Refused; write one instance at a time | A fleet-wide pause by accident is costly; reads are safe | MIC-004 |
+| D7 | `--instance all` for write commands | Refused, except `executor-wait` (MIC-006); the server enforces it with `max_scope: read` on every other fan-out | A fleet-wide pause by accident is costly; reads are safe; the fleet Executor needs one merged wait | MIC-004, MIC-006 |
 | D8 | Audit record content | Function and expression hash, not argument text | `message` text can hold anything; the hash still ties a record to a request | MIC-002 |
 | D9 | Where ownership rules live | Per-instance config `instance.owns`, published in #5947 heartbeats | The operator asked for a config setting; no new shared document | MIC-008 |
 | D10 | Retire per-machine Executors | Yes, once MIC-006 merges; the fleet Executor runs on the PC | One Executor is the goal of the request | MIC-006, aiur-run skill |

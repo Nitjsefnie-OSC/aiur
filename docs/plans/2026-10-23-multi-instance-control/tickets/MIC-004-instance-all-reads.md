@@ -7,7 +7,7 @@
 **Risk:** low
 **Lane:** NUC
 **Phase hint:** 2
-**Depends on:** MIC-003
+**Depends on:** MIC-001, MIC-003
 **Requirements:** R4
 **Researched at:** ab0c21424
 
@@ -29,8 +29,9 @@ Plan context: [plan](../../2026-10-23-001-feat-multi-instance-control-plan.md) (
 - Text mode: `== <name> (<url host>) ==` header then that instance's output; `== <name> == unreachable: <reason>` for transport errors.
 - `--json`: one JSON line per instance: `{"instance":"nuc","ok":true,"exit_code":0,"output":"<raw>"}` or `{"instance":"nuc","ok":false,"error":"<code>","detail":"..."}` — raw output is not re-parsed.
 - Exit code: 0 when every instance exits 0; otherwise the highest nonzero exit.
-- Write-scope commands with `all` exit 64 before any request ("--instance all is for read commands").
-- A client-side read-command list in `remote.sh`; a test asserts it equals the `:read` entries of MIC-001's allowlist by name (the engine census fixture).
+- Write-scope commands with `all` exit 64 before any request ("--instance all is for read commands"). The one exception is `executor-wait`, which MIC-006 owns; this ticket refuses it until MIC-006 lands.
+- Every fan-out request carries `max_scope: "read"` (KTD1), so the server refuses a write even if the client list is wrong (R4). The client list is only an early exit.
+- A client-side read-command list in `remote.sh`. Commands whose arguments decide read or write (`alerts`, `queue`, `epic`, `feature`, `experiments`, `executor-sweep`, `watch`) are on it only with their read verbs (for example `alerts` without `ack`, `watch --full`). A checked-in fixture generated from MIC-001's allowlist (`packaging/npm/aiur-cli/test/fixtures/control-read-commands.json`) is read by both a MIC-001 test and this ticket's test, so they cannot drift.
 
 ## Non-goals
 
@@ -57,6 +58,8 @@ Every registered instance appears exactly once in the output, live or not.
 2. One fake down: the live block prints, the down instance prints `unreachable` with the transport reason; exit nonzero (AE1).
 3. `aiur --instance all pause` exits 64 and no fake receives a request (AE2).
 4. `--json` emits one line per instance with `instance` set.
+5. Every fan-out request body has `max_scope: "read"` (the fake servers record it).
+6. `aiur --instance all alerts ack <id>` exits 64 before any request; `aiur --instance all alerts` runs.
 
 ### Test that fails without the change
 
@@ -72,11 +75,12 @@ Two-fake test of criterion 2 expects a `nuc ... unreachable` line; before the ch
 
 ## Files it touches
 
-`engine/remote.sh`, `test/launcher-remote.test.mjs`, `reference/cli.md`.
+`engine/remote.sh`, `test/launcher-remote.test.mjs`, `test/fixtures/control-read-commands.json` (read), `reference/cli.md`.
 
 ## Dependencies and conflicts
 
-- depends_on: MIC-003 (extends its file).
+- depends_on: MIC-003 (extends its file), MIC-001 (the read-command fixture it generates).
+- Server enforcement of `max_scope` lands in MIC-002; this ticket's fakes check the field is sent. MIC-010 step 1 verifies the server refusal live.
 - serializes_with: none in phase 2.
 
 ## First slice Kevin can try

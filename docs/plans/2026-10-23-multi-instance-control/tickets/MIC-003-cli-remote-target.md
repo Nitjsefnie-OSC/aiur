@@ -30,9 +30,12 @@ From any machine, `aiur --instance nuc status` prints the NUC daemon's status an
 - `executor-wait`, `executor-claim`, `executor-release`, `executor-fast-forward` with `--instance` require `--as` (otherwise the consumer id would default to the daemon's hostname, `src/lib/aiur/executor/claims.ex:181-188`).
 - Registry reader for `~/.aiur/remote-instances.yaml` (`version: 1`, `instances.<name>.url`, `token_file` or `token_env`). Missing file or name: exit 64 naming the file.
 - `run_control_rpc_dispatch`: when `AIUR_REMOTE_INSTANCE` is set, skip `resolve_release`/`prepare_distribution` and call `run_remote_rpc_with_timeout "$expression"`, which POSTs KTD1 with `curl`, maps HTTP errors to messages and exit codes (401/403 → 77, 422 → 64, 504 → 124, transport → 69), and sets `AIUR_CONTROL_RPC_OUTPUT` to the response `output`.
-- Refuse `--instance` for every non-RPC command before any network call, naming the reason.
-- Refuse `http://` URLs unless the host is loopback, `*.ts.net`, or in `100.64.0.0/10`.
-- The token is passed to `curl` through a header file or stdin, never argv, and never echoed.
+- Refuse `--instance` for every non-RPC command before any network call, naming the reason (the full list in Context; R5).
+- Timeouts: send `timeout_ms` equal to the engine's existing per-command rpc timeout for that command; `curl --max-time` is `timeout_ms/1000 + 15`. A 504 on a write prints "outcome unknown on <name>" and is never retried.
+- Treat `unknown_on_build` (and `option_not_allowed` for an option the client sent on purpose) as "unsupported on <name> (<build>)"; never retry with fewer options.
+- Refuse `http://` URLs unless the host is loopback (`127.0.0.0/8`, `::1`, `localhost`). Tailnet hosts use HTTPS through `tailscale serve`.
+- The token is passed to `curl` through a header file or stdin, never argv, and never echoed. A `token_file` that is not mode 0600 is refused. Docs: write tokens go in `token_env`, not in a file.
+- Agent environments: add `AIUR_TOKEN_*` to the daemon's agent-environment scrub (the same list that removes `GITHUB_TOKEN`/`GH_TOKEN`, #2356), so agents on the Executor machine do not inherit fleet tokens.
 
 ## Non-goals
 
@@ -63,9 +66,11 @@ Quote KTD1 and KTD7 from the plan verbatim. Local behaviour is byte-identical wh
 2. The request body equals the expression the local path would pass to `bin/aiur rpc` for the same arguments (asserted for `status`, `agents --all`, `message 12 hi`).
 3. `aiur status` without `--instance` sends no HTTP request and still calls `bin/aiur rpc`.
 4. `aiur --instance t stop` exits 64 with "stop is local to the instance's host" and makes no request.
-5. A registry URL `http://example.com` is refused; `http://127.0.0.1:4000` and `https://x.ts.net` are accepted.
+5. A registry URL `http://example.com` or `http://x.ts.net` is refused; `http://127.0.0.1:4000` and `https://x.ts.net` are accepted. A `token_file` with mode 0644 is refused.
 6. 403 prints the required scope; 401 prints "token rejected by <name>"; neither prints the token.
 7. Unknown instance name exits 64 and names `~/.aiur/remote-instances.yaml`.
+8. An agent environment built by the daemon from a parent environment with `AIUR_TOKEN_NUC=x` does not contain `AIUR_TOKEN_NUC` (Elixir test next to the existing `GITHUB_TOKEN` scrub test).
+9. A fake server answering 422 `unknown_on_build` makes the client print "unsupported on t" with the build and exit 64, with exactly one request sent.
 
 ### Test that fails without the change
 
@@ -86,7 +91,7 @@ With MIC-002 merged: `aiur --instance nuc status` from the PC against the NUC (r
 
 ## Files it touches
 
-`packaging/npm/aiur-cli/libexec/engine/remote.sh`, `engine/control.sh`, `aiur-engine.sh`, `bin/aiur.js`, `scripts/aiurdev`, the test, the two docs.
+`packaging/npm/aiur-cli/libexec/engine/remote.sh`, `engine/control.sh`, `aiur-engine.sh`, `bin/aiur.js`, `scripts/aiurdev`, the agent-environment scrub module in `src/lib/aiur/` (find with `rg -l GH_TOKEN src/lib`) and its test, the launcher test, the two docs.
 
 ## Dependencies and conflicts
 

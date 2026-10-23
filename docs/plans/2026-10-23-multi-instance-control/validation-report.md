@@ -15,7 +15,7 @@ Run with a scratch checker over `graph.json`, the ticket documents, and the plan
 | Every `depends_on` / `serializes_with` / `suggested_after` resolves to a MIC id or an existing issue | pass |
 | Phases are computed levels and antichains (no internal `depends_on`) | pass: 4 phases, budget 5 |
 | Same-phase `serializes_with` pairs | none |
-| Every requirement R1-R19 owned by an executable ticket | pass |
+| Every requirement R1-R20 owned by an executable ticket | pass (R20 added in round 2, owned by MIC-001) |
 | Critical path | MIC-001 → MIC-002 → MIC-006 → MIC-010 (with #5945 parallel to MIC-001) |
 | Per-lane earliest start | every lane starts in phase 1 |
 | Dropped data-flow couplings each reconnected | pass: 4 entries in `integration_ledger` |
@@ -60,6 +60,39 @@ Run with a scratch checker over `graph.json`, the ticket documents, and the plan
 | P3 | Registry parser left open | Fixed: fixed-shape YAML read with `awk` |
 
 No P0. All P1 findings are resolved in the documents. A second review pass is recommended after the operator reads the decisions, because the P1 fixes changed KTD2, KTD3 and KTD8.
+
+## Second review pass (round 2, 2026-10-23)
+
+`ce-doc-review` in headless mode with five lenses (coherence, feasibility, security, adversarial, scope guardian). The cross-model peer pass was not run (no sanctioned route in a non-interactive run). No P0. Round-1 fixes: option-key refusal and the overrides path hold; `unknown_on_build` and the overrides boot were incomplete and are fixed below. Graph re-checked after the edits: no cycles, `Depends on` lines equal `graph.json`, phases unchanged (MIC-004 gains MIC-001 and stays in phase 2).
+
+| Severity | Finding | Disposition |
+|---|---|---|
+| P1 | A remote write token could call `operator_answer`, whose human-only checks run in bash | Fixed: new R20; human-guarded functions are `:deny`; census test (KTD3, MIC-001 AC7, MIC-002 AC5, MIC-010 step 3) |
+| P1 | `--instance all` read-only guard was client-only; argv-decided commands (`alerts ack`) could fan out a write | Fixed: `max_scope` in KTD1, enforced by the server (R4, MIC-002 AC8, MIC-004) |
+| P1 | R4/D7 refused every write under `all`, but F3/MIC-006 need `executor-wait` | Fixed: one named exception (R4, D7, MIC-004, MIC-006) |
+| P1 | `unknown_on_build` covered only an unknown head atom; option keys and existing-atom function names fell through | Fixed: one rule for every unsafe-atom failure and every missing `{fun, arity}` on an allowlisted module (KTD2, MIC-001 AC6); clients never retry with fewer options |
+| P1 | MIC-005 option keys never reached the MIC-001 allowlist | Fixed: "whichever merges second" in both tickets; ledger entry; MIC-006 AC8 |
+| P1 | MIC-008 let an owner dispatch during a store outage (double dispatch) | Fixed: no new dispatch on store outage; partition test (KTD11, MIC-008 AC5) |
+| P1 | MIC-008 needs an instance-level heartbeat that #5947 does not define | Fixed: amendment A3 adds it with a metadata map and a list-live-instances read |
+| P1 | Fleet write tokens readable by agents on the Executor machine | Fixed: write tokens in `token_env`, `AIUR_TOKEN_*` scrubbed from agent environments, 0600 check (KTD7, MIC-003 AC5/AC8); residual risk DF-9 |
+| P2 | Body cap "before parse" impossible: `Plug.Parsers` runs in the endpoint | Fixed: path-aware body reader, 413 (KTD1, MIC-002 AC9) |
+| P2 | `existing_atoms_only` refuses alias segments that do not exist as atoms | Fixed: allowlist stores literal segment lists; real-path census test (KTD2, MIC-001 AC8) |
+| P2 | `usage/1` takes a server name; `watch` default mode mutates a global baseline | Fixed: `usage/1` `:deny`; `watch` read only for `mode: :full`; positional atoms typed per entry |
+| P2 | Option values typed but not constrained; caller-supplied `who:`/`env:` | Fixed: per-key constraints from the engine wrappers; identity keys and remote `env:` refused |
+| P2 | Actor channel unspecified; `run/2` vs `run/3` | Fixed: `run/3` stores the actor in the task; `ControlCall.actor/0` (KTD4, MIC-001, MIC-002, MIC-007) |
+| P2 | Crash and unlinked-task behaviour unspecified | Fixed: `Task.Supervisor.async_nolink`, crash → error marker, exit 1 (KTD4, MIC-001 AC9) |
+| P2 | MIC-002 AC7 contradicted KTD4 for write timeouts | Fixed: split read/write; `timeout_unknown` audit outcome |
+| P2 | Overrides: one bad entry discarded all; rollback dropped unknown keys silently; store-less load paths skipped the layer; `set` and boot used different validators; no instance key undefined | Fixed: per-entry validation, one `Overrides.apply/1` on every load path, `ReloadRejection.validate/1` everywhere, refuse `set` without a key (KTD8, MIC-007) |
+| P2 | MIC-005 supersede changed default waits; inbox has no consumer-keyed waiters; `ack_through` not idempotent after a trim; journal reset wedges the fleet wait | Fixed: supersede only `defer_ack` waits, consumer-keyed waiters, cursor no-op first, `journal_reset`, client cursor keyed by `instance_id` (KTD10, MIC-005, MIC-006) |
+| P2 | A paused owner holds its owned tickets | Fixed: `dispatching` flag (KTD11, MIC-008 AC8) |
+| P2 | A1 did not narrow #5945 AC4 or say read tokens pass the plug on the control POST; A6 listed 5 of 11 tickets and no map; A3 fixed the store as Postgres | Fixed in README amendments |
+| P2 | MIC-009 could break container boot if it merges before #5939/#5940; MIC-010 needed Railway | Fixed: `suggested_after`; Railway and container steps conditional |
+| P2 | MIC-004 test reads MIC-001's allowlist without an edge | Fixed: edge MIC-001 → MIC-004 plus a checked-in fixture |
+| P2 | Client timeouts had no owner | Fixed: MIC-003 and MIC-006 scope |
+| P2 | Plain HTTP to tailnet hosts sends the token on a name check | Fixed: HTTPS for every non-loopback host (R10, MIC-003 AC5) |
+| P3 | KTD1 reason list incomplete; unused `command`; KTD2 citations (`root:`, `telemetry_file:`); R5/R19 shorter than tickets; acceptance numbering | Fixed |
+| P3 | No idempotency key on writes | Deferred: DF-8; v1 clients never retry writes |
+| P3 | KTD9 key list wider than the operator's examples | Kept: each key is one allowlist line, and the list matches the operator's examples of caps, routing and priority |
 
 ## Artifact hashes (SHA-256, first 16 hex)
 
