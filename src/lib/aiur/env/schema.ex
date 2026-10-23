@@ -234,6 +234,7 @@ defmodule Aiur.Env.Schema do
     {"USER", type: :string, validate: false, example: false, group: :ambient, purpose: "OS user identity recorded as the actor for operator workspace recovery audits."},
     {"PATH", type: :path, validate: false, example: false, group: :ambient, purpose: "Executable search path inherited by child processes."},
     {"HOME", type: :path, validate: false, example: false, group: :ambient, purpose: "Home directory for user-scoped state."},
+    {"HOSTNAME", type: :string, validate: false, example: false, group: :ambient, purpose: "System host name used by the default instance identity."},
     {"COLUMNS", type: :integer, validate: false, example: false, group: :ambient, default: 80, purpose: "Terminal width for the agent list renderer."},
     {"LINES", type: :integer, validate: false, example: false, group: :ambient, default: 24, purpose: "Terminal height for the agent list renderer."},
     {"COLORTERM", type: :string, validate: false, example: false, group: :ambient, purpose: "Terminal color capability for the agent list renderer."},
