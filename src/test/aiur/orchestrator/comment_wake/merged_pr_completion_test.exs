@@ -179,7 +179,7 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
 
       parent = self()
       identity = issue.tracker_identity
-      reset_at = DateTime.add(DateTime.utc_now(), 5, :minute)
+      reset_at = DateTime.add(DateTime.utc_now(), 5, :second)
       hold = %{reason: :shared_budget, resource: "core", reset_at: reset_at}
       detail = %{reason: {:aiur, :locally_held, hold}, hold: hold}
       {:ok, counter} = Agent.start_link(fn -> 0 end)
@@ -209,7 +209,8 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
           end,
           merger_allowed_fun: fn _login -> true end,
           open_pull_requests_fun: fn _identifier -> {:ok, []} end,
-          local_hold_sleep_fun: fn _ms -> :ok end
+          local_hold_sleep_fun: fn _ms -> :ok end,
+          merge_terminal_write_sleep_fun: fn _ms -> :ok end
         )
 
       assert_receive {:terminal_write, "42", 1}, 1000
