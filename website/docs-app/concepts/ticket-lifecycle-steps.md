@@ -440,10 +440,8 @@ The agent never self-merges.
 
 ## Runtime reason labels
 
-Aiur keeps one workflow state label and adds reason labels when runtime
-conditions distinguish tickets within that state. Writers clear their own
-reason when it clears or is replaced; teardown clears transient reasons except
-`blocked`, and a CI transition clears both CI reasons.
+One workflow state label accompanies runtime reason labels, which writers clear
+when their condition clears, teardown runs (except `blocked`), or CI transitions.
 
 | Label | Meaning | Transition that sets it |
 | --- | --- | --- |
