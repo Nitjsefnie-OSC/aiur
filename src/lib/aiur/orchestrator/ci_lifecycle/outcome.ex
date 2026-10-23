@@ -8,6 +8,7 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
   alias Aiur.Orchestrator.CiLifecycle
   alias Aiur.Orchestrator.CiLifecycle.ApprovalCarryAlert
   alias Aiur.Orchestrator.CiLifecycle.FailureComment
+  alias Aiur.Orchestrator.CiLifecycle.OwnerlessPass
   alias Aiur.Orchestrator.CiLifecycle.Poll
   alias Aiur.Orchestrator.CiLifecycle.PrLessReview
   alias Aiur.Orchestrator.CiLifecycle.ResultProjection
@@ -158,10 +159,16 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
         Transition.log_fenced_ci_handoff(issue, @active_handoff_state)
         state
 
-      not owned_ci_wait_runtime?(state, issue) ->
+      not OwnerlessPass.runtime_owned?(state, issue) ->
         # With no agent to resume, a green CI result completes the agent
         # handoff: leave the ticket in review instead of creating an orphan claim.
-        handoff_ownerless_ci_pass_to_review(state, issue, result)
+        OwnerlessPass.transition_to_review(
+          state,
+          issue,
+          result,
+          &clear_ci_test_failure_retry/2,
+          &remember_ci_approved_head/3
+        )
 
       true ->
         Poll.run_ci_effect(
@@ -174,44 +181,6 @@ defmodule Aiur.Orchestrator.CiLifecycle.Outcome do
           end
         )
     end
-  end
-
-  defp owned_ci_wait_runtime?(state, issue) do
-    case Map.get(state.running, issue.id) do
-      %{identifier: identifier, control: %{status: status}, paused_reason: :ci_wait}
-      when identifier == issue.identifier and status in [:paused, :deactivated] ->
-        true
-
-      _ ->
-        false
-    end
-  end
-
-  defp handoff_ownerless_ci_pass_to_review(state, issue, result) do
-    Poll.run_ci_effect(
-      state,
-      issue,
-      "transition_ci_review",
-      fn -> TicketTransition.write_state(to_string(issue.id || issue.identifier), @human_review_state, Keyword.put(Transition.expected_state_opts(issue), :writer, :ci_lifecycle)) end,
-      fn current, response ->
-        case response do
-          :ok ->
-            review_issue = %{issue | state: @human_review_state}
-
-            current
-            |> clear_ci_test_failure_retry(issue)
-            |> remember_ci_approved_head(issue, result)
-            |> Reconciler.refresh_running_issue_state(review_issue)
-            |> ResultProjection.stash_last_ci_result(review_issue, result)
-            |> TerminalEvent.ensure_ci_terminal_subscription(issue)
-            |> TerminalEvent.publish_ci_terminal_event(issue, result, :passed)
-
-          {:error, reason} ->
-            Logger.warning("CI review handoff skipped: #{State.issue_context(issue)} reason=#{inspect(reason)}")
-            current
-        end
-      end
-    )
   end
 
   defp transition_ci_failure(state, issue, result) do
