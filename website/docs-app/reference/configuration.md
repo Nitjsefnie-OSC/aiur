@@ -49,7 +49,6 @@ The alert carries actionable evidence.
 | Activity | Last material push, current live-owner state, and dispatch/restart count. |
 | PR health | Base and merge freshness. |
 | CI | Current state when available, for tickets already alerted. |
-
 A ticket that becomes terminal or leaves the run scope resolves its active advisory and forgets its convergence state; a re-opened ticket starts a fresh episode.
 
 ## tracker
@@ -106,7 +105,6 @@ The [analysis-ticket exception](/apis/github-auth#who-aiur-trusts) requires a ma
 | `polling.intervals` | map of class → integer | `%{}` | Per-class poll cadences in seconds. Each key names a poll class — `dispatch`, `ci`, `review`, `planning`, `firehose` — and overrides `interval_seconds` for that class only. A class with no entry falls back to `interval_seconds`, so an unset map keeps today's single-interval behaviour exactly. `0` means the class is on-demand — no timer, refreshed only when a consumer explicitly asks — which is the recommended value for `planning`. (`firehose` is not recommended at any value: its loop rides the dispatch tick and is not gated, so an entry would be a dead knob.) `dispatch` must be a positive integer: the dispatch tick always runs, so `dispatch: 0` is rejected. `review` only diverges on a repo proven webhook-backed — on a polling repo its safety net stays at the dispatch rate. An unknown class key or a negative value is rejected. |
 | `polling.usage_interval_seconds` | integer | 300 | Seconds between provider-meter probes. Values below 120 are rejected to avoid provider rate-limit degradation. |
 | `polling.view_state_sweep_seconds` | integer | 900 | Seconds between runs of the view-state reconciliation sweep. It exists only to recover a webhook delivery that was lost, so it is a recovery bound rather than a refresh interval — a delivery that arrives updates the dashboard immediately and for free, and shortening this makes nothing fresher. The open-backlog and ad-hoc-overlay sources are event-sourced and not swept at all; the sweep reconciles the daemon-owned Build Order pack-status projection (which writes `status.json` on disk and stays on this cadence until it is moved to the event stream too) and runs the issue-family divergence watermark — a single bounded `updated_at`-ordered head page that keeps webhook loss detectable and re-converges a dropped delivery. |
-
 Freshness thresholds follow this cadence. You do not set them separately.
 
 - The **effective** interval is a class's interval after `idle_widen_factor`,
@@ -167,7 +165,6 @@ Freshness thresholds follow this cadence. You do not set them separately.
 | `webhooks.repos` | list of `owner/name` | `[]` | Repos expected to deliver webhooks. A hint only. A listed repo keeps polling at full rate until it actually delivers. |
 | `webhooks.silence_threshold_seconds` | integer | 900 | How long a proven repo may go without a delivery before it degrades back to full polling and raises a needs-attention alert. |
 | `webhooks.sweep_interval_seconds` | integer | 60 | How often proven repos are checked for silence. |
-
 See [GitHub polling and webhooks](/apis/github-polling) for the setup story and runtime states.
 
 ## workspace
@@ -208,7 +205,6 @@ The `wip_*` keys bound the save of uncommitted work described in [Saved uncommit
 | `prewarm.build_timeout_minutes` | integer | 60 | Total time allowed for a base clone, fetch, and build. |
 | `prewarm.enabled` | boolean | false | Opts into one warm base checkout. |
 | `prewarm.poll_seconds` | integer | 0 | Base-refresh interval; 0 disables polling. |
-
 `poll_seconds: 0` disables periodic refreshes, not dispatch-time freshness checks.
 
 A base refresh is bounded from clone/fetch start by `prewarm.build_timeout_minutes` (default 60); on expiry,
@@ -286,7 +282,6 @@ unreachable, never runs under `aiurdev`, and is channel-aware — a `nightly` or
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-12 -->
 | --- | --- | --- | --- |
 | `upgrade.check_enabled` | boolean | true | Enables the `aiur run` version notice and its registry check. Set false to suppress the check entirely (zero outbound calls). |
-
 `AIUR_UPGRADE_CHECK_DISABLED` (and the legacy `AIUR_NO_UPDATE_NOTIFIER`) are the
 environment-variable equivalents; the check also stays silent in CI runs.
 
@@ -309,7 +304,6 @@ This optional section configures voice features; `aiur init` records declines as
 | `elevenlabs.enabled` | boolean | true | Enables ElevenLabs voice features. Set false to keep an explicit declined setup choice and suppress configured or environment-provided credentials. Existing configs without this key remain enabled. |
 | `elevenlabs.language_code` | string | `eng` | ISO-639-3 transcription language. ElevenLabs uses `eng` for English. |
 | `elevenlabs.voice_id` | string or nil | nil | Stock or owned ElevenLabs voice used for Dashboard interactive conversation replies. Find the identifier in **My Voices**; Aiur does not clone or manage voices. |
-
 `ELEVENLABS_API_KEY` is the environment variable for the credential. When `elevenlabs.enabled` is true, an explicit `elevenlabs.api_key` value wins; when the key is absent, or is the `$ELEVENLABS_API_KEY` reference, the variable supplies it. `enabled: false` suppresses both sources. An environment variable set to the empty string resolves to no key.
 
 The key is a secret. Keep it in `.env` and leave the `$ELEVENLABS_API_KEY` reference in the config file rather than pasting the value there. Aiur never logs the key, and the daemon scrubs every `*_API_KEY` variable, `ELEVENLABS_API_KEY` included, from agent process environments, local and SSH-launched alike, so no coding agent inherits it.
@@ -327,7 +321,6 @@ Optional Codex thread compaction runs synchronously at the `human-review` handof
 | `compaction.enabled` | boolean | false | Master switch for compaction; must be true to enable any compaction features. |
 | `compaction.manual_approval` | boolean | false | Explicit opt-in to compact on terminal handoff. |
 | `compaction.timeout_ms` | integer | 30000 | Timeout in milliseconds for compaction API calls. |
-
 Codex reports completion with its `thread/compacted` notification. Failure does not block normal handoff. Aiur records the result in daemon-owned state and will not retry a completed or failed attempt on that thread. A daemon restart resumes the same Codex thread from its original rollout.
 
 **Example: manual-only compaction**
@@ -364,7 +357,6 @@ compaction:
 | `observability.telemetry_retention_max_age_days` | integer | 30 | Maximum retained telemetry age. |
 | `observability.telemetry_retention_max_bytes` | integer | 67108864 | Maximum retained telemetry bytes. |
 | `observability.telemetry_retention_prune_interval_bytes` | integer or nil | nil | Bytes between retention-prune checks. |
-
 `dashboard_writable` controls authorization, not authentication. Set `AIUR_DASHBOARD_USERNAME` and `AIUR_DASHBOARD_PASSWORD` before use. A loopback listener can bind without them but rejects every dashboard request until both are set. A listener beyond loopback refuses to start without both.
 
 When `observability.build_order_funnel_health_check` is enabled, Aiur checks the configured dashboard bind address at `/build-orders/1` and reads `tailscale funnel status --json` once after dashboard startup. Both command timeouts are five seconds, and timed-out Tailscale processes are terminated.
@@ -386,7 +378,6 @@ An exported value wins, followed by the global file and then the repository file
 | --- | --- | --- | --- |
 | `decisions.supervisor_allow_non_reversible` | boolean | false | Allows supervisor policy to cover partially reversible or irreversible decisions. |
 | `decisions.supervisor_allowed_kinds` | array | `[]` | Decision kinds an authenticated supervising Executor may answer. Empty means none. |
-
 These policy keys never grant transport access by themselves. The supervisor API also requires `AIUR_SUPERVISOR_TOKEN`; mutations require the writable and origin gates described above.
 
 ## server
@@ -397,7 +388,6 @@ These policy keys never grant transport access by themselves. The supervisor API
 | `server.port` | integer | 0 | HTTP port; 0 selects a free OS port. |
 | `server.public_url` | string | nil | Public URL for generated links and Host/origin allowlists; loopback listeners also accept tailnet hosts. |
 | `server.tailscale_funnel` | boolean | false | Reconcile an already-enabled Tailscale Funnel HTTPS route on port 443 to the dashboard's current bound host and port at startup and every 30 seconds. Requires the Tailscale CLI and an existing Funnel route; failures raise a Build Order Funnel alert and retry. |
-
 Unset `server.host` binds `127.0.0.1` (or `AIUR_DEFAULT_DASHBOARD_HOST`); explicit config/`--host` override. `0.0.0.0` exposes LAN. Loopback permits `*.ts.net` Hosts and HTTPS origins while loopback-bound. For Tailscale, build and restart, set `server.public_url` (e.g. `https://<host>.ts.net:4001`), then restart again. `server.allowed_hosts` adds hosts.
 
 Set `server.tailscale_funnel: true` only when this node already has a Funnel route the operator intends to keep. At startup and every 30 seconds, Aiur reads the dashboard's bound host and port and updates the route with `tailscale funnel --bg` when needed.
@@ -423,7 +413,6 @@ The durable repository Executor state also records every daemon start and stop i
 | `dashboard_auth.google.allowed_emails` | array | `[]` | Exact email allowlist for Google OpenID Connect; an empty list disables Google sign-in. |
 | `dashboard_auth.passkeys` | boolean | false | Enables passkey login and enrollment after a fresh Google sign-in. |
 | `dashboard_auth.session_max_age_days` | integer | 30 | Maximum dashboard browser session age in days. |
-
 Google and passkeys require a valid HTTPS `server.public_url`. Keep browser Basic Auth enabled until Google sign-in and passkey enrollment are verified. The Google client credentials are optional as a pair; a partial pair fails startup validation.
 
 ## opencode
