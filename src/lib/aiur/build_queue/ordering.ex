@@ -32,11 +32,11 @@ defmodule Aiur.BuildQueue.Ordering do
     breadth(next, graph, MapSet.union(seen, MapSet.new(next)), ordered ++ next)
   end
 
-  @doc "Orders by supplied priority rank, downstream count, position, age, then string issue ID."
+  @doc "Orders by downstream count, supplied priority rank, position, age, then string issue ID."
   @spec rank(Item.t(), non_neg_integer(), 1..5, DateTime.t() | nil) :: tuple()
   def rank(item, downstream, priority, created_at) do
     {downstream_rank, position} = hint(item, downstream)
-    {priority, downstream_rank, position, created_at_key(created_at), item.issue_id}
+    {downstream_rank, priority, position, created_at_key(created_at), item.issue_id}
   end
 
   @doc "Dispatch hint; build-order items have no position and use zero."

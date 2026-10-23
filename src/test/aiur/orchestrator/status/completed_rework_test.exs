@@ -6,10 +6,10 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
 
   alias Aiur.AgentControlCLI
   alias Aiur.Orchestrator.{DispatchCandidates, DispatchPolicy}
+  alias Aiur.TestSupport.RunnerTasks
   alias Aiur.Orchestrator.HumanReview
   alias Aiur.Orchestrator.PauseResume
   alias Aiur.Orchestrator.Reconciler
-  alias Aiur.Orchestrator.Reconciler.Reactivation
   alias Aiur.SnapshotFenceSupport
 
   setup do
@@ -39,7 +39,7 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
     assert_tracker_completed_preflight_retained(next, parked_entry, worker, item_ids)
   end
 
-  test "completed p3 retry defers to ready p1 tickets in the polled snapshot" do
+  test "reconciliation defers a completed p3 retry when ready p1 tickets are polled" do
     issue = %{completed_rework_issue("priority-retry") | state: "todo", priority: 3}
 
     p1_tickets =
@@ -56,14 +56,19 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
       end
 
     configure_completed_revalidation!([issue | p1_tickets], max_concurrent_agents: 3, tracker_active_states: ["todo", "in-progress", "rework"])
-    {state, entry, _worker, _item_ids} = completed_retention_fixture(issue)
+    {state, entry, worker, _item_ids} = completed_retention_fixture(issue)
     state = %{state | last_polled_issues: Map.new(p1_tickets, &{&1.id, &1})}
+    runners_before = RunnerTasks.capture()
 
     assert Enum.all?(p1_tickets, &DispatchPolicy.dispatch_candidate?(&1, state))
     assert hd(DispatchCandidates.order([issue | p1_tickets], DispatchPolicy.terminal_state_set(), p1_tickets)).priority == 1
 
-    assert Reactivation.completed_replacement_deferred?(state, issue)
-    assert state.running[issue.id] == entry
+    next = Reconciler.maybe_reactivate_or_refresh(state, issue)
+
+    assert next.running[issue.id] == entry
+    refute Enum.any?(next.tracker_tasks, fn {_ref, task} -> task.key == {:completed_revalidation, issue.id} end)
+    assert Process.alive?(worker)
+    assert RunnerTasks.capture() == runners_before
   end
 
   test "tracker rework after completed CI wait honors the state cap" do

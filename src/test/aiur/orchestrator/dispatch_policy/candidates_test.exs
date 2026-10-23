@@ -40,7 +40,7 @@ defmodule Aiur.Orchestrator.DispatchPolicy.CandidatesTest do
       assert DispatchPolicy.sort_issues_for_dispatch(issues) == expected
     end
 
-    test "priority precedes downstream rank for tickets without queue hints" do
+    test "future regression guard: priority precedes downstream rank without queue hints" do
       :ets.new(Hints.table_name(), [:named_table, :set])
       issues = [issue("priority-4", priority: 4), issue("unprioritized", priority: nil), issue("priority-1", priority: 1)]
 

@@ -73,7 +73,7 @@ defmodule Aiur.Orchestrator.DispatchCandidatesTest do
     assert order([ready, held]) == [held, ready]
   end
 
-  test "ready p1 without a queue hint precedes p3 and unprioritized tickets" do
+  test "future regression guard: ready p1 without a queue hint precedes p3 and unprioritized tickets" do
     p1 = candidate(701, 1)
     p3 = candidate(702, 3)
     unprioritized = candidate(703, nil)
