@@ -46,6 +46,9 @@ defmodule Aiur.SystemPressure do
       %{avg10: avg10, avg60: avg60} ->
         IO.puts("DISPATCH CPU PSI source=#{source} some avg10=#{avg10}% avg60=#{avg60}% threshold=#{inspect(capacity[:pressure_threshold])}% target=#{inspect(capacity[:pressure_target])}%#{age}")
 
+      _ when source == :cgroup ->
+        IO.puts("DISPATCH CPU PSI cgroup unavailable; host load fallback disabled#{age}")
+
       _ ->
         IO.puts("DISPATCH CPU PSI unavailable; load-average fallback#{age}")
     end

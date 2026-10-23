@@ -108,6 +108,28 @@ defmodule Aiur.Orchestrator.PressureAdmissionTest do
     assert result == {:hold, %{signal: :cpu_pressure, measured: 30.0, threshold: 20.0}}
   end
 
+  test "quota containers do not fall back to host load when cgroup PSI is absent" do
+    root = Path.join(System.tmp_dir!(), "aiur-cgroup-no-psi-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    File.write!(Path.join(root, "cpu.max"), "200000 100000")
+    previous_root = Application.get_env(:aiur, :cgroup_root_override)
+    previous_load = Application.get_env(:aiur, :loadavg_source_override)
+
+    on_exit(fn ->
+      restore_app_env(:cgroup_root_override, previous_root)
+      restore_app_env(:loadavg_source_override, previous_load)
+      Aiur.TestCleanup.rm_rf!(root)
+    end)
+
+    Application.put_env(:aiur, :cgroup_root_override, root)
+    Application.put_env(:aiur, :loadavg_source_override, fn -> {:ok, "99.0 99.0 99.0 1/1 1"} end)
+
+    sample = PressureAdmission.sample()
+    assert sample.cpu_pressure == :unavailable
+    assert sample.load == :unavailable
+    assert :dispatch = PressureAdmission.cpu_gate(Map.merge(sample, %{schedulers: 2, load_threshold: 1.5}))
+  end
+
   test "cgroup memory above the configured share holds new dispatch" do
     root = Path.join(System.tmp_dir!(), "aiur-cgroup-memory-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
