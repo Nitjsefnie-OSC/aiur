@@ -1,6 +1,8 @@
 defmodule Aiur.Accounts do
   @moduledoc "Machine-local harness accounts and pure account selection."
 
+  alias Aiur.Accounts.EnvKey
+
   @registry "machine"
 
   @type account :: %{required(:name) => String.t(), required(:harness) => String.t(), optional(:profile_dir) => Path.t() | nil, optional(:api_key_env) => String.t()}
@@ -691,7 +693,7 @@ defmodule Aiur.Accounts do
     end)
   end
 
-  defp local_env_value(name), do: Aiur.Accounts.EnvKey.read(name)
+  defp local_env_value(name), do: EnvKey.read(name)
 
   defp write_registry(accounts) do
     path = machine_path()
