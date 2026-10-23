@@ -6,13 +6,13 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
 
   alias Aiur.AgentControlCLI
   alias Aiur.Orchestrator.{DispatchCandidates, DispatchPolicy}
-  alias Aiur.TestSupport.RunnerTasks
   alias Aiur.Orchestrator.HumanReview
   alias Aiur.Orchestrator.PauseResume
   alias Aiur.Orchestrator.Reconciler
   alias Aiur.Orchestrator.Reconciler.Reactivation
   alias Aiur.Orchestrator.TrackerTasks
   alias Aiur.SnapshotFenceSupport
+  alias Aiur.TestSupport.RunnerTasks
 
   setup do
     test_pid = self()
