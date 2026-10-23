@@ -22,25 +22,34 @@ defmodule Aiur.ExecutorSweep.CacheFreshnessTest do
     :ets.insert(Aiur.GitHub.ResourceStore.Table, {key, Map.put(entry, :fetched_at_ms, System.system_time(:millisecond) - age_ms)})
   end
 
-  test "a cached in_progress run that LandingWatch now lists as completed produces no finding" do
+  test "fetcher-written status pages settle completed and absent runs but preserve live runs" do
     repo = "aiur-freshness-#{System.unique_integer([:positive])}"
-    for status <- ["queued", "in_progress", "waiting", "requested"], do: put_page(repo, "main:#{status}:0:age-index", [], 60_000)
-    put_page(repo, "main:in_progress:0:age-index", [%{"id" => 900}], 60_000)
-    put_page(repo, "main:completed:0:age-index", [%{"id" => 39_610_162_849}], 60_000)
-    put_page(repo, "main:refs", ["refs/heads/gh-readonly-queue/main/pr-7-abc"], 60_000)
+    completed = %{"id" => 39_610_162_850, "event" => "merge_group", "status" => "completed"}
+    active = %{"id" => 901, "event" => "merge_group", "status" => "in_progress"}
+
+    request = fn %{url: url} ->
+      query = URI.parse(url).query |> URI.decode_query()
+
+      runs =
+        case query["status"] do
+          "in_progress" -> [active]
+          "completed" -> [completed]
+          _ -> []
+        end
+
+      {:ok, %{status: 200, body: %{"workflow_runs" => runs}}}
+    end
+
+    assert {:ok, [^active]} = MergeGroupRunFetcher.active_runs("aiur-team", repo, "main", "token", request_fun: request)
+    assert {:ok, [^completed]} = MergeGroupRunFetcher.completed_runs("aiur-team", repo, "main", "token", request_fun: request)
 
     evidence = SnapshotCache.github_cache_ages("aiur-team", repo).merge_group_evidence
 
-    assert [] = stale_groups([group(39_610_162_849)], evidence)
-    assert [%{kind: "stale_merge_group", verification: "verified"}] = stale_groups([group(900)], evidence)
-  end
-
-  test "a run missing from every fresh active listing produces no finding" do
-    evidence = %{runs: %{}, active_listing_age_ms: 60_000, refs: nil}
-    assert [] = stale_groups([group(41)], evidence)
-
-    # A stale listing proves nothing, so the run is still reported (unverified by its own age).
-    assert [_] = stale_groups([group(41)], %{evidence | active_listing_age_ms: @max_age_ms + 1})
+    assert %{status: "completed", age_ms: age} = evidence.runs[39_610_162_850]
+    assert age < @max_age_ms
+    assert [] = stale_groups([group(39_610_162_850)], evidence)
+    assert [%{kind: "stale_merge_group", verification: "verified"}] = stale_groups([group(901)], evidence)
+    assert [] = stale_groups([group(902)], evidence)
   end
 
   test "the landing watch's queue-ref read is what the sweep sees" do
