@@ -3,7 +3,7 @@ defmodule Aiur.Workspace.Refresh do
 
   require Logger
   alias Aiur.{AgentBuildGuard, Config}
-  alias Aiur.Workspace.{AttributionGuard, BootstrapImage, Context, GitMetadata, Hooks, Ownership, PendingRestack, Provisioner, Reconstruction}
+  alias Aiur.Workspace.{AttributionGuard, BootstrapImage, Context, GitMetadata, Hooks, Ownership, PendingRestack, Provisioner, Reconstruction, StaleGitLock}
 
   @spec run(Path.t(), map() | String.t() | nil, String.t() | nil) :: :ok | {:error, term()}
   def run(workspace, issue_or_identifier, worker_host \\ nil) when is_binary(workspace) do
@@ -12,28 +12,30 @@ defmodule Aiur.Workspace.Refresh do
       |> Context.build()
       |> then(&%{&1 | branch_name: Provisioner.resolve_branch_name(workspace, &1)})
 
-    case refresh_workspace_readiness(workspace, worker_host) do
-      {:error, _reason} = error ->
-        error
+    with :ok <- StaleGitLock.recover(workspace, worker_host) do
+      case refresh_workspace_readiness(workspace, worker_host) do
+        {:error, _reason} = error ->
+          error
 
-      _readiness ->
-        hooks = Config.settings!().hooks
-        hook_result = run_before_run_command(hooks.before_run, workspace, issue_context, worker_host)
+        _readiness ->
+          hooks = Config.settings!().hooks
+          hook_result = run_before_run_command(hooks.before_run, workspace, issue_context, worker_host)
 
-        case hook_result do
-          :ok ->
-            finalize_before_run_workspace(workspace, issue_context, worker_host)
+          case hook_result do
+            :ok ->
+              finalize_before_run_workspace(workspace, issue_context, worker_host)
 
-          {:error, reason} = error ->
-            maybe_recreate_stale_workspace(
-              error,
-              reason,
-              hooks.before_run,
-              workspace,
-              issue_context,
-              worker_host
-            )
-        end
+            {:error, reason} = error ->
+              maybe_recreate_stale_workspace(
+                error,
+                reason,
+                hooks.before_run,
+                workspace,
+                issue_context,
+                worker_host
+              )
+          end
+      end
     end
   end
 

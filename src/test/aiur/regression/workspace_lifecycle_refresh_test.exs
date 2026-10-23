@@ -6,6 +6,61 @@ defmodule Aiur.Regression.WorkspaceLifecycleRefreshTest do
   alias Aiur.Workspace.WipPreservation
 
   describe "before_run refresh/recreate decision table (#569→#577→#653→#661)" do
+    test "keeps a stale index lock held by a live process" do
+      test_root = test_root("held-index-lock")
+
+      try do
+        {workspace, _trace_file} = bootstrap_dirty_refresh_workspace!(test_root, "REG-LOCK-HELD-1")
+        lock = Path.join([workspace, ".git", "index.lock"])
+        File.write!(lock, "live writer")
+        set_mtime!(lock, DateTime.add(DateTime.utc_now(), -180, :second))
+
+        issue = %Issue{
+          id: "issue-lock-held-1",
+          identifier: "REG-LOCK-HELD-1",
+          title: "Preserve active index lock",
+          state: "in-progress",
+          labels: ["agent:in-progress"]
+        }
+
+        assert {:error, {:git_index_lock_held, ^lock, age, 11, pid}} =
+                 Workspace.run_before_run_hook(workspace, issue)
+
+        assert age >= 120
+        assert is_integer(pid)
+        assert File.read!(lock) == "live writer"
+      after
+        Aiur.TestCleanup.rm_rf!(test_root)
+      end
+    end
+
+    test "stale empty index lock is removed before before_run refresh" do
+      test_root = test_root("stale-index-lock")
+
+      try do
+        {workspace, trace_file} = bootstrap_dirty_refresh_workspace!(test_root, "REG-LOCK-1")
+        git!(["-C", workspace, "checkout", "--", "README.md"])
+        lock = Path.join([workspace, ".git", "index.lock"])
+        File.write!(lock, "")
+        set_mtime!(lock, DateTime.add(DateTime.utc_now(), -180, :second))
+
+        issue = %Issue{
+          id: "issue-lock-1",
+          identifier: "REG-LOCK-1",
+          title: "Recover stale index lock",
+          state: "in-progress",
+          labels: ["agent:in-progress"]
+        }
+
+        assert :ok = Workspace.run_before_run_hook(workspace, issue)
+        refute File.exists?(lock)
+        assert trace_count(trace_file, issue.identifier) == 1
+        assert String.trim(git!(["-C", workspace, "status", "--short"])) == ""
+      after
+        Aiur.TestCleanup.rm_rf!(test_root)
+      end
+    end
+
     test "clean workspace: before_run refreshes and returns :ok without recreate" do
       test_root = test_root("clean")
 
@@ -380,5 +435,10 @@ defmodule Aiur.Regression.WorkspaceLifecycleRefreshTest do
 
   defp shell_quote(value) do
     "'" <> String.replace(value, "'", "'\"'\"'") <> "'"
+  end
+
+  defp set_mtime!(path, datetime) do
+    unix = DateTime.to_unix(datetime)
+    {_, 0} = System.cmd("touch", ["-d", "@#{unix}", path])
   end
 end

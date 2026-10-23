@@ -320,8 +320,9 @@ defmodule Aiur.Workspace.GitMetadata do
   end
 
   defp remove_stale_lock(path) do
-    case File.rm(path) do
-      result when result in [:ok, {:error, :enoent}] -> :ok
+    case File.lstat(path) do
+      {:error, :enoent} -> :ok
+      {:ok, _stat} -> {:error, :eexist}
       {:error, reason} -> {:error, reason}
     end
   end
