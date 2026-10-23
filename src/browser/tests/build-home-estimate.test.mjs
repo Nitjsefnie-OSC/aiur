@@ -48,3 +48,10 @@ test('J10 unavailable estimates carry the source cause', () => {
   D.sources.estimates.state = 'ok'
   assert.deepEqual(etaLabel(D), { text: '2 to go · ETA —', title: 'No planned ticket has an estimate' })
 })
+test('J11 invalid override hours stay unknown instead of looking numeric', () => {
+  for (const hours of ['3', 0, -1, NaN, Infinity]) {
+    const row = { est: 4, override: { hours } }
+    assert.equal(estHours(row), null)
+    assert.equal(estLabel(row), '—')
+  }
+})

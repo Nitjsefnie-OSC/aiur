@@ -1,5 +1,8 @@
 // Server estimates are authoritative; missing complexity has no client fallback.
-export const estHours = t => t.override ? t.override.hours : (t.est ?? null);
+export const estHours = t => {
+  const hours = t.override ? t.override.hours : t.est;
+  return Number.isFinite(hours) && hours > 0 ? hours : null;
+};
 export const estLabel = t => { const h = estHours(t); return h == null ? '—' : '≈' + h + 'h'; };
 export function etaLabel(D) {
   const q = D.sources.queue.state, part = q === 'incomplete' ? '≥' : '';
