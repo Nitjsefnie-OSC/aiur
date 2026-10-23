@@ -51,7 +51,7 @@ defmodule Aiur.Config.CapacitySettings do
   """
   @spec default_max_concurrent_agents() :: pos_integer()
   @spec default_max_concurrent_agents(pos_integer()) :: pos_integer()
-  def default_max_concurrent_agents(schedulers \\ SystemCgroup.cpu_quota() || System.schedulers_online())
+  def default_max_concurrent_agents(schedulers \\ default_capacity_schedulers())
 
   def default_max_concurrent_agents(schedulers)
       when is_integer(schedulers) and schedulers > 0 do
@@ -59,6 +59,13 @@ defmodule Aiur.Config.CapacitySettings do
   end
 
   def default_max_concurrent_agents(_schedulers), do: 2
+
+  defp default_capacity_schedulers do
+    case SystemCgroup.cpu_quota() do
+      quota when is_number(quota) -> max(1, floor(quota))
+      :unavailable -> System.schedulers_online()
+    end
+  end
 
   @doc """
   Per-scheduler runnable-process ceiling for the instantaneous run-queue

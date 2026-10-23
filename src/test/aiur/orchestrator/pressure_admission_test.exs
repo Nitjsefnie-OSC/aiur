@@ -126,8 +126,8 @@ defmodule Aiur.Orchestrator.PressureAdmissionTest do
     Application.put_env(:aiur, :meminfo_source_override, fn -> flunk("cgroup memory must be preferred") end)
 
     probes = Capacity.admission_probes()
-    assert probes.memory_mb == 0
-    assert probes.memory_threshold_mb == 819
+    assert probes.memory_mb == 174
+    assert probes.memory_threshold_mb == 204
     assert {:hold, %{signal: :memory}} = DispatchPolicy.admission_gate(Map.put(probes, :queued_demand?, true))
   end
 
