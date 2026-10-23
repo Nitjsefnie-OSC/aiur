@@ -21,6 +21,8 @@ async function openUnfiledPair(browser,cell) {
   } catch(error) {await pair.close();throw error}
 }
 
+// Full-surface captures retain their failure PNGs without accumulating per-action DOM traces.
+test.use({ trace: 'off' })
 test.setTimeout(180_000)
 for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark', 'light']) for (const palette of ['aiur', 'gruvbox']) {
   test(`unfiled modal elements ${viewport.viewport.width} ${theme} ${palette}`, async ({ browser }) => {
