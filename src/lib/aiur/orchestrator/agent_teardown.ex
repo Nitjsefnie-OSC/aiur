@@ -191,7 +191,12 @@ defmodule Aiur.Orchestrator.AgentTeardown do
     TrackerTasks.chain(
       state,
       {:runtime_reason_labels, identifier},
-      fn -> TicketTransition.clear_transient_reason_modifiers(identifier, writer: :agent_teardown) end,
+      fn ->
+        TicketTransition.clear_transient_reason_modifiers(identifier,
+          writer: :agent_teardown,
+          current_labels: Map.get(issue, :labels, [])
+        )
+      end,
       fn current, result ->
         case result do
           :ok ->
