@@ -7,6 +7,9 @@ mode=${1:---check}
   exit 64
 }
 shim_dir=${MISE_SHIMS_DIR:-${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims}
+if [[ $# -eq 0 || $mode == --repair ]]; then
+  echo 'distribution: daemon boot enforces loopback-only; remote control uses HTTPS'
+fi
 bad=0
 for shim in "$shim_dir"/*; do
   [[ -L $shim ]] || continue

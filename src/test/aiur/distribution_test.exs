@@ -9,6 +9,51 @@ defmodule Aiur.DistributionTest do
     end
   end
 
+  describe "check/1" do
+    test "does not constrain non-distributed boots" do
+      assert :ok = Distribution.check(alive?: false)
+    end
+
+    test "rejects epmd bound beyond loopback" do
+      assert {:error, :epmd_not_local} =
+               Distribution.check(alive?: true, epmd_address: {0, 0, 0, 0}, dist_address: {127, 0, 0, 1})
+    end
+
+    test "rejects any epmd listener in a multi-socket bind" do
+      assert {:error, :epmd_not_local} =
+               Distribution.check(
+                 alive?: true,
+                 epmd_address: [{127, 0, 0, 1}, {0, 0, 0, 0}],
+                 dist_address: {127, 0, 0, 1}
+               )
+    end
+
+    test "rejects distribution listener bound beyond loopback" do
+      assert {:error, :dist_not_local} =
+               Distribution.check(alive?: true, epmd_address: {127, 0, 0, 1}, dist_address: {0, 0, 0, 0})
+    end
+
+    test "rejects any listener in a multi-socket distribution bind" do
+      assert {:error, :dist_not_local} =
+               Distribution.check(
+                 alive?: true,
+                 epmd_address: {127, 0, 0, 1},
+                 dist_address: [{127, 0, 0, 1}, {0, 0, 0, 0}]
+               )
+    end
+
+    test "rejects the release's baked cookie" do
+      assert {:error, :baked_cookie} =
+               Distribution.check(
+                 alive?: true,
+                 epmd_address: {127, 0, 0, 1},
+                 dist_address: {127, 0, 0, 1},
+                 running_cookie: ~c"default-cookie",
+                 release_cookie: ~c"default-cookie"
+               )
+    end
+  end
+
   describe "node_name/0" do
     test "returns nil when running on :nonode@nohost" do
       # In the default mix test runtime the BEAM is not distributed.

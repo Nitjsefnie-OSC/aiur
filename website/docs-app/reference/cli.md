@@ -434,6 +434,8 @@ Dismissing a Command closes it and moves it to history. If the Command's agent i
 
 ## Operational facts that change an incident response
 
+Erlang distribution is loopback-only; remote control uses HTTPS.
+
 | Fact | Response |
 | --- | --- |
 | **Dispatch needs `agent:todo`.** | `AGENTS 0/32 (binding: ticket supply)` means a recent poll found no queued ticket. If it instead reads `idle backoff active (... polling.idle_widen_factor=5.0, next poll in ...)`, the daemon has not looked since its last idle poll — run `aiur --todo <id>` (which wakes a prompt poll and keeps the base cadence until the ticket is seen), add the label, or trigger a refresh so the work is seen. `has not polled yet` means the last tracker fetch failed. |
