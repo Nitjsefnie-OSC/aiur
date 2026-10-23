@@ -60,9 +60,10 @@ async function session(browser, name, { palette } = {}) {
   })
   const frames = { resync: null }
   page.on('websocket', ws => {
-    const sent = new Set()
+    // Only the newest socket counts: a previous page's socket can still deliver frames after navigation.
+    const sent = new Set(); frames.ws = ws
     ws.on('framesent', ({ payload }) => { const f = parse(payload); if (f?.[3] === 'event' && f[4]?.event === 'build-resync') sent.add(f[1]) })
-    ws.on('framereceived', ({ payload }) => { const f = parse(payload); if (f?.[3] === 'phx_reply' && sent.has(f[1]) && frames.resync === null) frames.resync = Buffer.byteLength(String(payload)) })
+    ws.on('framereceived', ({ payload }) => { const f = parse(payload); if (frames.ws === ws && f?.[3] === 'phx_reply' && sent.has(f[1]) && frames.resync === null) frames.resync = Buffer.byteLength(String(payload)) })
   })
   const heap = async () => {
     await cdp.send('HeapProfiler.collectGarbage')
@@ -143,9 +144,16 @@ for (const name of ['D', 'P']) {
       await record('C14 chainOf p95 (20 hovers)', name, 'C14_chain', async () => {
         if (name === 'P') throw new Error('touch devices have no hover')
         since = await now(page)
-        await page.evaluate(async () => { (await import('/build-home/state.js')).S.trees = true })
-        const cards = page.locator('#bd-sec-hist .bd-card')
-        for (let i = 0; i < 20; i++) await cards.nth(i % Math.max(1, await cards.count())).hover({ force: true })
+        // Pointer hover on rendered history cards; a scroll in between would suppress hover (the .scrolling guard).
+        await page.evaluate(async () => {
+          const { S, ctx } = await import('/build-home/state.js')
+          S.trees = true; ctx.content.classList.remove('scrolling')
+          const cards = [...ctx.R.values()].filter(el => el.closest('#bd-sec-hist'))
+          for (let i = 0; i < 20 && cards.length; i++) {
+            cards[i % cards.length].dispatchEvent(new PointerEvent('pointerover', { bubbles: true, pointerType: 'mouse' }))
+            await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+          }
+        })
         return { value: p95(await durations(page, 'chainOf', since)), unit: 'ms' }
       })
       await record('C14 hover edge redraw p95', name, 'C14_hover', async () => {
