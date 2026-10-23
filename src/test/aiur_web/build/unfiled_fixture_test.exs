@@ -9,7 +9,8 @@ defmodule AiurWeb.Build.UnfiledFixtureTest do
     assert length(rows) == 16
     first = hd(rows)
     assert first["id"] == "pack:build-plan/BP-645"
-    assert Map.take(first, ~w(num qpos est was)) == %{"num" => nil, "qpos" => nil, "est" => nil, "was" => nil}
+    assert Map.take(first, ~w(num qpos was)) == %{"num" => nil, "qpos" => nil, "was" => nil}
+    assert first["est"] == 1.25
     assert first["src"] == %{"kind" => "pack", "path" => "docs/build-plan.md", "wave" => 5}
     assert data["sources"]["packs"]["state"] == "ok"
     assert Enum.any?(live["sections"]["plan"], &("645" in &1["deps"]))

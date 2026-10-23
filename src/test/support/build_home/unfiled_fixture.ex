@@ -23,7 +23,8 @@ defmodule Aiur.TestSupport.BuildHome.UnfiledFixture do
 
     case ids[row["id"]] do
       nil -> row
-      id -> Map.merge(row, %{"id" => id, "num" => nil, "qpos" => nil, "est" => nil, "src" => %{"kind" => "pack", "path" => "docs/build-plan.md", "wave" => row["wave"]}})
+      # Preserve frozen design estimates for identity parity; the live producer leaves estimates unknown.
+      id -> Map.merge(row, %{"id" => id, "num" => nil, "qpos" => nil, "src" => %{"kind" => "pack", "path" => "docs/build-plan.md", "wave" => row["wave"]}})
     end
   end
 
