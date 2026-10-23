@@ -112,7 +112,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
       ]
       for (const surface of surfaces) {
         for (const page of [pair.design,pair.product]) await page.locator('[data-v="'+surface.view+'"]').click()
-        if(viewport.viewport.width===390 && surface.kind!=='bd-tn') for(const page of [pair.design,pair.product]) await page.locator('#bd-vp').evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-64,behavior:'instant'}))
+        if(surface.kind!=='bd-tn') for(const page of [pair.design,pair.product]) await page.locator('#bd-vp').evaluate(el=>el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}))
         if(surface.kind==='bd-tn') await pair.product.evaluate(async()=>{
           const {H,loadEarlier}=await import('/build-home/history.js')
           for(let page=0;H.more&&page<100;page++) if(!await loadEarlier(31)) throw new Error('History parity intake failed')
