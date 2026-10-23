@@ -286,6 +286,7 @@ defmodule Aiur.Application.Children do
         dashboard_cache_children(dashboard?) ++
         List.wrap(if(build_index?, do: AiurWeb.Build.IndexSupervisor))
     )
+    |> then(&(&1 ++ List.wrap(if(dashboard?, do: AiurWeb.DashboardAuth.ChallengeStore))))
   end
 
   defp dashboard_cache_children(dashboard?) do
@@ -317,7 +318,6 @@ defmodule Aiur.Application.Children do
     [
       if(dashboard?, do: AiurWeb.ControlCenterCache),
       if(dashboard?, do: AiurWeb.FinancialData.Supervisor),
-      if(dashboard?, do: AiurWeb.DashboardAuth.ChallengeStore),
       if(dashboard?, do: {Aiur.HttpServer, dashboard_pages?: dashboard_pages?}),
       if(dashboard? and tailscale_funnel?, do: Aiur.TailscaleFunnel)
     ]

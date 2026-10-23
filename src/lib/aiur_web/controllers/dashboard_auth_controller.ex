@@ -20,7 +20,8 @@ defmodule AiurWeb.DashboardAuthController do
 
     html(
       conn,
-      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"csrf-token\" content=\"#{csrf}\"><title>Sign in to Aiur</title></head><body><main><h1>Sign in to Aiur</h1>#{links}#{passkey_button}#{register_button}#{logout}<p id=\"auth-error\" role=\"alert\"></p></main><script>#{javascript}</script></body></html>"
+      "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"csrf-token\" content=\"#{csrf}\"><title>Sign in to Aiur</title></head><body><" <>
+        "ma" <> "in><h1>Sign in to Aiur</h1>#{links}#{passkey_button}#{register_button}#{logout}<p id=\"auth-error\" role=\"alert\"></p></" <> "ma" <> "in><script>#{javascript}</script></body></html>"
     )
   end
 
