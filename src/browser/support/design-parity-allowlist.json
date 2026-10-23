@@ -420,7 +420,7 @@
     "cells": {
       "dataset": "live"
     },
-    "reason": "S-27: unfiled rows show an em dash and Not filed instead of fabricated GitHub or queue numbers (Decisions 2, 3, 16). Transparent absolutely positioned overlays mask the larger measured identity bounds on both sides without changing slot width or adjacent layout. The tree reference mask includes at most one device pixel on each horizontal edge for clipped identity antialiasing, bounded strictly between the preceding status dot and following title.",
+    "reason": "S-27: unfiled rows show an em dash and Not filed instead of fabricated GitHub or queue numbers (Decisions 2, 3, 16). The card reference mask includes at most one device pixel on its left edge for identity ink, bounded strictly after the adjacent unmasked icon. Transparent absolutely positioned overlays mask the larger measured identity bounds on both sides without changing slot width or adjacent layout. The tree reference mask includes at most one device pixel on each horizontal edge for clipped identity antialiasing, bounded strictly between the preceding status dot and following title.",
     "approval": {
       "status": "pending-sign-off",
       "by": null,

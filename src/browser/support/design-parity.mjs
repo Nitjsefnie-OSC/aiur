@@ -209,14 +209,14 @@ export async function capturePairEvidence(pair) {
   }
 }
 
-export async function expectDesignParity(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false, containedRegion = false }) {
+export async function expectDesignParity(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false, regionCapture = null }) {
   const time = preserveAnimations ? await pair.design.evaluate(() => Date.now()) : FIXTURE_META.now
   await assertCellState(pair.design, pair.cell, time)
   await assertCellState(pair.product, pair.cell, time)
-  await compareParityPixels(pair, { name, region, fullPage, preserveAnimations, clipToViewport, viewportClip, containedRegion })
+  await compareParityPixels(pair, { name, region, fullPage, preserveAnimations, clipToViewport, viewportClip, regionCapture })
 }
 
-export async function compareParityPixels(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false, containedRegion = false }) {
+export async function compareParityPixels(pair, { name, region, fullPage = false, preserveAnimations = false, clipToViewport = false, viewportClip = false, regionCapture = null }) {
   const { designMask, productMask } = await applyAllowlist(pair, pair.cell)
   // #5614: the imported design predates the live-top toggle (band-scroll.js syncNowBtn); apply the same rule to both
   // sides, so the JS-less transplant and the design page match the product. Drop this when the design is re-imported.
@@ -239,7 +239,7 @@ export async function compareParityPixels(pair, { name, region, fullPage = false
     window.parityHeld = document.getAnimations().filter(a => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity)
     window.parityHeld.forEach(a => { a.pause(); a.currentTime = 0 })
   })
-  try { await captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip, containedRegion }) }
+  try { await captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip, regionCapture }) }
   finally { if (preserveAnimations) for (const page of [pair.design, pair.product]) if (!page.isClosed()) await page.evaluate(() => window.parityHeld?.forEach(a => a.play())) }
 }
 
@@ -253,18 +253,20 @@ async function visibleRegionBox(page, target) {
   return { x, y, width, height }
 }
 
-async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip, containedRegion }) {
+async function captureParityPixels(pair, { name, region, fullPage, preserveAnimations, designMask, productMask, clipToViewport, viewportClip, regionCapture }) {
   const design = region ? await one(pair.design, region, 'design') : pair.design
   const product = region ? await one(pair.product, region, 'product') : pair.product
-  if ((clipToViewport || containedRegion) && !region) throw new Error('clipToViewport requires a region')
-  const clips = (clipToViewport || containedRegion)
+  if ((clipToViewport || regionCapture) && !region) throw new Error('clipToViewport requires a region')
+  const clips = (clipToViewport || regionCapture)
     ? await Promise.all([[pair.design, design], [pair.product, product]].map(([page, target]) => visibleRegionBox(page, target)))
     : null
-  if (containedRegion) {
+  if (regionCapture) {
     for (const [index, target] of [design, product].entries()) {
-      expect(clips[index], 'whole region must fit inside the viewport').toEqual(await target.boundingBox())
+      if (regionCapture === 'contained') expect(clips[index], 'whole region must fit inside the viewport').toEqual(await target.boundingBox())
     }
-    expect({width: clips[1].width, height: clips[1].height}, 'contained region sizes must match')
+    // Page screenshot clips use whole CSS pixels; preserve each origin without scaling.
+    for (const clip of clips) { clip.width = Math.floor(clip.width); clip.height = Math.floor(clip.height) }
+    expect({width: clips[1].width, height: clips[1].height}, 'captured region sizes must match')
       .toEqual({width: clips[0].width, height: clips[0].height})
   } else if (clips) expect(clips[1], 'visible region geometry must match').toEqual(clips[0])
   const opts = { animations: preserveAnimations ? 'allow' : 'disabled', caret: 'hide', scale: 'device', maskColor: '#ff00ff', ...(region ? {} : { fullPage }) }

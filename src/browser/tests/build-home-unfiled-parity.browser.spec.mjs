@@ -70,12 +70,13 @@ async function maskRow(pair,region,slots) {
       const mask=document.createElement('span');mask.dataset.unfiledMask=''
       const style=getComputedStyle(el),ancestor=el.closest('.bd-tree-in')
       const transform=ancestor?getComputedStyle(ancestor).transform:'none',scale=transform==='none'?1:new DOMMatrix(transform).a
-      const box=el.getBoundingClientRect(),title=el.matches('.bd-tn1 b')?el.nextElementSibling:null,dot=title?el.previousElementSibling:null
+      const box=el.getBoundingClientRect(),cardIcon=el.matches('.bd-id')?el.previousElementSibling:null,title=el.matches('.bd-tn1 b')?el.nextElementSibling:null,dot=title?el.previousElementSibling:null
       const rasterMargin=title?Math.min(1/devicePixelRatio,Math.max(0,title.getBoundingClientRect().left-box.right)):0
-      const rasterLeft=dot?Math.min(1/devicePixelRatio,Math.max(0,(box.left-dot.getBoundingClientRect().right)/2)):0
+      const rasterLeft=cardIcon?1/devicePixelRatio:dot?Math.min(1/devicePixelRatio,Math.max(0,(box.left-dot.getBoundingClientRect().right)/2)):0
       el.style.position='relative'
       Object.assign(mask.style,{position:'absolute',left:(-parseFloat(style.borderLeftWidth||0)-rasterLeft/scale)+'px',top:-parseFloat(style.borderTopWidth||0)+'px',width:(size.width+rasterMargin+rasterLeft)/scale+'px',height:size.height/scale+'px',pointerEvents:'none'})
       el.append(mask)
+      if(cardIcon && mask.getBoundingClientRect().left<=cardIcon.getBoundingClientRect().right) throw new Error('Identity mask overlaps the unmasked card icon')
       if(title && mask.getBoundingClientRect().right>=title.getBoundingClientRect().left) throw new Error('Reference mask overlaps the unmasked title')
       if(dot && mask.getBoundingClientRect().left<=dot.getBoundingClientRect().right) throw new Error('Reference mask overlaps the unmasked status dot')
     },size)
@@ -134,7 +135,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
             await pair.design.evaluate(num=>window.unfiledParity.tree('AIUR-'+num),num)
             await pair.product.evaluate(async num=>(await import('/build-home/trees.js')).openTree('pack:build-plan/BP-'+num),num)
             for(const page of [pair.design,pair.product]) {
-              await page.locator('.bd-tree-s').evaluate(el=>window.scrollTo({top:scrollY+el.getBoundingClientRect().top-64,behavior:'instant'}))
+              await page.locator('.bd-tree-s').evaluate(el=>el.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'}))
               // History intake schedules a trailing relayout which rebuilds tree nodes.
               await page.waitForTimeout(350)
             }
@@ -142,15 +143,21 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
           await maskVisible(pair,surface.kind,surface.slots)
           const visible = await Promise.all([pair.design,pair.product].map(page=>page.locator(surface.region).evaluate((root,kind)=>{
             const box=root.getBoundingClientRect()
-            const viewport={top:Math.max(0,box.top),left:Math.max(0,box.left),bottom:Math.min(innerHeight,box.bottom),right:Math.min(innerWidth,box.right)}
+            const top=Math.max(0,box.top),left=Math.max(0,box.left)
+            const viewport={top,left,bottom:top+Math.floor(Math.min(innerHeight,box.bottom)-top),right:left+Math.floor(Math.min(innerWidth,box.right)-left)}
             return [...root.querySelectorAll('.'+kind+'[data-id]')].filter(el=>{
               const b=el.getBoundingClientRect()
-              return b.top>=viewport.top+(kind==='bd-card'?46:0)-1 && b.bottom<=viewport.bottom+1 && b.left>=viewport.left-1 && b.right<=viewport.right+1
+              const inside=b=>b.top>=viewport.top+(kind==='bd-card'?46:0) && b.bottom<=viewport.bottom && b.left>=viewport.left && b.right<=viewport.right
+              if(kind!=='lr') return inside(b)
+              const style=getComputedStyle(el)
+              const content={top:b.top+parseFloat(style.borderTopWidth),bottom:b.bottom-parseFloat(style.borderBottomWidth),left:b.left+parseFloat(style.paddingLeft),right:b.right-parseFloat(style.paddingRight)}
+              const children=[...el.querySelectorAll(':scope > [role="cell"], .c-id > *, .c-st > *')].map(child=>child.getBoundingClientRect()).filter(box=>box.width&&box.height)
+              return inside(content) && children.every(inside)
             }).map(el=>Number(el.dataset.id.replace(/^(AIUR-|pack:build-plan\/BP-)/,''))).filter(n=>n>=645&&n<=660).sort((a,b)=>a-b)
           },surface.kind)))
           expect(visible[1],surface.kind+' visible identities').toEqual(visible[0])
-          expect(visible[1],surface.kind+' requested row is fully captured').toContain(num)
-          await expectDesignParity(pair,{name:'unfiled-'+surface.kind+'-'+num,region:surface.region,preserveAnimations:true,containedRegion:true})
+          expect(visible[1],surface.kind+' requested row content is fully captured').toContain(num)
+          await expectDesignParity(pair,{name:'unfiled-'+surface.kind+'-'+num,region:surface.region,preserveAnimations:true,regionCapture:surface.kind==='bd-tn'?'contained':'visible'})
           visible[1].forEach(id=>covered.add(id))
         }
         expect([...covered].sort((a,b)=>a-b),surface.kind+' captures cover every unfiled row').toEqual(ids)
