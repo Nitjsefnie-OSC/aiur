@@ -21,7 +21,6 @@
   background: conic-gradient(from var(--bd-a), transparent 0deg, var(--accent) 60deg, transparent 140deg, transparent 190deg, color-mix(in srgb, var(--accent) 65%, transparent) 260deg, transparent 330deg);
   filter: blur(6px);
   animation: bdRot 9s linear infinite;
-  animation-delay: var(--bd-rotation-delay, 0ms);
 }
 
 /* C:289 */ .ag-stuck .bd-glow {
