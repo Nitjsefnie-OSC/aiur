@@ -17,6 +17,7 @@ export const recordedSeconds = {
   'test:build-home-chains': 133,
   // Job 118131038704 (shard 7/9): 126.4s.
   'test:build-home-chains-parity': 127,
+  'test:browser-suite -- build-home-composer': 23.3,
   // Job 118131038510 (shard 2/9): 28.7s.
   'test:browser-suite -- build-home-chains-states': 29,
   // Local estimate (loaded host ran 234s; CI hosts run the home suites about 2x faster); replace from its first shard log.
