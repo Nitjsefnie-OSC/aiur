@@ -243,3 +243,9 @@ This telemetry is measurement-only; it does not adapt `max_concurrent_agents` au
 ### Post-deploy checks
 
 The `/post-deploy` page lists manual checks from merged PRs. Add `Post-deploy check: <exact steps>` under `## Local tests`; name required operators, such as `(operator: physical Stream Deck)`. Checks stay pending until an Executor marks them done. Run them after rebuilding the runtime.
+
+Select a Feature filter or open `/build?feature=<slug>` to show its whole-feature
+Done, Weighted, and scope figures. Unknown figures show `—` with a reason on
+hover. Focus dims unrelated tickets; Compact replaces unrelated runs with gap
+markers and retains loaded dependencies as dashed ghost cards. Earlier history
+loads back to the feature’s oldest closed member. Clear the feature with ×.
