@@ -17,8 +17,7 @@ defmodule Aiur.AgentEnvironmentTest do
     assert AgentEnvironment.erlang_distribution_env_name?("AIUR_AGENT_NODE_NAME")
     assert AgentEnvironment.erlang_distribution_env_name?("AIUR_COOKIE")
     assert AgentEnvironment.erlang_distribution_env_name?("AIUR_ERLANG_COOKIE")
-    # Per-instance identity inputs (#431) must be scrubbed so an agent's inner aiur
-    # derives its own identity instead of reaping the outer.
+    # Inner aiur processes must not reuse the outer daemon's keyed identity (#431).
     assert AgentEnvironment.erlang_distribution_env_name?("AIUR_RELEASE_NODE")
     assert AgentEnvironment.erlang_distribution_env_name?("AIUR_INSTANCE_KEY")
     assert AgentEnvironment.erlang_distribution_env_name?("AIUR_REPO_ROOT")
