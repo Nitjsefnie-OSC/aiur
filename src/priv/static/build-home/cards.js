@@ -1,4 +1,4 @@
-import { isUnfiled, refText, refTitle, queueText } from './unfiled.js';
+import { isUnfiled, refText, queueText } from './unfiled.js';
 // Port of design build.js:807–877, 1543–1547; unknowns are explicit at the trust boundary.
 import { S, ctx, fx, onReset } from './state.js';
 import { esc } from './dom.js';
@@ -66,7 +66,7 @@ function planContent(t, points) {
     (blocks.length ? ' · blocks ' + blocks.map(n => '#' + number(n, 'failed.blocks', 'Blocked ticket unknown')).join(' ') : '') + '</span></div>' :
     cues.length ? '<div class="bd-cues">' + cues.join('') + '</div>' : '';
   const est = finite(t.override?.hours) ?? finite(t.est);
-  const label = isUnfiled(t) ? 'Not filed' : esc(queueText(t)) +
+  const label = isUnfiled(t) ? 'Not filed' : (t.qpos == null ? esc(queueText(t)) : 'Q' + number(t.qpos, 'qpos', 'Queue position unknown')) +
     (c.held ? ' · held' : c.failed ? ' · prereq failed' : c.wait ? ' · waiting' : ' · queued');
   return { body, status: '<div class="bd-status"><span>' + label + '</span><span>≈' + (est === null ? unk('est', 'Estimate unknown') : est + 'h') + ' · ' + points + ' pts</span></div>' };
 }
@@ -102,7 +102,7 @@ export function makeCard(it) {
   if (pg?.known) { el.style.setProperty('--pct', t.pct + '%'); el.style.setProperty('--ph', Math.round(42 + t.pct * 1.03)); }
   if ((det === 'mini' && it.h > 34) || (det === 'line' && it.h > 3.2 * ctx.L.fs)) el.classList.add('tall');
   const glow = glowHTML(t), sr = srHTML(t, ctx.snap);
-  const id = '<span title="' + esc(refTitle(t)) + '">' + esc(refText(t)) + '</span>';
+  const id = isUnfiled(t) ? '<span title="Not filed yet">—</span>' : '#' + number(t.num, 'num', 'Ticket number unknown');
   const tip = refText(t) + ' · ' + t.title + (ag ? ' · ' + ag.label : '') + (startUnknown ? ' · start unknown' : '') + (estUnknown ? ' · estimate unknown' : '');
   const bar = pg?.known ? '<span class="bd-bar"><i style="width:' + finite(t.pct, 0, 100) + '%"></i></span>' : '';
   if (det === 'bar') el.innerHTML = glow + '<div class="bd-in" title="' + esc(tip) + '">' + sr + '</div>';

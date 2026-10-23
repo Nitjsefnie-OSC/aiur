@@ -5,6 +5,16 @@ import { stClass, stText } from '../../priv/static/build-home/list.js';
 import { treeStatus } from '../../priv/static/build-home/chains.js';
 import { headerHTML } from '../../priv/static/build-home/modal/header.js';
 const pack = { id: 'pack:demo/A', sec: 'plan', num: null, qpos: null, src: { kind: 'pack', path: 'docs/build-plan.md', wave: null }, title: '<img src=x>', wave: 1 };
+test('filed unknown references and invalid queues remain distinct from unfiled', () => {
+  for (const num of [null, undefined, NaN, Infinity, '1<b>']) {
+    assert.equal(refText({num}), '#—');
+    assert.equal(refTitle({num}), 'Ticket number unknown');
+  }
+  for (const qpos of [NaN, Infinity, '1<b>']) assert.equal(queueText({num: 9, qpos}), 'Q—');
+  assert.equal(queueText({num: 9, qpos: null}), 'Q?');
+  assert.equal(refText(pack), '—');
+  assert.equal(queueText(pack), 'Not filed');
+});
 test('unfiled identities and unknown queue positions are explicit', () => {
   assert.equal(isUnfiled(null), false); assert.equal(isUnfiled(undefined), false); assert.equal(isUnfiled(pack), true); assert.equal(refText(pack), '—'); assert.equal(refTitle(pack), 'Not filed yet');
   assert.equal(refText({num: 57}), '#57'); assert.equal(queueText(pack), 'Not filed');
