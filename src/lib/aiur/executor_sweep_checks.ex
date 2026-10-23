@@ -1,21 +1,18 @@
 defmodule Aiur.ExecutorSweep.Checks do
   @moduledoc "Builds prioritized Executor sweep findings from observed daemon and GitHub snapshot data."
 
+  alias Aiur.Instance.SweepFilter
   alias Aiur.ExecutorSweep.{CacheFreshness, ConflictingWaitingPrs, FailureCause, StaleCiWait, StateLabels, TriageBacklog}
 
   @type finding :: %{kind: String.t(), priority: pos_integer(), action: String.t(), message: String.t()}
 
-  @doc """
-  Runs all pure checks against one local snapshot. A snapshot key present with
-  a nil value is unknown, so its checks report the source unavailable instead
-  of running. A check that raises reports itself failed without dropping the
-  other checks' findings.
-  """
+  @doc "Runs pure checks against one snapshot. Nil sources are unknown; a failing check doesn't drop other findings."
   @spec all(map(), DateTime.t(), keyword()) :: [finding()]
   def all(snapshot, %DateTime{} = now, opts \\ []) do
     unreviewed_minutes = Keyword.get(opts, :unreviewed_pr_minutes, 10)
     stale_minutes = Keyword.get(opts, :merge_group_stale_minutes, 15)
     github_freshness_ms = Keyword.get(opts, :github_freshness_ms, 5 * 60_000)
+    snapshot = SweepFilter.own(snapshot)
 
     [
       {"unreviewed_prs", [:pull_requests, :tickets], fn -> unreviewed_prs(snapshot, now, unreviewed_minutes) end},
