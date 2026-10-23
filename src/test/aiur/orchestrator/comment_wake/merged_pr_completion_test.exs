@@ -191,9 +191,9 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
       assert Agent.get(counter, & &1) == 2
     end
 
-    # #2467: a short local hold on the `done` write must be retried at the
-    # terminal boundary after LocalHold exhausts its own bounded wait.
-    test "waits out a short local hold on the merged-PR terminal write and closes the ticket" do
+    # #2467: a local hold beyond LocalHold's one-hour ceiling must reach the
+    # terminal retry loop instead of dropping the merged-ticket write.
+    test "retries a beyond-ceiling local hold on the merged-PR terminal write and closes the ticket" do
       issue = %Issue{
         id: "issue-hold-write",
         identifier: "42",
@@ -211,7 +211,7 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
 
       parent = self()
       identity = issue.tracker_identity
-      reset_at = DateTime.add(DateTime.utc_now(), 5, :second)
+      reset_at = DateTime.add(DateTime.utc_now(), 3_700, :second)
       hold = %{reason: :shared_budget, resource: "core", reset_at: reset_at}
       detail = %{reason: {:aiur, :locally_held, hold}, hold: hold}
       {:ok, counter} = Agent.start_link(fn -> 0 end)

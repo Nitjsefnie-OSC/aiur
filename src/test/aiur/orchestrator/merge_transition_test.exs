@@ -230,28 +230,24 @@ defmodule Aiur.Orchestrator.MergeTransitionTest do
     assert Agent.get(labels, & &1) == ["agent:done"]
   end
 
-  test "local hold and rate limit are left to the request boundary wait" do
-    for reason <- [
-          {:github, :local_hold, %{reset_at: 123}},
-          {:github, :rate_limited, %{retry_after: 1}}
-        ] do
-      attempts = start_supervised!({Agent, fn -> 0 end}, id: make_ref())
+  test "rate limits are left to the request boundary wait" do
+    reason = {:github, :rate_limited, %{retry_after: 1}}
+    attempts = start_supervised!({Agent, fn -> 0 end}, id: :rate_limit_attempts)
 
-      updater = fn _id, _target ->
-        Agent.update(attempts, &(&1 + 1))
-        {:error, reason}
-      end
-
-      result =
-        MergeTransition.retry_terminal_write(fn -> updater.("3778", "done") end,
-          merge_terminal_write_sleep_fun: fn _ ->
-            flunk("must not inner-retry request-boundary holds")
-          end
-        )
-
-      assert result == {:error, reason}
-      assert Agent.get(attempts, & &1) == 1
+    updater = fn _id, _target ->
+      Agent.update(attempts, &(&1 + 1))
+      {:error, reason}
     end
+
+    result =
+      MergeTransition.retry_terminal_write(fn -> updater.("3778", "done") end,
+        merge_terminal_write_sleep_fun: fn _ ->
+          flunk("must not inner-retry request-boundary rate limits")
+        end
+      )
+
+    assert result == {:error, reason}
+    assert Agent.get(attempts, & &1) == 1
   end
 
   test "a no-body duplicate merge wake preserves done after the first closing wake fails" do

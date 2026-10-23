@@ -35,11 +35,13 @@ defmodule Aiur.Orchestrator.MergeTransition do
     end
   end
 
-  # Local holds and rate limits already have retry/wait behavior at the GitHub
-  # request boundary. Replaying a whole label swap here can multiply reads and
-  # writes while the same budget hold is still active.
+  # Rate limits already have retry/wait behavior at the GitHub request
+  # boundary. A local hold beyond that wait's ceiling must be retried here so
+  # a terminal merge write is not dropped when the hold later clears.
   defp retryable_terminal_write_error?({:github, kind, _detail})
-       when kind in [:local_hold, :rate_limited], do: false
+       when kind == :local_hold, do: true
+
+  defp retryable_terminal_write_error?({:github, :rate_limited, _detail}), do: false
 
   defp retryable_terminal_write_error?(reason), do: GitHubErrors.retryable_github_error?(reason)
 
