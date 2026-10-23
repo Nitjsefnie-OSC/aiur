@@ -7,6 +7,8 @@ defmodule Aiur.SystemCgroupTest do
     root = Path.join(System.tmp_dir!(), "aiur-cgroup-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     previous = Application.get_env(:aiur, :cgroup_root_override)
+    assert is_binary(previous)
+    refute File.exists?(previous)
     Application.put_env(:aiur, :cgroup_root_override, root)
 
     on_exit(fn ->
@@ -32,12 +34,15 @@ defmodule Aiur.SystemCgroupTest do
     assert SystemCgroup.cpu_quota() == :unavailable
   end
 
-  test "reads cgroup memory usage and rejects unlimited memory", %{root: root} do
+  test "reads cgroup memory usage, inactive file and finite memory max", %{root: root} do
     write!(root, "memory.current", "850")
     write!(root, "memory.max", "1000")
-    assert SystemCgroup.memory() == %{current: 850, max: 1000}
+    write!(root, "memory.stat", "anon 650\ninactive_file 200\n")
+    assert SystemCgroup.memory() == %{current: 850, inactive_file: 200, max: 1000}
+    assert SystemCgroup.memory_max_bytes() == 1000
     write!(root, "memory.max", "max")
     assert SystemCgroup.memory() == :unavailable
+    assert SystemCgroup.memory_max_bytes() == :unavailable
   end
 
   defp write!(root, name, contents), do: File.write!(Path.join(root, name), contents)

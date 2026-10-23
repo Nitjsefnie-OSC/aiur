@@ -24,15 +24,35 @@ defmodule Aiur.SystemCgroup do
     end
   end
 
-  @spec memory() :: %{current: non_neg_integer(), max: pos_integer()} | :unavailable
-  def memory do
-    with {:ok, current} <- read("memory.current"),
-         {:ok, maximum} <- read("memory.max"),
-         {current, ""} when current >= 0 <- Integer.parse(String.trim(current)),
+  @spec memory_max_bytes() :: pos_integer() | :unavailable
+  def memory_max_bytes do
+    with {:ok, maximum} <- read("memory.max"),
          {maximum, ""} when maximum > 0 <- Integer.parse(String.trim(maximum)) do
-      %{current: current, max: maximum}
+      maximum
     else
       _ -> :unavailable
+    end
+  end
+
+  @spec memory() :: %{current: non_neg_integer(), inactive_file: non_neg_integer(), max: pos_integer()} | :unavailable
+  def memory do
+    with {:ok, current} <- read("memory.current"),
+         {current, ""} when current >= 0 <- Integer.parse(String.trim(current)),
+         maximum when is_integer(maximum) and maximum > 0 <- memory_max_bytes() do
+      %{current: current, inactive_file: inactive_file_bytes(), max: maximum}
+    else
+      _ -> :unavailable
+    end
+  end
+
+  defp inactive_file_bytes do
+    with {:ok, contents} <- read("memory.stat"),
+         line when is_binary(line) <- Enum.find(String.split(contents, "\n"), &String.starts_with?(&1, "inactive_file ")),
+         ["inactive_file", value] <- String.split(line),
+         {bytes, ""} when bytes >= 0 <- Integer.parse(value) do
+      bytes
+    else
+      _ -> 0
     end
   end
 

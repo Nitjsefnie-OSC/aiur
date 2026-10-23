@@ -230,6 +230,33 @@ Because reading the build gate scans its lock files, that probe runs on a reduce
 
 This telemetry is measurement-only; it does not adapt `max_concurrent_agents` automatically.
 
+## Sizing a container
+
+On Linux cgroup v2, Aiur uses a **4 GiB per-agent working estimate** to size
+the default fleet cap. This is an estimate for safe initial sizing, not a
+measured Claude or Codex peak-RSS result. When `agent.max_concurrent_agents`
+is omitted, the cap is the lower of the CPU rule and the memory rule:
+
+```text
+min(CPU rule, max(1, floor(memory.max / 4 GiB)))
+CPU rule = max(2, schedulers + floor(schedulers / 4))
+```
+
+For a finite cgroup CPU quota, `schedulers` is the quota rounded down, with a
+minimum of one. An explicit `agent.max_concurrent_agents` always wins.
+
+To measure a deployment, run representative Claude and Codex turns and a build
+or test step. Once per second, sample each agent process tree's peak RSS and
+cumulative CPU time. Record the date, provider/model, workload, cgroup CPU and
+memory limits, and sampling method with the results.
+
+These container limits apply only with cgroup v2. If `cpu.pressure` is absent,
+the CPU pressure gate is not applied (the quota still contributes to the
+default cap). With a readable cgroup memory limit, dispatch uses
+`memory.current - inactive_file` against `agent.cgroup_memory_threshold`.
+This container memory gate replaces `agent.min_free_memory_mb`. Systems
+without a usable cgroup v2 memory limit keep the host memory behavior.
+
 ### Post-deploy checks
 
 The `/post-deploy` page lists manual checks from merged PRs. Add `Post-deploy check: <exact steps>` under `## Local tests`; name required operators, such as `(operator: physical Stream Deck)`. Checks stay pending until an Executor marks them done. Run them after rebuilding the runtime.

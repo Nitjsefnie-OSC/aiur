@@ -200,8 +200,10 @@ defmodule Aiur.Orchestrator.Dispatcher.Capacity do
     })
   end
 
-  defp cgroup_memory_available_mb(%{current: current, max: maximum}, threshold, _host_floor) when is_number(threshold),
-    do: div(max(0, maximum - current), 1_048_576)
+  defp cgroup_memory_available_mb(%{current: current, inactive_file: inactive_file, max: maximum}, threshold, _host_floor) when is_number(threshold) do
+    active = max(0, current - inactive_file)
+    div(max(0, maximum - active), 1_048_576)
+  end
 
   defp cgroup_memory_available_mb(_cgroup, _threshold, host_floor), do: DispatchPolicy.read_memory(host_floor)
 
