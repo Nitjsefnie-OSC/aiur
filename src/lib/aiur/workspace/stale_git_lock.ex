@@ -80,23 +80,30 @@ defmodule Aiur.Workspace.StaleGitLock do
 
     case File.ls("/proc") do
       {:ok, entries} ->
-        entries
-        |> Enum.filter(&Regex.match?(~r/^\d+$/, &1))
-        |> Enum.filter(&same_user_process?(&1, expected_uid))
-        |> Enum.reduce_while({:ok, []}, fn pid, {:ok, holders} ->
-          case process_open_file(pid, path) do
-            {:ok, nil} -> {:cont, {:ok, holders}}
-            {:ok, holder} -> {:cont, {:ok, [holder | holders]}}
-            {:error, reason} -> {:halt, {:error, {pid, reason}}}
-          end
-        end)
-        |> case do
-          {:ok, holders} -> {:ok, holders |> Enum.uniq() |> Enum.sort()}
-          {:error, _reason} = error -> error
-        end
+        scan_processes(entries, path, expected_uid)
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp scan_processes(entries, path, expected_uid) do
+    entries
+    |> Enum.filter(fn pid ->
+      Regex.match?(~r/^\d+$/, pid) and same_user_process?(pid, expected_uid)
+    end)
+    |> Enum.reduce_while({:ok, []}, &collect_holder(&1, &2, path))
+    |> case do
+      {:ok, holders} -> {:ok, holders |> Enum.uniq() |> Enum.sort()}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  defp collect_holder(pid, {:ok, holders}, path) do
+    case process_open_file(pid, path) do
+      {:ok, nil} -> {:cont, {:ok, holders}}
+      {:ok, holder} -> {:cont, {:ok, [holder | holders]}}
+      {:error, reason} -> {:halt, {:error, {pid, reason}}}
     end
   end
 

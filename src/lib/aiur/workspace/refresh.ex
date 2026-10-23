@@ -13,29 +13,33 @@ defmodule Aiur.Workspace.Refresh do
       |> then(&%{&1 | branch_name: Provisioner.resolve_branch_name(workspace, &1)})
 
     with :ok <- StaleGitLock.recover(workspace, worker_host) do
-      case refresh_workspace_readiness(workspace, worker_host) do
-        {:error, _reason} = error ->
-          error
+      run_after_lock_recovery(workspace, issue_context, worker_host)
+    end
+  end
 
-        _readiness ->
-          hooks = Config.settings!().hooks
-          hook_result = run_before_run_command(hooks.before_run, workspace, issue_context, worker_host)
+  defp run_after_lock_recovery(workspace, issue_context, worker_host) do
+    case refresh_workspace_readiness(workspace, worker_host) do
+      {:error, _reason} = error ->
+        error
 
-          case hook_result do
-            :ok ->
-              finalize_before_run_workspace(workspace, issue_context, worker_host)
+      _readiness ->
+        hooks = Config.settings!().hooks
+        hook_result = run_before_run_command(hooks.before_run, workspace, issue_context, worker_host)
 
-            {:error, reason} = error ->
-              maybe_recreate_stale_workspace(
-                error,
-                reason,
-                hooks.before_run,
-                workspace,
-                issue_context,
-                worker_host
-              )
-          end
-      end
+        case hook_result do
+          :ok ->
+            finalize_before_run_workspace(workspace, issue_context, worker_host)
+
+          {:error, reason} = error ->
+            maybe_recreate_stale_workspace(
+              error,
+              reason,
+              hooks.before_run,
+              workspace,
+              issue_context,
+              worker_host
+            )
+        end
     end
   end
 
