@@ -128,6 +128,70 @@ defmodule Aiur.Orchestrator.CommentRemoteTasksTest do
     assert applied.tracker_tasks == %{}
   end
 
+  test "idle review gate delivers its wake if a runner starts before completion", %{state: state} do
+    parent = self()
+    issue = %Issue{id: "42", identifier: "42", state: "todo", labels: ["agent:todo"]}
+    submitted_at = DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.to_iso8601()
+    head_committed_at = DateTime.utc_now() |> DateTime.add(-120, :second) |> DateTime.to_iso8601()
+
+    event = %{
+      author_trusted?: true,
+      comment: %{
+        "state" => "CHANGES_REQUESTED",
+        "body" => "please fix",
+        "submitted_at" => submitted_at,
+        "user" => %{"login" => "its-everdred"}
+      },
+      pull_request: %{
+        "review_decision" => "CHANGES_REQUESTED",
+        "head_committed_at" => head_committed_at
+      },
+      human_merger_allowed_fun: &(&1 == "its-everdred"),
+      issue_state_fetcher: fn _ids -> {:ok, [issue]} end,
+      open_pr_fetcher: fn _issue_key ->
+        {:ok, %{"number" => 2337, "head" => %{"sha" => "head-sha"}}}
+      end,
+      unresolved_threads_fetcher: fn _pr ->
+        send(parent, {:checking_threads, self()})
+
+        receive do
+          :release -> {:ok, []}
+        end
+      end,
+      comment_update_issue_state_fun: fn _, "rework" ->
+        send(parent, {:writing, self()})
+
+        receive do
+          :release -> :ok
+        end
+      end
+    }
+
+    pending = CommentWake.maybe_transition_idle_issue_to_rework(state, "42", :pr_review, event, 1)
+    pending = apply_only_task(pending)
+    receive_barrier({:checking_threads, gate_worker})
+
+    running = %{
+      identifier: "42",
+      issue: issue,
+      session_id: "new-runner",
+      control: %{status: :working}
+    }
+
+    pending = %{pending | running: %{"42" => running}}
+    send(gate_worker, :release)
+    pending = apply_only_task(pending)
+    receive_barrier({:writing, write_worker})
+    send(write_worker, :release)
+
+    applied = apply_only_task(pending)
+
+    assert [digest] = Aiur.AgentQueueStore.list_pending(applied.queue_store, "42")
+    assert digest.body.events == [event]
+    assert applied.running == %{"42" => running}
+    assert applied.tracker_tasks == %{}
+  end
+
   test "overlapping comments retain retry intent while only one rework write is pending", %{
     state: state
   } do

@@ -43,10 +43,10 @@ defmodule Aiur.Orchestrator.CommentWake.ReworkTransition do
       {:comment_gate, issue_key, source, make_ref()},
       fn -> comment_rework_gate(issue_key, event) end,
       fn current, result ->
-        if TrackerTasks.same_runner?(
-             State.find_running_by_identifier(current.running, telemetry_ticket),
-             entry
-           ) do
+        current_entry = State.find_running_by_identifier(current.running, telemetry_ticket)
+
+        if TrackerTasks.same_runner?(current_entry, entry) or
+             (is_nil(entry) and is_map(current_entry)) do
           apply_comment_gate(current, result, %{
             issue_key: issue_key,
             ticket: telemetry_ticket,
