@@ -116,7 +116,9 @@
       "AIUR_PR_MERGE_ENGINE",
       "AIUR_REGISTRY_URL",
       "AIUR_SCREEN_GRAB",
-      "AIUR_SSH_CONFIG"
+      "AIUR_SECRETS_FROM_ENV",
+      "AIUR_SSH_CONFIG",
+      "AIUR_STATE_PERSISTENT"
     ],
     "state": [],
     "capabilities": []
@@ -152,7 +154,9 @@
     "AIUR_PR_MERGE_ENGINE",
     "AIUR_REGISTRY_URL",
     "AIUR_SCREEN_GRAB",
-    "AIUR_SSH_CONFIG"
+    "AIUR_SECRETS_FROM_ENV",
+    "AIUR_SSH_CONFIG",
+    "AIUR_STATE_PERSISTENT"
   ],
   "capabilities": []
 }
