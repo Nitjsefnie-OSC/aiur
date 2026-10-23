@@ -164,42 +164,47 @@ defmodule Aiur.LandingWatch.PrRerunClassifier do
 
     case prs do
       prs when is_list(prs) ->
-        Enum.any?(jobs, fn job ->
-          current_pr = Keyword.get(opts, :current_pr)
-          current = Enum.find(prs, &(&1.pr == current_pr and job["name"] in &1.checks))
-
-          is_map(current) and
-            Enum.any?(prs, fn other ->
-              other.pr != current_pr and job["name"] in other.checks and
-                MapSet.disjoint?(MapSet.new(current.paths), MapSet.new(other.paths))
-            end)
-        end) and is_binary(run["started_at"])
+        is_binary(run["started_at"]) and Enum.any?(jobs, &has_disjoint_peer?(&1, prs, Keyword.get(opts, :current_pr)))
 
       _ ->
         false
     end
   end
 
+  defp has_disjoint_peer?(job, prs, current_pr) do
+    current = Enum.find(prs, &(&1.pr == current_pr and job["name"] in &1.checks))
+    is_map(current) and Enum.any?(prs, &disjoint_peer?(&1, current, job["name"], current_pr))
+  end
+
+  defp disjoint_peer?(other, current, check, current_pr) do
+    other.pr != current_pr and check in other.checks and MapSet.disjoint?(MapSet.new(current.paths), MapSet.new(other.paths))
+  end
+
   @doc false
+  @spec disjoint_failure_prs([map()], keyword()) :: [map()]
   def disjoint_failure_prs(observations, opts) when is_list(observations) do
     fetch = Keyword.get(opts, :failed_checks_fun, &failed_check_names/2)
     paths = Keyword.get(opts, :changed_paths_fun, &Client.fetch_pull_request_changed_paths/2)
 
-    Enum.flat_map(observations, fn observation ->
-      if Classifier.approved_at_head?(Map.get(observation, :raw, %{})) do
-        with {:ok, checks} when is_list(checks) <- fetch.(observation, opts),
-             {:ok, changed} when is_list(changed) <- paths.(observation.number, opts) do
-          [%{pr: observation.number, checks: checks, paths: changed}]
-        else
-          _ -> []
-        end
-      else
-        []
-      end
-    end)
+    Enum.flat_map(observations, &observation_failure_paths(&1, fetch, paths, opts))
   end
 
   def disjoint_failure_prs(_, _), do: []
+
+  defp observation_failure_paths(observation, fetch, paths, opts) do
+    if Classifier.approved_at_head?(Map.get(observation, :raw, %{})),
+      do: fetch_failure_paths(observation, fetch, paths, opts),
+      else: []
+  end
+
+  defp fetch_failure_paths(observation, fetch, paths, opts) do
+    with {:ok, checks} when is_list(checks) <- fetch.(observation, opts),
+         {:ok, changed} when is_list(changed) <- paths.(observation.number, opts) do
+      [%{pr: observation.number, checks: checks, paths: changed}]
+    else
+      _ -> []
+    end
+  end
 
   defp failed_check_names(%{head: head}, opts) when is_binary(head) do
     case Keyword.get(opts, :ci_status_fun, &Client.fetch_commit_ci_status/2).(head, opts) do
