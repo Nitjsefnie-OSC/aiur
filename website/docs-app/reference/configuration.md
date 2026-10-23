@@ -427,6 +427,7 @@ The target probe is a bounded liveness check, not proof of daemon identity or ro
 A fixed `server.port` that is already bound — for example a second `aiur` instance on the same host — does not crash the daemon. The second instance logs an explicit startup message naming the port and the conflict, disables only its own dashboard, and keeps running agents.
 
 The durable repository Executor state also records every daemon start and stop in `<repo>.control-lifecycle.json`, with the invoking process's OS pid, parent pid, and hostname. All runs for that repository share the journal, so a second instance or a crash is identifiable after the fact even when each run has a different log directory.
+
 ## dashboard_auth
 | Key | Type | Default | Controls | <!-- generated-reference:config-configuration-19 -->
 | --- | --- | --- | --- |
