@@ -1,6 +1,7 @@
 defmodule Aiur.AgentRunner.StoppedReworkHandoffEvidenceTest do
   use Aiur.TestSupport
 
+  alias Aiur.AgentRunner.TurnCompletion
   alias Aiur.AgentRunner.TurnLoop
 
   setup do
@@ -74,7 +75,7 @@ defmodule Aiur.AgentRunner.StoppedReworkHandoffEvidenceTest do
                issue
              )
 
-    assert Aiur.AgentRunner.TurnCompletion.noop_failure_state(issue, reviews_fetcher: fn _ -> {:ok, [review]} end) == nil
+    assert TurnCompletion.noop_failure_state(issue, reviews_fetcher: fn _ -> {:ok, [review]} end) == nil
   end
 
   # #5746: a run that hit agent.max_turns after fixing one of two findings stays in rework.

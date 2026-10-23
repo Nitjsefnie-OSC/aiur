@@ -1,6 +1,9 @@
 defmodule Aiur.AgentRunner.NoopBoundOpenFindingsTest do
   use Aiur.TestSupport
 
+  alias Aiur.AgentRunner.TurnLoop
+  alias Aiur.Workspace.Provisioner
+
   defmodule FakeOrchestrator do
     use GenServer
     def start_link, do: GenServer.start_link(__MODULE__, nil)
@@ -19,7 +22,7 @@ defmodule Aiur.AgentRunner.NoopBoundOpenFindingsTest do
     root = Aiur.TestSupport.tmp_root!("noop-bound-open-findings")
     workspace = Path.join(root, "ws")
     File.mkdir_p!(workspace)
-    assert :ok = Aiur.Workspace.Provisioner.maybe_install_agent_support(workspace, nil)
+    assert :ok = Provisioner.maybe_install_agent_support(workspace, nil)
     on_exit(fn -> Aiur.TestCleanup.rm_rf!(root) end)
 
     issue = %Aiur.Issue{id: "gid-5746-noop", identifier: "5746-noop-#{System.unique_integer([:positive])}", state: "rework", labels: ["agent:rework"]}
@@ -38,7 +41,7 @@ defmodule Aiur.AgentRunner.NoopBoundOpenFindingsTest do
     for _ <- 1..10, do: send(self(), {:resume_agent, 1})
 
     assert {:completed, %{state: "rework"}} =
-             Aiur.AgentRunner.TurnLoop.run_turns(
+             TurnLoop.run_turns(
                %{backend: "claude", workspace: workspace, worker_host: nil},
                workspace,
                issue,
