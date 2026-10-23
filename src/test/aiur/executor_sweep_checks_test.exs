@@ -1,5 +1,5 @@
 defmodule Aiur.ExecutorSweep.ChecksTest do
-  use ExUnit.Case, async: true
+  use Aiur.TestSupport
 
   alias Aiur.ExecutorSweep.Checks
   alias Aiur.ExecutorSweep.SnapshotCache
