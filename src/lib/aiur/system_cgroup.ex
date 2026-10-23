@@ -63,20 +63,18 @@ defmodule Aiur.SystemCgroup do
   defp cgroup_mount(contents) do
     contents
     |> String.split("\n", trim: true)
-    |> Enum.find_value(fn line ->
-      case String.split(line, " - ", parts: 2) do
-        [before, "cgroup2 " <> _after_mount] ->
-          fields = String.split(before)
+    |> Enum.find_value(&cgroup_mount_line/1)
+  end
 
-          case {Enum.at(fields, 3), Enum.at(fields, 4)} do
-            {root, mount} when is_binary(root) and is_binary(mount) -> {mount, root}
-            _ -> nil
-          end
-
-        _ ->
-          nil
-      end
-    end)
+  defp cgroup_mount_line(line) do
+    with [before, "cgroup2 " <> _after_mount] <- String.split(line, " - ", parts: 2),
+         fields = String.split(before),
+         root when is_binary(root) <- Enum.at(fields, 3),
+         mount when is_binary(mount) <- Enum.at(fields, 4) do
+      {mount, root}
+    else
+      _ -> nil
+    end
   end
 
   defp unified_path(contents) do

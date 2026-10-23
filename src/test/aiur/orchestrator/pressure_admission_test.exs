@@ -3,6 +3,7 @@ defmodule Aiur.Orchestrator.PressureAdmissionTest do
   alias Aiur.Events.{Exchange, Publisher}
   alias Aiur.{Issue, Orchestrator, SystemPressure, Workflow}
   alias Aiur.Orchestrator.{Dispatcher, DispatchPolicy, IssueSync, PressureAdmission, Slots, State}
+  alias Aiur.Orchestrator.Dispatcher.Capacity
 
   setup do
     write_workflow_file!(Workflow.workflow_file_path(),
@@ -124,7 +125,7 @@ defmodule Aiur.Orchestrator.PressureAdmissionTest do
     Application.put_env(:aiur, :cgroup_root_override, root)
     Application.put_env(:aiur, :meminfo_source_override, fn -> flunk("cgroup memory must be preferred") end)
 
-    probes = Aiur.Orchestrator.Dispatcher.Capacity.admission_probes()
+    probes = Capacity.admission_probes()
     assert probes.memory_mb == 0
     assert probes.memory_threshold_mb == 819
     assert {:hold, %{signal: :memory}} = DispatchPolicy.admission_gate(Map.put(probes, :queued_demand?, true))
