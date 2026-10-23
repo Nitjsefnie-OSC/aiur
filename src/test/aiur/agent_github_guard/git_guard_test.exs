@@ -44,6 +44,35 @@ defmodule Aiur.AgentGitHubGuard.GitGuardTest do
     refute output =~ "embedded-token"
   end
 
+  test "git push to a local .git remote does not consult GitHub", context do
+    repo = context.workspace
+    remote = Path.join(Path.dirname(repo), "local-remote.git")
+
+    assert {_, 0} = System.cmd(real_git(), ["init", "--quiet", "-b", "main", repo], stderr_to_stdout: true)
+    assert {_, 0} = System.cmd(real_git(), ["init", "--quiet", "--bare", remote], stderr_to_stdout: true)
+    assert {_, 0} = System.cmd(real_git(), ["-C", repo, "config", "user.email", "test@example.com"], stderr_to_stdout: true)
+    assert {_, 0} = System.cmd(real_git(), ["-C", repo, "config", "user.name", "Test"], stderr_to_stdout: true)
+    File.write!(Path.join(repo, "tracked.txt"), "tracked\n")
+    assert {_, 0} = System.cmd(real_git(), ["-C", repo, "add", "tracked.txt"], stderr_to_stdout: true)
+    assert {_, 0} = System.cmd(real_git(), ["-C", repo, "commit", "--quiet", "-m", "initial"], stderr_to_stdout: true)
+    assert {_, 0} = System.cmd(real_git(), ["-C", repo, "remote", "add", "origin", remote], stderr_to_stdout: true)
+
+    assert {output, 0} =
+             System.cmd(context.git_wrapper, ["-C", repo, "push", "origin", "HEAD:refs/heads/main"],
+               env: [
+                 {"AIUR_REAL_GIT", real_git()},
+                 {"AIUR_AGENT_WORKSPACE", repo},
+                 {"AIUR_REAL_GH", context.fake_gh},
+                 {"FAKE_GH_CALLS", context.calls},
+                 {"GITHUB_TOKEN", "agent-token"}
+               ],
+               stderr_to_stdout: true
+             )
+
+    assert output =~ "HEAD -> main"
+    refute File.exists?(context.calls)
+  end
+
   test "git wrapper refuses destructive commands without explicit repository context", context do
     init_git_workspace(context)
 
