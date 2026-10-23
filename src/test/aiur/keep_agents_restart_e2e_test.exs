@@ -100,6 +100,10 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
       {"AIUR_TMUX_GRACE_TICKS", "600"}
     ]
 
+    stale_socket = Path.join(tmux_socket_dir(), "keep-agents-test-#{nonce}-stale")
+    File.mkdir_p!(Path.dirname(stale_socket))
+    File.write!(stale_socket, "stale socket path fixture")
+
     on_exit(fn ->
       run_engine(["stop"], env)
       cleanup_tmux_sockets("keep-agents-test-#{nonce}")
@@ -173,14 +177,17 @@ defmodule Aiur.KeepAgentsRestartE2ETest do
   end
 
   defp tmux_sockets do
-    {uid, 0} = System.cmd("id", ["-u"])
-    socket_dir = Path.join(System.tmp_dir!(), "tmux-#{String.trim(uid)}")
+    socket_dir = tmux_socket_dir()
     if File.dir?(socket_dir), do: File.ls!(socket_dir), else: []
   end
 
-  defp cleanup_tmux_sockets(prefix) do
+  defp tmux_socket_dir do
     {uid, 0} = System.cmd("id", ["-u"])
-    socket_dir = Path.join(System.tmp_dir!(), "tmux-#{String.trim(uid)}")
+    Path.join(System.tmp_dir!(), "tmux-#{String.trim(uid)}")
+  end
+
+  defp cleanup_tmux_sockets(prefix) do
+    socket_dir = tmux_socket_dir()
 
     if File.dir?(socket_dir) do
       socket_dir
