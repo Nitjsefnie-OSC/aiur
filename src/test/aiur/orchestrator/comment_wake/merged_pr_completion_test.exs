@@ -1,8 +1,6 @@
 defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
   # Log capture is global; preserve the original module's serial execution.
-  use ExUnit.Case, async: false
-
-  import ExUnit.CaptureLog
+  use Aiur.TestSupport
 
   alias Aiur.{Issue, TrackerIdentity}
   alias Aiur.Orchestrator.{CommentWake, MergeStateWriter, State}
@@ -37,13 +35,16 @@ defmodule Aiur.Orchestrator.CommentWake.MergedPrCompletionTest do
 
   describe "mark_pr_merged_issue_done/2" do
     test "skips terminal writes when the fetched issue belongs to another GitHub label prefix" do
+      write_workflow_file!(Workflow.workflow_file_path(),
+        tracker_kind: "github",
+        tracker_repo: "owner/repo",
+        tracker_label_prefix: "agent"
+      )
+
       issue = %Issue{id: "3163", identifier: "3163", state: nil, labels: ["nuc:done"]}
 
       result =
-        MergeStateWriter.write_if_current("3163", "done",
-          fetch_issue_states_fun: fn ["3163"] -> {:ok, [issue]} end,
-          foreign_state_label_fun: fn labels -> "nuc:done" in labels end
-        )
+        MergeStateWriter.write_if_current("3163", "done", fetch_issue_states_fun: fn ["3163"] -> {:ok, [issue]} end)
 
       assert result == :skipped
     end

@@ -5,8 +5,7 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
 
   require Logger
 
-  alias Aiur.BuildQueue.Hints
-  alias Aiur.{Config, Issue, MergePolicy, SystemCpu, SystemFileDescriptors}
+  alias Aiur.{BuildQueue.Hints, Config, GitHub.StateLabels, Issue, MergePolicy, SystemCpu, SystemFileDescriptors}
   alias Aiur.Orchestrator.DispatchPolicy.{Eligibility, Gates, IssueStates}
   alias Aiur.Orchestrator.{OptimisticSlots, QueueSetSlots, Slots, State}
 
@@ -381,12 +380,17 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
   end
 
   defp foreign_tracker_state_label?(%Issue{state: state, labels: labels})
-       when is_binary(state) and is_list(labels) and labels != [] do
+       when is_list(labels) and labels != [] do
     if Config.tracker_kind() == "github" do
       prefix = Aiur.GitHub.Config.label_prefix() |> String.trim() |> String.downcase()
-      state_slug = IssueStates.state_slug(state)
 
-      Enum.any?(labels, &foreign_state_label?(&1, prefix, state_slug))
+      active_states =
+        (Aiur.Config.active_states() ++ [state])
+        |> Enum.map(&IssueStates.state_slug/1)
+        |> Enum.reject(&is_nil/1)
+        |> MapSet.new()
+
+      Enum.any?(labels, &foreign_state_label?(&1, prefix, active_states))
     else
       false
     end
@@ -394,10 +398,14 @@ defmodule Aiur.Orchestrator.DispatchPolicy do
 
   defp foreign_tracker_state_label?(_issue), do: false
 
-  defp foreign_state_label?(label, prefix, state_slug) do
+  defp foreign_state_label?(label, prefix, active_states) do
     case label |> String.trim() |> String.downcase() |> String.split(":", parts: 2) do
-      [other_prefix, ^state_slug] -> other_prefix != prefix
-      _other -> false
+      [other_prefix, state] ->
+        other_prefix != prefix and
+          StateLabels.foreign_candidate_state_label?(["#{other_prefix}:#{state}"], prefix, active_states)
+
+      _other ->
+        false
     end
   end
 
