@@ -122,6 +122,7 @@ defmodule Aiur.ExecutorSweep.ChecksTest do
 
     findings = Checks.all(snapshot, now)
     refute Enum.any?(findings, &(&1.kind == "approved_pr_red"))
+
     assert [%{verification: "unverified", kind: "runner_starvation", queued_runs: 1, running_runs: 0}] =
              Enum.filter(findings, &(&1.kind == "runner_starvation"))
   end
