@@ -82,6 +82,7 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
 
     assert Map.take(next.running[issue.id], [:pid, :ref, :control, :session_id]) ==
              Map.take(entry, [:pid, :ref, :control, :session_id])
+
     refute Enum.any?(next.tracker_tasks, fn {_ref, task} -> task.key == {:completed_revalidation, issue.id} end)
     assert Process.alive?(worker)
     assert RunnerTasks.capture() == runners_before
