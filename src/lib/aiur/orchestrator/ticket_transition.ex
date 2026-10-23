@@ -102,6 +102,14 @@ defmodule Aiur.Orchestrator.TicketTransition do
   @spec runtime_reason_modifier(term()) :: String.t() | nil
   def runtime_reason_modifier(reason), do: Labels.runtime_reason_modifier(reason)
 
+  @doc "Returns present runtime labels in the canonical vocabulary order."
+  @spec present_runtime_labels(term(), String.t()) :: [String.t()]
+  def present_runtime_labels(labels, prefix), do: Labels.present_runtime_labels(labels, prefix)
+
+  @doc "Returns tracker labels plus labels inferred from live runtime causes."
+  @spec runtime_labels(term(), [term()], String.t()) :: [String.t()]
+  def runtime_labels(labels, causes, prefix), do: Labels.runtime_labels(labels, causes, prefix)
+
   @doc "Removes transient runtime reasons, preserving the dependency blocker marker."
   @spec clear_transient_reason_modifiers(String.t(), keyword()) :: :ok | {:error, term()}
   def clear_transient_reason_modifiers(issue_id, opts) do

@@ -82,11 +82,10 @@ the nearest viewport edge; **Live** returns to it. Minimize keeps state counts
 visible (`live=min`), and a state preset expands it. The clock shows cached
 observation time when stale and `—` when unknown.
 
-Agents in a failure back-off carry the `agent:retrying` reason label and are counted
-separately from running agents in the timeline and list. Runtime reason labels
-such as `agent:ci-red` and `agent:paused-usage-limit` appear on the card and are
-available in agent-state filters. Tickets whose lifetime retry latch is spent
-have no live agent and are left out of Now.
+Agents in failure back-off carry `agent:retrying` and are counted separately
+from running agents. Labels such as `agent:ci-red` and
+`agent:paused-usage-limit` appear on cards and in agent-state filters. Tickets
+with spent retry latches have no live agent and are left out of Now.
 
 The toolbar selects Timeline, Gantt or List and retains the view in the URL.
 

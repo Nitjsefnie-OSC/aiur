@@ -2,8 +2,9 @@ defmodule Aiur.Orchestrator.StatusCLI.AgentsTable do
   @moduledoc false
   alias Aiur.Codex.EventHumanizer, as: CodexEventHumanizer
   alias Aiur.ControlCLI.DispatchAccount
-  alias Aiur.GitHub.{Config, Labels}
+  alias Aiur.GitHub.Config
   alias Aiur.Orchestrator.StatusObservation
+  alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Orchestrator.WaitingReason
   import Aiur.Orchestrator.ControlCLI.Output, only: [display_identifier: 1]
   import Aiur.EventHumanizerHelpers, only: [map_value: 2]
@@ -83,12 +84,12 @@ defmodule Aiur.Orchestrator.StatusCLI.AgentsTable do
 
   defp persisted_state_label(agent) do
     prefix = Config.label_prefix()
-    labels = Labels.present_runtime_labels(List.wrap(Map.get(agent, :labels)), prefix)
+    labels = TicketTransition.present_runtime_labels(List.wrap(Map.get(agent, :labels)), prefix)
     Enum.find(labels, &String.starts_with?(&1, prefix <> ":"))
   end
 
   defp reason_label(agent) do
-    case Labels.runtime_labels(Map.get(agent, :labels), [Map.get(agent, :pause_reason), Map.get(agent, :waiting_reason)], Config.label_prefix()) do
+    case TicketTransition.runtime_labels(Map.get(agent, :labels), [Map.get(agent, :pause_reason), Map.get(agent, :waiting_reason)], Config.label_prefix()) do
       [] -> nil
       labels -> Enum.join(labels, ",")
     end
