@@ -18,10 +18,7 @@ defmodule Aiur.Application.StartupChecks do
     else
       settings = Aiur.Config.settings_uncached()
 
-      case validate_secrets(settings, System.get_env()) do
-        :ok -> :ok
-        {:error, [message]} -> raise ArgumentError, message: message
-      end
+      validate_secrets!(settings, System.get_env())
 
       Aiur.Env.validate_startup!(System.get_env(), require_github_credential: github_tracker?(settings))
       Aiur.Env.warn_disabled_integrations()
@@ -53,6 +50,15 @@ defmodule Aiur.Application.StartupChecks do
   end
 
   def validate_secrets(_settings, _env), do: :ok
+
+  @doc "Raises one safe error listing every missing hosted secret."
+  @spec validate_secrets!(term(), map()) :: :ok
+  def validate_secrets!(settings, env) do
+    case validate_secrets(settings, env) do
+      :ok -> :ok
+      {:error, [message]} -> raise ArgumentError, message: message
+    end
+  end
 
   @doc "Runs the same hosted secret validation on demand."
   @spec validate_hosted_secrets() :: :ok | {:error, [String.t()]}

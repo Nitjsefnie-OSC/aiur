@@ -62,7 +62,8 @@ defmodule Aiur.EnvStartupChecksTest do
       "AIUR_STATE_PERSISTENT" => "0"
     }
 
-    assert {:error, [message]} = StartupChecks.validate_secrets(settings, env)
+    error = assert_raise ArgumentError, fn -> StartupChecks.validate_secrets!(settings, env) end
+    message = Exception.message(error)
     assert message =~ "GITHUB_APP_INSTALLATION_ID"
     assert message =~ "GITHUB_APP_PRIVATE_KEY"
     assert message =~ "AIUR_DASHBOARD_PASSWORD"
