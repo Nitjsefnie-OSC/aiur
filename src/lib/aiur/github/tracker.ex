@@ -238,7 +238,8 @@ defmodule Aiur.GitHub.Tracker do
   @impl Aiur.Tracker.IssueTracker
   @spec foreign_state_label?([String.t()]) :: boolean()
   def foreign_state_label?(labels) do
-    StateLabels.foreign_candidate_state_label?(labels, Config.label_prefix(), MapSet.new())
+    active_states = Aiur.Config.active_states() |> MapSet.new()
+    StateLabels.foreign_candidate_state_label?(labels, Config.label_prefix(), active_states)
   end
 
   @doc """
