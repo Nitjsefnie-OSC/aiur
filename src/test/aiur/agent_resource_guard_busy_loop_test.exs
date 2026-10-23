@@ -149,12 +149,14 @@ defmodule Aiur.AgentResourceGuardBusyLoopTest do
     refute_receive {:alert, _, _}, 50
   end
 
+  @tag :synthetic_attention_resolution
   test "an open synthetic-load attention resolves when every reported pid is dead" do
     test_pid = self()
     topic = "ticket.5638.agent.attention.synthetic-load"
 
     opts = [
       cap: 1,
+      kill_detected: false,
       entries_fun: fn -> [] end,
       orphans_fun: fn -> [] end,
       process_info_fun: fn _pid -> nil end,
@@ -175,6 +177,7 @@ defmodule Aiur.AgentResourceGuardBusyLoopTest do
 
     opts = [
       cap: 1,
+      kill_detected: false,
       entries_fun: fn -> [] end,
       orphans_fun: fn -> [] end,
       process_info_fun: fn
