@@ -32,7 +32,7 @@ defmodule Aiur.BuildOrder.IndexEstimatesTest do
     assert index.capacity == expected
     assert Index.window(Index.base(index), "Etc/UTC", now()).capacity == expected
     assert {:ok, unknown} = assemble(Map.put(p, :capacity, :snapshot_unpublished))
-    assert unknown.capacity == %{max: nil, observed_at: nil, stale: false}
+    assert unknown.capacity == %{max: nil, observed_at: nil, stale: nil}
     assert Index.diff(index, unknown).set.capacity == unknown.capacity
     assert {:ok, stale} = assemble(Map.put(p, :capacity, {:stale, %{capacity: %{max: 2}}, %{observed_at: now() - 1000}}))
     assert stale.capacity == %{max: 2, observed_at: now() - 1000, stale: true}
@@ -49,6 +49,7 @@ defmodule Aiur.BuildOrder.IndexEstimatesTest do
     end
 
     assert Payload.validate(put_in(data, ["capacity", "max"], nil)) == :ok
+    assert Payload.validate(Map.put(data, "capacity", %{"max" => nil, "observed_at" => nil, "stale" => nil})) == :ok
     assert {:error, errors} = Payload.validate(update_in(data, ["sources"], &Map.delete(&1, "estimates")))
     assert {"sources.estimates", :missing} in errors
 

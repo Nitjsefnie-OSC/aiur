@@ -51,7 +51,7 @@ defmodule AiurWeb.Build.PayloadSchema do
   @spec blocks() :: map()
   def blocks do
     %{
-      "capacity" => object(%{"max" => nullable(:positive), "observed_at" => nullable(:integer), "stale" => :boolean}),
+      "capacity" => object(%{"max" => nullable(:positive), "observed_at" => nullable(:integer), "stale" => nullable(:boolean)}),
       "writable" => :boolean,
       "repo" => nullable(object(%{"url" => :string})),
       "epics" => {:dictionary, object(epic(), ~w(general feature temp unsorted))},

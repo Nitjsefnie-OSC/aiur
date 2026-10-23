@@ -66,7 +66,7 @@ defmodule AiurWeb.Build.Payload do
   two-string tip pairs. Unavailable usage requires observed_at and reason.
   Locked usage requires only state/accessible_name/authentication_path/reason.
   Repo is nil or a url string; writable is boolean. Capacity requires positive max or nil,
-  observed_at milliseconds or nil and stale boolean; it follows the runtime agent cap.
+  observed_at milliseconds or nil and nullable stale boolean; it follows the runtime agent cap.
 
   Diff: envelope plus upsert/remove/set. Set replaces whole blocks, never merges
   deeply; history_meta is translated to the socket's history block. Hist upserts

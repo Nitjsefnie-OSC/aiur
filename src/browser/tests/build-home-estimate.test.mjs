@@ -17,11 +17,11 @@ test('J3 partially estimated queues show a lower bound and missing count', () =>
 test('J4 unknown cap does not fall back to four agents', () => {
   assert.deepEqual(etaLabel(data([4, 4], null)), { text: '2 to go · ETA —', title: 'Agent cap unknown' })
 })
-test('J5 live cap changes the divisor and running rows only affect to-go', () => {
+test('J5 live cap changes the divisor and running work makes ETA a lower bound', () => {
   const D = data([20, 20]); D.now = [{ est: 999 }]
-  assert.deepEqual(etaLabel(D), { text: '3 to go · ETA 10h', title: 'at 4 agents' })
+  assert.deepEqual(etaLabel(D), { text: '3 to go · ETA ≥10h', title: 'at 4 agents' })
   D.capacity.max = 20
-  assert.deepEqual(etaLabel(D), { text: '3 to go · ETA 2h', title: 'at 20 agents' })
+  assert.deepEqual(etaLabel(D), { text: '3 to go · ETA ≥2h', title: 'at 20 agents' })
 })
 test('J6 unavailable and disabled queues remain distinct', () => {
   assert.deepEqual(etaLabel(data([], 4, 'unavailable')), { text: '— to go · ETA —', title: 'Queue unavailable' })
@@ -54,4 +54,10 @@ test('J11 invalid override hours stay unknown instead of looking numeric', () =>
     assert.equal(estHours(row), null)
     assert.equal(estLabel(row), '—')
   }
+})
+test('J12 a stale cap has a visible cue instead of claiming a live ETA', () => {
+  const D = data([8, 8]); D.capacity = { max: 4, observed_at: 1791408000000, stale: true }
+  assert.deepEqual(etaLabel(D), { text: '2 to go · ETA 4h · cap stale', title: 'at 4 agents' })
+  D.capacity.stale = false
+  assert.deepEqual(etaLabel(D), { text: '2 to go · ETA 4h', title: 'at 4 agents' })
 })

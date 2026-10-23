@@ -26,5 +26,5 @@ defmodule Aiur.BuildOrder.Index.Estimates do
     %{max: if(is_integer(max) and max > 0, do: max), observed_at: SourceFreshness.ms(metadata[:observed_at]), stale: status == :stale}
   end
 
-  def capacity(_), do: %{max: nil, observed_at: nil, stale: false}
+  def capacity(_), do: %{max: nil, observed_at: nil, stale: nil}
 end

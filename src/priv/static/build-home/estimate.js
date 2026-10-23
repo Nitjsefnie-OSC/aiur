@@ -18,8 +18,8 @@ export function etaLabel(D) {
   else {
     const h = Math.max(1, Math.round(known.reduce((s, x) => s + x, 0) / cap));
     const miss = hs.length - known.length;
-    eta = (miss || part ? '≥' : '') + h + 'h';
+    eta = (miss || part || D.now.length ? '≥' : '') + h + 'h';
     title = (miss ? miss + ' planned without an estimate · ' : '') + 'at ' + cap + ' agents';
   }
-  return { text: toGo + ' to go · ETA ' + eta, title };
+  return { text: toGo + ' to go · ETA ' + eta + (D.capacity?.stale ? ' · cap stale' : ''), title };
 }
