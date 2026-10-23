@@ -157,7 +157,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
           },surface.kind)))
           expect(visible[1],surface.kind+' visible identities').toEqual(visible[0])
           expect(visible[1],surface.kind+' requested row content is fully captured').toContain(num)
-          await expectDesignParity(pair,{name:'unfiled-'+surface.kind+'-'+num,region:surface.region,preserveAnimations:true,regionCapture:surface.kind==='bd-tn'?'contained':'visible'})
+          await expectDesignParity(pair,{name:`unfiled-${viewport.viewport.width}-${theme}-${palette}-${surface.kind}-${num}`,region:surface.region,preserveAnimations:true,regionCapture:surface.kind==='bd-tn'?'contained':'visible'})
           visible[1].forEach(id=>covered.add(id))
         }
         expect([...covered].sort((a,b)=>a-b),surface.kind+' captures cover every unfiled row').toEqual(ids)
