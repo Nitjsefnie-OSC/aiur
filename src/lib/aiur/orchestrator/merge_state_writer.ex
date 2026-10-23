@@ -1,9 +1,8 @@
 defmodule Aiur.Orchestrator.MergeStateWriter do
   @moduledoc false
 
-  alias Aiur.GitHub.{Config, IssueState, StatePolicy}
+  alias Aiur.GitHub.{Config, StatePolicy}
   alias Aiur.Issue
-  alias Aiur.Orchestrator.Dispatcher
   alias Aiur.Orchestrator.TicketTransition
   alias Aiur.Tracker
 
@@ -23,9 +22,7 @@ defmodule Aiur.Orchestrator.MergeStateWriter do
         )
 
       {:ok, [%Issue{labels: labels}]} ->
-        if Dispatcher.github_tracker_kind?() and
-             StatePolicy.terminal_state_name?(target) and
-             IssueState.foreign_tracker_state_label?(labels, Config.label_prefix()) do
+        if StatePolicy.terminal_state_name?(target) and Tracker.foreign_state_label?(labels) do
           :skipped
         else
           {:error, :merge_issue_state_unavailable}
