@@ -15,7 +15,6 @@
     "src/lib/aiur/supervision_health.ex",
     "src/lib/aiur/supervision_health/**",
     "src/lib/aiur/system_cpu.ex",
-    "src/lib/aiur/system_cgroup.ex",
     "src/lib/aiur/system_file_descriptors.ex",
     "src/lib/aiur/system_load.ex",
     "src/lib/aiur/system_memory.ex",
