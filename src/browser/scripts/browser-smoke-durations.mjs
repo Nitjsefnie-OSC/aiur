@@ -6,6 +6,10 @@
 // run 39100789804 spent 80-120s per shard outside its suites.
 export const preflightSeconds = 120
 export const recordedSeconds = {
+  // #3159 local acceptance (2026-10-21): 10 helper cases in 0.49s; 2 browser cases in 8.5s.
+  // Rounded up; refresh from the first CI suite-duration log.
+  'test:build-home-estimate': 1,
+  'test:build-home-estimate-browser': 9,
   // CI run 39616972873 (2026-10-21), jobs 119280971812/119280971969:
   // document functional 43.8s and parity 150.5s suite wall time, rounded up.
   'test:build-home-modal-doc': 44,
