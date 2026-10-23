@@ -10,8 +10,8 @@ defmodule Aiur.SystemCgroupTest do
     Application.put_env(:aiur, :cgroup_root_override, root)
 
     on_exit(fn ->
-      Aiur.TestCleanup.rm_rf!(root)
       restore_app_env(:cgroup_root_override, previous)
+      Aiur.TestCleanup.rm_rf!(root)
     end)
 
     {:ok, root: root}
