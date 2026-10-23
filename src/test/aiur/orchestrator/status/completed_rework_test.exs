@@ -44,7 +44,6 @@ defmodule Aiur.Orchestrator.Status.CompletedReworkTest do
   test "reconciliation defers a completed p3 retry when ready p1 tickets are polled" do
     snapshot_owner = Module.concat(__MODULE__, :CompletedReplacementSnapshotOwner)
     Process.register(self(), snapshot_owner)
-    on_exit(fn -> Process.unregister(snapshot_owner) end)
 
     issue = %{completed_rework_issue("priority-retry") | state: "todo", priority: 3}
 
