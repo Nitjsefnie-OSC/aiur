@@ -69,11 +69,22 @@ defmodule Aiur.AgentRunner.TurnLoop do
     end
   end
 
-  # This runner has not called the provider. For failed handoff adoption,
-  # Handoff.Adopter closes the adopted transport and schedules one replacement;
-  # restore the delivered item for that replacement instead of failing it.
-  defp refuse_unsupported_turn(%{orchestrator: orchestrator, issue: issue, opts: opts}, error),
-    do: confirm_restore_for_replacement(orchestrator, issue, opts, error)
+  # A regular turn has not started its provider yet, so the delivered item can
+  # be restored for a replacement. An adopted active turn has already started
+  # its provider and must retain the normal failure settlement.
+  defp refuse_unsupported_turn(%{orchestrator: orchestrator, issue: issue, opts: opts}, error) do
+    if Handoff.active_resume?() do
+      best_effort_queue_bookkeeping(
+        Aiur.Orchestrator.fail_delivered_queue_items(orchestrator, issue.identifier, error),
+        :fail,
+        issue
+      )
+
+      error
+    else
+      confirm_restore_for_replacement(orchestrator, issue, opts, error)
+    end
+  end
 
   defp run_supported_turn(turn_context, app_session) do
     %{
