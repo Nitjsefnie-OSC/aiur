@@ -477,14 +477,23 @@
     }
   },
   {
+    "id": "unfiled-tree-underlay-thumb", "kind": "design-style",
+    "spec": "build-home-unfiled-parity.browser.spec.mjs", "cells": {"dataset": "live"},
+    "selector": "body:has(.bd-tree) .bd-sb > i",
+    "productWhen": ".bd-tree .bd-tn[data-id^=\"pack:\"]",
+    "css": "body:has(.bd-tree) .bd-sb > i { visibility: hidden !important; }",
+    "reason": "S-27: suppress only the custom underlay scrollbar thumb paint on both pages while the unfiled tree is open. Full history intake changes thumb geometry beneath the transparent blurred tree; track, layout, background and all tree pixels remain compared. This matches native-thumb capture suppression.",
+    "approval": {"status": "pending-sign-off", "by": null, "date": null, "ref": "https://github.com/aiur-team/aiur/pull/5898 review finding 2"}
+  },
+  {
     "id": "unfiled-tree-reference-width",
     "kind": "property",
     "spec": "build-home-unfiled-parity.browser.spec.mjs",
-    "selector": "[data-id=\"AIUR-645\"] .bd-tn1 b, [data-id=\"AIUR-646\"] .bd-tn1 b, [data-id=\"AIUR-647\"] .bd-tn1 b, [data-id=\"AIUR-648\"] .bd-tn1 b, [data-id=\"AIUR-649\"] .bd-tn1 b, [data-id=\"AIUR-650\"] .bd-tn1 b, [data-id=\"AIUR-651\"] .bd-tn1 b, [data-id=\"AIUR-652\"] .bd-tn1 b, [data-id=\"AIUR-653\"] .bd-tn1 b, [data-id=\"AIUR-654\"] .bd-tn1 b, [data-id=\"AIUR-655\"] .bd-tn1 b, [data-id=\"AIUR-656\"] .bd-tn1 b, [data-id=\"AIUR-657\"] .bd-tn1 b, [data-id=\"AIUR-658\"] .bd-tn1 b, [data-id=\"AIUR-659\"] .bd-tn1 b, [data-id=\"AIUR-660\"] .bd-tn1 b",
-    "property": "design reference width and overflow clipping",
+    "selector": "[data-id=\"AIUR-645\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-645\"] .bd-tn1 b, [data-id=\"AIUR-646\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-646\"] .bd-tn1 b, [data-id=\"AIUR-647\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-647\"] .bd-tn1 b, [data-id=\"AIUR-648\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-648\"] .bd-tn1 b, [data-id=\"AIUR-649\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-649\"] .bd-tn1 b, [data-id=\"AIUR-650\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-650\"] .bd-tn1 b, [data-id=\"AIUR-651\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-651\"] .bd-tn1 b, [data-id=\"AIUR-652\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-652\"] .bd-tn1 b, [data-id=\"AIUR-653\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-653\"] .bd-tn1 b, [data-id=\"AIUR-654\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-654\"] .bd-tn1 b, [data-id=\"AIUR-655\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-655\"] .bd-tn1 b, [data-id=\"AIUR-656\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-656\"] .bd-tn1 b, [data-id=\"AIUR-657\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-657\"] .bd-tn1 b, [data-id=\"AIUR-658\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-658\"] .bd-tn1 b, [data-id=\"AIUR-659\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-659\"] .bd-tn1 b, [data-id=\"AIUR-660\"] .bd-tn1 b, [data-id=\"pack:build-plan/BP-660\"] .bd-tn1 b",
+    "property": "design reference width and owned identity paint exclusion",
     "cells": {"dataset": "live"},
     "productWhen": ".bd-tn[data-id^=\"pack:\"]",
-    "reason": "S-27: the dash has a narrower intrinsic width than #645. A persistent test-owned style rule sets only the design reference box to the measured product width and clips its identity text; compare all following title pixels without masking them. Product layout is unchanged.",
+    "reason": "S-27: persistent test-owned style rules set only the design reference width to the measured product width. Set visibility hidden on both owned identifier slots to exclude accepted identity paint, including antialiasing outside the glyph box, while preserving their boxes. Product width and layout stay unchanged; every following title pixel remains unmasked.",
     "approval": {"status": "pending-sign-off", "by": null, "date": null, "ref": "DESIGN-E8 S-27; https://github.com/aiur-team/aiur/pull/5898 review finding 2"}
   }
 ]

@@ -69,12 +69,12 @@ async function maskRow(pair,kind,num,slots) {
   if(kind==='bd-tn') {
     expect(pair.allowlist.find(entry=>entry.id==='unfiled-tree-reference-width')).toMatchObject({kind:'property',cells:{dataset:'live'},approval:{status:'pending-sign-off'}})
     const measured=await slotGeometry(pair.product.locator(selectors[1]).locator('b'),selectors[1]+' b width')
-    await pair.design.evaluate(({selector,width})=>{
-      const key='unfiled-reference-'+selector.match(/AIUR-(\d+)/)[1]
+    for(const [index,page] of [pair.design,pair.product].entries()) await page.evaluate(({selector,width,num})=>{
+      const key='unfiled-identity-'+num
       let style=document.getElementById(key)
       if(!style) {style=document.createElement('style');style.id=key;document.head.append(style)}
-      style.textContent=selector+' .bd-tn1 b {width:'+width+'px;overflow:hidden;}'
-    },{selector:selectors[0],width:Math.round(measured.width*64)/64})
+      style.textContent=selector+' .bd-tn1 b {visibility:hidden;'+(width?'width:'+width+'px;overflow:hidden;':'')+'}'
+    },{selector:selectors[index],width:index?null:Math.round(measured.width*64)/64,num})
   }
   for(const [slotIndex,slot] of slots.entries()) {
     const nodes=[pair.design,pair.product].map((page,index)=>page.locator(selectors[index]).locator(slot))
@@ -163,6 +163,11 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of ['dark','light']) f
           for(let page=0;H.more&&page<100;page++) if(!await loadEarlier(31)) throw new Error('History parity intake failed')
           if(H.more) throw new Error('History parity intake remained incomplete')
         })
+        if(surface.kind==='bd-tn') {
+          const entry=pair.allowlist.find(entry=>entry.id==='unfiled-tree-underlay-thumb')
+          expect(entry).toMatchObject({kind:'design-style',cells:{dataset:'live'},approval:{status:'pending-sign-off'}})
+          for(const page of [pair.design,pair.product]) await page.addStyleTag({content:entry.css})
+        }
         if(surface.kind==='bd-card') for(const page of [pair.design,pair.product]) await page.locator('#bd-now').evaluate(el=>{el.style.visibility='hidden'})
         const covered = new Set()
         for (const num of ids) {
