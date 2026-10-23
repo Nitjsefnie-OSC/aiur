@@ -102,6 +102,12 @@ async function maskRow(pair,kind,num,slots) {
   }
 }
 async function maskVisible(pair,kind,slots) {
+  // Scrolling can leave a card under the view button's pointer. Finish its hover
+  // transition before measuring fixed masks; later movement would invalidate them.
+  for(const page of [pair.design,pair.product]) {
+    await page.mouse.move(0,0)
+    await page.evaluate(()=>document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime)).forEach(a=>a.finish()))
+  }
   for(const page of [pair.design,pair.product]) await page.locator('body > [data-unfiled-mask]').evaluateAll(nodes=>nodes.forEach(node=>node.remove()))
   await applyAllowlist(pair,pair.cell)
   for(const num of ids) {
