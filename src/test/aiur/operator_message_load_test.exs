@@ -3,6 +3,7 @@ defmodule Aiur.OperatorMessageLoadTest do
 
   alias Aiur.{Issue, Orchestrator}
   alias Aiur.Orchestrator.OperatorMessages
+  alias Aiur.TestSupport.Isolation
 
   test "a message blocked longer than the old RPC budget returns a request id and delivery status" do
     original_timeout = Application.get_env(:aiur, :operator_message_call_timeout_ms)
@@ -11,7 +12,7 @@ defmodule Aiur.OperatorMessageLoadTest do
     {:ok, orchestrator} = Orchestrator.start_link(name: nil)
     issue_id = "issue-message-load"
     identifier = "5995-load-test"
-    worker = spawn(fn -> worker_loop() end)
+    worker = Isolation.start_owned!({Task, fn -> worker_loop() end})
 
     on_exit(fn ->
       restore_timeout(original_timeout)
@@ -25,8 +26,6 @@ defmodule Aiur.OperatorMessageLoadTest do
 
         Aiur.TestSupport.safe_stop(orchestrator)
       end
-
-      Process.exit(worker, :normal)
     end)
 
     :sys.replace_state(orchestrator, fn state ->
@@ -60,7 +59,7 @@ defmodule Aiur.OperatorMessageLoadTest do
     # Keep the actual GenServer call blocked beyond both former five-second
     # waits (enqueue and keyed reconciliation), then prove the accepted queue
     # handle resolves to the item.
-    Process.sleep(10_200)
+    assert nil == Task.yield(send_task, 10_200)
     :ok = :sys.resume(orchestrator)
 
     assert {:ok, request_id} = Task.await(send_task, 1_000)
