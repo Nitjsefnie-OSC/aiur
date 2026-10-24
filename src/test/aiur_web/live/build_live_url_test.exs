@@ -80,10 +80,9 @@ defmodule AiurWeb.BuildLiveURLTest do
   end
 
   test "list mode round trips through server URL state and unknown values default" do
-    {:ok, view, _} = live(build_conn(), "/build?view=list&list=epics")
-    assert render(view) =~ "data-url-state"
-    render_patch(view, "/build?view=list&list=epics")
-    assert_push_event(view, "build:url", %{state: %{view: "list", list: "epics"}})
+    {:ok, view, _} = live(build_conn(), "/build")
+    render_hook(view, "build:url", %{"view" => "list", "list" => "epics"})
+    assert_patch(view, "/build?view=list&list=epics")
     render_hook(view, "build:url", %{"view" => "list", "list" => "bogus"})
     assert_patch(view, "/build?view=list")
     assert_push_event(view, "build:url", %{state: %{view: "list", list: "tickets"}})
