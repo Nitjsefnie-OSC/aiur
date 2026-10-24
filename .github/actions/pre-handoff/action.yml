@@ -6,6 +6,9 @@ runs:
   steps:
     - name: Set up Elixir and project dependencies
       uses: ./.github/actions/setup-elixir
+    - name: Start PostgreSQL for ticket lease integration test
+      shell: bash
+      run: bash scripts/start-ci-postgres.sh
     - name: Run PostgreSQL ticket-lease integration test
       shell: bash
       working-directory: src

@@ -4,9 +4,8 @@ defmodule Aiur.Instance.LeaseStore do
 
   require Logger
 
-  alias Aiur.GitHub.Config, as: GitHubConfig
   alias Aiur.Instance.Identity
-  alias Aiur.TrackerIdentity
+  alias Aiur.Instance.LeaseStore.{Postgres, Renewal, TicketKey}
 
   @name __MODULE__
   @default_ttl_ms 30_000
@@ -83,7 +82,7 @@ defmodule Aiur.Instance.LeaseStore do
 
         {:ok, _pid} =
           Task.start(fn ->
-            renew_while_alive(parent, ticket_key, interval, ttl_ms, margin_ms, server, opts)
+            Renewal.start(parent, ticket_key, interval, ttl_ms, margin_ms, server, opts)
           end)
 
         :ok
@@ -149,95 +148,7 @@ defmodule Aiur.Instance.LeaseStore do
 
   @doc "Canonical repository-qualified ticket key shared by dispatch, workers and observers."
   @spec ticket_key(term()) :: {:ok, String.t()} | {:error, :invalid_ticket_key}
-  def ticket_key(%TrackerIdentity{} = identity) do
-    key_from_identity(identity, identity.identifier) || {:error, :invalid_ticket_key}
-  end
-
-  def ticket_key(%{tracker_identity: %TrackerIdentity{} = identity} = ticket) do
-    identifier = Map.get(ticket, :identifier) || Map.get(ticket, :number) || identity.identifier
-    key_from_identity(identity, identifier) || {:error, :invalid_ticket_key}
-  end
-
-  def ticket_key(%{"tracker_identity" => %TrackerIdentity{} = identity} = ticket) do
-    key_from_identity(identity, Map.get(ticket, "identifier") || Map.get(ticket, "number")) ||
-      {:error, :invalid_ticket_key}
-  end
-
-  def ticket_key(%{tracker_identity: %TrackerIdentity{} = identity, number: number}),
-    do: key_from_identity(identity, number) || {:error, :invalid_ticket_key}
-
-  def ticket_key(%{"tracker_identity" => %TrackerIdentity{} = identity, "number" => number}),
-    do: key_from_identity(identity, number) || {:error, :invalid_ticket_key}
-
-  def ticket_key(%{number: number} = ticket), do: key_from_parts(repo_from_map(ticket), number)
-
-  def ticket_key(%{"number" => number} = ticket),
-    do: key_from_parts(repo_from_map(ticket), number)
-
-  def ticket_key(%{identifier: identifier}), do: ticket_key(identifier)
-  def ticket_key(%{"identifier" => identifier}), do: ticket_key(identifier)
-
-  def ticket_key(number) when is_integer(number) and number > 0,
-    do: key_from_parts(GitHubConfig.repo(), number)
-
-  def ticket_key(value) when is_binary(value) do
-    value = String.trim(value)
-
-    case Regex.run(~r{^([^/#]+)/([^/#]+)#(\d+)$}, value) do
-      [_, owner, repository, number] ->
-        key_from_parts("#{owner}/#{repository}", number)
-
-      _ ->
-        case Regex.run(~r/^#?(\d+)$/, value) do
-          [_, number] -> key_from_parts(GitHubConfig.repo(), number)
-          _ -> {:error, :invalid_ticket_key}
-        end
-    end
-  end
-
-  def ticket_key(_ticket), do: {:error, :invalid_ticket_key}
-
-  defp key_from_identity(%TrackerIdentity{} = identity, identifier) do
-    if TrackerIdentity.joinable?(identity) and parse_number(identifier) == parse_number(identity.identifier) do
-      key_from_parts("#{identity.owner}/#{identity.repository}", identifier)
-    end
-  end
-
-  defp key_from_parts(repo, number) when is_binary(repo) do
-    case {String.split(String.trim(repo), "/"), parse_number(number)} do
-      {[owner, repository], n} when owner != "" and repository != "" and is_integer(n) ->
-        {:ok, "#{String.downcase(owner)}/#{String.downcase(repository)}##{n}"}
-
-      _ ->
-        {:error, :invalid_ticket_key}
-    end
-  end
-
-  defp key_from_parts(_, _), do: {:error, :invalid_ticket_key}
-
-  defp parse_number(number) when is_integer(number) and number > 0, do: number
-
-  defp parse_number(number) when is_binary(number) do
-    case Integer.parse(number) do
-      {n, ""} when n > 0 -> n
-      _ -> nil
-    end
-  end
-
-  defp parse_number(_), do: nil
-
-  defp repo_from_map(ticket) do
-    repository =
-      Map.get(ticket, :repository) || Map.get(ticket, "repository") ||
-        Map.get(ticket, :repo) || Map.get(ticket, "repo")
-
-    case repository do
-      value when is_binary(value) -> value
-      %{full_name: name} when is_binary(name) -> name
-      %{"full_name" => name} when is_binary(name) -> name
-      _ -> GitHubConfig.repo()
-    end
-  end
+  defdelegate ticket_key(ticket), to: TicketKey
 
   @doc "Publishes this instance's opaque metadata and returns the live roster."
   @spec heartbeat(String.t(), map(), keyword()) :: {:ok, [map()]} | {:error, term()}
@@ -361,7 +272,7 @@ defmodule Aiur.Instance.LeaseStore do
         RETURNING instance_id, build_version, metadata_json, heartbeat_at, expires_at
         """,
         [instance_id(state), build_version, encoded, ttl_ms / 1_000],
-        &decode_instances/1
+        &Postgres.decode_instances/1
       )
 
     reply_with_reconnect(result, state)
@@ -376,7 +287,7 @@ defmodule Aiur.Instance.LeaseStore do
         FROM aiur_instances WHERE expires_at > clock_timestamp() ORDER BY instance_id
         """,
         [],
-        &decode_instances/1
+        &Postgres.decode_instances/1
       )
 
     reply_with_reconnect(result, state)
@@ -438,64 +349,6 @@ defmodule Aiur.Instance.LeaseStore do
 
   defp reply_with_reconnect(result, state), do: {:reply, result, state}
 
-  defp create_tables(conn) do
-    with {:ok, _} <-
-           Postgrex.query(
-             conn,
-             """
-             CREATE TABLE IF NOT EXISTS aiur_ticket_leases (
-               ticket_key text PRIMARY KEY,
-               instance_id text NOT NULL,
-               heartbeat_at timestamptz NOT NULL,
-               expires_at timestamptz NOT NULL
-             )
-             """,
-             []
-           ),
-         {:ok, _} <-
-           Postgrex.query(
-             conn,
-             """
-             CREATE TABLE IF NOT EXISTS aiur_instances (
-               instance_id text PRIMARY KEY,
-               build_version text NOT NULL,
-               metadata_json text NOT NULL,
-               heartbeat_at timestamptz NOT NULL,
-               expires_at timestamptz NOT NULL
-             )
-             """,
-             []
-           ) do
-      :ok
-    else
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp decode_instances(%{rows: rows}) do
-    Enum.reduce_while(rows, {:ok, []}, fn [id, version, metadata, heartbeat_at, expires_at], {:ok, acc} ->
-      case Jason.decode(metadata) do
-        {:ok, decoded} when is_map(decoded) ->
-          item = %{
-            instance_id: id,
-            build_version: version,
-            metadata: decoded,
-            heartbeat_at: heartbeat_at,
-            expires_at: expires_at
-          }
-
-          {:cont, {:ok, [item | acc]}}
-
-        _ ->
-          {:halt, {:error, :invalid_instance_metadata}}
-      end
-    end)
-    |> case do
-      {:ok, items} -> {:ok, Enum.reverse(items)}
-      error -> error
-    end
-  end
-
   defp instance_id(state) do
     case state.instance_id do
       fun when is_function(fun, 0) -> fun.()
@@ -510,68 +363,10 @@ defmodule Aiur.Instance.LeaseStore do
     end
   end
 
-  defp renew_while_alive(parent, key, interval, ttl_ms, margin_ms, server, opts) do
-    monitor = Process.monitor(parent)
-    now_fun = Keyword.get(opts, :monotonic_now, fn -> System.monotonic_time(:millisecond) end)
-
-    renew_fun =
-      Keyword.get(opts, :renew_fun, fn current_key, current_server, ttl ->
-        renew(current_key, server: current_server, ttl_ms: ttl)
-      end)
-
-    renew_loop(%{
-      parent: parent,
-      monitor: monitor,
-      key: key,
-      interval: interval,
-      ttl_ms: ttl_ms,
-      margin_ms: margin_ms,
-      server: server,
-      renew_fun: renew_fun,
-      now_fun: now_fun,
-      last_good_ms: now_fun.()
-    })
-  end
-
-  defp renew_loop(%{parent: parent, monitor: monitor, interval: interval} = renewal) do
-    receive do
-      {:DOWN, ^monitor, :process, ^parent, _reason} -> :ok
-    after
-      interval -> renew_once(renewal)
-    end
-  end
-
-  defp renew_once(%{key: key, server: server, ttl_ms: ttl, renew_fun: renew_fun} = renewal) do
-    case renew_fun.(key, server, ttl) do
-      :ok ->
-        renew_loop(%{renewal | last_good_ms: renewal.now_fun.()})
-
-      {:error, :lease_lost} ->
-        Process.exit(renewal.parent, {:shared_ticket_lease_lost, key})
-
-      {:error, reason} ->
-        retry_or_fence(renewal, reason)
-    end
-  end
-
-  defp retry_or_fence(renewal, reason) do
-    deadline = renewal.last_good_ms + renewal.ttl_ms - renewal.margin_ms
-    remaining_ms = deadline - renewal.now_fun.()
-
-    if remaining_ms <= 0 do
-      Logger.error("ticket lease renewal deadline missed key=#{renewal.key}: #{inspect(reason)}; stopping worker")
-      Process.exit(renewal.parent, {:shared_ticket_lease_lost, renewal.key})
-    else
-      Logger.warning("ticket lease renewal unavailable key=#{renewal.key}: #{inspect(reason)}; worker stops in #{remaining_ms}ms unless renewed")
-      Process.sleep(min(renewal.interval, remaining_ms))
-      renew_loop(renewal)
-    end
-  end
-
   defp connect(%{url: url, opts: opts}) when is_binary(url) and url != "" do
-    case Postgrex.start_link(connection_opts(url) ++ Keyword.take(opts, [:timeout, :types])) do
+    case Postgrex.start_link(Postgres.connection_opts(url) ++ Keyword.take(opts, [:timeout, :types])) do
       {:ok, conn} ->
-        case create_tables(conn) do
+        case Postgres.create_tables(conn) do
           :ok ->
             {:ok, conn}
 
@@ -643,21 +438,5 @@ defmodule Aiur.Instance.LeaseStore do
 
   defp database_url do
     Application.get_env(:aiur, :lease_database_url) || System.get_env("AIUR_LEASE_DATABASE_URL")
-  end
-
-  defp connection_opts(url) do
-    uri = URI.parse(url)
-    [username, password] = String.split(uri.userinfo || ":", ":", parts: 2)
-    database = uri.path |> to_string() |> String.trim_leading("/") |> URI.decode()
-    remote? = uri.host not in [nil, "localhost", "127.0.0.1", "::1"]
-
-    [
-      hostname: uri.host,
-      port: uri.port || 5432,
-      username: URI.decode(username),
-      password: URI.decode(password),
-      database: database
-    ] ++
-      if(remote?, do: [ssl: [verify: :verify_peer, cacerts: :public_key.cacerts_get()]], else: [])
   end
 end
