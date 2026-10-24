@@ -12,7 +12,8 @@ defmodule ScriptsAiurdevReleaseTest do
       engine,
       "#!/usr/bin/env bash\n" <>
         ~s|printf 'ENGINE_ARGS: %s\nREMOTE_INSTANCE: %s\n' "$*" "${AIUR_REMOTE_INSTANCE:-}"| <>
-        "\nif [ \"${1:-}\" = build ]; then exit 64; fi\n"
+        "\nif [ \"${1:-}\" = --instance ]; then shift 2; fi\n" <>
+        "if [ \"${1:-}\" = build ]; then exit 64; fi\n"
     )
 
     File.chmod!(engine, 0o755)
@@ -26,8 +27,9 @@ defmodule ScriptsAiurdevReleaseTest do
           {"TMUX", "inside-tmux"}
         ])
 
-      assert out =~ "ENGINE_ARGS: #{command}"
-      assert out =~ "REMOTE_INSTANCE: nuc"
+      assert out =~ "ENGINE_ARGS: --instance nuc #{command}"
+      assert out =~ "REMOTE_INSTANCE: "
+      refute out =~ "REMOTE_INSTANCE: nuc"
       refute out =~ "mise not found"
       refute out =~ "force-rebuild"
     end

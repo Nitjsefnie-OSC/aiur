@@ -274,9 +274,11 @@ function main() {
     AIUR_TMUX_CONF: path.join(pkgRoot, "share", "aiur.tmux.conf"),
   };
   delete env.AIUR_REMOTE_INSTANCE;
-  if (target.instance) env.AIUR_REMOTE_INSTANCE = target.instance;
+  const engineArgs = target.instance
+    ? ["--instance", target.instance, ...target.args]
+    : target.args;
 
-  const result = spawnSync(launcher, target.args, {
+  const result = spawnSync(launcher, engineArgs, {
     stdio: "inherit",
     env,
   });

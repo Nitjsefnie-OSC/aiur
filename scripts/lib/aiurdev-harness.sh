@@ -17,9 +17,6 @@
 # does not apply — and an inherited $TMUX would otherwise make a rebuild that
 # never ran look like a failed one, with the daemon already stopped.
 if [ "${1:-}" = "__ensure-build" ]; then
-  if [ -n "${AIUR_REMOTE_INSTANCE:-}" ]; then
-    exec "$engine" "$@"
-  fi
   # The fleet is down for the whole of this step, including any wait for a
   # rebuild another shell is holding the lock for. Say so, so a long wait reads
   # as an outage the operator can act on rather than an idle prompt.
@@ -43,7 +40,7 @@ guard_checkout_target "$@"
 # nothing on disk here — so refuse before anything is built, started, or
 # touched. The shared engine refuses dev release dirs too; this is the launcher
 # check that fires even before a build would be considered (#2109).
-if [ -z "${AIUR_REMOTE_INSTANCE:-}" ] && [ "${1:-}" = "upgrade" ]; then
+if [ "${1:-}" = "upgrade" ]; then
   echo "❌ aiur upgrade cannot run under aiurdev (a development checkout)." >&2
   echo "   aiurdev runs code built from the local tree; aiur upgrade installs a published" >&2
   echo "   npm release and would not touch this working tree. Nothing has been changed." >&2
@@ -52,7 +49,7 @@ if [ -z "${AIUR_REMOTE_INSTANCE:-}" ] && [ "${1:-}" = "upgrade" ]; then
 fi
 
 # aiur spawns its own tmux on a dedicated socket and does not nest cleanly.
-if [ -z "${AIUR_REMOTE_INSTANCE:-}" ] && [ -n "${TMUX:-}" ]; then
+if [ -n "${TMUX:-}" ]; then
   echo "❌ already inside a tmux session (\$TMUX is set)" >&2
   echo "Open a fresh terminal without tmux and try again." >&2
   exit 1
@@ -60,9 +57,6 @@ fi
 
 # `aiurdev build` force-rebuilds; otherwise rebuild only when stale.
 if [ "${1:-}" = "build" ]; then
-  if [ -n "${AIUR_REMOTE_INSTANCE:-}" ]; then
-    exec "$engine" "$@"
-  fi
   acquire_build_lock
   trap 'release_build_lock' EXIT INT TERM
   build_status=0
@@ -173,9 +167,7 @@ if [ -n "$agent_workspace_marker" ]; then
   enable_agent_ir_sandbox "$agent_workspace_marker" 0
 fi
 
-if [ -n "${AIUR_REMOTE_INSTANCE:-}" ]; then
-  : # Remote controls never need or rebuild the local release.
-elif builds_after_stop "${passthrough[0]:-}"; then
+if builds_after_stop "${passthrough[0]:-}"; then
   # Normally a no-op: a complete release is already there and the real rebuild
   # waits until the daemon is down. When there is no complete release, the stop
   # itself cannot run without one, so the repair build necessarily lands before

@@ -172,6 +172,10 @@ dispatch_run() {
   run_session "$mode" "${args[@]+"${args[@]}"}"
 }
 aiur_engine_main() {
+  # Only an explicit first-argument flag may select a remote target. Clear any
+  # inherited value before parsing so a leaked shell variable cannot redirect
+  # a direct shared-engine invocation.
+  unset AIUR_REMOTE_INSTANCE
   case "${1:-}" in
     --instance)
       [ "$#" -gt 1 ] && [ -n "${2:-}" ] || { echo "aiur: --instance requires a name" >&2; return 64; }

@@ -68,7 +68,7 @@ function runRemote(setup, args, env = {}) {
   });
 }
 
-function runRemoteEngine(setup, args) {
+function runRemoteEngine(setup, args, env = {}) {
   return spawnSync(setup.launcher, args, {
     encoding: "utf8",
     env: {
@@ -76,8 +76,11 @@ function runRemoteEngine(setup, args) {
       HOME: setup.home,
       PATH: `${setup.fakeBin}:${process.env.PATH}`,
       AIUR_JS_RUNTIME: process.execPath,
+      AIUR_BG_STATE_DIR: path.join(root, "state"),
+      AIUR_RELEASE_DIR: setup.releaseDir,
       AIUR_TEST_OUT: captureFile,
       AIUR_TOKEN_T: "remote-secret-token",
+      ...env,
     },
   });
 }
@@ -195,6 +198,21 @@ test("the shared engine accepts --instance before classifying the command", () =
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("ok\n");
     expect(server.requests()).toHaveLength(1);
+  } finally {
+    server.stop();
+  }
+});
+
+test("the shared engine ignores an ambient remote instance without the flag", () => {
+  const server = startServer({ body: successBody("wrong\n__AIUR_CONTROL_EXIT__:0\n") });
+  try {
+    const setup = setupRemoteLauncher(registry(server.url));
+    rmSync(captureFile, { force: true });
+    const result = runRemoteEngine(setup, ["status"], { AIUR_REMOTE_INSTANCE: "t" });
+    expect(result.status).toBe(0);
+    expect(existsSync(captureFile)).toBe(true);
+    expect(readFileSync(captureFile, "utf8")).toContain("LOCAL_EXPR:Aiur.AgentControlCLI.status()");
+    expect(server.requests()).toHaveLength(0);
   } finally {
     server.stop();
   }

@@ -59,7 +59,13 @@ case "${1:-}" in
 esac
 AIUR_JS_RUNTIME="${AIUR_JS_RUNTIME:-$(command -v node 2>/dev/null || true)}"
 export AIUR_JS_RUNTIME
-[ -n "${AIUR_REMOTE_INSTANCE:-}" ] || [ ! -f "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" ] || bash "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" --check || true
+if [ -n "${AIUR_REMOTE_INSTANCE:-}" ]; then
+  remote_instance="$AIUR_REMOTE_INSTANCE"
+  unset AIUR_REMOTE_INSTANCE
+  export AIUR_RELEASE_DIR="$release_dir"
+  exec "$engine" --instance "$remote_instance" "$@"
+fi
+[ ! -f "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" ] || bash "$repo_root/packaging/npm/aiur-cli/libexec/aiur-mise-doctor" --check || true
 # --- checkout targeting -------------------------------------------------------
 # repo_root is derived from this script's path, which is deliberate: a globally
 # symlinked `aiurdev` (~/.local/bin/aiurdev -> <checkout>/scripts/aiurdev) has to
@@ -171,10 +177,6 @@ checkout_diverges=0
 
 guard_checkout_target() {
   local cwd_root cmd shim_name
-
-  # A remote control does not build, boot or address a release in either
-  # checkout, so checkout targeting does not apply.
-  [ -z "${AIUR_REMOTE_INSTANCE:-}" ] || return 0
 
   # An explicit AIUR_REPO_ROOT already states the intent this guard exists to
   # confirm, so it is the documented escape hatch as well as the override.
